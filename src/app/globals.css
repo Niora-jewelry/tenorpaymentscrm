@@ -147,40 +147,43 @@
 }
 
 /*
- * Focus on a text control — one underline, no box.
+ * Focus on a text control.
  *
- * Every input, select and textarea previously turned its whole 1px border
- * brand-blue on focus, and several also painted a 2px translucent ring outside
- * it. On a drawer showing fifty fields at once that reads as a box lighting up
- * inside another box, and the ring shifted the optical alignment of every
- * neighbouring field by two pixels.
+ * ── THREE ATTEMPTS, AND WHY THIS IS THE ONE ──────────────────────────────
+ * First it was `border-brand-600` plus `ring-2 ring-brand-600/20` — a solid
+ * border with a halo outside it, which on a three-character number box is a
+ * thick rectangle around almost nothing.
  *
- * This replaces both with a single 2px underline drawn INSIDE the control as an
- * inset shadow, so it costs no layout and cannot move anything. The border
- * itself only deepens from `line` to `ink-300`, which is enough to say "this
- * one is active" without competing with the underline.
+ * Then a 2px inset underline. That removed the box but collided with the
+ * drawer cell's own indicator, and on a field with a visible border it reads as
+ * the control being underlined rather than active.
  *
- * `outline: none` is safe here specifically because the underline IS the focus
- * indicator and it is 2px of brand colour against white — keyboard users get a
- * clearly visible state. The global `:focus-visible` outline further down still
- * covers buttons and links, which have no border to underline.
+ * ⚠️ AND UNDERNEATH BOTH, THE REAL CULPRIT: the global `:focus-visible` rule
+ * further down paints `outline: 2px solid` at `outline-offset: 2px` on
+ * EVERYTHING. On a text input that is a blue box floating two pixels off the
+ * field — which is what kept coming back no matter what this utility did. Form
+ * controls are now excluded from it explicitly, next to the rule itself.
+ *
+ * What is left is the treatment dense forms actually want: the border takes the
+ * brand colour, and a soft three-pixel wash sits just outside it. No offset gap,
+ * no second line, no layout shift, and it reads at a glance in a grid of fifty.
  */
-@utility focus-underline {
+@utility focus-field {
   &:focus {
     outline: none;
-    border-color: var(--color-ink-300);
-    box-shadow: inset 0 -2px 0 0 var(--color-brand-600);
+    border-color: var(--color-brand-600);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand-600) 14%, transparent);
   }
 }
 
 /*
- * The same idea for a control that is ALREADY in edit mode rather than merely
- * focused — an inline rename, a field being edited in the drawer. It keeps the
- * underline when focus moves away, so the row still shows which cell is open.
+ * The same look for a control that is ALREADY in edit mode rather than merely
+ * focused — an inline rename, a drawer field opened for editing. It holds the
+ * state when focus moves away, so the row still shows which cell is open.
  */
-@utility editing-underline {
-  border-color: var(--color-ink-300);
-  box-shadow: inset 0 -2px 0 0 var(--color-brand-600);
+@utility field-editing {
+  border-color: var(--color-brand-600);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-brand-600) 14%, transparent);
   &:focus { outline: none; }
 }
 
@@ -229,6 +232,45 @@
 
 @utility animate-settle { animation: settle var(--dur-fast) var(--ease-out) both }
 
+/*
+ * The navigation rail's glass.
+ *
+ * ── WHY IT IS LAYERS AND NOT `backdrop-filter` ───────────────────────────
+ * Real glassmorphism blurs what is BEHIND the element. The rail is flush
+ * against the edge of the viewport with the page canvas beside it, not under
+ * it, so there is nothing behind to blur — `backdrop-blur` on this panel costs
+ * a compositor layer and renders identically to no blur at all.
+ *
+ * What actually reads as glass is the light behaviour: a sheen falling from one
+ * corner, a cooler pool in the opposite one, a hairline catching the light along
+ * the inner edge, and enough grain to stop the gradient banding. All four are
+ * painted here, over `brand-gradient`, and cost nothing to composite.
+ *
+ * The grain is an SVG turbulence data URI at 3.5% — without it a 244px column of
+ * smooth blue bands visibly on ordinary panels, and banding is the single thing
+ * that makes a gradient look cheap.
+ */
+@utility rail-glass {
+  background-image:
+    /* the sheen, top-left */
+    radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 55%),
+    /* a cooler pool, bottom-right, to stop the panel reading as one flat wash */
+    radial-gradient(90% 60% at 100% 100%, rgba(1, 39, 64, 0.45) 0%, rgba(1, 39, 64, 0) 60%),
+    /* grain */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
+    linear-gradient(155deg, #1e3a8a, #1d4ed8 55%, #2563eb);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+/* A band inside the rail — the header and the account row. Frosted rather than
+ * tinted, so the gradient still moves through it. */
+@utility rail-band {
+  background-color: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(6px) saturate(120%);
+}
+
 /* The signature gradient, one definition. */
 @utility brand-gradient {
   background-image: linear-gradient(155deg, #1e3a8a, #1d4ed8 55%, #2563eb);
@@ -253,6 +295,26 @@ body {
   outline: 2px solid var(--color-brand-600);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/*
+ * ⚠️ EXCEPT FORM CONTROLS, which carry their own (`focus-field` above).
+ *
+ * The rule above is right for buttons, links and anything else with no border
+ * of its own to work with. On an `<input>` it paints a second, offset rectangle
+ * outside the field's real border — the "blue box" that survived two rewrites
+ * of the focus utility, because the utility was fighting the wrong rule.
+ *
+ * Removing focus visibility is never acceptable, and this does not: every text
+ * control in the app carries `focus-field`, which is a coloured border plus a
+ * wash. Anything that somehow has neither still gets the outline, because this
+ * only opts out the three element types that are guaranteed to have a border.
+ */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  outline-offset: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

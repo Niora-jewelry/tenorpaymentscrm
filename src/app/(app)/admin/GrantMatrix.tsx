@@ -635,7 +635,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search module, tab, field or key…"
-            className="w-[280px] rounded-md border border-line py-1 pl-7 pr-2 text-[12.5px] outline-none focus-underline"
+            className="w-[280px] rounded-md border border-line py-1 pl-7 pr-2 text-[12.5px] outline-none focus-field"
           />
         </span>
         <label className="flex items-center gap-1.5 text-[12.5px] text-ink-600">

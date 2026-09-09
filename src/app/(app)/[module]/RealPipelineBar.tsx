@@ -9,11 +9,26 @@
  * reads/writes `record_pipelines` keyed on `(record_id, module_id)`.
  *
  * ── IT READS AS ONE TRACK, NOT A ROW OF PILLS ────────────────────────────
- * The steps are a PROCESS, and a process has a direction. A connector line runs
- * behind the chips and fills up to the current step, so progress is legible
- * before any label is read. Completed steps keep their own colour rather than
- * going grey — a finished stage is not a disabled one, and greying it makes a
- * record at step 6 of 7 look mostly switched off.
+ * The steps are a PROCESS, and a process has a direction. Short connectors sit
+ * BETWEEN the chips and fill in behind the record's position, so progress is
+ * legible before any label is read.
+ *
+ * ⚠️ The connectors are real flex items, not one absolutely-positioned line.
+ * That line was sized with a percentage of its container — and the container is
+ * a flex row that stretches to the full width of the drawer while the chips
+ * only occupy the left of it. So the "progress" fill was measured against the
+ * wrong thing and painted a stray orange segment out past the last chip. A
+ * segment between each pair of chips needs no measurement at all and cannot
+ * drift.
+ *
+ * ── ONE STEP IS OBVIOUSLY THE CURRENT ONE ────────────────────────────────
+ * An earlier pass let completed steps keep their own swatch colour, on the
+ * reasoning that a finished stage is not a disabled one. In practice four
+ * coloured chips in a row left nothing to tell you which one the record is
+ * actually standing on. Done steps are now quiet — a muted tick and grey text —
+ * and the whole of the colour budget goes to the current chip, which is filled,
+ * ringed and slightly raised. The header names it in words as well, because a
+ * fraction alone ("5 / 7") still makes you count along the bar.
  *
  * ── AND IT TELLS YOU WHAT MOVING WILL DO ─────────────────────────────────
  * Every step change is activity-logged with actor and timestamp (Modules §2.4),
@@ -21,7 +36,7 @@
  * one already behind says "Move back". The chips are buttons and always were —
  * what was missing was any hint that clicking one is a recorded action.
  */
-import { useTransition } from 'react';
+import { Fragment, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { SWATCHES } from '@/proto/ui/tokens';
@@ -95,12 +110,6 @@ export function RealPipelineBar({
   const index = pipeline.steps.findIndex((s) => s.id === assignment.stepId);
   const atEnd = index === pipeline.steps.length - 1;
 
-  /* How far the filled connector runs. Measured to the CENTRE of the current
-     chip, which is why a single step sits at 0 rather than at 100 — a record on
-     step 1 of 6 has not finished a sixth of anything. */
-  const progress =
-    pipeline.steps.length > 1 ? (index / (pipeline.steps.length - 1)) * 100 : 0;
-
   /* The fill takes the CURRENT step's colour, so the track and the chip the
      record is standing on agree. `index` is -1 only if the stored step was
      removed from under the record, which the writers refuse — the fallback
@@ -116,13 +125,24 @@ export function RealPipelineBar({
           {pipeline.label}
         </span>
 
-        {/* The position, as a fraction AND as the step's own name. "step 7 of 7"
-            alone makes someone count along the bar to find out where that is. */}
-        <span className="inline-flex items-center gap-1 rounded-full bg-canvas px-1.5 py-[1px] text-[11px] tabular text-ink-500 ring-1 ring-inset ring-line">
-          {index + 1} / {pipeline.steps.length}
+        <span aria-hidden className="text-line">·</span>
+
+        {/* The current step BY NAME, in its own colour, before the fraction.
+            This is the answer to "where is this record", and it was previously
+            only obtainable by finding the one filled chip among seven. */}
+        <span
+          className="inline-flex items-center gap-1.5 text-[12px] font-semibold"
+          style={{ color: currentSwatch.text }}
+        >
+          <span aria-hidden className="size-[6px] rounded-full" style={{ background: currentSwatch.dot }} />
+          {pipeline.steps[Math.max(0, index)]?.label}
+        </span>
+
+        <span className="inline-flex items-center rounded-full bg-canvas px-1.5 py-[1px] text-[11px] tabular text-ink-400 ring-1 ring-inset ring-line">
+          {index + 1} of {pipeline.steps.length}
         </span>
         {atEnd ? (
-          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-[#1c7a4f]">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-ok">
             <Icon name="check" size={11} strokeWidth={2.5} />
             Final step
           </span>
@@ -153,64 +173,66 @@ export function RealPipelineBar({
         `overflow-x-auto` cannot clip on one axis alone: the moment either axis
         is not `visible`, the other computes to `auto` too. So a chip lifting one
         pixel on hover had its top border sliced off by this container's own
-        overflow edge — the border did not disappear, it was cropped. The
-        padding gives the lift somewhere to go.
+        overflow edge — the border did not disappear, it was cropped.
       */}
-      <div className="relative mt-2 overflow-x-auto px-0.5 pb-2 pt-1.5">
-        <div className="relative flex min-w-max items-center gap-1.5">
-          <span
-            aria-hidden
-            className="absolute left-3 right-3 top-1/2 h-[2px] -translate-y-1/2 rounded-full bg-line-soft"
-          />
-          <span
-            aria-hidden
-            className="absolute left-3 top-1/2 h-[2px] -translate-y-1/2 rounded-full transition-[width] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-            style={{ width: `calc(${progress}% - 0.75rem)`, background: currentSwatch.dot }}
-          />
-
+      <div className="overflow-x-auto px-0.5 pb-2 pt-1.5">
+        <div className="flex w-max items-center">
           {pipeline.steps.map((step, i) => {
             const done = i < index;
             const current = i === index;
-            const s = SWATCHES[step.swatch];
+            const sw = SWATCHES[step.swatch];
             return (
-              <button
-                key={step.id}
-                type="button"
-                disabled={pending}
-                title={
-                  current
-                    ? 'This record is here now'
-                    : i > index
-                      ? `Move forward to "${step.label}"`
-                      : `Move back to "${step.label}"`
-                }
-                onClick={() => setStep(pipeline.id, step.id)}
-                className={`relative z-[1] flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold transition-all duration-200 active:scale-95 disabled:cursor-wait ${
-                  current
-                    ? 'shadow-[0_1px_2px_rgba(8,32,47,.14)]'
-                    : done
-                      ? 'hover:-translate-y-px'
-                      : 'border-line bg-white text-ink-400 hover:-translate-y-px hover:border-ink-300 hover:text-ink-700'
-                }`}
-                style={
-                  current
-                    ? { background: s.bg, color: s.text, borderColor: s.border }
-                    : done
-                      ? { background: '#fff', color: s.text, borderColor: s.border }
-                      : undefined
-                }
-              >
-                {done ? (
-                  <Icon name="check" size={10} strokeWidth={2.6} style={{ color: s.dot }} />
-                ) : (
+              <Fragment key={step.id}>
+                {/* The connector into this chip. Filled when the record has
+                    already passed the join, so the filled run always ends at
+                    the chip it is standing on. */}
+                {i > 0 ? (
                   <span
                     aria-hidden
-                    className={`size-[6px] rounded-full ${current ? 'ring-2 ring-white/70' : ''}`}
-                    style={{ background: current ? s.dot : '#c7d3dd' }}
+                    className={`h-[2px] w-3.5 shrink-0 transition-colors duration-300 ${
+                      i <= index ? '' : 'bg-line-soft'
+                    }`}
+                    style={i <= index ? { background: currentSwatch.dot } : undefined}
                   />
-                )}
-                {step.label}
-              </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  disabled={pending}
+                  aria-current={current ? 'step' : undefined}
+                  title={
+                    current
+                      ? 'This record is here now'
+                      : i > index
+                        ? `Move forward to "${step.label}"`
+                        : `Move back to "${step.label}"`
+                  }
+                  onClick={() => setStep(pipeline.id, step.id)}
+                  className={`relative flex shrink-0 items-center gap-1.5 rounded-full border transition-all duration-200 active:scale-95 disabled:cursor-wait ${
+                    current
+                      ? 'px-3 py-[5px] text-[12px] font-semibold shadow-[0_2px_6px_-1px_rgba(8,32,47,.22)]'
+                      : done
+                        ? 'border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink-400 hover:-translate-y-px hover:border-ink-300 hover:text-ink-700'
+                        : 'border-dashed border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink-300 hover:-translate-y-px hover:border-solid hover:border-ink-300 hover:text-ink-700'
+                  }`}
+                  style={
+                    current
+                      ? { background: sw.bg, color: sw.text, borderColor: sw.dot }
+                      : undefined
+                  }
+                >
+                  {done ? (
+                    <Icon name="check" size={10} strokeWidth={2.6} className="text-ink-300" />
+                  ) : (
+                    <span
+                      aria-hidden
+                      className={`rounded-full ${current ? 'size-[7px] ring-2 ring-white/60' : 'size-[5px]'}`}
+                      style={{ background: current ? sw.dot : '#cfdae3' }}
+                    />
+                  )}
+                  {step.label}
+                </button>
+              </Fragment>
             );
           })}
         </div>

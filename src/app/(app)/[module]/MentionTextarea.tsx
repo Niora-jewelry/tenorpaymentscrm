@@ -185,7 +185,7 @@ export function MentionTextarea({
         rows={rows}
         disabled={disabled}
         placeholder={placeholder}
-        className="w-full resize-none rounded-lg border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
+        className="w-full resize-none rounded-lg border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-field"
       />
       {query && matches.length ? (
         <div className="absolute left-2 top-full z-10 mt-1 w-56 overflow-hidden rounded-lg border border-line bg-white shadow-[0_8px_24px_-8px_rgba(8,32,47,.25)]">

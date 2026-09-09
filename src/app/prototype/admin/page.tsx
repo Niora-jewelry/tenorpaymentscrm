@@ -522,12 +522,12 @@ function PresetsTab() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search fields…"
-            className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-underline"
+            className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-field"
           />
           <select
             value={tabFilter}
             onChange={(e) => setTabFilter(e.target.value)}
-            className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-underline"
+            className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-field"
           >
             <option value="all">All tabs</option>
             {CUSTOM_TABS.filter((t) => t.acceptsFields).map((t) => (

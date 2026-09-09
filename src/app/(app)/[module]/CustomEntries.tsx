@@ -78,7 +78,7 @@ export function CustomEntries({
               onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. Gate code"
               disabled={pending}
-              className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-underline"
+              className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-field"
             />
             <input
               value={value}
@@ -86,7 +86,7 @@ export function CustomEntries({
               onKeyDown={(e) => e.key === 'Enter' && add()}
               placeholder="e.g. #4471 — rear loading bay"
               disabled={pending}
-              className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-underline"
+              className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-field"
             />
             <Button size="sm" icon="plus" loading={pending} loadingLabel="Adding…" disabled={!label.trim()} onClick={add}>
               Add
@@ -141,13 +141,13 @@ function EntryRow({
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           disabled={pending}
-          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
+          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none field-editing"
         />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
           disabled={pending}
-          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
+          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none field-editing"
         />
         <span className="flex gap-1">
           <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditing(false)}>

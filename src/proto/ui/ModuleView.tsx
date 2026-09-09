@@ -364,7 +364,7 @@ function BulkEditDialog({
             setFieldId(e.target.value);
             setValue('');
           }}
-          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
         >
           {columns.map((c) => (
             <option key={c.id} value={c.id}>
@@ -380,7 +380,7 @@ function BulkEditDialog({
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
           >
             <option value="">— choose —</option>
             {field.choices.map((c) => (
@@ -396,13 +396,13 @@ function BulkEditDialog({
             value={value}
             max={field?.type === 'percentage' ? 100 : undefined}
             onLiveChange={(n) => setValue(n == null ? '' : String(n))}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
           />
         ) : (
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
           />
         )}
 

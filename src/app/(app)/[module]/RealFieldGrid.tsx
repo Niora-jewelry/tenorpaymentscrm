@@ -124,7 +124,7 @@ function SortableFieldCell({
        * a box. Replacing that with a bottom line then collided with the input's
        * own underline sitting a couple of pixels above it.
        *
-       * So the division is: the CONTROL owns the line (`focus-underline`), and
+       * So the division is: the CONTROL owns the line (`focus-field`), and
        * the CELL owns the wash. One indicator each, at different scales, and
        * they cannot double up.
        *

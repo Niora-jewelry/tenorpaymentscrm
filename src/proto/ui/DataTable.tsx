@@ -262,7 +262,7 @@ function ColumnHeader({
                 type="text"
                 placeholder={`${field.label} contains…`}
                 defaultValue={filter?.kind === 'contains' ? filter.text : ''}
-                className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-underline"
+                className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-field"
                 onChange={(e) =>
                   onChange(
                     e.currentTarget.value
@@ -321,7 +321,7 @@ function ColumnHeader({
                 <NumberInput
                   placeholder="min"
                   defaultValue={filter?.kind === 'range' ? (filter.min ?? '') : ''}
-                  className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-underline"
+                  className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-field"
                   onLiveChange={(n) => {
                     const min = n ?? undefined;
                     const max = filter?.kind === 'range' ? filter.max : undefined;
@@ -336,7 +336,7 @@ function ColumnHeader({
                 <NumberInput
                   placeholder="max"
                   defaultValue={filter?.kind === 'range' ? (filter.max ?? '') : ''}
-                  className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-underline"
+                  className="w-full rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-field"
                   onLiveChange={(n) => {
                     const max = n ?? undefined;
                     const min = filter?.kind === 'range' ? filter.min : undefined;
@@ -358,7 +358,7 @@ function ColumnHeader({
                 <input
                   type="date"
                   defaultValue={filter?.kind === 'dates' ? (filter.from ?? '') : ''}
-                  className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-underline"
+                  className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-field"
                   onChange={(e) => {
                     const from = e.currentTarget.value || undefined;
                     const to = filter?.kind === 'dates' ? filter.to : undefined;
@@ -368,7 +368,7 @@ function ColumnHeader({
                 <input
                   type="date"
                   defaultValue={filter?.kind === 'dates' ? (filter.to ?? '') : ''}
-                  className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-underline"
+                  className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus-field"
                   onChange={(e) => {
                     const to = e.currentTarget.value || undefined;
                     const from = filter?.kind === 'dates' ? filter.from : undefined;

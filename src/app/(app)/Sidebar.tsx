@@ -38,6 +38,12 @@
  * keeps one hue and lets the gradient show through, which a flat opaque tint
  * would kill. Anything added to this file has to follow the same rule.
  *
+ * The surface is `rail-glass` rather than the flat gradient: a sheen from the
+ * top-left, a cooler pool bottom-right, hairlines along both inner edges, and a
+ * little grain so a 244px column of blue does not band. `globals.css` explains
+ * why none of that is `backdrop-filter` — there is nothing behind this panel to
+ * blur, so real glass has to be painted rather than sampled.
+ *
  * THE ACTIVE ITEM IS THE LIME. `globals.css` says lime is only ever a fill
  * carrying dark text, or text on a dark ground — a navy rail is exactly that
  * ground, and lime on it is 14.8:1. It also breaks the "one accent per screen"
@@ -109,7 +115,7 @@ export function Sidebar({
      * to win, which is why this is 40 and not 20.
      */
     <aside
-      className={`group/sidebar brand-gradient relative z-40 flex shrink-0 flex-col border-r border-brand-950/40 text-white shadow-[inset_-1px_0_0_rgba(255,255,255,.06)] transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+      className={`group/sidebar rail-glass relative z-40 flex shrink-0 flex-col border-r border-brand-950/50 text-white transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
         collapsed ? 'w-[64px]' : 'w-[244px]'
       }`}
     >
@@ -118,7 +124,7 @@ export function Sidebar({
           identity reads as a header rather than as the first thing in the
           navigation list. */}
       <div
-        className={`flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/10 px-3 ${
+        className={`rail-band flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/12 px-3 ${
           collapsed ? 'justify-center' : ''
         }`}
       >
@@ -286,7 +292,7 @@ export function Sidebar({
           was a full-width labelled button, which gave a rarely-used action the
           same visual weight as a module — and put it directly under the nav
           list where a mis-aimed click lands. */}
-      <div className="shrink-0 border-t border-white/10 p-2">
+      <div className="rail-band shrink-0 border-t border-white/12 p-2">
         <div
           className={`flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 ${collapsed ? 'justify-center' : ''}`}
           title={collapsed ? `${userName} · ${userEmail}` : undefined}
@@ -371,8 +377,8 @@ function NavItem({
       aria-current={active ? 'page' : undefined}
       className={`group relative mb-px flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-[background-color,color] duration-150 ${
         active
-          ? 'bg-accent text-accent-ink shadow-[0_1px_3px_rgba(1,39,64,.30)]'
-          : 'text-white/72 hover:bg-white/10 hover:text-white'
+          ? 'bg-accent text-accent-ink shadow-[0_2px_8px_-2px_rgba(213,255,74,.45),inset_0_1px_0_rgba(255,255,255,.5)]'
+          : 'text-white/72 hover:bg-white/10 hover:text-white hover:shadow-[inset_0_1px_0_rgba(255,255,255,.10)]'
       } ${collapsed ? 'justify-center' : ''}`}
     >
       {/*

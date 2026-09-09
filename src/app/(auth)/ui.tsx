@@ -203,7 +203,7 @@ export function Field({
                       ${
                         error
                           ? 'border-bad focus:border-bad focus:ring-bad/12'
-                          : 'border-line focus-underline focus:ring-brand-600/12'
+                          : 'border-line focus-field focus:ring-brand-600/12'
                       }`}
           {...rest}
         />
@@ -296,7 +296,7 @@ export function CodeInput({ name = 'code', error }: { name?: string; error?: str
                         ${
                           error
                             ? 'border-bad focus:border-bad focus:ring-bad/12'
-                            : 'border-line focus-underline focus:ring-brand-600/12'
+                            : 'border-line focus-field focus:ring-brand-600/12'
                         }`}
           />
         ))}

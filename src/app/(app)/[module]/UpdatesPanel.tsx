@@ -271,7 +271,7 @@ function Thread({
                   onKeyDown={(e) => e.key === 'Enter' && reply()}
                   disabled={pending}
                   placeholder="Reply…"
-                  className="flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none transition-colors focus-underline"
+                  className="flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none transition-colors focus-field"
                 />
                 <Button size="sm" icon="reply" loading={pending} loadingLabel="Sending…" disabled={!draft.trim()} onClick={reply}>
                   Reply

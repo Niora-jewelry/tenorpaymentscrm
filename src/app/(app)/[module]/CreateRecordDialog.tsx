@@ -158,7 +158,7 @@ export function CreateRecordDialog({
                 required
                 disabled={isPending}
                 placeholder="e.g. Joe's Pizza"
-                className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+                className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
               />
               {state.message ? (
                 <p className="mt-2 flex flex-wrap items-center gap-1.5 text-[12.5px] text-bad">

@@ -136,7 +136,7 @@ function CreateTemplateForm({ onClose }: { onClose: () => void }) {
         name="label"
         required
         placeholder="e.g. Sales rep"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
       />
       <p className="mt-1 text-[11.5px] text-ink-400">Must be unique — two templates cannot share a name.</p>
 
@@ -204,7 +204,7 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
                   setMessage(null);
                 }
               }}
-              className="w-full max-w-[280px] rounded-md border border-line px-2 py-1 text-[13.5px] outline-none focus-underline"
+              className="w-full max-w-[280px] rounded-md border border-line px-2 py-1 text-[13.5px] outline-none focus-field"
             />
           ) : (
             <div className="flex flex-wrap items-center gap-2">

@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   TapDash CRM — design tokens
+   ============================================================================= */
+
+@theme {
+  /* --- Brand ------------------------------------------------------------- */
+  --color-brand-950: #012740;
+  --color-brand-900: #0a2f5c;
+  --color-brand-800: #1e3a8a;
+  --color-brand-700: #1d4ed8;
+  --color-brand-600: #2563eb;
+  --color-brand-500: #3b82f6;
+  --color-brand-100: #dbe8fb;
+  --color-brand-50:  #eff5fd;
+
+  /* Accent — lime.
+     HARD RULE: #d5ff4a on white is 1.4:1 and unreadable. It is ONLY ever used
+     as a FILL carrying brand-950 text (14.8:1), or as text on a dark ground.
+     One accent per screen: the primary action. Spending it elsewhere kills it. */
+  --color-accent: #d5ff4a;
+  --color-accent-dim: #b8e02f;
+  --color-accent-ink: #012740;
+
+  /* --- Neutrals — biased toward the brand's blue-teal, never flat grey ---- */
+  --color-ink-900: #08202f;
+  --color-ink-700: #1e3f54;
+  --color-ink-500: #4a6a80;
+  --color-ink-400: #6b8699;
+  --color-ink-300: #9db2c0;
+  --color-line:    #d9e3ec;
+  --color-line-soft: #e8eef4;
+  --color-line-faint: #eef3f7;
+  --color-surface: #ffffff;
+  --color-canvas:  #f6f9fb;
+
+  /* --- Semantic — deliberately never the brand blue or the lime ---------- */
+  --color-ok:   #0f9c8b;
+  --color-warn: #c07714;
+  --color-bad:  #d33b41;
+  /* `danger` is an alias for `bad`, not a second red.
+     Ten call sites across the drawer panels already wrote `text-danger` for
+     error text — a class Tailwind emitted nothing for, because the token did
+     not exist. Every one of those messages rendered in the inherited colour,
+     so a failed upload, a refused note edit and a rejected case reply all
+     looked like ordinary body text. Defining the alias fixes them together and
+     keeps one red in the palette rather than introducing a near-miss second
+     one. */
+  --color-danger: var(--color-bad);
+  --color-danger-bg: var(--color-bad-bg);
+  --color-ok-bg:   #e3f5f2;
+  --color-warn-bg: #faf0e0;
+  --color-bad-bg:  #fbe8e9;
+
+  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), "Cascadia Mono", Consolas, monospace;
+
+  --radius-panel: 14px;
+
+  /* --- Motion -------------------------------------------------------------
+     Short and decelerating. Anything a user triggers on purpose should be
+     finished before they can wonder whether it worked, so nothing here goes
+     past 220ms. Entrances ease OUT (fast start, soft landing); exits ease IN
+     and run shorter, because a thing leaving does not need to be admired. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 220ms;
+}
+
+/* =============================================================================
+   Keyframes
+   ============================================================================= */
+
+@keyframes fade-in    { from { opacity: 0 } to { opacity: 1 } }
+@keyframes fade-out   { from { opacity: 1 } to { opacity: 0 } }
+
+/* Popovers grow a few pixels out of their trigger rather than appearing. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(.98) }
+  to   { opacity: 1; transform: none }
+}
+@keyframes pop-out {
+  from { opacity: 1; transform: none }
+  to   { opacity: 0; transform: translateY(-2px) scale(.99) }
+}
+
+/* Dialogs settle in from slightly small — never bounce; this is a CRM. */
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.97) }
+  to   { opacity: 1; transform: none }
+}
+@keyframes dialog-out {
+  from { opacity: 1; transform: none }
+  to   { opacity: 0; transform: translateY(4px) scale(.985) }
+}
+
+/* The floating bars rise from below the fold. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(16px) scale(.97) }
+  to   { opacity: 1; transform: none }
+}
+@keyframes rise-out {
+  from { opacity: 1; transform: none }
+  to   { opacity: 0; transform: translateY(10px) scale(.98) }
+}
+
+/* The record drawer. */
+@keyframes sheet-in  { from { transform: translateX(100%) } to { transform: none } }
+@keyframes sheet-out { from { transform: none } to { transform: translateX(100%) } }
+
+/* A cell that just saved. Confirmation without a toast. */
+@keyframes saved-flash {
+  0%   { background-color: color-mix(in srgb, var(--color-ok) 22%, transparent) }
+  100% { background-color: transparent }
+}
+
+@utility animate-fade-in   { animation: fade-in   var(--dur-base) var(--ease-out) both }
+@utility animate-fade-out  { animation: fade-out  var(--dur-fast) var(--ease-in)  both }
+@utility animate-pop-in    { animation: pop-in    var(--dur-fast) var(--ease-out) both }
+@utility animate-pop-out   { animation: pop-out   100ms           var(--ease-in)  both }
+@utility animate-dialog-in { animation: dialog-in var(--dur-base) var(--ease-out) both }
+@utility animate-dialog-out{ animation: dialog-out 110ms          var(--ease-in)  both }
+@utility animate-rise-in   { animation: rise-in   var(--dur-base) var(--ease-out) both }
+@utility animate-rise-out  { animation: rise-out  120ms           var(--ease-in)  both }
+@utility animate-sheet-in  { animation: sheet-in  var(--dur-slow) var(--ease-out) both }
+@utility animate-sheet-out { animation: sheet-out 160ms           var(--ease-in)  both }
+@utility animate-saved     { animation: saved-flash 700ms ease-out both }
+
+/* -----------------------------------------------------------------------------
+   Skeletons
+
+   `animate-pulse` fades a block in and out, which reads as "this element is
+   blinking" rather than "this content is on its way". A sweep reads as motion
+   TOWARD something, which is what a loading state is claiming. One utility so
+   every skeleton in the app breathes at the same rate rather than three
+   screens each inventing their own.
+
+   The gradient rides on background-position, so it composites on the GPU and
+   costs nothing per element even with fifty of them on a records page.
+   ----------------------------------------------------------------------------- */
+@keyframes skeleton-sweep {
+  from { background-position: 200% 0 }
+  to   { background-position: -200% 0 }
+}
+
+@utility skeleton {
+  background-color: var(--color-line-soft);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, white 65%, transparent) 45%,
+    color-mix(in srgb, white 65%, transparent) 55%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-sweep 1.4s linear infinite;
+  border-radius: 4px;
+}
+
+/* -----------------------------------------------------------------------------
+   Table rows
+
+   A stagger, not a per-row animation. Each row is offset by a few milliseconds
+   so the list resolves top-down like something being dealt, and the whole thing
+   is over in under a quarter of a second — a table that animates for longer
+   than it takes to read is a table that is in your way.
+
+   Capped at ten steps: beyond that the delay would outlast the animation and
+   the last rows of a fifty-row page would visibly lag behind the scroll.
+   ----------------------------------------------------------------------------- */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(3px) }
+  to   { opacity: 1; transform: none }
+}
+
+@utility animate-row-in {
+  animation: row-in var(--dur-base) var(--ease-out) both;
+  animation-delay: calc(min(var(--row-index, 0), 10) * 18ms);
+}
+
+/* A value that just changed, or a row that just arrived. Shorter and quieter
+   than `saved-flash`, which is the green confirmation on a saved field. */
+@keyframes settle {
+  from { opacity: 0; transform: translateY(-2px) }
+  to   { opacity: 1; transform: none }
+}
+
+@utility animate-settle { animation: settle var(--dur-fast) var(--ease-out) both }
+
+/* The signature gradient, one definition. */
+@utility brand-gradient {
+  background-image: linear-gradient(155deg, #1e3a8a, #1d4ed8 55%, #2563eb);
+}
+
+html { height: 100%; }
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+}
+
+/* Digits must line up wherever they sit in a column — this CRM is full of
+   currency, percentages, MIDs and case numbers. */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Keyboard focus is always visible; never removed, only restyled. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* A zero duration does not stop an INFINITE animation — it makes it repeat
+     faster. The two looping ones have to be turned off by name, and the
+     skeleton needs its plain background back or it would render as a bare
+     transparent gradient. */
+  .skeleton,
+  .animate-pulse {
+    animation: none !important;
+    background-image: none !important;
+    background-color: var(--color-line-soft) !important;
+  }
+}
+
+/* Scrollbars — thin and on-brand everywhere, never the bare OS default (the
+   drawer body, dashboard, and every dropdown scroll independently, so this
+   has to be global rather than a one-off class).
+   In `@layer base`, deliberately: Tailwind's utilities layer sits above base,
+   so an element that opts out with `[scrollbar-width:none]` /
+   `[&::-webkit-scrollbar]:hidden` (the dashboard grid, which draws its own
+   synced overlay bar) still wins. Left unlayered, these rules would outrank
+   every utility regardless of specificity — the exact cause of the dashboard
+   briefly showing both its native bar and the synced one. */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--color-line);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-400);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Autofill in Chrome repaints the field a hard yellow; keep it on-brand. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--color-ink-900);
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  caret-color: var(--color-ink-900);
+}

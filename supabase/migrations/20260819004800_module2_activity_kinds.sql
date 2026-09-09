@@ -1,0 +1,41 @@
+-- =============================================================================
+-- Module 2 — Part 48: two activity kinds that had no way to be recorded.
+--
+-- ── WHAT WAS UNTRACEABLE ─────────────────────────────────────────────────
+-- `activity_kind` was `field, membership, pipeline, file, update, case,
+-- credential, record`. Two things the specification says are logged had no
+-- enum value to be logged AS, so the omission was structural rather than an
+-- oversight at a call site:
+--
+--   1. **The Other tab.** CLIENT-SPEC-BY-MODULE §2 says its entries
+--      "soft-delete and activity-log like everything else". They soft-delete.
+--      Nothing in `customEntries.ts`, in the actions layer, or in any trigger
+--      on `record_custom_entries` ever wrote an activity row — so a free-text
+--      label/value pair could be added, rewritten or removed with no trace at
+--      all, on the one tab explicitly meant for a record's ad-hoc detail.
+--
+--   2. **Note authority.** §9 requires "every mutation of note authority" to
+--      be audit-logged. `edit_note()` and `delete_note()` correctly enforce
+--      author-or-admin, and correctly refuse everyone else — but neither wrote
+--      a history row. An admin editing or deleting somebody else's note left
+--      nothing behind, which is precisely the case the requirement exists for.
+--
+-- ── WHY TWO NEW VALUES RATHER THAN REUSING `record` ──────────────────────
+-- `record` means "something happened to the record itself" (created, archived,
+-- deleted, restored) and the Recycle Bin and the record timeline both read it
+-- that way. Folding note and custom-entry events into it would make those
+-- surfaces wrong to save a migration. The activity feed groups by `kind`, so a
+-- distinct value is what lets these be shown, filtered and counted separately.
+--
+-- ── ADDING TO AN ENUM IS SAFE HERE, WITH ONE RULE ────────────────────────
+-- Postgres 17: `ALTER TYPE … ADD VALUE` is allowed inside a transaction block,
+-- but the new label CANNOT BE USED in that same transaction. This migration
+-- therefore only declares them; the first rows carrying them are written by
+-- application code afterwards. Nothing here reads or writes the new values.
+--
+-- `if not exists` so re-running is a no-op, matching how every other migration
+-- in this project behaves under a repeated `db push`.
+-- =============================================================================
+
+alter type activity_kind add value if not exists 'note';
+alter type activity_kind add value if not exists 'custom_entry';

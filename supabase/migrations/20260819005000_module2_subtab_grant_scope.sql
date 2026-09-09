@@ -1,0 +1,28 @@
+-- =============================================================================
+-- Module 2 — Part 50: `subtab` becomes a grant scope.
+--
+-- ── WHY ──────────────────────────────────────────────────────────────────
+-- CLIENT-SPEC-BY-MODULE §8 specifies the three-state grant "at three levels:
+-- module access, **tab/subtab access**, and individual field access."
+--
+-- `grant_scope` was `('module','tab','field')`. There was no fourth value, so
+-- the "/subtab" half of that sentence had never been buildable — nineteen
+-- subtabs, including Application → **Private** (EIN, account number, routing
+-- number, owner SSNs) and the four Pricing subtabs, could not be restricted
+-- except by granting each field inside them one at a time, or by hiding the
+-- whole parent tab.
+--
+-- `adminGrants.ts` and `grantRules.ts` both say so in comments today
+-- ("Subtabs are NOT a grant scope … there is no fourth value"). This migration
+-- is what makes those comments obsolete; they are updated in the same change.
+--
+-- ── ENUM ONLY, DELIBERATELY ──────────────────────────────────────────────
+-- Postgres allows `ALTER TYPE … ADD VALUE` inside a transaction but forbids
+-- USING the new label in that same transaction. The guard function that has to
+-- know how to validate a subtab id is therefore migration 51, not this one.
+-- Until 51 lands, `grant_scope_must_exist()` falls through to its `else` and
+-- refuses a subtab grant — which is the correct, fail-closed order to apply
+-- these two in.
+-- =============================================================================
+
+alter type grant_scope add value if not exists 'subtab';

@@ -1,0 +1,52 @@
+{
+    "name": "tapdash-crm",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "eslint",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "db:start": "supabase start",
+        "db:reset": "supabase db reset",
+        "db:push": "supabase db push",
+        "db:types": "supabase gen types typescript --local > src/lib/db/types.ts",
+        "verify": "npm run typecheck && npm run lint && npm run test",
+        "verify:schema": "node scripts/verify-schema.mjs",
+        "test:integration": "vitest run --dir src --testTimeout 60000 flow.integration",
+        "invite": "node scripts/invite.mjs",
+        "create-user": "node --env-file=.env scripts/create-user.mjs",
+        "audit": "node scripts/audit-tail.mjs"
+    },
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@supabase/ssr": "^0.12.4",
+        "@supabase/supabase-js": "^2.112.2",
+        "next": "16.3.0",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "resend": "^6.18.1",
+        "server-only": "^0.0.1",
+        "zod": "^4.4.3"
+    },
+    "devDependencies": {
+        "@tailwindcss/postcss": "^4",
+        "@types/node": "^20",
+        "@types/pg": "^8.21.0",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "@vitest/ui": "^4.1.10",
+        "eslint": "^9",
+        "eslint-config-next": "16.3.0",
+        "pg": "^8.23.0",
+        "supabase": "^2.113.0",
+        "tailwindcss": "^4",
+        "typescript": "^5",
+        "vitest": "^4.1.10"
+    }
+}

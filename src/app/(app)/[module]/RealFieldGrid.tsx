@@ -116,7 +116,20 @@ function SortableFieldCell({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={`group/cell relative h-full border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/40 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/60 focus-within:shadow-[inset_0_0_0_2px_var(--color-brand-600)] ${
+      /*
+       * The focused cell is marked along its BOTTOM edge, not boxed.
+       *
+       * This used to draw a 2px brand rectangle around the whole cell
+       * (`inset 0 0 0 2px`). In a grid where every cell already has a border on
+       * two sides, that reads as a box inside a box, and with fifty cells on
+       * screen the eye cannot tell the focused one from the grid itself. A
+       * single underline on the active cell, matching the `focus-underline`
+       * treatment the inputs themselves now use, says the same thing once.
+       *
+       * A required-but-empty cell keeps its warning stripe on the LEFT edge, so
+       * the two markers never fight for the same pixels.
+       */
+      className={`group/cell relative h-full border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/30 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/50 focus-within:shadow-[inset_0_-2px_0_0_var(--color-brand-600)] ${
         requiredEmpty ? 'bg-warn-bg/45 shadow-[inset_2px_0_0_var(--color-warn)]' : 'bg-white'
       } ${isDragging ? 'z-10 opacity-40' : ''}`}
     >

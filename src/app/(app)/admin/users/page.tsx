@@ -43,7 +43,7 @@ export default async function AdminUsersPage() {
   const pendingInvites = invites.filter((i) => i.status === 'pending').length;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink-900">Users</h1>

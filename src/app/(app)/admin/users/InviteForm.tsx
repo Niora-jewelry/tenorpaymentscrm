@@ -51,7 +51,7 @@ export function InviteForm({ roles, onClose }: { roles: RoleOption[]; onClose: (
         required
         disabled={isPending}
         placeholder="name@company.com"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Role</label>
@@ -69,7 +69,7 @@ export function InviteForm({ roles, onClose }: { roles: RoleOption[]; onClose: (
         required
         disabled={isPending}
         defaultValue={roles.find((r) => !r.isAdmin)?.id ?? ''}
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       >
         {roles.map((r) => (
           <option key={r.id} value={r.id}>{r.name}</option>

@@ -90,7 +90,7 @@ export function CasesPanel({
             name="title"
             required
             placeholder="Short title"
-            className="mt-2 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+            className="mt-2 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
           />
           <label className="mt-3 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-400">
             Issue
@@ -104,7 +104,7 @@ export function CasesPanel({
             required
             rows={3}
             placeholder="Describe the problem. This cannot be edited once saved."
-            className="mt-1 w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+            className="mt-1 w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
           />
           {state.message ? <p className="mt-1.5 text-[11.5px] text-danger">{state.message}</p> : null}
           <div className="mt-3 flex justify-end gap-2">
@@ -296,7 +296,7 @@ function CaseCard({
                     onChange={(e) => setSolutionDraft(e.target.value)}
                     rows={3}
                     disabled={pending}
-                    className="w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+                    className="w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
                   />
                   <div className="mt-2 flex justify-end gap-2">
                     <Button variant="ghost" size="sm" disabled={pending} onClick={() => setWriting(false)}>
@@ -383,7 +383,7 @@ function CaseCard({
                   onKeyDown={(e) => e.key === 'Enter' && sendReply()}
                   disabled={pending}
                   placeholder={c.state === 'open' ? 'Reply to this case…' : 'Reply — the case is closed'}
-                  className="flex-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none transition-colors focus:border-brand-600"
+                  className="flex-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-underline"
                 />
                 <Button size="sm" icon="reply" loading={pending} loadingLabel="Sending…" disabled={!replyDraft.trim()} onClick={sendReply}>
                   Reply

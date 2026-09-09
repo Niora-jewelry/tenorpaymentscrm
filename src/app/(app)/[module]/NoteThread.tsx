@@ -151,7 +151,7 @@ export function NoteThread({
                       onChange={(e) => setEditDraft(e.target.value)}
                       rows={2}
                       disabled={pending}
-                      className="w-full resize-none rounded border border-brand-600 px-2 py-1.5 text-[13px] outline-none ring-2 ring-brand-600/20"
+                      className="w-full resize-none rounded border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
                     />
                     <div className="mt-1.5 flex justify-end gap-1.5">
                       <Button size="sm" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>
@@ -208,7 +208,7 @@ export function NoteThread({
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           placeholder="Add a note…"
           disabled={pending}
-          className="flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] outline-none transition-colors focus:border-brand-600"
+          className="flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] outline-none transition-colors focus-underline"
         />
         <Button size="sm" icon="plus" loading={pending} loadingLabel="Adding…" disabled={!draft.trim()} onClick={submit}>
           Add

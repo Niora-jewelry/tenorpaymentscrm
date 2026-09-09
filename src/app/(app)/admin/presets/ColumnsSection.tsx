@@ -364,7 +364,7 @@ function ListEditor({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search label, key or tab…"
-            className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+            className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-underline"
           />
           <ul className="mt-1.5 max-h-[280px] space-y-1 overflow-y-auto pr-0.5">
             {available.map((f) => (

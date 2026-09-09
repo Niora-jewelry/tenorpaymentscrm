@@ -91,7 +91,7 @@ function CreateTabForm({ modules, onClose }: { modules: ModuleOption[]; onClose:
         name="label"
         required
         placeholder="e.g. Compliance"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Key</label>
@@ -99,7 +99,7 @@ function CreateTabForm({ modules, onClose }: { modules: ModuleOption[]; onClose:
         name="key"
         required
         placeholder="e.g. compliance"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
       <p className="mt-1 text-[11.5px] text-ink-400">Lowercase, no spaces — used internally, never shown.</p>
 
@@ -173,7 +173,7 @@ function TabRow({ tab, index, modules }: { tab: AdminTabRow; index: number; modu
               if (e.key === 'Enter') { e.preventDefault(); save(); }
               if (e.key === 'Escape') { setDraft(tab.label); setRenaming(false); }
             }}
-            className="w-full rounded border border-brand-600 px-2 py-1 text-[13.5px] outline-none ring-2 ring-brand-600/20"
+            className="w-full rounded border border-line px-2 py-1 text-[13.5px] outline-none editing-underline"
           />
           <p className="mt-0.5 truncate text-[11.5px] text-ink-400">
             {error ?? (pending ? 'Saving…' : `${tab.key} — the key cannot change`)}
@@ -227,7 +227,7 @@ function TabRow({ tab, index, modules }: { tab: AdminTabRow; index: number; modu
                   setAssigning(false);
                 });
               }}
-              className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+              className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-underline"
             >
               <option value="">Add to module…</option>
               {unassigned.map((m) => (

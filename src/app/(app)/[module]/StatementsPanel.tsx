@@ -51,7 +51,7 @@ export function StatementsPanel({
         <select
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
-          className="rounded-md border border-line bg-white px-2 py-1 text-[13px] tabular outline-none transition-colors focus:border-brand-600"
+          className="rounded-md border border-line bg-white px-2 py-1 text-[13px] tabular outline-none transition-colors focus-underline"
         >
           {years.map((y) => (
             <option key={y} value={y}>

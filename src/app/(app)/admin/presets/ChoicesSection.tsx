@@ -132,7 +132,7 @@ export function ChoicesSection({ fields, modules }: { fields: ChoiceFieldRow[]; 
                 setFieldId(e.target.value);
                 setScope(null);
               }}
-              className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+              className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
             >
               {fields.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -402,7 +402,7 @@ function ScopeEditor({
                         aria-label={`Option ${i + 1} label`}
                         placeholder="Option label"
                         onChange={(e) => patch(i, { value: e.target.value })}
-                        className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+                        className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
                       />
 
                       {/* The permanent half, shown so the editable half is
@@ -420,7 +420,7 @@ function ScopeEditor({
                           value={r.swatch}
                           aria-label={`Option ${i + 1} colour`}
                           onChange={(e) => patch(i, { swatch: e.target.value })}
-                          className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus:border-brand-600"
+                          className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus-underline"
                         >
                           <option value="">No colour</option>
                           {SWATCHES.map((s) => (

@@ -148,7 +148,7 @@ function GrantSelect({
       // sits inside one. Without this, changing a tab's own grant would collapse
       // the tab out from under the cursor doing it.
       onClick={(e) => e.stopPropagation()}
-      className={`${CELL_BASE} w-full cursor-pointer appearance-none justify-center text-center outline-none transition hover:brightness-[.96] hover:shadow-[0_1px_2px_rgba(8,32,47,.12)] focus:ring-2 focus:ring-brand-600/20 ${s.className} ${
+      className={`${CELL_BASE} w-full cursor-pointer appearance-none justify-center text-center outline-none transition hover:brightness-[.96] hover:shadow-[0_1px_2px_rgba(8,32,47,.12)] ${s.className} ${
         busy ? 'opacity-40 hover:brightness-100 hover:shadow-none' : ''
       }`}
     >
@@ -635,7 +635,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search module, tab, field or key…"
-            className="w-[280px] rounded-md border border-line py-1 pl-7 pr-2 text-[12.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+            className="w-[280px] rounded-md border border-line py-1 pl-7 pr-2 text-[12.5px] outline-none focus-underline"
           />
         </span>
         <label className="flex items-center gap-1.5 text-[12.5px] text-ink-600">

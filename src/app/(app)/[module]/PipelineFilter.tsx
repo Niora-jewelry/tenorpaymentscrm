@@ -107,7 +107,7 @@ export function PipelineFilter({
             active
               ? 'border-brand-100 bg-brand-50 text-brand-700'
               : 'border-line bg-white text-ink-600 hover:bg-canvas'
-          } ${open ? 'ring-2 ring-brand-100' : ''}`}
+          } ${open ? 'border-brand-200 bg-brand-50 text-brand-700' : ''}`}
         >
           <Icon name="shuffle" size={13} />
           <span className="max-w-[220px] truncate">{summary}</span>

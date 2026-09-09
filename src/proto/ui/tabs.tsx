@@ -479,7 +479,7 @@ function NoteThread({
                       value={editDraft}
                       onChange={(e) => setEditDraft(e.target.value)}
                       rows={2}
-                      className="w-full resize-none rounded border border-brand-600 px-2 py-1.5 text-[13px] outline-none ring-2 ring-brand-600/20"
+                      className="w-full resize-none rounded border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
                     />
                     <div className="mt-1.5 flex justify-end gap-1.5">
                       <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>
@@ -543,7 +543,7 @@ function NoteThread({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
           placeholder="Add a note…"
-          className="flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] outline-none transition-colors focus:border-brand-600"
+          className="flex-1 rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] outline-none transition-colors focus-underline"
         />
         <Button size="sm" icon="plus" disabled={!draft.trim()} onClick={submit}>
           Add
@@ -603,14 +603,14 @@ export function OtherTab({ record }: { record: RecordRow }) {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="e.g. Gate code"
-            className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus:border-brand-600"
+            className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-underline"
           />
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
             placeholder="e.g. #4471 — rear loading bay"
-            className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus:border-brand-600"
+            className="rounded-md border border-line bg-white px-2 py-1.5 text-[13px] outline-none focus-underline"
           />
           <Button size="sm" icon="plus" disabled={!label.trim()} onClick={add}>
             Add
@@ -644,12 +644,12 @@ function EntryRow({
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="rounded-md border border-brand-600 px-2 py-1.5 text-[13px] outline-none ring-2 ring-brand-600/20"
+          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
         />
         <input
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="rounded-md border border-brand-600 px-2 py-1.5 text-[13px] outline-none ring-2 ring-brand-600/20"
+          className="rounded-md border border-line px-2 py-1.5 text-[13px] outline-none editing-underline"
         />
         <span className="flex gap-1">
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -837,7 +837,7 @@ export function UpdatesTab({ record }: { record: RecordRow }) {
           onChange={(e) => setDraft(e.target.value)}
           rows={2}
           placeholder="Write an update…  @mention a team member to notify them"
-          className="w-full resize-none rounded-lg border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+          className="w-full resize-none rounded-lg border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-[11.5px] text-ink-400">
@@ -942,7 +942,7 @@ function Thread({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Reply…"
-                  className="flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none transition-colors focus:border-brand-600"
+                  className="flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none transition-colors focus-underline"
                 />
                 <Button
                   size="sm"
@@ -993,7 +993,7 @@ export function CasesTab({ record }: { record: RecordRow }) {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Short title"
-            className="mt-2 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+            className="mt-2 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
           />
           <label className="mt-3 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-ink-400">
             Issue
@@ -1007,7 +1007,7 @@ export function CasesTab({ record }: { record: RecordRow }) {
             onChange={(e) => setIssue(e.target.value)}
             rows={3}
             placeholder="Describe the problem. This cannot be edited once saved."
-            className="mt-1 w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+            className="mt-1 w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
           />
           <div className="mt-3 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>
@@ -1126,7 +1126,7 @@ function CaseCard({ c, now }: { c: CaseThread; now: Date }) {
                     value={solutionDraft}
                     onChange={(e) => setSolutionDraft(e.target.value)}
                     rows={3}
-                    className="w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus:border-brand-600"
+                    className="w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] outline-none transition-colors focus-underline"
                   />
                   <div className="mt-2 flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setWriting(false)}>
@@ -1193,7 +1193,7 @@ function CaseCard({ c, now }: { c: CaseThread; now: Date }) {
                   placeholder={
                     c.state === 'open' ? 'Reply to this case…' : 'Reply — the case is closed'
                   }
-                  className="flex-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none transition-colors focus:border-brand-600"
+                  className="flex-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-underline"
                 />
                 <Button size="sm" icon="reply" disabled={!replyDraft.trim()} onClick={sendReply}>
                   Reply
@@ -1470,7 +1470,7 @@ export function StatementsTab({ record }: { record: RecordRow }) {
         <select
           value={year}
           onChange={(e) => setYear(Number(e.target.value))}
-          className="rounded-md border border-line bg-white px-2 py-1 text-[13px] tabular outline-none transition-colors focus:border-brand-600"
+          className="rounded-md border border-line bg-white px-2 py-1 text-[13px] tabular outline-none transition-colors focus-underline"
         >
           {STATEMENT_YEARS.map((y) => (
             <option key={y} value={y}>

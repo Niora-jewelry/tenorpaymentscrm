@@ -173,7 +173,7 @@ export function OffboardDialog({
                   value={target}
                   disabled={pending}
                   onChange={(e) => setTarget(e.target.value)}
-                  className="min-w-[220px] rounded-lg border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink-700 outline-none focus:ring-2 focus:ring-brand-100"
+                  className="min-w-[220px] rounded-lg border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink-700 outline-none"
                 >
                   <option value="">Reassign all to…</option>
                   {candidates.map((c) => (

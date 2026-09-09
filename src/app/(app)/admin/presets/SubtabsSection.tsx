@@ -117,7 +117,7 @@ function CreateSubtabForm({
         name="tabId"
         required
         defaultValue={tabs[0]?.id ?? ''}
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       >
         {tabs.map((t) => (
           <option key={t.id} value={t.id}>{t.label}</option>
@@ -130,7 +130,7 @@ function CreateSubtabForm({
         name="label"
         required
         placeholder="e.g. Processor-TD Merchant Pricing"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Key</label>
@@ -138,7 +138,7 @@ function CreateSubtabForm({
         name="key"
         required
         placeholder="e.g. td_merchant"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">
@@ -148,7 +148,7 @@ function CreateSubtabForm({
         name="description"
         rows={2}
         placeholder="Shown at the top of this subtab, like Pricing's explanatory text."
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Show on modules</label>
@@ -262,7 +262,7 @@ function SubtabRow({
               if (e.key === 'Enter') { e.preventDefault(); save(); }
               if (e.key === 'Escape') cancel();
             }}
-            className="w-full rounded border border-brand-600 px-2 py-1 text-[13.5px] outline-none ring-2 ring-brand-600/20"
+            className="w-full rounded border border-line px-2 py-1 text-[13.5px] outline-none editing-underline"
           />
           {/* A textarea, not an input: this is the paragraph a user reads at the
               top of the subtab, and a single-line box invites a single line. */}
@@ -276,7 +276,7 @@ function SubtabRow({
             onKeyDown={(e) => {
               if (e.key === 'Escape') cancel();
             }}
-            className="w-full resize-y rounded border border-line px-2 py-1 text-[12px] outline-none focus:border-brand-600"
+            className="w-full resize-y rounded border border-line px-2 py-1 text-[12px] outline-none focus-underline"
           />
           <div className="flex items-center gap-2">
             <Button size="sm" variant="primary" icon="check" disabled={pending} onClick={save}>
@@ -337,7 +337,7 @@ function SubtabRow({
                   setAssigning(false);
                 });
               }}
-              className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+              className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-underline"
             >
               <option value="">Add to module…</option>
               {unassigned.map((m) => (

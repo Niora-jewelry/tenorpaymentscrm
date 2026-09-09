@@ -68,7 +68,7 @@ const TYPE_LABELS: Record<FieldTypeName, string> = {
 const CHOICE_TYPES: readonly FieldTypeName[] = CHOICE_FIELD_TYPES;
 
 const inputClass =
-  'mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20';
+  'mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline';
 const labelClass = 'block text-[12px] font-semibold uppercase tracking-wide text-ink-400';
 
 export function FieldsSection({
@@ -162,7 +162,7 @@ export function FieldsSection({
         <select
           value={tabFilter}
           onChange={(e) => setTabFilter(e.target.value)}
-          className="rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+          className="rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus-underline"
         >
           <option value="">All tabs</option>
           {fieldTabs.map((t) => (
@@ -174,7 +174,7 @@ export function FieldsSection({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search label or key…"
-          className="min-w-[180px] flex-1 rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+          className="min-w-[180px] flex-1 rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus-underline"
         />
 
         {/* A toggle rather than a checkbox, and it carries the count: an
@@ -722,12 +722,12 @@ function GridColumnsEditor({
               value={c.label}
               onChange={(e) => set(i, { label: e.target.value })}
               placeholder="Column name"
-              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
             />
             <select
               value={c.type}
               onChange={(e) => set(i, { type: e.target.value as GridColumn['type'] })}
-              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-underline"
             >
               {GRID_COLUMN_TYPES.map((t) => (
                 <option key={t} value={t}>{TYPE_LABELS[t]}</option>
@@ -785,18 +785,18 @@ function RepeatSchemaEditor({
               value={m.label}
               onChange={(e) => set(i, { label: e.target.value })}
               placeholder="Label"
-              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
             />
             <input
               value={m.key}
               onChange={(e) => set(i, { key: e.target.value })}
               placeholder="key"
-              className="w-[92px] rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+              className="w-[92px] rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
             />
             <select
               value={m.type}
               onChange={(e) => set(i, { type: e.target.value as RepeatMember['type'] })}
-              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-underline"
             >
               {REPEAT_MEMBER_TYPES.map((t) => (
                 <option key={t} value={t}>{TYPE_LABELS[t]}</option>

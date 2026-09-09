@@ -128,7 +128,7 @@ export default async function RecycleBinPage() {
   const total = records.length + items.length + users.length;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
+    <div className="p-6">
       <h1 className="mb-1 text-xl font-semibold text-ink-900">Recycle Bin</h1>
       <p className="mb-4 text-[13px] text-ink-500">
         {total} deleted item{total === 1 ? '' : 's'} across the whole CRM

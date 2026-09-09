@@ -132,7 +132,7 @@ export function RecordAccessPanel({
             disabled={pending || addable.length === 0}
             value={staged[direction]}
             onChange={(e) => setStaged((s) => ({ ...s, [direction]: e.target.value }))}
-            className="min-w-[240px] flex-1 rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus:border-brand-600"
+            className="min-w-[240px] flex-1 rounded border border-line bg-white px-2 py-1 text-[12.5px] outline-none focus-underline"
           >
             <option value="">{addable.length ? `${opts.addLabel}…` : 'Nobody left to add'}</option>
             {addable.map((p) => (

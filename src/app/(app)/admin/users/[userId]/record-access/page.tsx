@@ -53,7 +53,7 @@ export default async function RecordAccessPage({
   const name = subject.fullName ?? subject.email;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 p-6">
+    <div className="space-y-5 p-6">
       <div className="space-y-2">
         <MatrixBackLink href="/admin/users" label="All users" />
         <div className="flex flex-wrap items-center gap-2">

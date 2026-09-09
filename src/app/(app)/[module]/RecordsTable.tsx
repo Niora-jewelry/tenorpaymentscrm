@@ -534,7 +534,7 @@ function RestoreDialog({
         <select
           value={moduleId}
           onChange={(e) => setModuleId(e.target.value)}
-          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
         >
           {displayModules.map((m) => (
             <option key={m.id} value={m.id}>{m.label}</option>
@@ -638,7 +638,7 @@ function BulkEditDialog({
             setValue('');
             setMembers([]);
           }}
-          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+          className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
         >
           {columns.map((c) => (
             <option key={c.id} value={c.id}>{c.label}</option>
@@ -712,7 +712,7 @@ function BulkEditDialog({
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
           >
             <option value="">— choose —</option>
             <option value="true">Checked</option>
@@ -723,13 +723,13 @@ function BulkEditDialog({
             type={field?.type === 'datetime' ? 'datetime-local' : 'date'}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
           />
         ) : options.length ? (
           <select
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
           >
             <option value="">— choose —</option>
             {/* Stores the choice key, shows the label — same contract as the
@@ -752,13 +752,13 @@ function BulkEditDialog({
             value={value}
             max={field?.type === 'percentage' ? 100 : undefined}
             onLiveChange={(n) => setValue(n == null ? '' : String(n))}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
           />
         ) : (
           <input
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
           />
         )}
 

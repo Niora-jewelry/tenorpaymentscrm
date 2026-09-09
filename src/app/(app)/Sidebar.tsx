@@ -69,8 +69,31 @@ export function Sidebar({
   const initial = (userName.trim().charAt(0) || '?').toUpperCase();
 
   return (
+    /*
+     * ⚠️ `z-40`, and the number matters.
+     *
+     * THE LAYERS, bottom to top:
+     *    10  table cells (the frozen first column)
+     *    20  column headers
+     *    30  the sticky header row and its corner cell
+     *    40  THIS PANEL
+     *    60  the record drawer's sheet and backdrop
+     *    80  dialogs and popovers
+     *
+     * `relative z-N` makes this element a STACKING CONTEXT, so everything
+     * inside it — including the notification panel's own `z-50` — is confined
+     * to this number when compared against anything outside. At `z-20` the
+     * dashboard's sticky header (`z-30`, a sibling at the root level) painted
+     * straight over the open notification panel: the panel is 320px wide and
+     * the sidebar is 244px, so the part that overhung the table simply
+     * disappeared behind the column headers.
+     *
+     * Raising the panel's own z-index could never have fixed that — a child
+     * cannot escape its parent's stacking context. The container is what has
+     * to win, which is why this is 40 and not 20.
+     */
     <aside
-      className={`group/sidebar relative z-20 flex shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+      className={`group/sidebar relative z-40 flex shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
         collapsed ? 'w-[64px]' : 'w-[244px]'
       }`}
     >

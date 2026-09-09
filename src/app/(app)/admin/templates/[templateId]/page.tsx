@@ -52,7 +52,7 @@ export default async function TemplateGrantsPage({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5 p-6">
+    <div className="space-y-5 p-6">
       <div className="space-y-2">
         <MatrixBackLink href="/admin/templates" label="All templates" />
         <div className="flex flex-wrap items-center gap-2">

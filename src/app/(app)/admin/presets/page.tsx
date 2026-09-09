@@ -148,7 +148,7 @@ export default async function AdminPresetsPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
+    <div className="p-6">
       <div className="mb-5">
         <h1 className="text-xl font-semibold text-ink-900">Presets</h1>
         <p className="text-[13px] text-ink-500">

@@ -15,7 +15,7 @@
  */
 export default function AdminLoading() {
   return (
-    <div className="mx-auto max-w-5xl p-6" aria-busy="true" aria-live="polite">
+    <div className="p-6" aria-busy="true" aria-live="polite">
       <span className="sr-only">Loading…</span>
 
       <div>

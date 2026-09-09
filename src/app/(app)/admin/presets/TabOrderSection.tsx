@@ -95,7 +95,7 @@ export function TabOrderSection({
           value={moduleId}
           disabled={pending}
           onChange={(e) => { setModuleId(e.target.value); setSaved(null); setError(null); }}
-          className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-brand-600"
+          className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-underline"
         >
           {modules.map((m) => (
             <option key={m.id} value={m.id}>{m.label}</option>
@@ -263,7 +263,7 @@ function SubtabOrder({
           value={activeTabId}
           disabled={pending}
           onChange={(e) => { setTabId(e.target.value); setSaved(null); setError(null); }}
-          className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus:border-brand-600"
+          className="rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none focus-underline"
         >
           {tabsWithSubtabs.map((id) => (
             <option key={id} value={id}>{tabById.get(id)?.label ?? id}</option>

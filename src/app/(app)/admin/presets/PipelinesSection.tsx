@@ -255,7 +255,7 @@ function PipelineCard({
           value={label}
           aria-label={`${savedLabel} name`}
           onChange={(e) => setLabel(e.target.value)}
-          className="min-w-0 flex-1 rounded border border-transparent px-1.5 py-1 text-[13.5px] font-semibold text-ink-900 outline-none hover:border-line focus:border-brand-600"
+          className="min-w-0 flex-1 rounded border border-transparent px-1.5 py-1 text-[13.5px] font-semibold text-ink-900 outline-none hover:border-line focus-underline"
         />
         <span className="shrink-0 text-[11.5px] text-ink-400">{moduleLabel}</span>
 
@@ -316,14 +316,14 @@ function PipelineCard({
                         aria-label={`Step ${i + 1} label`}
                         placeholder="Step name"
                         onChange={(e) => patch(i, { label: e.target.value })}
-                        className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+                        className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
                       />
 
                       <select
                         value={r.swatch}
                         aria-label={`Step ${i + 1} colour`}
                         onChange={(e) => patch(i, { swatch: e.target.value })}
-                        className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus:border-brand-600"
+                        className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus-underline"
                       >
                         {SWATCHES.map((s) => (
                           <option key={s} value={s}>
@@ -440,7 +440,7 @@ function CreatePipelineForm({ modules, onClose }: { modules: ModuleOption[]; onC
         name="moduleId"
         required
         defaultValue=""
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       >
         <option value="" disabled>
           Choose a module…
@@ -462,7 +462,7 @@ function CreatePipelineForm({ modules, onClose }: { modules: ModuleOption[]; onC
         name="label"
         required
         placeholder="e.g. Onboarding Pipeline"
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/20"
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-underline"
       />
 
       <p className="mt-3 text-[12px] font-semibold uppercase tracking-wide text-ink-400">Steps</p>
@@ -475,13 +475,13 @@ function CreatePipelineForm({ modules, onClose }: { modules: ModuleOption[]; onC
               aria-label={`Step ${i + 1} name`}
               placeholder="Step name"
               onChange={(e) => patch(i, { label: e.target.value })}
-              className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-600"
+              className="min-w-0 flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-underline"
             />
             <select
               value={s.swatch}
               aria-label={`Step ${i + 1} colour`}
               onChange={(e) => patch(i, { swatch: e.target.value })}
-              className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus:border-brand-600"
+              className="shrink-0 rounded border border-line px-1.5 py-1 text-[12px] outline-none focus-underline"
             >
               {SWATCHES.map((sw) => (
                 <option key={sw} value={sw}>

@@ -98,7 +98,7 @@ export default async function AdminIntegrationsPage() {
   if (!ctx.isAdmin) redirect('/dashboard');
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-6">
+    <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-semibold text-ink-900">Integrations</h1>
         <p className="text-[13px] text-ink-500">

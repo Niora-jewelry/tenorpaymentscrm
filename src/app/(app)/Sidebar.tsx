@@ -28,6 +28,22 @@
  * The rest is rhythm and hierarchy rather than decoration: one consistent
  * indent, section labels that separate without shouting, an active state that
  * reads at a glance, and counts that sit quietly on the right.
+ *
+ * ── THE DARK RAIL ────────────────────────────────────────────────────────
+ * The panel carries the brand gradient rather than white. Two things follow
+ * from that, and both are deliberate:
+ *
+ * ⚠️ EVERY COLOUR IN HERE IS NOW WHITE-WITH-ALPHA, NOT AN INK TOKEN. `ink-400`
+ * on `#1d4ed8` is 1.9:1 and effectively invisible. Alpha over the gradient
+ * keeps one hue and lets the gradient show through, which a flat opaque tint
+ * would kill. Anything added to this file has to follow the same rule.
+ *
+ * THE ACTIVE ITEM IS THE LIME. `globals.css` says lime is only ever a fill
+ * carrying dark text, or text on a dark ground — a navy rail is exactly that
+ * ground, and lime on it is 14.8:1. It also breaks the "one accent per screen"
+ * habit on purpose: the other lime is the primary button, which lives on the
+ * white canvas. They are in different planes and read as "where you are" and
+ * "the thing to do", never as two competing calls to action.
  */
 import { useState } from 'react';
 import Link from 'next/link';
@@ -93,7 +109,7 @@ export function Sidebar({
      * to win, which is why this is 40 and not 20.
      */
     <aside
-      className={`group/sidebar relative z-40 flex shrink-0 flex-col border-r border-line bg-white transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+      className={`group/sidebar brand-gradient relative z-40 flex shrink-0 flex-col border-r border-brand-950/40 text-white shadow-[inset_-1px_0_0_rgba(255,255,255,.06)] transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
         collapsed ? 'w-[64px]' : 'w-[244px]'
       }`}
     >
@@ -102,7 +118,7 @@ export function Sidebar({
           identity reads as a header rather than as the first thing in the
           navigation list. */}
       <div
-        className={`flex h-[58px] shrink-0 items-center gap-2.5 border-b border-line-soft px-3 ${
+        className={`flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/10 px-3 ${
           collapsed ? 'justify-center' : ''
         }`}
       >
@@ -112,7 +128,7 @@ export function Sidebar({
             why it can afford to be there. */}
         <span
           aria-hidden
-          className="brand-gradient grid size-[30px] shrink-0 place-items-center rounded-[9px] text-[13px] font-bold text-white shadow-[0_1px_2px_rgba(8,32,47,.25),inset_0_1px_0_rgba(255,255,255,.28)]"
+          className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-white/15 text-[13px] font-bold text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,.35)] backdrop-blur-sm"
         >
           {BRAND_NAME.charAt(0)}
         </span>
@@ -120,14 +136,14 @@ export function Sidebar({
         {!collapsed ? (
           <>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-semibold leading-tight tracking-[-.01em] text-ink-900">
+              <span className="block truncate text-[14px] font-semibold leading-tight tracking-[-.01em] text-white">
                 {BRAND_NAME}
               </span>
               {/* Sentence case, no letter-spacing. Uppercase plus .07em
                   tracking made this ~30% wider than the panel could give it, so
                   it truncated to "MERCHANT SERVICES C…" — a tagline that gets
                   cut off is worse than no tagline. */}
-              <span className="block truncate text-[11px] leading-[1.35] text-ink-400">
+              <span className="block truncate text-[11px] leading-[1.35] text-white/55">
                 {BRAND_TAGLINE}
               </span>
             </span>
@@ -150,7 +166,7 @@ export function Sidebar({
         title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-expanded={!collapsed}
-        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-line bg-white text-ink-400 shadow-[0_1px_3px_rgba(8,32,47,.12)] transition-[opacity,color,border-color] duration-150 hover:border-brand-600/50 hover:text-brand-700 focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
+        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-line bg-white text-brand-700 shadow-[0_1px_4px_rgba(1,39,64,.28)] transition-[opacity,color,border-color] duration-150 hover:border-brand-600/60 hover:text-brand-600 focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
           /* ALWAYS visible while collapsed. Hover-reveal is right when the panel
              is open and its labels already say what everything is — but a
              collapsed rail whose only way back is an invisible button is a dead
@@ -270,25 +286,25 @@ export function Sidebar({
           was a full-width labelled button, which gave a rarely-used action the
           same visual weight as a module — and put it directly under the nav
           list where a mis-aimed click lands. */}
-      <div className="shrink-0 border-t border-line-soft p-2">
+      <div className="shrink-0 border-t border-white/10 p-2">
         <div
           className={`flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 ${collapsed ? 'justify-center' : ''}`}
           title={collapsed ? `${userName} · ${userEmail}` : undefined}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-700 text-[11.5px] font-semibold text-white">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/15 text-[11.5px] font-semibold text-white ring-1 ring-inset ring-white/25">
             {initial}
           </span>
           {!collapsed ? (
             <>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-semibold leading-tight text-ink-900">
+                <span className="block truncate text-[12.5px] font-semibold leading-tight text-white">
                   {userName}
                 </span>
                 {/* Only when it adds something. `userName` falls back to the
                     address when there is no display name, and printing it twice
                     was the sidebar's least useful line. */}
                 {userEmail && userEmail !== userName ? (
-                  <span className="block truncate text-[11px] leading-tight text-ink-400">{userEmail}</span>
+                  <span className="block truncate text-[11px] leading-tight text-white/55">{userEmail}</span>
                 ) : null}
               </span>
               <form action={logoutAction} className="shrink-0">
@@ -296,7 +312,7 @@ export function Sidebar({
                   type="submit"
                   title="Sign out"
                   aria-label="Sign out"
-                  className="grid size-7 place-items-center rounded-md text-ink-400 transition-colors hover:bg-canvas hover:text-bad"
+                  className="grid size-7 place-items-center rounded-md text-white/55 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <Icon name="external-link" size={15} />
                 </button>
@@ -311,7 +327,7 @@ export function Sidebar({
               type="submit"
               title="Sign out"
               aria-label="Sign out"
-              className="mt-1 grid h-8 w-full place-items-center rounded-lg text-ink-400 transition-colors hover:bg-canvas hover:text-bad"
+              className="mt-1 grid h-8 w-full place-items-center rounded-lg text-white/55 transition-colors hover:bg-white/10 hover:text-white"
             >
               <Icon name="external-link" size={15} />
             </button>
@@ -325,9 +341,9 @@ export function Sidebar({
 function GroupLabel({ children, collapsed }: { children: React.ReactNode; collapsed: boolean }) {
   // Collapsed, a hairline does the same job the words did: it separates the
   // groups without needing a width the rail does not have.
-  if (collapsed) return <div aria-hidden className="mx-auto my-2.5 h-px w-5 bg-line" />;
+  if (collapsed) return <div aria-hidden className="mx-auto my-2.5 h-px w-5 bg-white/20" />;
   return (
-    <p className="px-2.5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[.12em] text-ink-400 first:pt-1">
+    <p className="px-2.5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[.12em] text-white/45 first:pt-1">
       {children}
     </p>
   );
@@ -353,39 +369,38 @@ function NavItem({
       href={href}
       title={collapsed ? label : undefined}
       aria-current={active ? 'page' : undefined}
-      className={`group relative mb-px flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-colors duration-150 ${
+      className={`group relative mb-px flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-[background-color,color] duration-150 ${
         active
-          ? 'bg-brand-50 text-brand-700'
-          : 'text-ink-500 hover:bg-canvas hover:text-ink-900'
+          ? 'bg-accent text-accent-ink shadow-[0_1px_3px_rgba(1,39,64,.30)]'
+          : 'text-white/72 hover:bg-white/10 hover:text-white'
       } ${collapsed ? 'justify-center' : ''}`}
     >
-      {/* The accent sits INSIDE the item rather than bleeding into the gutter,
-          so it stays aligned when the rail collapses and cannot be clipped by
-          the nav's own overflow. */}
-      {/* Scales from the centre rather than appearing, so moving between items
-          reads as the marker travelling. Same gesture as the table row's hover
-          accent, deliberately — one idea, used twice. */}
-      <span
-        aria-hidden
-        className={`absolute inset-y-[5px] left-0 w-[2.5px] origin-center rounded-r-full bg-brand-600 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          active ? 'scale-y-100' : 'scale-y-0'
-        }`}
-      />
+      {/*
+        No travelling left-edge marker any more. It existed to mark the active
+        row when the only other signal was a pale blue wash; against a full lime
+        pill it is a second answer to a question already answered, and a 2.5px
+        brand-blue bar sitting on lime is the one colour pairing in this palette
+        with nowhere to go.
+      */}
       <Icon
         name={icon}
         size={16}
-        strokeWidth={active ? 2 : 1.75}
-        className={`shrink-0 transition-[color,transform] duration-150 ${
-          active ? 'text-brand-600' : 'text-ink-400 group-hover:translate-x-px group-hover:text-ink-700'
+        strokeWidth={active ? 2.1 : 1.75}
+        className={`shrink-0 transition-transform duration-150 ${
+          active ? '' : 'group-hover:translate-x-px'
         }`}
       />
       {!collapsed ? (
         <>
           <span className="flex-1 truncate">{label}</span>
           {count != null ? (
+            /* The count rides the row's own colour rather than carrying its
+               own. On the lime pill it is the dark ink at reduced weight; on a
+               resting row it is the same white, dimmer. Either way it never
+               competes with the label beside it. */
             <span
-              className={`shrink-0 text-[11.5px] tabular transition-colors ${
-                active ? 'font-semibold text-brand-700' : 'text-ink-400'
+              className={`shrink-0 text-[11.5px] tabular ${
+                active ? 'font-semibold text-accent-ink/65' : 'text-white/45'
               }`}
             >
               {count}

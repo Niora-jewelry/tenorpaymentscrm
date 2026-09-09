@@ -308,6 +308,25 @@ body {
   }
 }
 
+/*
+ * Number spinners, gone.
+ *
+ * A `type="number"` field renders a pair of stepper arrows that eat ~20px of a
+ * box which, for a fee or a percentage, is often only three characters wide —
+ * and in a drawer showing fifty fields they add fifty pieces of chrome nobody
+ * clicks. The input stays `type="number"`, so the numeric keypad on mobile and
+ * the up/down ARROW KEYS both still work; only the painted control goes.
+ */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Autofill in Chrome repaints the field a hard yellow; keep it on-brand. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,

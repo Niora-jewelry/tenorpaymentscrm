@@ -87,13 +87,20 @@ export function NotificationBell({
         onClick={() => setOpen((o) => !o)}
         title="Notifications"
         aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+        /* The trigger lives in the sidebar, which is now a navy gradient — the
+           panel it opens is still on white, so only this button changes hue.
+           `ink-400` on that ground is 1.9:1 and would read as a smudge. */
         className={`relative grid size-8 shrink-0 place-items-center rounded-lg transition-colors duration-150 ${
-          open ? 'bg-canvas text-ink-900' : 'text-ink-400 hover:bg-canvas hover:text-ink-900'
+          open ? 'bg-white/20 text-white' : 'text-white/65 hover:bg-white/12 hover:text-white'
         }`}
       >
         <Icon name="bell" size={16} />
         {unreadCount > 0 ? (
-          <span className="absolute -right-0.5 -top-0.5 grid min-w-[16px] place-items-center rounded-full bg-brand-600 px-1 text-[9.5px] font-bold leading-[16px] text-white ring-2 ring-white">
+          /* Lime on navy, the same pairing the active nav item uses, and the
+             only thing in the header allowed to be brighter than the wordmark.
+             The ring is the sidebar's own colour so the badge reads as sitting
+             on the bell rather than floating over it. */
+          <span className="absolute -right-0.5 -top-0.5 grid min-w-[16px] place-items-center rounded-full bg-accent px-1 text-[9.5px] font-bold leading-[16px] text-accent-ink ring-2 ring-brand-700">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         ) : null}

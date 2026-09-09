@@ -147,7 +147,16 @@ export function RealPipelineBar({
         rather than as a border on each chip — a per-chip border cannot span the
         gaps, which is what made the old row read as separate pills.
       */}
-      <div className="relative mt-2 overflow-x-auto pb-1.5">
+      {/*
+        ⚠️ `pt-1.5` is not spacing, it is CLIPPING ROOM.
+
+        `overflow-x-auto` cannot clip on one axis alone: the moment either axis
+        is not `visible`, the other computes to `auto` too. So a chip lifting one
+        pixel on hover had its top border sliced off by this container's own
+        overflow edge — the border did not disappear, it was cropped. The
+        padding gives the lift somewhere to go.
+      */}
+      <div className="relative mt-2 overflow-x-auto px-0.5 pb-2 pt-1.5">
         <div className="relative flex min-w-max items-center gap-1.5">
           <span
             aria-hidden

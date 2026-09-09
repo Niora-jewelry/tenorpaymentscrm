@@ -38,11 +38,23 @@
  * keeps one hue and lets the gradient show through, which a flat opaque tint
  * would kill. Anything added to this file has to follow the same rule.
  *
- * The surface is `rail-glass` rather than the flat gradient: a sheen from the
- * top-left, a cooler pool bottom-right, hairlines along both inner edges, and a
- * little grain so a 244px column of blue does not band. `globals.css` explains
- * why none of that is `backdrop-filter` — there is nothing behind this panel to
- * blur, so real glass has to be painted rather than sampled.
+ * The surface is `rail-glass`, a deep navy that DARKENS downward rather than
+ * the logo's own gradient. `globals.css` carries the full reasoning; the short
+ * version is that a fully-saturated blue is right for a 30px mark and wrong for
+ * 900px of panel, and that the lime needs a dark ground to read as an accent
+ * rather than as the second-loudest thing on screen.
+ *
+ * ── THE TYPOGRAPHIC LADDER, DIMMEST TO BRIGHTEST ─────────────────────────
+ * Everything in here is white-with-alpha, so hierarchy is carried entirely by
+ * how much of it there is. Four steps, and they are deliberate:
+ *
+ *     45%   group labels, counts       — present, never read on purpose
+ *     55%   the tagline, the email     — supporting detail
+ *     72%   resting item labels        — the list itself
+ *    100%   hover, and the wordmark    — what you are pointing at
+ *
+ * The active row leaves the ladder entirely: dark ink on lime. That is the
+ * point of an accent, and it is why there is only one of them.
  *
  * THE ACTIVE ITEM IS THE LIME. `globals.css` says lime is only ever a fill
  * carrying dark text, or text on a dark ground — a navy rail is exactly that
@@ -124,7 +136,7 @@ export function Sidebar({
           identity reads as a header rather than as the first thing in the
           navigation list. */}
       <div
-        className={`rail-band flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/12 px-3 ${
+        className={`rail-band flex h-[58px] shrink-0 items-center gap-2.5 border-b border-white/10 px-3 ${
           collapsed ? 'justify-center' : ''
         }`}
       >
@@ -134,7 +146,7 @@ export function Sidebar({
             why it can afford to be there. */}
         <span
           aria-hidden
-          className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-white/15 text-[13px] font-bold text-white ring-1 ring-inset ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,.35)] backdrop-blur-sm"
+          className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-white/[.14] text-[13px] font-bold text-white ring-1 ring-inset ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,.40),0_2px_8px_-3px_rgba(0,0,0,.5)]"
         >
           {BRAND_NAME.charAt(0)}
         </span>
@@ -172,7 +184,7 @@ export function Sidebar({
         title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-expanded={!collapsed}
-        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-line bg-white text-brand-700 shadow-[0_1px_4px_rgba(1,39,64,.28)] transition-[opacity,color,border-color] duration-150 hover:border-brand-600/60 hover:text-brand-600 focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
+        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-white/20 bg-[#0d2d5a] text-white/70 shadow-[0_2px_8px_-2px_rgba(1,20,40,.7)] transition-[opacity,color,border-color,background-color] duration-150 hover:border-accent/60 hover:bg-[#123869] hover:text-accent focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
           /* ALWAYS visible while collapsed. Hover-reveal is right when the panel
              is open and its labels already say what everything is — but a
              collapsed rail whose only way back is an invisible button is a dead
@@ -292,12 +304,12 @@ export function Sidebar({
           was a full-width labelled button, which gave a rarely-used action the
           same visual weight as a module — and put it directly under the nav
           list where a mis-aimed click lands. */}
-      <div className="rail-band shrink-0 border-t border-white/12 p-2">
+      <div className="rail-band shrink-0 border-t border-white/10 p-2">
         <div
           className={`flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 ${collapsed ? 'justify-center' : ''}`}
           title={collapsed ? `${userName} · ${userEmail}` : undefined}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/15 text-[11.5px] font-semibold text-white ring-1 ring-inset ring-white/25">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/[.14] text-[11.5px] font-semibold text-white ring-1 ring-inset ring-white/30">
             {initial}
           </span>
           {!collapsed ? (
@@ -349,7 +361,7 @@ function GroupLabel({ children, collapsed }: { children: React.ReactNode; collap
   // groups without needing a width the rail does not have.
   if (collapsed) return <div aria-hidden className="mx-auto my-2.5 h-px w-5 bg-white/20" />;
   return (
-    <p className="px-2.5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[.12em] text-white/45 first:pt-1">
+    <p className="px-2.5 pb-1.5 pt-5 text-[9.5px] font-semibold uppercase tracking-[.14em] text-white/40 first:pt-1.5">
       {children}
     </p>
   );
@@ -377,8 +389,8 @@ function NavItem({
       aria-current={active ? 'page' : undefined}
       className={`group relative mb-px flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-[background-color,color] duration-150 ${
         active
-          ? 'bg-accent text-accent-ink shadow-[0_2px_8px_-2px_rgba(213,255,74,.45),inset_0_1px_0_rgba(255,255,255,.5)]'
-          : 'text-white/72 hover:bg-white/10 hover:text-white hover:shadow-[inset_0_1px_0_rgba(255,255,255,.10)]'
+          ? 'rail-active'
+          : 'text-white/72 hover:bg-white/[.09] hover:text-white hover:shadow-[inset_0_1px_0_rgba(255,255,255,.09)]'
       } ${collapsed ? 'justify-center' : ''}`}
     >
       {/*
@@ -405,8 +417,8 @@ function NavItem({
                resting row it is the same white, dimmer. Either way it never
                competes with the label beside it. */
             <span
-              className={`shrink-0 text-[11.5px] tabular ${
-                active ? 'font-semibold text-accent-ink/65' : 'text-white/45'
+              className={`w-7 shrink-0 text-right text-[11.5px] tabular ${
+                active ? 'font-semibold text-accent-ink/70' : 'text-white/45'
               }`}
             >
               {count}

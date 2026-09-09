@@ -233,42 +233,83 @@
 @utility animate-settle { animation: settle var(--dur-fast) var(--ease-out) both }
 
 /*
- * The navigation rail's glass.
+ * The navigation rail.
  *
- * ── WHY IT IS LAYERS AND NOT `backdrop-filter` ───────────────────────────
- * Real glassmorphism blurs what is BEHIND the element. The rail is flush
- * against the edge of the viewport with the page canvas beside it, not under
- * it, so there is nothing behind to blur — `backdrop-blur` on this panel costs
- * a compositor layer and renders identically to no blur at all.
+ * ── WHY IT IS DEEP NAVY AND NOT THE BRAND BLUE ───────────────────────────
+ * The rail first carried `brand-gradient` — the same #1e3a8a → #2563eb the logo
+ * uses. That gradient is built for a 30px mark, and a 30px mark is the only
+ * place it belongs. Stretched down 900px of a 244px column it does three things
+ * wrong at once:
  *
- * What actually reads as glass is the light behaviour: a sheen falling from one
- * corner, a cooler pool in the opposite one, a hairline catching the light along
- * the inner edge, and enough grain to stop the gradient banding. All four are
- * painted here, over `brand-gradient`, and cost nothing to composite.
+ *   * SATURATION AS A SURFACE. #2563eb is a pure, fully-saturated blue. At logo
+ *     size that is confident; at panel size it is loud, and everything laid on
+ *     it has to shout to be heard over it.
+ *   * IT GOT BRIGHTER GOING DOWN. Light does not work that way and neither does
+ *     any well-lit interface. A rail should be lit from where the identity is —
+ *     the top — and fall away.
+ *   * IT LEFT THE LIME NOWHERE TO GO. Saturated lime on saturated blue is a
+ *     near-complementary pair, and near-complementary pairs at full chroma
+ *     vibrate along their shared edge. The accent could not read as a jewel
+ *     because the ground was already as loud as it was.
  *
- * The grain is an SVG turbulence data URI at 3.5% — without it a 244px column of
- * smooth blue bands visibly on ordinary panels, and banding is the single thing
- * that makes a gradient look cheap.
+ * So the body is now a deep navy that DARKENS downward, holding the brand hue
+ * without spending the brand's chroma on 220,000 pixels of background. White
+ * text sits comfortably on it, and the lime finally has a dark ground — which
+ * is exactly the condition the accent's own rule in this file demands.
+ *
+ * ── THE FOUR LAYERS, TOP TO BOTTOM ───────────────────────────────────────
+ *   1. a cool sheen at the very top, behind the wordmark, so the panel is lit
+ *      from its identity rather than uniformly flooded;
+ *   2. a whisper of the accent hue high on the left edge, at 6%. Far too faint
+ *      to name as a colour, and it is what stops the lime pill reading as a
+ *      sticker applied to a blue panel — the surface already has a trace of it;
+ *   3. grain at 3.5%, because 244px of smooth gradient bands visibly on
+ *      ordinary panels and banding is the one thing that makes a gradient look
+ *      cheap;
+ *   4. the body itself.
+ *
+ * ── WHY NONE OF IT IS `backdrop-filter` ──────────────────────────────────
+ * Real glass blurs what is behind it. The page canvas sits BESIDE this panel,
+ * not under it, so there is nothing to sample: `backdrop-blur` here costs a
+ * compositor layer and renders identically to no blur at all. What reads as
+ * glass is the light behaviour, and light behaviour has to be painted.
  */
 @utility rail-glass {
   background-image:
-    /* the sheen, top-left */
-    radial-gradient(120% 80% at 0% 0%, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 55%),
-    /* a cooler pool, bottom-right, to stop the panel reading as one flat wash */
-    radial-gradient(90% 60% at 100% 100%, rgba(1, 39, 64, 0.45) 0%, rgba(1, 39, 64, 0) 60%),
-    /* grain */
+    radial-gradient(120% 38% at 50% 0%, rgba(125, 176, 255, 0.20) 0%, rgba(125, 176, 255, 0) 62%),
+    radial-gradient(55% 18% at 0% 20%, rgba(213, 255, 74, 0.06) 0%, rgba(213, 255, 74, 0) 72%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
-    linear-gradient(155deg, #1e3a8a, #1d4ed8 55%, #2563eb);
+    linear-gradient(180deg, #143f78 0%, #0d2d5a 46%, #071e3c 100%);
   box-shadow:
-    inset -1px 0 0 rgba(255, 255, 255, 0.08),
-    inset 1px 0 0 rgba(255, 255, 255, 0.06);
+    inset -1px 0 0 rgba(255, 255, 255, 0.07),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05);
 }
 
-/* A band inside the rail — the header and the account row. Frosted rather than
- * tinted, so the gradient still moves through it. */
+/* A band inside the rail — the header and the account row. A touch lighter than
+ * the surface plus a hairline, so each reads as a plate the navigation sits
+ * between rather than as more of the same wash. */
 @utility rail-band {
-  background-color: rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(6px) saturate(120%);
+  background-color: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/*
+ * The active item.
+ *
+ * Lime on a dark ground at 14.8:1 — the accent's own rule in this file, met
+ * exactly. The glow is what makes it read as LIT rather than as a bright shape
+ * pasted on: a tight ring at the pill's edge, a soft pool under it in the same
+ * hue, and a highlight along its top edge so it has a lip. Without those three
+ * it is a flat slab, which is what a full-chroma fill always looks like against
+ * a dark panel.
+ */
+@utility rail-active {
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow:
+    0 0 0 1px rgba(213, 255, 74, 0.55),
+    0 6px 18px -6px rgba(213, 255, 74, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 /* The signature gradient, one definition. */

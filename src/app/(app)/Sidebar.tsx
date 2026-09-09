@@ -38,11 +38,10 @@
  * keeps one hue and lets the gradient show through, which a flat opaque tint
  * would kill. Anything added to this file has to follow the same rule.
  *
- * The surface is `rail-glass`, a deep navy that DARKENS downward rather than
- * the logo's own gradient. `globals.css` carries the full reasoning; the short
- * version is that a fully-saturated blue is right for a 30px mark and wrong for
- * 900px of panel, and that the lime needs a dark ground to read as an accent
- * rather than as the second-loudest thing on screen.
+ * The surface is `rail-glass`, carrying the same petrol gradient as TapSync so
+ * the two products read as one company — and closer to this app's own
+ * `brand-950` than the blue-violet ramp that had drifted in. `globals.css`
+ * carries the full reasoning.
  *
  * ── THE TYPOGRAPHIC LADDER, DIMMEST TO BRIGHTEST ─────────────────────────
  * Everything in here is white-with-alpha, so hierarchy is carried entirely by
@@ -184,7 +183,7 @@ export function Sidebar({
         title={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-label={collapsed ? 'Expand navigation' : 'Collapse navigation'}
         aria-expanded={!collapsed}
-        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-white/20 bg-[#0d2d5a] text-white/70 shadow-[0_2px_8px_-2px_rgba(1,20,40,.7)] transition-[opacity,color,border-color,background-color] duration-150 hover:border-accent/60 hover:bg-[#123869] hover:text-accent focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
+        className={`absolute -right-[11px] top-[72px] z-30 grid size-[22px] place-items-center rounded-full border border-white/20 bg-[#06314d] text-white/70 shadow-[0_2px_8px_-2px_rgba(1,20,40,.7)] transition-[opacity,color,border-color,background-color] duration-150 hover:border-accent/60 hover:bg-[#024774] hover:text-accent focus-visible:opacity-100 group-hover/sidebar:opacity-100 ${
           /* ALWAYS visible while collapsed. Hover-reveal is right when the panel
              is open and its labels already say what everything is — but a
              collapsed rail whose only way back is an invisible button is a dead
@@ -309,7 +308,7 @@ export function Sidebar({
           className={`flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 ${collapsed ? 'justify-center' : ''}`}
           title={collapsed ? `${userName} · ${userEmail}` : undefined}
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-white/[.14] text-[11.5px] font-semibold text-white ring-1 ring-inset ring-white/30">
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent text-[11.5px] font-bold text-accent-ink shadow-[0_2px_8px_-3px_rgba(213,255,74,.6)]">
             {initial}
           </span>
           {!collapsed ? (
@@ -393,19 +392,14 @@ function NavItem({
           : 'text-white/72 hover:bg-white/[.09] hover:text-white hover:shadow-[inset_0_1px_0_rgba(255,255,255,.09)]'
       } ${collapsed ? 'justify-center' : ''}`}
     >
-      {/*
-        No travelling left-edge marker any more. It existed to mark the active
-        row when the only other signal was a pale blue wash; against a full lime
-        pill it is a second answer to a question already answered, and a 2.5px
-        brand-blue bar sitting on lime is the one colour pairing in this palette
-        with nowhere to go.
-      */}
+      {/* The lime edge lives in `rail-active` as an inset shadow — see the
+          utility for why it is not a border and not a child element. */}
       <Icon
         name={icon}
         size={16}
         strokeWidth={active ? 2.1 : 1.75}
-        className={`shrink-0 transition-transform duration-150 ${
-          active ? '' : 'group-hover:translate-x-px'
+        className={`shrink-0 transition-[color,transform] duration-150 ${
+          active ? 'text-accent' : 'group-hover:translate-x-px'
         }`}
       />
       {!collapsed ? (
@@ -418,7 +412,7 @@ function NavItem({
                competes with the label beside it. */
             <span
               className={`w-7 shrink-0 text-right text-[11.5px] tabular ${
-                active ? 'font-semibold text-accent-ink/70' : 'text-white/45'
+                active ? 'font-semibold text-white/75' : 'text-white/45'
               }`}
             >
               {count}

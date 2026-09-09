@@ -250,43 +250,29 @@
 /*
  * The navigation rail.
  *
- * ── WHY IT IS DEEP NAVY AND NOT THE BRAND BLUE ───────────────────────────
- * The rail first carried `brand-gradient` — the same #1e3a8a → #2563eb the logo
- * uses. That gradient is built for a 30px mark, and a 30px mark is the only
- * place it belongs. Stretched down 900px of a 244px column it does three things
- * wrong at once:
+ * ── THE PALETTE IS TAPSYNC'S, AND THAT IS THE POINT ──────────────────────
+ * `linear-gradient(180deg, #06314d, #024774 55%, #02537f)` — taken from the
+ * sibling product so the two read as one company. It is also closer to this
+ * app's own `--color-brand-950` (#012740) than the blue-violet ramp that was
+ * here before: TapDash's darkest brand value has always been petrol, and the
+ * rail had drifted toward electric blue without anything justifying it.
  *
- *   * SATURATION AS A SURFACE. #2563eb is a pure, fully-saturated blue. At logo
- *     size that is confident; at panel size it is loud, and everything laid on
- *     it has to shout to be heard over it.
- *   * IT GOT BRIGHTER GOING DOWN. Light does not work that way and neither does
- *     any well-lit interface. A rail should be lit from where the identity is —
- *     the top — and fall away.
- *   * IT LEFT THE LIME NOWHERE TO GO. Saturated lime on saturated blue is a
- *     near-complementary pair, and near-complementary pairs at full chroma
- *     vibrate along their shared edge. The accent could not read as a jewel
- *     because the ground was already as loud as it was.
+ * ── IT GETS LIGHTER DOWNWARD, WHICH EARLIER I ARGUED AGAINST ─────────────
+ * That objection was about SATURATION, not direction. #2563eb rising up a tall
+ * panel is loud because it is a fully-saturated blue; these three stops are
+ * desaturated petrol within a tight range, so the same direction reads as depth
+ * rather than as glare. Direction was never the problem — chroma was.
  *
- * So the body is now a deep navy that DARKENS downward, holding the brand hue
- * without spending the brand's chroma on 220,000 pixels of background. White
- * text sits comfortably on it, and the lime finally has a dark ground — which
- * is exactly the condition the accent's own rule in this file demands.
- *
- * Taken a further step down on 2026-09-09: #143f78 still read as a mid blue at
- * the top of a tall panel, which kept the rail competing with the content
- * beside it. The range now runs #0f3163 to #05152e — same hue, roughly a third
- * of the lightness, and the accent gains the contrast it was still short of.
- *
- * ── THE FOUR LAYERS, TOP TO BOTTOM ───────────────────────────────────────
+ * ── THE LAYERS ───────────────────────────────────────────────────────────
  *   1. a cool sheen at the very top, behind the wordmark, so the panel is lit
- *      from its identity rather than uniformly flooded;
- *   2. a whisper of the accent hue high on the left edge, at 6%. Far too faint
- *      to name as a colour, and it is what stops the lime pill reading as a
- *      sticker applied to a blue panel — the surface already has a trace of it;
- *   3. grain at 3.5%, because 244px of smooth gradient bands visibly on
- *      ordinary panels and banding is the one thing that makes a gradient look
- *      cheap;
- *   4. the body itself.
+ *      from its identity rather than flooded uniformly;
+ *   2. a whisper of the accent hue high on the left edge, at 5%. Far too faint
+ *      to name as a colour, and it is what keeps the lime edge-marker below
+ *      from reading as a foreign object on a blue panel;
+ *   3. grain at 3.5%, because a 244px column of smooth gradient bands visibly
+ *      on ordinary panels and banding is the one thing that makes a gradient
+ *      look cheap;
+ *   4. the gradient itself.
  *
  * ── WHY NONE OF IT IS `backdrop-filter` ──────────────────────────────────
  * Real glass blurs what is behind it. The page canvas sits BESIDE this panel,
@@ -296,10 +282,10 @@
  */
 @utility rail-glass {
   background-image:
-    radial-gradient(120% 38% at 50% 0%, rgba(125, 176, 255, 0.20) 0%, rgba(125, 176, 255, 0) 62%),
-    radial-gradient(55% 18% at 0% 20%, rgba(213, 255, 74, 0.06) 0%, rgba(213, 255, 74, 0) 72%),
+    radial-gradient(120% 34% at 50% 0%, rgba(148, 200, 255, 0.13) 0%, rgba(148, 200, 255, 0) 64%),
+    radial-gradient(55% 16% at 0% 18%, rgba(213, 255, 74, 0.05) 0%, rgba(213, 255, 74, 0) 74%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
-    linear-gradient(180deg, #0f3163 0%, #09224a 46%, #05152e 100%);
+    linear-gradient(180deg, #06314d, #024774 55%, #02537f);
   box-shadow:
     inset -1px 0 0 rgba(255, 255, 255, 0.07),
     inset 1px 0 0 rgba(255, 255, 255, 0.05);
@@ -316,20 +302,29 @@
 /*
  * The active item.
  *
- * Lime on a dark ground at 14.8:1 — the accent's own rule in this file, met
- * exactly. The glow is what makes it read as LIT rather than as a bright shape
- * pasted on: a tight ring at the pill's edge, a soft pool under it in the same
- * hue, and a highlight along its top edge so it has a lip. Without those three
- * it is a flat slab, which is what a full-chroma fill always looks like against
- * a dark panel.
+ * ── A LIFTED PANEL WITH A LIME EDGE, NOT A LIME SLAB ─────────────────────
+ * This was a full lime fill. It was unmissable, which is the only thing it had
+ * going for it: at that area and that chroma it outshouted the primary button
+ * on the canvas beside it, and it made the rail look like a navigation bar with
+ * one thing stuck to it rather than a surface with a selection on it.
+ *
+ * TapSync's own rail is the better answer and this follows it — the row lifts a
+ * few percent out of the surface, keeps white text, and carries a 3px lime bar
+ * on its leading edge. The accent still does the pointing; it just does it with
+ * a sliver instead of a slab, which leaves the lime free to mean "the primary
+ * action" everywhere else in the product.
+ *
+ * The bar is drawn with `box-shadow: inset` rather than a border or a child
+ * element: a border would shift the label by its own width, and a child would
+ * need the row to be `relative` and would sit inside the rounded corner.
  */
 @utility rail-active {
-  background-color: var(--color-accent);
-  color: var(--color-accent-ink);
+  background-color: rgba(255, 255, 255, 0.11);
+  color: #fff;
   box-shadow:
-    0 0 0 1px rgba(213, 255, 74, 0.55),
-    0 6px 18px -6px rgba(213, 255, 74, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    inset 3px 0 0 0 var(--color-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 1px 2px rgba(1, 20, 40, 0.35);
 }
 
 /* The signature gradient, one definition. */

@@ -123,7 +123,23 @@ export function NotificationBell({
           <div
             role="dialog"
             aria-label="Notifications"
-            className="absolute left-0 top-full z-50 mt-2 w-[336px] origin-top-left animate-pop-in overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.06),0_20px_48px_-16px_rgba(8,32,47,.32)]"
+            /*
+             * ⚠️ `text-ink-900` ON THE PANEL ROOT IS LOAD-BEARING.
+             *
+             * This panel is a DOM child of the navigation rail, and the rail's
+             * root sets `text-white`. Every row here names its own colour, so
+             * that inheritance should never show — until one of those names is
+             * a Tailwind class whose token does not exist, which emits no rule
+             * at all. `text-ink-600` was exactly that: read notifications
+             * inherited the rail's white and the list rendered as blank rows
+             * with visible timestamps. The token exists now, and this line
+             * means the next such gap costs a shade rather than the content.
+             *
+             * `max-w-[calc(100vw-2rem)]` for the same defensive reason: the
+             * panel hangs off a 244px rail and is wider than it, so on a narrow
+             * window it would otherwise run off the right edge.
+             */
+            className="absolute left-0 top-full z-50 mt-2 w-[352px] max-w-[calc(100vw-2rem)] origin-top-left animate-pop-in overflow-hidden rounded-xl border border-line bg-white text-ink-900 shadow-[0_1px_2px_rgba(8,32,47,.06),0_20px_48px_-16px_rgba(8,32,47,.32)]"
           >
             <header className="flex items-center gap-2 border-b border-line-soft bg-canvas/50 px-3.5 py-2.5">
               <span className="text-[13px] font-semibold tracking-[-.01em] text-ink-900">

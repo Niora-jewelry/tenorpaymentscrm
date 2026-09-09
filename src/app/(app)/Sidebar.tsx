@@ -392,14 +392,15 @@ function NavItem({
           : 'text-white/72 hover:bg-white/[.09] hover:text-white hover:shadow-[inset_0_1px_0_rgba(255,255,255,.09)]'
       } ${collapsed ? 'justify-center' : ''}`}
     >
-      {/* The lime edge lives in `rail-active` as an inset shadow — see the
-          utility for why it is not a border and not a child element. */}
+      {/* No colour of its own on an active row: the pill sets `accent-ink` and
+          the icon inherits it. A lime icon on a lime fill is invisible, which is
+          what the edge-marker version needed it to be and this one does not. */}
       <Icon
         name={icon}
         size={16}
         strokeWidth={active ? 2.1 : 1.75}
-        className={`shrink-0 transition-[color,transform] duration-150 ${
-          active ? 'text-accent' : 'group-hover:translate-x-px'
+        className={`shrink-0 transition-transform duration-150 ${
+          active ? '' : 'group-hover:translate-x-px'
         }`}
       />
       {!collapsed ? (
@@ -412,7 +413,7 @@ function NavItem({
                competes with the label beside it. */
             <span
               className={`w-7 shrink-0 text-right text-[11.5px] tabular ${
-                active ? 'font-semibold text-white/75' : 'text-white/45'
+                active ? 'font-semibold text-accent-ink/70' : 'text-white/45'
               }`}
             >
               {count}

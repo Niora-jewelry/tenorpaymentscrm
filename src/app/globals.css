@@ -302,29 +302,34 @@
 /*
  * The active item.
  *
- * ── A LIFTED PANEL WITH A LIME EDGE, NOT A LIME SLAB ─────────────────────
- * This was a full lime fill. It was unmissable, which is the only thing it had
- * going for it: at that area and that chroma it outshouted the primary button
- * on the canvas beside it, and it made the rail look like a navigation bar with
- * one thing stuck to it rather than a surface with a selection on it.
+ * ── A FULL LIME FILL, ON PURPOSE ─────────────────────────────────────────
+ * The accent's own rule in this file allows exactly one use: a FILL carrying
+ * dark text, or text on a dark ground. This is the first, and against the
+ * petrol rail it lands at 14.8:1 — the most legible thing in the panel by a
+ * wide margin, which is what "you are here" should be.
  *
- * TapSync's own rail is the better answer and this follows it — the row lifts a
- * few percent out of the surface, keeps white text, and carries a 3px lime bar
- * on its leading edge. The accent still does the pointing; it just does it with
- * a sliver instead of a slab, which leaves the lime free to mean "the primary
- * action" everywhere else in the product.
+ * An earlier pass tried a lifted panel with a 3px lime edge instead, on the
+ * argument that a slab outshouts the primary button on the canvas beside it.
+ * That trade was rejected: the two sit in different planes, the dark rail and
+ * the white page, and read as "where you are" and "the thing to do" rather than
+ * as two competing calls to action. The slab also survives at a glance from
+ * across a room, which an edge marker does not.
  *
- * The bar is drawn with `box-shadow: inset` rather than a border or a child
- * element: a border would shift the label by its own width, and a child would
- * need the row to be `relative` and would sit inside the rounded corner.
+ * ── THE THREE SHADOWS ARE WHAT MAKE IT LIT RATHER THAN PASTED ────────────
+ * A flat full-chroma fill on a dark panel always looks like a sticker. So:
+ *   * a tight ring at the pill's own edge, to seat it;
+ *   * a soft pool beneath it in the same hue, so the surface appears to catch
+ *     light from it;
+ *   * a highlight along the top edge, giving it a lip.
+ * Remove any one and it goes flat again.
  */
 @utility rail-active {
-  background-color: rgba(255, 255, 255, 0.11);
-  color: #fff;
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
   box-shadow:
-    inset 3px 0 0 0 var(--color-accent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.13),
-    0 1px 2px rgba(1, 20, 40, 0.35);
+    0 0 0 1px rgba(213, 255, 74, 0.5),
+    0 6px 18px -6px rgba(213, 255, 74, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* The signature gradient, one definition. */

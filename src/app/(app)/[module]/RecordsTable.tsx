@@ -41,6 +41,7 @@ import { choicesFor, choiceKey } from '@/proto/fields';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import {
   reorderColumnsAction, resetColumnOrderAction, setFiltersAction, clearFiltersAction,
+  setValueAction,
   bulkEditAction, bulkArchiveAction, bulkRemoveFromModuleAction, bulkDeleteAction, bulkRestoreToModuleAction,
 } from './actions';
 
@@ -357,6 +358,73 @@ export function RecordsTable({
     }
   };
 
+  /**
+   * Commit one cell edited straight from the table.
+   *
+   * ── IT REUSES THE DRAWER'S WRITE PATH EXACTLY ────────────────────────────
+   * `setValueAction` already carries the whole permission chain (module → tab →
+   * subtab → field), the compare-and-swap, the activity-log row and the
+   * duplicate rules. Adding a second server path for "the same edit, from a
+   * different screen" would be a second place for those to drift, which is the
+   * failure CLAUDE.md rule 2 exists to prevent. There is no new action here.
+   *
+   * ── OPTIMISTIC, AND THE TOKEN IS THE REASON IT CAN BE ────────────────────
+   * The value paints before the round trip and the row's `updatedAt` advances
+   * from what the server returns, so a second edit on the same row carries a
+   * fresh token instead of a stale one. Without adopting that token back, the
+   * next edit would lose its compare-and-swap against a write this table made
+   * itself — which is precisely the bug `recordVersion.ts` exists to solve for
+   * the drawer.
+   *
+   * A refusal rolls the cell back to the value it held. Nothing is left on
+   * screen that the database did not accept.
+   */
+  const commitCell = async (
+    recordId: string,
+    field: Field,
+    next: FieldValue,
+  ): Promise<{ ok: boolean; message?: string }> => {
+    const before = localRows.find((r) => r.id === recordId);
+    if (!before?.updatedAt) {
+      return { ok: false, message: 'This row is out of date — reload and try again.' };
+    }
+    const previous = before.values[field.id];
+
+    // Paint first.
+    setLocalRows((rows) =>
+      rows.map((r) => (r.id === recordId ? { ...r, values: { ...r.values, [field.id]: next } } : r)),
+    );
+
+    const formData = new FormData();
+    // Same encoding the drawer uses: objects and arrays as JSON, everything
+    // else as a string, and `null` as the empty string meaning "clear it".
+    formData.set(
+      'value',
+      next == null ? '' : typeof next === 'object' ? JSON.stringify(next) : String(next),
+    );
+    formData.set('expectedUpdatedAt', before.updatedAt);
+
+    try {
+      const result = await setValueAction(moduleSlug, recordId, field.id, formData);
+      if (!result.ok) {
+        setLocalRows((rows) =>
+          rows.map((r) => (r.id === recordId ? { ...r, values: { ...r.values, [field.id]: previous } } : r)),
+        );
+        return { ok: false, message: result.message };
+      }
+      // Adopt the new token, or the next edit on this row fights this one.
+      setLocalRows((rows) =>
+        rows.map((r) => (r.id === recordId ? { ...r, updatedAt: result.updatedAt } : r)),
+      );
+      return { ok: true };
+    } catch {
+      setLocalRows((rows) =>
+        rows.map((r) => (r.id === recordId ? { ...r, values: { ...r.values, [field.id]: previous } } : r)),
+      );
+      return { ok: false, message: 'Could not save. Nothing was changed.' };
+    }
+  };
+
   /** One place that saves a filter change, shared by the pipeline control and
    * DataTable's own column filters, so both reset to page 1 the same way. */
   const commitFilters = (f: Record<string, Filter>) => {
@@ -417,6 +485,7 @@ export function RecordsTable({
         }}
         filters={filters}
         filterOnlyFields={pipelineStatusFields}
+        onCellEdit={canEdit ? commitCell : undefined}
         onSetFilters={commitFilters}
         onClearFilters={() => {
           startTransition(async () => {

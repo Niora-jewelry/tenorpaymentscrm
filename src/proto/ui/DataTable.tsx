@@ -40,9 +40,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Field, Filter, RecordRow } from '../schema';
+import type { Field, FieldValue, Filter, RecordRow } from '../schema';
 import { choicesFor, choiceLabel, choiceKey } from '../fields';
-import { CellValue, isNumeric } from './value';
+import { CellValue, FieldRenderer, isNumeric } from './value';
 import {
   BarAction,
   BarCount,
@@ -467,26 +467,7 @@ function SortableColumnHeader({
 
 export type SkipReport = { done: number; skipped: { name: string; reason: string }[] } | null;
 
-export function DataTable({
-  moduleSlug,
-  rows,
-  columns,
-  onOpen,
-  serverPaging,
-  tableBusy,
-  openingId,
-  selected,
-  onSelectedChange,
-  extraColumn,
-  grantFor,
-  hasCustomColumnOrder,
-  onReorderColumns,
-  onResetColumnOrder,
-  filters,
-  filterOnlyFields,
-  onSetFilters,
-  onClearFilters,
-}: {
+type DataTableProps = {
   moduleSlug: string;
   rows: RecordRow[];
   columns: Field[];
@@ -540,7 +521,163 @@ export function DataTable({
   filterOnlyFields?: Field[];
   onSetFilters: (filters: Record<string, Filter>) => void;
   onClearFilters: () => void;
+  /**
+   * Commit one edited cell. OMITTED = the table is read-only exactly as it has
+   * always been, which is what keeps the prototype (no server, no CAS token)
+   * rendering unchanged.
+   *
+   * Resolves `{ ok: false, message }` on a refusal — a lost compare-and-swap,
+   * or a permission the server disagreed with — and the cell rolls back.
+   */
+  onCellEdit?: (
+    recordId: string,
+    field: Field,
+    value: FieldValue,
+  ) => Promise<{ ok: boolean; message?: string }>;
+};
+
+/**
+ * One dashboard cell that can be edited in place.
+ *
+ * ── HOW IT IS OPENED, AND WHY NOT ON A SINGLE CLICK ──────────────────────
+ * A single click on a row already opens the record drawer, and has since this
+ * table existed. Making a single click on a cell edit it instead would either
+ * take the drawer away from twelve of the thirteen columns or leave the two
+ * gestures fighting over the same event. So editing is deliberately a SECOND,
+ * more specific gesture: the pencil that appears on hover, or a double-click on
+ * the cell. Everyone's existing muscle memory for opening a record is untouched.
+ *
+ * ⚠️ EVERY HANDLER IN HERE STOPS PROPAGATION. The editor lives inside the `<tr>`
+ * that carries `onClick={() => onOpen(r.id)}`, so without that a click on a
+ * dropdown option, or on the pencil itself, would open the drawer on the way
+ * past and unmount the editor mid-edit.
+ *
+ * ── WHY IT IS FAST ───────────────────────────────────────────────────────
+ * The commit is optimistic: the new value paints immediately, the row's token
+ * advances from what the server returns, and nothing waits on a page
+ * revalidation. A rejected write rolls the cell back and says why. This is the
+ * same bargain `RealFieldGrid` already makes in the drawer, for the same
+ * reason — a value the user just typed should not take a round trip to appear.
+ */
+function EditableCell({
+  row,
+  field,
+  value,
+  moduleSlug,
+  editable,
+  onCommit,
+}: {
+  row: RecordRow;
+  field: Field;
+  value: FieldValue;
+  moduleSlug: string;
+  /** False renders exactly what a read-only cell has always rendered. */
+  editable: boolean;
+  onCommit: NonNullable<DataTableProps['onCellEdit']>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const stop = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
+  if (!editable) {
+    return (
+      <span className="min-w-0 truncate">
+        <CellValue field={field} value={value} moduleSlug={moduleSlug} />
+      </span>
+    );
+  }
+
+  if (editing) {
+    return (
+      <span
+        className="relative block w-full"
+        onClick={stop}
+        onDoubleClick={stop}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+      >
+        <FieldRenderer
+          field={field}
+          value={value}
+          grant="edit"
+          moduleSlug={moduleSlug}
+          onChange={(next) => {
+            setEditing(false);
+            setPending(true);
+            setError(null);
+            void onCommit(row.id, field, next).then((result) => {
+              setPending(false);
+              if (!result.ok) setError(result.message ?? 'Could not save.');
+            });
+          }}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-1">
+      <span
+        className={`min-w-0 flex-1 truncate ${pending ? 'opacity-50' : ''}`}
+        onDoubleClick={(e) => {
+          stop(e);
+          setEditing(true);
+        }}
+        title={error ?? 'Double-click to edit'}
+      >
+        <CellValue field={field} value={value} moduleSlug={moduleSlug} />
+      </span>
+
+      {error ? (
+        <Icon name="alert-triangle" size={11} className="shrink-0 text-bad" />
+      ) : (
+        <button
+          type="button"
+          aria-label={`Edit ${field.label}`}
+          title={`Edit ${field.label}`}
+          tabIndex={-1}
+          onClick={(e) => {
+            stop(e);
+            setEditing(true);
+          }}
+          onDoubleClick={stop}
+          className="grid size-5 shrink-0 place-items-center rounded text-ink-300 opacity-0 transition-[opacity,color] hover:bg-white hover:text-brand-700 focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Icon name="pencil" size={11} />
+        </button>
+      )}
+    </span>
+  );
+}
+
+export function DataTable({
+  moduleSlug,
+  rows,
+  columns,
+  onOpen,
+  serverPaging,
+  tableBusy,
+  openingId,
+  selected,
+  onSelectedChange,
+  extraColumn,
+  grantFor,
+  hasCustomColumnOrder,
+  onReorderColumns,
+  onResetColumnOrder,
+  filters,
+  filterOnlyFields,
+  onSetFilters,
+  onClearFilters,
+  onCellEdit,
+}: DataTableProps) {
+
   const [page, setPage] = useState(0);
   const [scrolled, setScrolled] = useState(false);
 
@@ -951,6 +1088,30 @@ export function DataTable({
 
                   {columns.map((col) => {
                     const readOnly = grantFor(col) === 'view';
+                    /*
+                     * A cell is editable only when EVERY one of these holds.
+                     * Each exclusion is a real rule, not caution:
+                     *
+                     *   * a handler exists — absent in the prototype, which has
+                     *     no server and no token to swap against;
+                     *   * the row carries `updatedAt` — no token, no safe write;
+                     *   * the viewer holds Edit on this field;
+                     *   * the field is not marked read-only. That covers the
+                     *     pipeline-synced Status fields, whose value is a
+                     *     projection of `record_pipelines` and which the
+                     *     database refuses to be written directly anyway;
+                     *   * it is not Deal Name. That is the duplicate-blocking
+                     *     key with its own refusal rules, it lives outside
+                     *     `values`, and it is rendered by the frozen column
+                     *     above rather than here.
+                     */
+                    const cellEditable = Boolean(
+                      onCellEdit
+                        && r.updatedAt
+                        && !readOnly
+                        && !col.readOnly
+                        && col.id !== 'deal_name',
+                    );
                     return (
                       <td
                         key={col.id}
@@ -962,6 +1123,16 @@ export function DataTable({
                             isNumeric(col.type) ? 'justify-end' : ''
                           } ${readOnly ? 'text-ink-400' : 'text-ink-700'}`}
                         >
+                          {cellEditable ? (
+                            <EditableCell
+                              row={r}
+                              field={col}
+                              value={col.id === 'deal_name' ? r.dealName : r.values[col.id]}
+                              moduleSlug={moduleSlug}
+                              editable
+                              onCommit={onCellEdit!}
+                            />
+                          ) : (
                           <span className="min-w-0 truncate">
                             {/* `moduleSlug` is not optional in practice: without
                                 it `CellValue` resolves choices against the
@@ -977,6 +1148,7 @@ export function DataTable({
                               moduleSlug={moduleSlug}
                             />
                           </span>
+                          )}
                         </div>
                       </td>
                     );

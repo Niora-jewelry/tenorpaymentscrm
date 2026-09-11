@@ -119,6 +119,10 @@ export function adaptRecordRow(row: DbRecordRow, memberships: string[]): ProtoRe
         : { kind: 'user', id: row.creatorUserId! },
     pipeline: {},
     createdAt: row.createdAt,
+    // Carried so a dashboard cell can write with a compare-and-swap. Dropping
+    // it was harmless while the table was read-only; an editable table without
+    // it would overwrite whatever someone else had just saved.
+    updatedAt: row.updatedAt,
   };
 }
 

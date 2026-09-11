@@ -557,6 +557,30 @@ export type SetValueResult =
   | { ok: false; refused: string };
 
 /**
+ * A field an admin marked read-only may never be written through a value path,
+ * by anybody, admin included.
+ *
+ * ⚠️ THE PARAMETER WAS ALREADY BEING PASSED AND NEVER CHECKED. `readOnly` has
+ * been on `setValue`'s field argument since it was written, and nothing looked
+ * at it — the drawer simply rendered those fields with a View control and the
+ * server trusted that. That was survivable while the drawer was the only way in.
+ * It is not now the dashboard table can edit a cell, and it was never the
+ * security boundary regardless: "UI-level hiding is never the security
+ * boundary" is the client's own sentence.
+ *
+ * Today this covers `record_creator` ("set on creation, never editable") and
+ * the four pipeline-synced Status fields — those the database refuses as well,
+ * because their value is a projection of `record_pipelines` with exactly one
+ * writer. This closes the same door one layer up, for the ones the database
+ * does not know about.
+ */
+function assertWritable(field: { label: string; readOnly: boolean }): void {
+  if (field.readOnly) {
+    throw new Error(`${field.label} is read-only and cannot be edited.`);
+  }
+}
+
+/**
  * One field, one value, compare-and-swap. §13.4: a losing writer gets back
  * what the CURRENT value is and who set it — "Sarah changed this a moment
  * ago" needs both, not a bare conflict flag.
@@ -572,6 +596,8 @@ export async function setValue(
   // checked HERE rather than in the action: the action is one caller of this
   // function, and rule 2 in CLAUDE.md puts the gate below the app layer
   // precisely so a future second caller cannot forget it.
+  assertWritable(field);
+
   const effective = capGrant(await fieldCap(ctx, recordId, field.id), await fieldGrant(ctx, field));
   if (effective !== 'edit') throw new Error(`No edit access to ${field.label}`);
 
@@ -662,6 +688,10 @@ export async function setValues(
   const tabCapCache = new Map<string, Grant>();
 
   const subtabCapCache = new Map<string, Grant>();
+
+  // Checked for the WHOLE batch before anything is written: a batch that would
+  // touch one read-only field is refused entirely rather than partially applied.
+  for (const { field } of changes) assertWritable(field);
 
   for (const { field } of changes) {
     const dbField = config.fields.find((f) => f.id === field.id || f.key === field.key);

@@ -370,6 +370,16 @@ export type RecordRow = {
   memberships: ModuleSlug[];
   /** Independent pipeline assignment per module. */
   pipeline: Partial<Record<ModuleSlug, { pipelineId: string; stepId: string }>>;
+  /**
+   * The record's compare-and-swap token, for editing a value straight from the
+   * dashboard table.
+   *
+   * OPTIONAL because the prototype builds rows from an in-memory store with no
+   * concurrency to guard against, and making it required would break every
+   * fixture. The real app always supplies it, and `DataTable` refuses to make a
+   * cell editable without one — no token, no safe write.
+   */
+  updatedAt?: string;
   /** Soft-deleted to the Recycle Bin. Only reachable from the Records List. */
   deleted?: boolean;
   createdAt: string;

@@ -15,7 +15,7 @@ import { unstable_cache } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { requireTabEdit, requireTabEditVia } from './tabAccess';
+import { requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
 
 export type StatementPeriod = { id: string; year: number; month: number };
 export type StatementFile = {
@@ -136,9 +136,34 @@ export async function deleteStatement(ctx: AuthContext, statementFileId: string)
   if (error) throw error;
 }
 
-export async function signedStatementUrlFor(_ctx: AuthContext, storagePath: string): Promise<string> {
+/**
+ * A 60-second download link for one statement — addressed BY ITS ID.
+ *
+ * Same defect and same fix as `signedUrlFor` in `files.ts`: this signed a
+ * caller-supplied storage path with an unread `_ctx`, so the Statements tab
+ * grant governed the list and not the bytes. A merchant's processing
+ * statements are the most sensitive documents this CRM holds, which is exactly
+ * why Statements is a tab someone can be given View or Hidden on at all.
+ */
+export async function signedStatementUrlFor(ctx: AuthContext, statementFileId: string): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.storage.from('records').createSignedUrl(storagePath, 60);
+
+  const { data, error } = await supabase
+    .from('statement_files')
+    .select('storage_path, record_id')
+    .eq('id', statementFileId)
+    .is('deleted_at', null)
+    .maybeSingle();
   if (error) throw error;
-  return data.signedUrl;
+
+  const row = data as { storage_path: string; record_id: string } | null;
+  if (!row) throw new Error('Not found');
+
+  await requireTabView(ctx, row.record_id, 'statements');
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from('records')
+    .createSignedUrl(row.storage_path, 60);
+  if (signError) throw signError;
+  return signed.signedUrl;
 }

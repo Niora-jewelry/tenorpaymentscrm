@@ -163,12 +163,12 @@ function FileRowView({
    * then pointed at the URL once it arrives — and closed again if the request
    * fails, rather than being left as a stranded about:blank.
    */
-  const openFile = async (fileId: string, storagePath: string) => {
+  const openFile = async (fileId: string) => {
     setError(null);
     setOpening(fileId);
     const tab = window.open('', '_blank', 'noopener,noreferrer');
     try {
-      const url = await getFileUrlAction(storagePath);
+      const url = await getFileUrlAction(fileId);
       if (tab) tab.location.assign(url);
       // A blocked popup is the only way `tab` is null. Navigating this tab
       // instead would throw away whatever the user has half-typed in the
@@ -234,7 +234,7 @@ function FileRowView({
                 type="button"
                 title={`Open ${file.name}`}
                 disabled={opening === file.id}
-                onClick={() => openFile(file.id, file.storagePath)}
+                onClick={() => openFile(file.id)}
                 className="truncate text-left text-ink-700 underline decoration-line underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-600 disabled:opacity-60"
               >
                 {opening === file.id ? 'Opening…' : file.name}

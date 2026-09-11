@@ -717,7 +717,26 @@ export function RealFieldGrid({
             {Array.from({ length: count }, (_, i) => i).map((index) => {
               const instance = arr[index] ?? {};
               return (
-                <div key={index} className="border-b border-line-soft last:border-0">
+                /*
+                 * The key carries `count`, not just the index.
+                 *
+                 * Every control inside a repeat instance is UNCONTROLLED — the
+                 * inputs in `proto/ui/value.tsx` render `defaultValue`, and a
+                 * `defaultValue` is read once, at mount. Keyed by index alone,
+                 * removing owner 2 of 3 leaves React reusing row 2's DOM for
+                 * what is now owner 3: the props shift down, the mounted inputs
+                 * do not, and the old text stays on screen against the wrong
+                 * person. The masked-value toggle is worse — `shown` is local
+                 * state on the same nodes, so a revealed SSN could survive the
+                 * removal and end up displayed for a different owner.
+                 *
+                 * Folding the instance COUNT into the key makes every row a new
+                 * element whenever one is added or removed, which remounts them
+                 * against the values that just came back from the server. Rows
+                 * are not remounted while merely typing, because `count` only
+                 * moves when the shape does.
+                 */
+                <div key={`${group.key}-${count}-${index}`} className="border-b border-line-soft last:border-0">
                   <div className="flex items-center gap-2 bg-canvas/70 px-3 py-1">
                     <span className="grid size-4 place-items-center rounded-full bg-brand-950 text-[10px] font-bold text-accent tabular">
                       {index + 1}

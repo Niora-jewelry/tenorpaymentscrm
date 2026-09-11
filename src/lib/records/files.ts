@@ -10,7 +10,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
-import { requireTabEdit, requireTabEditVia } from './tabAccess';
+import { requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES_PER_ROW = 5;
@@ -234,9 +234,53 @@ export async function deleteFile(ctx: AuthContext, fileId: string): Promise<void
 
 /** Short-TTL signed URL — files are never public, never a bare storage path
  * sent to the browser without going through this. */
-export async function signedUrlFor(_ctx: AuthContext, storagePath: string): Promise<string> {
+/**
+ * A 60-second download link for one file — addressed BY ITS ID.
+ *
+ * ── WHY NOT THE STORAGE PATH ──────────────────────────────────────────────
+ * This took a `storagePath` straight from the browser and signed it, with the
+ * `ctx` it was handed marked `_ctx` because nothing read it. The only thing
+ * standing between a caller and a file was the bucket's RLS policy, which
+ * checks `can_see_record()` on the first path segment and nothing else.
+ *
+ * That made the Files, Cases and Statements TAB GRANTS unenforceable on
+ * downloads. Someone holding Files = Hidden on a record they can otherwise see
+ * still got a working link to every file on it, because the tab grant was
+ * consulted where the list is rendered and nowhere near the bytes — which is
+ * UI-level hiding, and the spec says in as many words that UI-level hiding is
+ * never the security boundary. The path being caller-supplied made it worse
+ * than a missing check: the caller chose which file, across every kind, with
+ * no list to have been filtered.
+ *
+ * Taking the ID instead makes the grant checkable, because the id is what
+ * resolves to a record and a tab. Every caller already had it on hand.
+ *
+ * ── WHICH TAB ─────────────────────────────────────────────────────────────
+ * A case attachment is an ordinary `files` row, but it is governed by the
+ * Cases tab — the same distinction `uploadFile` above draws. The row's own
+ * `kind` is what decides, not the caller.
+ */
+export async function signedUrlFor(ctx: AuthContext, fileId: string): Promise<string> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.storage.from('records').createSignedUrl(storagePath, 60);
+
+  const { data, error } = await supabase
+    .from('files')
+    .select('storage_path, file_rows!inner(record_id, kind)')
+    .eq('id', fileId)
+    .is('deleted_at', null)
+    .maybeSingle();
   if (error) throw error;
-  return data.signedUrl;
+
+  // A row this viewer cannot see comes back empty, so "does not exist" and
+  // "not yours" give the same answer and neither is distinguishable.
+  const row = data as { storage_path: string; file_rows: { record_id: string; kind: string } } | null;
+  if (!row) throw new Error('Not found');
+
+  await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from('records')
+    .createSignedUrl(row.storage_path, 60);
+  if (signError) throw signError;
+  return signed.signedUrl;
 }

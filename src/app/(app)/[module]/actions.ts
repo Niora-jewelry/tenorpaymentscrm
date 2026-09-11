@@ -133,10 +133,29 @@ const JSON_VALUED_FIELD_TYPES = new Set<FieldType>([
  * non-empty string `"false"` — parsed back to a real boolean, not left as
  * text, or an unchecked box would silently read back as checked forever
  * (`Boolean("false")` is `true`). */
-function decodeFieldValue(field: Field, raw: string): unknown {
-  if (field.type === 'checkbox') return raw === 'true';
-  if (JSON_VALUED_FIELD_TYPES.has(field.type)) return JSON.parse(raw);
-  return raw;
+/**
+ * Returns a RESULT rather than the value, because `JSON.parse` throws.
+ *
+ * An unparseable string reaching here used to take the whole Server Action
+ * down with an uncaught `SyntaxError` — a 500 and Next's generic error screen,
+ * for what is simply a bad argument. The happy path cannot produce one (the
+ * client stringifies these types itself), which is exactly why it went
+ * unnoticed: every way to hit it is a client bug, a half-sent request or a
+ * hand-made call, and all three deserve a refusal sentence instead of a crash.
+ */
+function decodeFieldValue(
+  field: Field,
+  raw: string,
+): { ok: true; value: unknown } | { ok: false } {
+  if (field.type === 'checkbox') return { ok: true, value: raw === 'true' };
+  if (JSON_VALUED_FIELD_TYPES.has(field.type)) {
+    try {
+      return { ok: true, value: JSON.parse(raw) };
+    } catch {
+      return { ok: false };
+    }
+  }
+  return { ok: true, value: raw };
 }
 
 export async function setValueAction(
@@ -152,7 +171,12 @@ export async function setValueAction(
 
   const raw = formData.get('value');
   const expectedUpdatedAt = String(formData.get('expectedUpdatedAt') ?? '');
-  const value = raw === null || raw === '' ? null : decodeFieldValue(field, String(raw));
+  let value: unknown = null;
+  if (raw !== null && raw !== '') {
+    const decoded = decodeFieldValue(field, String(raw));
+    if (!decoded.ok) return { ok: false, message: `That is not a valid ${field.label}.` };
+    value = decoded.value;
+  }
 
   const result = await setValue(ctx, recordId, field, value, expectedUpdatedAt);
 
@@ -222,7 +246,12 @@ export async function setValuesAction(
     // Same encoding contract as the single-field path: the client sends the
     // value as a string (or null for cleared), and the field's own type decides
     // how to read it back.
-    const value = item.value === null || item.value === '' ? null : decodeFieldValue(field, item.value);
+    let value: unknown = null;
+    if (item.value !== null && item.value !== '') {
+      const decoded = decodeFieldValue(field, item.value);
+      if (!decoded.ok) return { ok: false, message: `That is not a valid ${field.label}.` };
+      value = decoded.value;
+    }
     changes.push({ field, value });
   }
 
@@ -714,9 +743,17 @@ export async function ensureApplicationRowsAction(recordId: string): Promise<voi
   await ensureApplicationRows(ctx, recordId);
 }
 
-export async function getFileUrlAction(storagePath: string): Promise<string> {
+/**
+ * Takes the FILE'S ID, not its storage path.
+ *
+ * The path used to come from the browser and was signed as given, so the
+ * caller picked the file and the Files/Cases tab grant never entered into it.
+ * `signedUrlFor` now resolves the path itself and checks the grant; this
+ * signature is what makes that possible.
+ */
+export async function getFileUrlAction(fileId: string): Promise<string> {
   const ctx = await authorize();
-  return signedUrlFor(ctx, storagePath);
+  return signedUrlFor(ctx, fileId);
 }
 
 /* -----------------------------------------------------------------------
@@ -786,9 +823,10 @@ export async function deleteStatementAction(moduleSlug: string, fileId: string):
   revalidatePath(`/${moduleSlug}`);
 }
 
-export async function getStatementUrlAction(storagePath: string): Promise<string> {
+/** The statement half of the same fix — see `getFileUrlAction` above. */
+export async function getStatementUrlAction(statementFileId: string): Promise<string> {
   const ctx = await authorize();
-  return signedStatementUrlFor(ctx, storagePath);
+  return signedStatementUrlFor(ctx, statementFileId);
 }
 
 /* -----------------------------------------------------------------------

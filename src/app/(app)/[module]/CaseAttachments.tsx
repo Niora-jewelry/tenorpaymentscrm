@@ -89,11 +89,11 @@ export function CaseAttachments({
     });
   };
 
-  const download = (storagePath: string, id: string) => {
+  const download = (id: string) => {
     setBusyId(id);
     startTransition(async () => {
       try {
-        const url = await getFileUrlAction(storagePath);
+        const url = await getFileUrlAction(id);
         window.open(url, '_blank', 'noopener,noreferrer');
       } catch {
         setError('Could not open that file.');
@@ -117,7 +117,7 @@ export function CaseAttachments({
               <Icon name="paperclip" size={11} className="shrink-0 text-ink-400" />
               <button
                 type="button"
-                onClick={() => download(f.storagePath, f.id)}
+                onClick={() => download(f.id)}
                 disabled={pending}
                 title={`${f.name} — ${Math.max(1, Math.round(f.sizeBytes / 1024))} KB`}
                 className="max-w-[180px] truncate font-medium text-ink-700 transition-colors hover:text-brand-700 hover:underline"

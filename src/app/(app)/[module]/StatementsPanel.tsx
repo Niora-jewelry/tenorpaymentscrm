@@ -107,12 +107,12 @@ function PeriodRow({
    *  could only be deleted, while `getStatementUrlAction` sat unused. The tab
    *  is opened synchronously on the click so the popup blocker does not eat
    *  it, then pointed at the signed URL when it arrives. */
-  const openStatement = async (fileId: string, storagePath: string) => {
+  const openStatement = async (fileId: string) => {
     setError(null);
     setOpening(fileId);
     const tab = window.open('', '_blank', 'noopener,noreferrer');
     try {
-      const url = await getStatementUrlAction(storagePath);
+      const url = await getStatementUrlAction(fileId);
       if (tab) tab.location.assign(url);
       // A blocked popup is the only way `tab` is null. Navigating this tab
       // instead would throw away whatever the user has half-typed in the
@@ -166,7 +166,7 @@ function PeriodRow({
                 type="button"
                 title={`Open ${file.name}`}
                 disabled={opening === file.id}
-                onClick={() => openStatement(file.id, file.storagePath)}
+                onClick={() => openStatement(file.id)}
                 className="truncate text-left underline decoration-line underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-600 disabled:opacity-60"
               >
                 {opening === file.id ? 'Opening…' : file.name}

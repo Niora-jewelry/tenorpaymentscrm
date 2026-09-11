@@ -150,12 +150,12 @@ function valueForField(field, seedBase, ctx) {
       };
     case 'dropdown':
     case 'status': {
-      const options = ctx.choicesByField.get(field.id) ?? [];
+      const options = ctx.choicesFor(field.id, ctx.moduleId);
       if (!options.length) return null;
       return pick(r, options).key;
     }
     case 'multi_select': {
-      const options = ctx.choicesByField.get(field.id) ?? [];
+      const options = ctx.choicesFor(field.id, ctx.moduleId);
       if (!options.length) return [];
       // One value, not several: `bankruptcy` is the only multi-select and a
       // record with three simultaneous bankruptcies is not realistic demo data.
@@ -178,7 +178,7 @@ function valueForField(field, seedBase, ctx) {
       return MONTH_NAMES.slice(start, start + int(r, 2, 4));
     }
     case 'percent_split': {
-      const options = ctx.choicesByField.get(field.id) ?? [];
+      const options = ctx.choicesFor(field.id, ctx.moduleId);
       if (!options.length) return null;
       // Must total exactly 100: weights are normalised and the remainder is
       // pushed onto the first slice, so rounding can never leave 99 or 101.
@@ -262,11 +262,32 @@ const { rows: fields } = await c.query(
      from fields where archived_at is null`,
 );
 const { rows: choices } = await c.query(`select field_id, key::text key, module_id from field_choices`);
-const choicesByField = new Map();
+/*
+ * ⚠️ KEYED BY FIELD **AND MODULE**, not by field alone.
+ *
+ * `field_choices` carries a `module_id`: a field can offer a different list per
+ * module, and `current_status` does — Leads offers new_lead…closed while Deals
+ * offers application_sent…declined, over one shared field on one record.
+ *
+ * Indexing by field alone meant picking from the UNION of every module's list,
+ * so most seeded records ended up holding a key their own module could not
+ * resolve. `choicesFor()` looks up the module-scoped list and falls back to the
+ * global one, and it renders the raw key when nothing matches — so the demo
+ * showed lower-case blobs like "qualified" in modules that have never heard of
+ * it. This index mirrors that lookup exactly.
+ */
+const choicesByFieldModule = new Map();
 for (const ch of choices) {
-  if (!choicesByField.has(ch.field_id)) choicesByField.set(ch.field_id, []);
-  choicesByField.get(ch.field_id).push(ch);
+  const key = `${ch.field_id}|${ch.module_id ?? 'global'}`;
+  if (!choicesByFieldModule.has(key)) choicesByFieldModule.set(key, []);
+  choicesByFieldModule.get(key).push(ch);
 }
+/** The same rule `choicesFor()` applies: this module's list if it has one,
+ *  otherwise the global set. */
+const choicesFor = (fieldId, moduleId) =>
+  choicesByFieldModule.get(`${fieldId}|${moduleId}`)
+  ?? choicesByFieldModule.get(`${fieldId}|global`)
+  ?? [];
 const { rows: modules } = await c.query(`select id, slug, kind, frozen from modules order by position`);
 log(`${fields.length} fields, ${modules.length} modules`);
 
@@ -308,10 +329,39 @@ log(`${records.length} live records total`);
 /* -------------------------------------------------------------------------- */
 step('2. Field values');
 
+/*
+ * Which module each record primarily lives in, read BEFORE any value is
+ * generated.
+ *
+ * ⚠️ Ordered by the MODULE'S OWN POSITION, not by `added_at`. Memberships
+ * inserted in one statement share a timestamp to the microsecond, so ordering
+ * by `added_at` returns a different "first" module between runs — and the
+ * chosen status list changed with it. Module position is stable and it is also
+ * the more meaningful answer: a record in both Leads and Deals is primarily a
+ * Lead, because that is the earlier stage. A per-module choice list can only be resolved once the module is
+ * known, so membership has to be settled first — step 3 below tops up anything
+ * missing, and on a first run this map is simply empty and the global lists
+ * apply.
+ */
+const primaryModule = new Map(
+  (await c.query(`
+    select distinct on (rm.record_id) rm.record_id, rm.module_id
+      from record_modules rm
+      join modules m on m.id = rm.module_id
+     order by rm.record_id, m.position
+  `)).rows.map((r) => [r.record_id, r.module_id]),
+);
+
 let filled = 0;
 for (const rec of records) {
   const slug = rec.deal_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const ctx = { name: rec.deal_name, slug, choicesByField, teamIds };
+  const ctx = {
+    name: rec.deal_name,
+    slug,
+    choicesFor,
+    moduleId: primaryModule.get(rec.id) ?? null,
+    teamIds,
+  };
   const values = {};
 
   for (const f of fields) {

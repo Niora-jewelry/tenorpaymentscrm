@@ -13,7 +13,7 @@ import { Suspense } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
-import { CellValue } from '@/proto/ui/value';
+import { HeaderValue } from '@/proto/ui/value';
 import { authorize, moduleGrant, fieldGrants, tabGrants, subtabGrants, capGrant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
@@ -543,6 +543,83 @@ async function RecordDrawer({
   }
 
   /*
+   * ── THE HEADER STRIP'S FACTS, AND ITS PERMISSION CHAIN ───────────────────
+   *
+   * ⚠️ THIS STRIP PREVIOUSLY HONOURED NO GRANT AT ALL. It read straight from
+   * `headerFieldsForModule` and `record.values` and rendered whatever it found.
+   *
+   * It survived the FIELD-level case only by accident: `getRecord` strips
+   * field-hidden keys before returning, so a Hidden field arrived as undefined
+   * and the empty check dropped it. The TAB and SUBTAB cases were not covered
+   * at all — `hiddenKeysFor` consults `fieldGrants` and nothing else — so
+   * hiding the Overview tab still printed Legal business name, MID, Team
+   * member(s) assigned, MCC code and Current status at the top of the drawer,
+   * in the page payload as well as on screen. That is CLAUDE.md rule 3
+   * verbatim, and the prototype this block was copied from does filter.
+   *
+   * `grantByKey` is the already-computed chain — module ceiling, then tab, then
+   * subtab, then the field itself — so using it closes every level at once.
+   *
+   * ⚠️ AND IT MATTERS MORE NOW THAN IT DID. The grid above renders a LABEL for
+   * a field that is present but empty, because "this module tracks MCC code and
+   * this record has not got one" is worth saying. A permission-hidden field
+   * also arrives empty, so without this filter the redesign would have
+   * announced the NAME of every field the viewer is not allowed to see.
+   */
+  const titleForCompare = (record.dealName ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const headerFacts = headerFields
+    .filter((f) => {
+      // Absent, never blank.
+      if ((grantByKey[f.key] ?? 'hidden') === 'hidden') return false;
+      // A pipeline-synced Status field belongs only to records on that
+      // pipeline — the same rule the field grid applies below (Admin §3.6).
+      const owner = statusFieldOwners.get(f.id);
+      return owner === undefined || owner === pipelineAssign?.pipelineId;
+    })
+    .map((f) => {
+      const value = record.values[f.key];
+      const empty =
+        value == null
+        || value === ''
+        || (Array.isArray(value) && value.length === 0)
+        // `{}` reaches here from a percent_split or address that was filled in
+        // and then cleared. The old check missed it, so the strip printed a
+        // label with nothing after it.
+        || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
+      return {
+        id: f.id,
+        label: f.label,
+        field: adaptFieldForDashboard(config, f),
+        // Same trust boundary every other read from JSONB crosses: the union
+        // describes what a well-formed value looks like once its own renderer
+        // interprets it, not a runtime guarantee this line can check.
+        value: value as import('@/proto/schema').FieldValue,
+        empty,
+      };
+    })
+    /*
+     * A field whose value simply restates the record's own title is noise —
+     * Legal business name is seeded into the header of all six modules and
+     * usually equals the Deal Name.
+     *
+     * Compared by VALUE, not by field key, so this names no field and no module
+     * (CLAUDE.md §1) and generalises: any field that happens to restate the
+     * title is equally redundant. It also self-heals — the moment someone edits
+     * the legal name so the two differ, the cell returns, which is exactly when
+     * it becomes worth seeing.
+     *
+     * Scalars only. A status or an avatar stack that coincidentally matches the
+     * record name is a coincidence, not a duplication.
+     */
+    .filter((fact) => {
+      if (fact.empty) return true;
+      if (!['text', 'long_text', 'identifier'].includes(fact.field.type)) return true;
+      const shown = String(fact.value).trim().toLowerCase().replace(/\s+/g, ' ');
+      return shown !== titleForCompare;
+    });
+
+  /*
    * Notes are fetched in ONE query for the whole record (`allNotesFor`), which
    * is right for latency and wrong for disclosure if handed over unfiltered: a
    * note on a hidden tab, or attached to a hidden field, would ride into the
@@ -653,36 +730,67 @@ async function RecordDrawer({
 
   return (
     <section className="min-h-full bg-white px-6 py-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-ink-900">{record.dealName || '(untitled)'}</h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12.5px] text-ink-500">
-            {(() => {
-              // Matches the prototype's own Drawer.tsx header strip exactly:
-              // CellValue for real type-aware rendering (currency formats as
-              // dollars, status shows a swatch pill, dates format properly —
-              // not a bare `String(value)`), and an empty field is skipped
-              // entirely rather than shown as a bare em-dash, so the dot
-              // separators only ever sit between fields that actually have
-              // something to say.
-              let shown = 0;
-              return headerFields.map((f) => {
-                const raw = record.values[f.key];
-                if (raw == null || raw === '' || (Array.isArray(raw) && !raw.length)) return null;
-                const i = shown++;
-                const adapted = adaptFieldForDashboard(config, f);
-                return (
-                  <span key={f.id} className="inline-flex items-center gap-2.5">
-                    {i > 0 ? <span className="text-line" aria-hidden>·</span> : null}
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="text-[11px] uppercase tracking-[.05em] text-ink-400">{f.label}</span>
-                      <CellValue field={adapted} value={raw as import('@/proto/schema').FieldValue} moduleSlug={moduleSlug} />
-                    </span>
-                  </span>
-                );
-              });
-            })()}
-          </div>
+      <div className="flex items-start justify-between gap-4">
+        {/* `min-w-0 flex-1` plus `truncate` on the heading. Without both, a long
+            business name pushed the Archive and Close controls off the sheet
+            and gave the whole drawer a horizontal scrollbar — an inline-flex
+            child cannot shrink below its own min-content width. */}
+        <div className="min-w-0 flex-1">
+          <h2
+            className="truncate text-[20px] font-semibold leading-tight tracking-[-.015em] text-ink-900"
+            title={record.dealName || undefined}
+          >
+            {record.dealName || '(untitled)'}
+          </h2>
+          {/*
+            ── THE FACT GRID ──────────────────────────────────────────────
+            Was one inline run of `LABEL value · LABEL value · …` wrapping over
+            three lines. Three things were wrong with it and all three are
+            structural rather than cosmetic:
+
+              * label and value sat one step apart on the ink ramp and 1.5px
+                apart in size, so neither was clearly the data;
+              * the uppercase tracked labels were WIDER and more even-toned than
+                their values, so the captions outweighed the figures;
+              * wrapping put nothing above anything, so finding one fact meant
+                reading all three lines in order.
+
+            A grid of stacked pairs fixes all three at once: labels align into
+            bands, values align into columns, and the eye can scan. `auto-fill`
+            with a 168px floor resolves against the SHEET rather than the
+            viewport, so it needs no breakpoints and is correct at widths nobody
+            tested — six columns on a wide drawer, one on a phone.
+
+            ⚠️ The fixed `min-h` on the value row is load-bearing, not padding.
+            A cell holding a StatusPill and one holding plain text are then the
+            same height, so rows stay aligned and nothing jitters as records
+            change.
+          */}
+          {headerFacts.length ? (
+            <dl className="mt-4 grid gap-x-6 gap-y-3.5 border-t border-line-soft pt-3.5 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]">
+              {headerFacts.map((fact) => (
+                <div key={fact.id} className="min-w-0">
+                  {/* `min-w-0` on every cell is mandatory: without it `truncate`
+                      silently does nothing inside a grid track and one long
+                      value blows its whole column out. */}
+                  <dt className="block truncate text-[11px] leading-none text-ink-400" title={fact.label}>
+                    {fact.label}
+                  </dt>
+                  <dd className="mt-1.5 flex min-h-[22px] min-w-0 items-center truncate text-[13.5px] font-medium text-ink-900">
+                    {fact.empty ? (
+                      /* Lighter than its own label, so it reads as "nothing
+                         here" and does not attract the eye. The label still
+                         shows: "this module tracks MCC code and this record has
+                         not got one" is information. */
+                      <span className="text-ink-300">&mdash;</span>
+                    ) : (
+                      <HeaderValue field={fact.field} value={fact.value} moduleSlug={moduleSlug} />
+                    )}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           {grant === 'edit' && memberships.length > 0 ? (

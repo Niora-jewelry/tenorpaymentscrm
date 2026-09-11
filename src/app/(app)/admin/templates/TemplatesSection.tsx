@@ -3,19 +3,18 @@
 /**
  * The permission-template list, with create and rename.
  *
- * Two things on this screen are statements rather than decoration, and both
- * exist because the alternative is an admin being quietly misled:
+ * ⚠️ THE BANNER THAT WAS HERE SAID GRANTS COULD NOT BE EDITED. That was true
+ * when it was written and false by the time anyone read it: `setTemplateGrant`
+ * and `clearTemplateGrant` shipped, and the matrix behind the Permissions link
+ * on each row writes both. It told an admin a working feature did not exist,
+ * which is worse than saying nothing. `HowPermissionsWork` replaces it and
+ * explains the model instead — including the one genuinely surprising rule,
+ * that an EMPTY template restricts nothing because an unset scope resolves to
+ * Edit rather than Hidden.
  *
- *   - **The banner.** A template's grants cannot be edited yet, so every
- *     template here has none, and `effective_grant()` falls through to *Edit*
- *     for every scope. Creating "Read only" and assigning it restricts
- *     nothing. Saying that plainly is the same posture the Integrations screen
- *     took ("reads only — nothing writes") and the reason neither offers a
- *     control that does nothing.
- *   - **The per-row "Grants nothing yet" chip.** Once 6c ships, a template
- *     with zero grants stops being the normal case and becomes a real, visible
- *     state worth noticing — the chip already reads correctly for it, and
- *     turns into a grant count the moment there is one.
+ * The per-row "Grants nothing yet" chip stays and now earns its place: a
+ * template with zero grants is no longer the normal case but a real, visible
+ * state worth noticing, and it turns into a grant count the moment there is one.
  *
  * The dialog and inline-edit patterns are the ones `TabsSection`/
  * `PipelinesSection` established, deliberately unchanged: same shell, same
@@ -26,7 +25,6 @@ import Link from 'next/link';
 import { Button, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { formatDate } from '@/proto/ui/tokens';
-import { PlaceholderNotice } from '../PlaceholderNotice';
 import { createTemplateAction, renameTemplateAction, type TemplateFormState } from './actions';
 import type { AdminTemplateRow } from '@/lib/records/adminTemplates';
 
@@ -36,17 +34,6 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
 
   return (
     <div className="space-y-4">
-      <PlaceholderNotice title="A template's grants can be read, not yet changed">
-        <p>
-          <strong>Permissions</strong> on any row opens the full matrix — every module, tab and field,
-          with what the template grants and what it resolves to. Choosing those values is the next piece
-          of work; until it ships, a template created here holds an empty set.
-        </p>
-        <p>
-          An empty set is not a locked-down one. A scope with no entry resolves to <strong>Edit</strong>,
-          so attaching one of these templates to a user changes nothing about what they can see or change.
-        </p>
-      </PlaceholderNotice>
 
       <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
         <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">

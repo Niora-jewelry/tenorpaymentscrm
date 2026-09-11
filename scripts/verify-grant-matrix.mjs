@@ -39,11 +39,21 @@ function ok(label, cond, extra = '') {
   else { fail++; console.log(`  FAIL - ${label} ${extra}`); }
 }
 
-/** Every scope the matrix renders, in the same three kinds the enum allows. */
+/**
+ * Every scope the matrix renders, in the same four kinds the enum allows.
+ *
+ * ⚠️ `subtab` was missing here, so this whole verification — the one thing
+ * asserting that `effective_grant()` and the TypeScript `coalesceGrant()` agree
+ * — had never once exercised a subtab grant. The enum gained the value in
+ * migration 50 and this list was not updated with it, which is precisely the
+ * drift the file exists to catch, one level up.
+ */
 const ALL_SCOPES = `
   select 'module'::grant_scope as kind, id from modules
   union all
   select 'tab'::grant_scope, id from tabs
+  union all
+  select 'subtab'::grant_scope, id from subtabs
   union all
   select 'field'::grant_scope, id from fields where archived_at is null
 `;
@@ -91,7 +101,7 @@ async function main() {
                         on conflict (user_id) do update set template_id = excluded.template_id`,
       [userId, tpl.id]);
 
-    // Deterministic spread across all three levels and all three scope kinds.
+    // Deterministic spread across every level and all four scope kinds.
     const { rowCount: granted } = await client.query(
       `insert into template_grants (template_id, scope_kind, scope_id, grant_level)
        select $1, s.kind, s.id,
@@ -100,7 +110,7 @@ async function main() {
         where (('x' || substr(md5(s.id::text), 1, 8))::bit(32)::int & 2147483647 & 1) = 0`,
       [tpl.id],
     );
-    ok(`seeded ${granted} template grants across all three scope kinds`, granted > 20);
+    ok(`seeded ${granted} template grants across all four scope kinds`, granted > 20);
 
     const { rowCount: overridden } = await client.query(
       `insert into user_grants (user_id, scope_kind, scope_id, grant_level)
@@ -164,18 +174,39 @@ async function main() {
     );
 
     /* ---------------------------------------------------------------------
-     * 5. Subtabs are not a grant scope. The matrix renders them as structure
-     *    only; if the enum ever grows a fourth value that stops being true.
+     * 5. The scope enum matches what the app knows how to render.
+     *
+     * This previously asserted the OPPOSITE — that `grant_scope` was exactly
+     * (module, tab, field) and "subtabs are not a grant scope". Migration 50
+     * added `subtab` precisely because the client's §8 always asked for
+     * "tab/subtab access" and there was no fourth value, so nineteen subtabs
+     * could only be restricted by hiding their whole parent tab. The old check
+     * had even predicted its own obsolescence: "if the enum ever grows a fourth
+     * value that stops being true."
+     *
+     * Inverted rather than deleted. A FIFTH value added without a matching row
+     * renderer would leave a scope an admin can store and never see, which is
+     * exactly the silent gap the original check existed to catch.
      * ------------------------------------------------------------------- */
     const { rows: enumVals } = await client.query(
       `select unnest(enum_range(null::grant_scope))::text as v order by 1`,
     );
+    const scopes = enumVals.map((r) => r.v).sort().join(',');
     ok(
-      'grant_scope is exactly (field, module, tab) — no subtab scope to render',
-      enumVals.map((r) => r.v).join(',') === 'module,tab,field' ||
-      enumVals.map((r) => r.v).sort().join(',') === 'field,module,tab',
-      JSON.stringify(enumVals.map((r) => r.v)),
+      'grant_scope is exactly (field, module, subtab, tab) — every one of which the matrix renders',
+      scopes === 'field,module,subtab,tab',
+      `${scopes} — a new scope needs a row in GrantMatrix.tsx and a cap in grantRules.ts`,
     );
+
+    const { rows: subtabScope } = await client.query(
+      `select count(*)::int n from template_grants where scope_kind = 'subtab'`,
+    );
+    ok(
+      `the subtab scope is actually exercised by this run (${subtabScope[0].n} grants)`,
+      subtabScope[0].n > 0,
+      'seed step above should have written subtab grants',
+    );
+
   } finally {
     await client.query('ROLLBACK');
     await client.end();

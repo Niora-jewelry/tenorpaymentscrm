@@ -1,13 +1,16 @@
 /**
- * Admin → Templates — Phase 6a of the permission work.
+ * Admin → Permissions — create and rename permission templates, and reach the
+ * grant matrix for each one.
  *
- * Creating and renaming permission templates. What a template GRANTS is not
- * editable yet: that is the matrix, 6b (read-only) then 6c (writes), and it
- * gets built on this screen's route once this one is verified. The banner and
- * the per-row "grants nothing" line are there because until then, a template
- * created here has zero grants and therefore restricts nothing —
- * `effective_grant()` falls through to **Edit**, not Hidden. See
- * `adminTemplates.ts`'s header.
+ * A template's grants ARE editable: `setTemplateGrant`/`clearTemplateGrant`
+ * write them, and the Permissions link on each row opens the matrix that does
+ * it. (This file's header used to say the opposite, describing a phase that had
+ * since shipped.)
+ *
+ * `HowPermissionsWork` above the list carries the model itself. It is on the
+ * screen rather than in a document because one rule reliably surprises people
+ * and is expensive to get wrong: an empty template restricts NOTHING, since a
+ * scope with no entry resolves to Edit rather than Hidden.
  *
  * Gated the way every admin route is: `authorize()`, redirect if not admin,
  * and checked again independently inside every action.
@@ -16,6 +19,7 @@ import { redirect } from 'next/navigation';
 import { authorize } from '@/lib/records/permissions';
 import { listTemplatesForAdmin } from '@/lib/records/adminTemplates';
 import { TemplatesSection } from './TemplatesSection';
+import { HowPermissionsWork } from './HowPermissionsWork';
 
 export default async function AdminTemplatesPage() {
   const ctx = await authorize();
@@ -31,6 +35,8 @@ export default async function AdminTemplatesPage() {
           A named set of permissions, attached to users on the Users screen.
         </p>
       </div>
+
+      <HowPermissionsWork />
 
       <TemplatesSection templates={templates} />
     </div>

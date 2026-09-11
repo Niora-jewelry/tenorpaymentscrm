@@ -373,6 +373,7 @@ export function NumberInput({
   inputRef,
   disabled,
   readOnly,
+  onEscape,
 }: {
   /** Controlled value. Omit for an uncontrolled input. */
   value?: number | string;
@@ -390,6 +391,8 @@ export function NumberInput({
   inputRef?: React.Ref<HTMLInputElement>;
   disabled?: boolean;
   readOnly?: boolean;
+  /** Escape pressed — for a caller that opened this in place and wants out. */
+  onEscape?: () => void;
 }) {
   const clamp = (raw: string): number | null => {
     if (raw === '') return null;
@@ -418,6 +421,11 @@ export function NumberInput({
         // A minus or plus would sign the value; `e` is scientific notation.
         // None of the three means anything for a volume, a fee or an MCC code.
         if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault();
+        // Enter commits. `blur()` rather than calling `onCommit` directly, so
+        // the clamp-and-rewrite in `onBlur` still runs — pressing Enter on an
+        // out-of-range number must land the same value that tabbing away does.
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); onEscape?.(); }
       }}
       onPaste={(e) => {
         const text = e.clipboardData.getData('text');

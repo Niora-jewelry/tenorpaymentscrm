@@ -51,6 +51,7 @@ import {
   NumberInput,
   OutlineChip,
   Popover,
+  Spinner,
   StatusPill,
 } from './kit';
 import { Icon } from './icons';
@@ -576,7 +577,7 @@ function EditableCell({
   onCommit: NonNullable<DataTableProps['onCellEdit']>;
 }) {
   const [editing, setEditing] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   const stop = (e: React.SyntheticEvent) => {
@@ -597,23 +598,41 @@ function EditableCell({
         className="relative block w-full"
         onClick={stop}
         onDoubleClick={stop}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Escape') setEditing(false);
-        }}
+        onKeyDown={stop}
       >
+        {/*
+          ⚠️ `autoEdit` is what makes the pencil a ONE-click gesture.
+
+          Without it `FieldRenderer` opens in its read state — a button showing
+          the current value — so the click that said "edit this" only got you a
+          control you then had to click again. It also selects the existing
+          text, so typing replaces the old value instead of appending to it.
+
+          Enter commits and Escape abandons; both live in `FieldRenderer` so the
+          drawer gets them too.
+        */}
         <FieldRenderer
           field={field}
           value={value}
           grant="edit"
           moduleSlug={moduleSlug}
+          autoEdit
+          onCancel={() => setEditing(false)}
           onChange={(next) => {
             setEditing(false);
-            setPending(true);
             setError(null);
+            // Unchanged value, no round trip. Re-opening a cell and tabbing
+            // straight out is the commonest way to touch one by accident.
+            if (JSON.stringify(next ?? null) === JSON.stringify(value ?? null)) return;
+            setState('saving');
             void onCommit(row.id, field, next).then((result) => {
-              setPending(false);
-              if (!result.ok) setError(result.message ?? 'Could not save.');
+              if (result.ok) {
+                setState('saved');
+                window.setTimeout(() => setState('idle'), 900);
+              } else {
+                setState('idle');
+                setError(result.message ?? 'Could not save.');
+              }
             });
           }}
         />
@@ -624,9 +643,10 @@ function EditableCell({
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1">
       <span
-        className={`min-w-0 flex-1 truncate ${pending ? 'opacity-50' : ''}`}
+        className={`min-w-0 flex-1 truncate transition-opacity ${state === 'saving' ? 'opacity-45' : ''}`}
         onDoubleClick={(e) => {
           stop(e);
+          setError(null);
           setEditing(true);
         }}
         title={error ?? 'Double-click to edit'}
@@ -634,8 +654,31 @@ function EditableCell({
         <CellValue field={field} value={value} moduleSlug={moduleSlug} />
       </span>
 
-      {error ? (
-        <Icon name="alert-triangle" size={11} className="shrink-0 text-bad" />
+      {/*
+        One slot, three states, fixed width — so a row does not reflow as a
+        value saves. Saving and saved are transient; an error persists until the
+        cell is opened again, because a failed write is the one outcome the user
+        has to be able to come back to.
+      */}
+      {state === 'saving' ? (
+        <Spinner className="shrink-0" />
+      ) : state === 'saved' ? (
+        <Icon name="check" size={12} strokeWidth={2.6} className="shrink-0 animate-settle text-ok" />
+      ) : error ? (
+        <button
+          type="button"
+          title={`${error} — click to try again`}
+          aria-label={`${error}. Try again`}
+          onClick={(e) => {
+            stop(e);
+            setError(null);
+            setEditing(true);
+          }}
+          onDoubleClick={stop}
+          className="grid size-5 shrink-0 place-items-center rounded text-bad transition-colors hover:bg-white"
+        >
+          <Icon name="alert-triangle" size={12} />
+        </button>
       ) : (
         <button
           type="button"
@@ -655,6 +698,7 @@ function EditableCell({
     </span>
   );
 }
+
 
 export function DataTable({
   moduleSlug,

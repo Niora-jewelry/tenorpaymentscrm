@@ -24,6 +24,7 @@ const plexMono = IBM_Plex_Mono({
   display: 'swap',
 });
 
+
 export const metadata: Metadata = {
   title: 'TapDash CRM',
   description: 'Merchant services CRM',

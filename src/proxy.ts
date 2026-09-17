@@ -50,7 +50,34 @@ const PUBLIC_PATHS = new Set(['/login', '/signup', '/reset-password']);
  * per-email/per-IP rate limiting. Listed explicitly rather than as an `/api/*`
  * wildcard, so any future endpoint is private by default.
  */
-const PUBLIC_API_PATHS = new Set(['/api/auth/signup']);
+const PUBLIC_API_PATHS = new Set([
+  '/api/auth/signup',
+
+  /*
+   * ── Twilio webhooks ───────────────────────────────────────────────────
+   * Twilio POSTs these server-to-server with NO user session. Without an
+   * entry here the proxy redirects the request to /login, Twilio receives
+   * login HTML instead of TwiML, reports "Document parse failure", and the
+   * feature fails with nothing wrong on our side. Donny's handoff notes say
+   * this bit them twice; it is listed as a required checklist item there for
+   * that reason.
+   *
+   * The `X-Twilio-Signature` check inside each route IS the authentication
+   * for these paths — HMAC-SHA1 against the account auth token, failing
+   * closed when the token is unset.
+   *
+   * ⚠ LISTED INDIVIDUALLY, NEVER AS AN `/api/twilio` PREFIX. A prefix would
+   * also expose /api/twilio/token, which mints call-billing credentials and
+   * must stay session-gated. That endpoint is called by our own browser, not
+   * by Twilio, and is deliberately absent from this list.
+   */
+  '/api/twilio/voice',
+  '/api/twilio/status',
+  '/api/twilio/inbound-status',
+  '/api/twilio/recording',
+  '/api/twilio/message',
+  '/api/twilio/message-status',
+]);
 
 /** Signed-in users are bounced off these to the dashboard. */
 const AUTH_ONLY_PATHS = new Set(['/login', '/signup', '/reset-password']);

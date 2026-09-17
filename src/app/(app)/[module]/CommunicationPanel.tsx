@@ -16,6 +16,9 @@ import { CHANNEL_ICON } from '@/proto/ui/icons';
 import { ComingSoon, EmptyState, OutlineChip, SpecNote, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import type { Message, MessageChannel } from '@/lib/records/messages';
+import type { PhoneCall } from '@/lib/phone/calls';
+import type { PhoneMessage } from '@/lib/phone/messages';
+import { PhonePanel, RecordingsPanel, SmsThread } from './PhonePanels';
 
 function channelMeta(channel: MessageChannel) {
   if (channel === 'instantly') return { label: 'Instantly', swatch: 'purple' as const };
@@ -37,11 +40,18 @@ export function CommunicationPanel({
   comingSoon,
   subtabLabel,
   messages,
+  moduleSlug,
+  calls,
+  smsMessages,
 }: {
   subtabId: string;
   comingSoon: boolean;
   subtabLabel: string;
   messages: Message[];
+  moduleSlug: string;
+  recordId: string;
+  calls: PhoneCall[];
+  smsMessages: PhoneMessage[];
 }) {
   const [now] = useState(() => Date.now());
   const channel: MessageChannel = subtabId === 'text' ? 'text' : subtabId === 'instantly' ? 'instantly' : 'email';
@@ -50,6 +60,17 @@ export function CommunicationPanel({
     () => messages.filter((m) => m.channel === channel),
     [messages, channel],
   );
+
+  /*
+   * Phone and Call recordings were seeded `coming_soon` because no provider was
+   * wired. Twilio now is, so they render for real and the flag is ignored for
+   * these two — deliberately not cleared in the database, because an admin can
+   * still switch a subtab off there and that must keep working.
+   *
+   * Teams has no provider and is still genuinely coming soon.
+   */
+  if (subtabId === 'phone') return <PhonePanel calls={calls} />;
+  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} />;
 
   if (comingSoon) {
     const icon = subtabId === 'teams' ? 'video' : subtabId === 'recordings' ? 'mic' : 'phone';
@@ -66,6 +87,22 @@ export function CommunicationPanel({
         <strong>all</strong> of them; if the sender already exists, no new record is ever created.
         Sync is forward-only — no historical backfill.
       </SpecNote>
+
+      {channel === 'text' ? (
+        /*
+         * The live SMS thread, below whatever the `messages` table already
+         * holds for this channel. Two sources on one screen is not ideal, but
+         * the alternative was hiding the seeded demo history the client is
+         * testing against — and these ARE different things: `messages` is what
+         * arrived through a provider webhook, `phone_messages` is what we sent
+         * and received over Twilio ourselves.
+         */
+        <SmsThread
+          moduleSlug={moduleSlug}
+          messages={smsMessages}
+          toE164={replyTarget(smsMessages, calls)}
+        />
+      ) : null}
 
       {channelMessages.length === 0 ? (
         <EmptyState icon={CHANNEL_ICON[channel]} title="No messages yet" body="Nothing has arrived on this channel." />
@@ -139,4 +176,23 @@ function LastMessageReceived({ messages, now }: { messages: Message[]; now: numb
       </p>
     </div>
   );
+}
+
+/**
+ * Which number a reply should go to.
+ *
+ * The most recent counterpart wins: the last person who texted, else the last
+ * number called. Deriving it rather than asking means the composer works
+ * without a picker on the overwhelmingly common case — one merchant, one
+ * number. Null when the record has no telephony history at all, and the
+ * composer then explains what to do instead of rendering a dead box.
+ */
+function replyTarget(messages: PhoneMessage[], calls: PhoneCall[]): string | null {
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage) {
+    return lastMessage.direction === 'in' ? lastMessage.fromE164 : lastMessage.toE164;
+  }
+  const lastCall = calls[0]; // already newest-first
+  if (lastCall) return lastCall.direction === 'in' ? lastCall.fromE164 : lastCall.toE164;
+  return null;
 }

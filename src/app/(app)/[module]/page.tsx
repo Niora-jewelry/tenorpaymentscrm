@@ -31,6 +31,8 @@ import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/
 import { loginsFor } from '@/lib/records/logins';
 import { allPeriods, filesForRecord } from '@/lib/records/statements';
 import { messagesFor } from '@/lib/records/messages';
+import { callsForRecord } from '@/lib/phone/calls';
+import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
@@ -436,7 +438,7 @@ async function RecordDrawer({
   const [
     memberships, entries, cases, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
-    messages, notesByScope, teamRoster,
+    messages, notesByScope, teamRoster, phoneCalls, smsMessages,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('freeform') ? entriesFor(ctx, record.id) : [],
@@ -460,6 +462,17 @@ async function RecordDrawer({
     shows('communication') ? messagesFor(ctx, record.id) : [],
     allNotesFor(ctx, record.id),
     shows('updates') ? teamRosterFor(ctx, record.id) : [],
+    /*
+     * Calls and texts ride along with the same parallel wave as everything
+     * else, and are skipped entirely when Communication is hidden — the same
+     * `shows()` guard the message fetch above already uses, so a viewer who
+     * cannot open the tab does not pay for its two queries.
+     *
+     * Both functions ask the phone subtab grant themselves and return [] when
+     * it is hidden, so this guard is the cheap outer one, not the boundary.
+     */
+    shows('communication') ? callsForRecord(ctx, record.id) : [],
+    shows('communication') ? smsForRecord(ctx, record.id) : [],
   ]);
 
   const fileRows: FileRow[] = [...applicationRows, ...otherRows];
@@ -851,6 +864,8 @@ async function RecordDrawer({
         statementPeriods={statementPeriods}
         statementFiles={statementFiles}
         messages={messages}
+        phoneCalls={phoneCalls}
+        smsMessages={smsMessages}
         notesByScope={notesByScopeObj}
         authorNames={authorNames}
         viewerId={ctx.userId}

@@ -29,6 +29,8 @@ import type { FileRow, FileEntry } from '@/lib/records/files';
 import type { LoginRow } from '@/lib/records/logins';
 import type { StatementPeriod, StatementFile } from '@/lib/records/statements';
 import type { Message } from '@/lib/records/messages';
+import type { PhoneCall } from '@/lib/phone/calls';
+import type { PhoneMessage } from '@/lib/phone/messages';
 import type { Note } from '@/lib/records/notes';
 
 type Grant = 'hidden' | 'view' | 'edit';
@@ -88,6 +90,8 @@ export function DrawerTabs({
   statementPeriods,
   statementFiles,
   messages,
+  phoneCalls,
+  smsMessages,
   notesByScope,
   authorNames,
   viewerId,
@@ -114,6 +118,8 @@ export function DrawerTabs({
   statementPeriods: StatementPeriod[];
   statementFiles: StatementFile[];
   messages: Message[];
+  phoneCalls: PhoneCall[];
+  smsMessages: PhoneMessage[];
   notesByScope: Record<string, Note[]>;
   authorNames: Record<string, string>;
   viewerId: string;
@@ -351,6 +357,10 @@ export function DrawerTabs({
             comingSoon={activeSubtab?.comingSoon ?? false}
             subtabLabel={activeSubtab?.label ?? ''}
             messages={messages}
+            recordId={recordId}
+            moduleSlug={moduleSlug}
+            calls={phoneCalls}
+            smsMessages={smsMessages}
           />
         ) : (
           <p className="flex items-center gap-2 text-[13px] text-ink-400">

@@ -64,9 +64,30 @@ const nextConfig: NextConfig = {
     // Server Actions are only accepted from these origins — the Origin/Host
     // check that closes CSRF alongside SameSite=Lax cookies.
     serverActions: {
+      /**
+       * Server Actions are accepted only from these origins — the Origin/Host
+       * check that closes CSRF alongside SameSite=Lax cookies.
+       *
+       * ⚠ FIRST-DEPLOY TRAP THIS AVOIDS. This list is baked in at BUILD time.
+       * On a first Vercel deploy nobody knows the URL yet, so
+       * NEXT_PUBLIC_APP_URL is still localhost — and every Server Action on the
+       * deployed site is then rejected. The symptom is brutal to diagnose:
+       * pages render perfectly, and every button silently does nothing.
+       *
+       * Vercel injects the deployment's own host as VERCEL_URL and the stable
+       * production host as VERCEL_PROJECT_PRODUCTION_URL, both at build time.
+       * Including them means the first deploy works before anyone has
+       * configured anything, and preview deployments work permanently.
+       *
+       * NEXT_PUBLIC_APP_URL is still worth setting — Twilio's callbacks are
+       * built from it (see lib/twilio/webhook-request.ts) and there is no
+       * fallback for that.
+       */
       allowedOrigins: [
         new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').host,
-      ],
+        process.env.VERCEL_URL,
+        process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      ].filter((host): host is string => Boolean(host)),
 
       /**
        * Uploads travel through a Server Action, so THIS is the real ceiling on

@@ -204,3 +204,61 @@ export async function sendMessage(
     return { ok: false, error: 'send_failed', detail };
   }
 }
+
+export type PhoneThread = {
+  threadKey: string;
+  /** The merchant this number belongs to, when it matches one. */
+  recordId: string | null;
+  lastBody: string | null;
+  lastAt: string;
+  lastDirection: 'in' | 'out';
+  count: number;
+};
+
+/**
+ * This user's SMS conversations, newest first.
+ *
+ * ── WHY THIS EXISTS ──────────────────────────────────────────────────────
+ * Without it, a text from a number matching no record has NOWHERE to appear.
+ * The drawer's Text subtab filters by `record_id`, so an unmatched message is
+ * stored correctly, counted correctly, and invisible — the worst kind of bug,
+ * because nothing looks broken and a merchant's reply simply never arrives.
+ *
+ * Grouping happens here rather than in SQL because the page size is small (one
+ * user's conversations) and a DISTINCT ON would need a second query for the
+ * counts anyway.
+ */
+export async function threadsForUser(ctx: AuthContext, limit = 200): Promise<PhoneThread[]> {
+  if (!(await canSeePhone(ctx))) return [];
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('phone_messages')
+    .select(MESSAGE_SELECT)
+    .eq('owner_id', ctx.userId)
+    .is('deleted_at', null)
+    .order('sent_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+
+  const byThread = new Map<string, PhoneThread>();
+  for (const row of (data ?? []) as MessageRow[]) {
+    const existing = byThread.get(row.thread_key);
+    if (existing) {
+      existing.count += 1;
+      // Rows arrive newest-first, so the first one seen is already the latest.
+      if (!existing.recordId && row.record_id) existing.recordId = row.record_id;
+      continue;
+    }
+    byThread.set(row.thread_key, {
+      threadKey: row.thread_key,
+      recordId: row.record_id,
+      lastBody: row.body,
+      lastAt: row.sent_at,
+      lastDirection: row.direction,
+      count: 1,
+    });
+  }
+  return [...byThread.values()];
+}

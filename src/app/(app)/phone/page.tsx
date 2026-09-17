@@ -15,16 +15,19 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { canSeePhone } from '@/lib/phone/access';
 import { callsForUser } from '@/lib/phone/calls';
 import { resolveUserActiveNumber } from '@/lib/phone/numbers';
+import { threadsForUser } from '@/lib/phone/messages';
 import { Dialer } from './Dialer';
+import { Threads } from './Threads';
 
 export default async function PhonePage() {
   const ctx = await authorize();
   if (!(await canSeePhone(ctx))) redirect('/dashboard');
 
   const supabase = await createSupabaseServerClient();
-  const [calls, myNumber] = await Promise.all([
+  const [calls, myNumber, threads] = await Promise.all([
     callsForUser(ctx),
     resolveUserActiveNumber(supabase, ctx.userId),
+    threadsForUser(ctx),
   ]);
 
   return (
@@ -37,6 +40,8 @@ export default async function PhonePage() {
       </div>
 
       <Dialer calls={calls} myNumber={myNumber?.e164 ?? null} />
+
+      <Threads threads={threads} />
     </div>
   );
 }

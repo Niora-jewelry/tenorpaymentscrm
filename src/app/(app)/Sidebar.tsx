@@ -229,6 +229,21 @@ export function Sidebar({
           </>
         ) : null}
 
+        {/*
+          Phone is not a module — it has no records — so it sits on its own
+          rather than in the Modules group. Shown to everyone: the page itself
+          redirects anyone whose `communication/phone` grant is hidden, and
+          hiding the link as well would leave someone who HAS the grant unable
+          to find it after an admin turns it on.
+        */}
+        <NavItem
+          href="/phone"
+          icon="phone"
+          label="Phone"
+          active={pathname === '/phone'}
+          collapsed={collapsed}
+        />
+
         {isAdmin ? (
           <>
             <GroupLabel collapsed={collapsed}>Configure</GroupLabel>
@@ -272,6 +287,16 @@ export function Sidebar({
               opens it learns exactly what is and is not wired. Same position
               as the prototype's own admin nav (`proto/ui/Sidebar.tsx:31-37`).
             */}
+            {/* Phone numbers sits ABOVE Integrations because it is a thing an
+                admin actually operates — assigning a number is how a rep gets
+                telephony — whereas Integrations is a status page. */}
+            <NavItem
+              href="/admin/numbers"
+              icon="phone"
+              label="Phone numbers"
+              active={pathname === '/admin/numbers'}
+              collapsed={collapsed}
+            />
             <NavItem
               href="/admin/integrations"
               icon="link"

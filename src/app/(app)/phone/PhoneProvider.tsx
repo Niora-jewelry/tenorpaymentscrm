@@ -1,0 +1,283 @@
+'use client';
+
+/**
+ * The browser softphone — one Twilio Device for the whole app.
+ *
+ * ── WHY IT IS MOUNTED APP-WIDE AND REGISTERS EAGERLY ─────────────────────
+ * A lazily-created Device cannot RECEIVE calls. To ring when a merchant calls
+ * back, the Device has to exist and be registered before anything happens, on
+ * every page — so this provider sits in the `(app)` layout and builds the
+ * Device on mount.
+ *
+ * Two consequences the integrator has to know, both accepted deliberately:
+ *   • the microphone prompt may appear on first app load rather than on first
+ *     dial. A denied microphone must leave the CRM completely usable and only
+ *     degrade calling, which is why nothing in the render path depends on it.
+ *   • a token request fires once per session, app-wide, instead of per dial.
+ *
+ * ── FAIL-SILENT IS LOAD-BEARING HERE ─────────────────────────────────────
+ * Every await in the init path — the dynamic import, the token fetch, the
+ * constructor, `register()` — lives inside `ensureDevice()`, and both callers
+ * catch. Nothing in the render path can throw. A Twilio outage, a missing
+ * environment variable or a user with no assigned number degrades CALLING; it
+ * must never stop Leads, Deals or the drawer from rendering. The whole CRM
+ * hanging because a phone token 500'd would be a far worse bug than not being
+ * able to dial.
+ *
+ * ── UNVERIFIED, AND WORTH TESTING FIRST ──────────────────────────────────
+ * ⚠ MULTIPLE TABS. Two tabs means two Devices registered on the same
+ * `user_<uuid>` identity. Asked directly, Donny's answer was that he never
+ * tested it — he only ever exercised navigating within the CRM during a call.
+ * Twilio may ring all of them, ring the most recent, or error. This is the
+ * first thing to check with a real user, because people keep CRMs open in
+ * several tabs and the failure would look like "inbound calls are flaky".
+ */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { dialAction } from '../phoneActions';
+
+/** Minimal shapes — the SDK is imported dynamically, so it has no static type here. */
+type TwilioCall = {
+  accept: () => void;
+  reject: () => void;
+  disconnect: () => void;
+  customParameters?: Map<string, string>;
+  parameters?: Record<string, string>;
+  on: (event: string, handler: (...args: unknown[]) => void) => void;
+};
+
+type DeviceState = 'idle' | 'starting' | 'ready' | 'error';
+
+export type ActiveCall = {
+  direction: 'in' | 'out';
+  /** The other party, E.164. */
+  peer: string;
+  /** Our `phone_calls.id`, when we know it. Inbound learns it from Twilio. */
+  callId: string | null;
+  status: 'ringing' | 'connected';
+};
+
+type PhoneContextValue = {
+  deviceState: DeviceState;
+  errorMessage: string | null;
+  activeCall: ActiveCall | null;
+  /** Null unless a call is ringing IN and has not been answered. */
+  incoming: ActiveCall | null;
+  dial: (to: string) => Promise<void>;
+  hangUp: () => void;
+  answer: () => void;
+  reject: () => void;
+};
+
+const PhoneContext = createContext<PhoneContextValue | null>(null);
+
+export function usePhone(): PhoneContextValue {
+  const ctx = useContext(PhoneContext);
+  if (!ctx) throw new Error('usePhone must be used inside <PhoneProvider>');
+  return ctx;
+}
+
+export function PhoneProvider({ children }: { children: ReactNode }) {
+  const [deviceState, setDeviceState] = useState<DeviceState>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [incoming, setIncoming] = useState<ActiveCall | null>(null);
+
+  const deviceRef = useRef<unknown>(null);
+  const callRef = useRef<TwilioCall | null>(null);
+  const initRef = useRef<Promise<unknown> | null>(null);
+
+  /**
+   * Build and register the Device, at most once.
+   *
+   * Idempotent via `initRef`: the mount effect and a dial can both call it, and
+   * the second one waits on the first rather than creating a second Device.
+   */
+  const ensureDevice = useCallback(async () => {
+    if (deviceRef.current) return deviceRef.current;
+    if (initRef.current) return initRef.current;
+
+    initRef.current = (async () => {
+      setDeviceState('starting');
+
+      const res = await fetch('/api/twilio/token', { cache: 'no-store' });
+      if (!res.ok) {
+        // 403 means "no number assigned" or "not permitted" — both are ordinary
+        // states for most users, not faults. They are reported quietly and the
+        // rest of the CRM carries on.
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `token request failed (${res.status})`);
+      }
+      const { token } = (await res.json()) as { token: string };
+
+      // Dynamic import: the Voice SDK is ~100KB and touches browser-only APIs,
+      // so it must not be in the server bundle or the initial payload.
+      const { Device } = await import('@twilio/voice-sdk');
+      const device = new Device(token, { logLevel: 'error' });
+
+      device.on('registered', () => setDeviceState('ready'));
+      device.on('error', (err: { message?: string }) => {
+        setErrorMessage(err?.message ?? 'The phone connection failed.');
+        setDeviceState('error');
+      });
+
+      device.on('tokenWillExpire', async () => {
+        // Refresh in place. A lapsed token silently stops inbound calls
+        // arriving, which is the kind of failure nobody notices for a day.
+        try {
+          const refresh = await fetch('/api/twilio/token', { cache: 'no-store' });
+          if (refresh.ok) {
+            const { token: next } = (await refresh.json()) as { token: string };
+            device.updateToken(next);
+          }
+        } catch {
+          // Leave the stale token in place; the error handler above will fire
+          // if it actually stops working.
+        }
+      });
+
+      device.on('incoming', (call: TwilioCall) => {
+        const peer = call.customParameters?.get('From') ?? call.parameters?.From ?? 'Unknown';
+        const callId = call.customParameters?.get('CallId') ?? null;
+
+        callRef.current = call;
+        setIncoming({ direction: 'in', peer, callId, status: 'ringing' });
+
+        call.on('accept', () => {
+          setIncoming(null);
+          setActiveCall({ direction: 'in', peer, callId, status: 'connected' });
+        });
+        call.on('disconnect', () => {
+          callRef.current = null;
+          setIncoming(null);
+          setActiveCall(null);
+        });
+        call.on('cancel', () => {
+          callRef.current = null;
+          setIncoming(null);
+          setActiveCall(null);
+        });
+        call.on('reject', () => {
+          callRef.current = null;
+          setIncoming(null);
+        });
+      });
+
+      await device.register();
+      deviceRef.current = device;
+      return device;
+    })();
+
+    try {
+      return await initRef.current;
+    } finally {
+      // Clear the latch so a later attempt can retry after a failure.
+      if (!deviceRef.current) initRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureDevice().catch((err: Error) => {
+      if (cancelled) return;
+      // Not having a phone is normal for most users. Record the reason and
+      // leave the app alone.
+      setErrorMessage(err.message);
+      setDeviceState('error');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureDevice]);
+
+  const dial = useCallback(
+    async (to: string) => {
+      setErrorMessage(null);
+
+      // The ROW COMES FIRST. Its id is handed to Twilio as a custom parameter
+      // and is what the status and recording callbacks match on — a dial that
+      // skipped this would connect fine and log nothing.
+      const created = await dialAction(to);
+      if (!created.ok) {
+        setErrorMessage(created.message);
+        return;
+      }
+
+      try {
+        const device = (await ensureDevice()) as {
+          connect: (opts: { params: Record<string, string> }) => Promise<TwilioCall>;
+        };
+
+        setActiveCall({
+          direction: 'out',
+          peer: created.toE164,
+          callId: created.callId,
+          status: 'ringing',
+        });
+
+        const call = await device.connect({
+          // `To` is what /api/twilio/voice reads; `CallId` is the correlation
+          // key. Both names are a contract with that route — change one, change
+          // both.
+          params: { To: created.toE164, CallId: created.callId },
+        });
+        callRef.current = call;
+
+        call.on('accept', () =>
+          setActiveCall({
+            direction: 'out',
+            peer: created.toE164,
+            callId: created.callId,
+            status: 'connected',
+          }),
+        );
+        call.on('disconnect', () => {
+          callRef.current = null;
+          setActiveCall(null);
+        });
+        call.on('cancel', () => {
+          callRef.current = null;
+          setActiveCall(null);
+        });
+        call.on('error', (...args: unknown[]) => {
+          const err = args[0] as { message?: string } | undefined;
+          setErrorMessage(err?.message ?? 'The call failed.');
+          callRef.current = null;
+          setActiveCall(null);
+        });
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : 'The call could not be placed.');
+        setActiveCall(null);
+      }
+    },
+    [ensureDevice],
+  );
+
+  const hangUp = useCallback(() => {
+    callRef.current?.disconnect();
+    callRef.current = null;
+    setActiveCall(null);
+  }, []);
+
+  const answer = useCallback(() => callRef.current?.accept(), []);
+  const reject = useCallback(() => {
+    callRef.current?.reject();
+    callRef.current = null;
+    setIncoming(null);
+  }, []);
+
+  return (
+    <PhoneContext.Provider
+      value={{ deviceState, errorMessage, activeCall, incoming, dial, hangUp, answer, reject }}
+    >
+      {children}
+    </PhoneContext.Provider>
+  );
+}

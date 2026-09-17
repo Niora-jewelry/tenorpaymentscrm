@@ -13,6 +13,8 @@ import { notificationsFor, unreadNotificationCount } from '@/lib/records/notific
 import { teamDirectory } from '@/lib/records/directory';
 import { PeopleProvider } from '@/proto/ui/people';
 import { Sidebar } from './Sidebar';
+import { PhoneProvider } from './phone/PhoneProvider';
+import { CallBar } from './phone/CallBar';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await authorize();
@@ -56,6 +58,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PeopleProvider people={people}>
+    {/*
+      The phone Device is built here, app-wide, because a lazily-created one
+      cannot RECEIVE calls — to ring when a merchant calls back it has to exist
+      and be registered before anything happens, on every page.
+
+      Everything inside fails silent by design: a Twilio outage, a missing
+      environment variable or a user with no assigned number degrades CALLING
+      and nothing else. `CallBar` renders null unless a call is actually in
+      progress, so the cost on every other page is one null check.
+    */}
+    <PhoneProvider>
     <div className="flex h-screen overflow-hidden bg-canvas">
       <Sidebar
         storageModules={storageModules}
@@ -69,7 +82,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         initialUnreadCount={unreadCount}
       />
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+      <CallBar />
     </div>
+    </PhoneProvider>
     </PeopleProvider>
   );
 }

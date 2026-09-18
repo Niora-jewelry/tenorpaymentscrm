@@ -73,18 +73,28 @@ function CredentialRow({ row }: { row: LoginRow }) {
   const [pending, startTransition] = useTransition();
   const [revealed, setRevealed] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState(false);
+  /*
+   * A SENTENCE, not a boolean.
+   *
+   * This was `useState(false)` rendering the single word "Failed" in place of
+   * the note — so a revealed-password refusal and a clipboard rejection looked
+   * identical, and neither said what to do. On a credential that matters: one
+   * means "you are not allowed to see this", the other means "it is on your
+   * screen but not on your clipboard", and pasting after the second gets you
+   * whatever was there before.
+   */
+  const [error, setError] = useState<string | null>(null);
 
   const reveal = () => {
     if (revealed) {
       setRevealed(null);
       return;
     }
-    setError(false);
+    setError(null);
     startTransition(async () => {
       const result = await revealPasswordAction(row.id);
       if (result.ok && result.password != null) setRevealed(result.password);
-      else setError(true);
+      else setError('Could not reveal — you may not have permission.');
     });
   };
 
@@ -110,10 +120,10 @@ function CredentialRow({ row }: { row: LoginRow }) {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         } catch {
-          setError(true);
+          setError('Shown, but the browser blocked the copy. Select it and copy manually.');
         }
       } else {
-        setError(true);
+        setError('Could not reveal — you may not have permission.');
       }
     });
   };
@@ -149,7 +159,13 @@ function CredentialRow({ row }: { row: LoginRow }) {
         <IconButton icon={copied ? 'check' : 'copy'} size={22} title="Copy without revealing" onClick={copy} />
       </span>
       <span className="truncate text-[12px] text-ink-500">
-        {error ? <span className="text-danger">Failed</span> : row.note ?? <span className="text-ink-400/70">—</span>}
+        {error ? (
+          <span role="alert" className="text-[11.5px] text-danger">
+            {error}
+          </span>
+        ) : (
+          row.note ?? <span className="text-ink-400/70">—</span>
+        )}
       </span>
       {pending ? null : null}
     </div>

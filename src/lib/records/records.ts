@@ -16,8 +16,8 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { fieldGrant, fieldGrants, moduleGrant, tabGrant, subtabGrant, capGrant, VISIBILITY_FIELD_KEY, type Grant } from './permissions';
-import { moduleWriteCap } from './tabAccess';
+import { fieldGrant, fieldGrants, moduleGrant, capGrant, VISIBILITY_FIELD_KEY, type Grant } from './permissions';
+import { fieldCapsFor, hiddenFieldKeysFor } from './tabAccess';
 import { loadConfig, columnsForModule, type Field, type FieldType } from './config';
 import { parseTeamMembers } from './teamMembers';
 
@@ -38,20 +38,21 @@ async function fieldCaps(
 
   const config = await loadConfig();
   const field = config.fields.find((f) => f.id === fieldId);
-  // A field always has a tab. The fallback only covers a field deleted from
-  // config between render and submit, where the module ceiling and the field's
-  // own grant still decide the answer.
-  // The subtab is a grant scope since migration 50, so the write ceiling is
-  // module → tab → subtab, matching what the drawer resolves on read. Without
-  // the subtab arm a View subtab would render read-only fields that the server
-  // then happily accepted a write for.
-  const [caps, tg, sg] = await Promise.all([
-    moduleWriteCap(ctx, recordIds),
-    field ? tabGrant(ctx, field.tabId) : Promise.resolve<Grant>('edit'),
-    field?.subtabId ? subtabGrant(ctx, field.subtabId) : Promise.resolve<Grant>('edit'),
-  ]);
-  const above = capGrant(tg, sg);
-  return new Map(recordIds.map((id) => [id, capGrant(caps.get(id) ?? 'hidden', above)]));
+
+  /*
+   * ⚠ THE WHOLE CHAIN IN ONE CALL, and that is the point.
+   *
+   * This used to resolve the module ceiling, the tab and the subtab as three
+   * independent lookups and cap the results together. Each of those three took
+   * the BEST answer across the record's modules, so capping them afterwards
+   * could grant a level that held in no single module — see the worked example
+   * on `chainCapFor`. `fieldCapsFor` caps within each module first.
+   *
+   * It also returns the FINAL grant rather than a ceiling above the field: the
+   * field's own grant is per-module too, so resolving it separately reopened
+   * the same hole one level down.
+   */
+  return fieldCapsFor(ctx, recordIds, field);
 }
 
 async function fieldCap(ctx: AuthContext, recordId: string, fieldId: string): Promise<Grant> {
@@ -148,9 +149,20 @@ function stripHidden(values: Record<string, unknown>, hiddenKeys: Set<string>): 
   return out;
 }
 
-async function hiddenKeysFor(ctx: AuthContext, fields: Field[]): Promise<Set<string>> {
+/**
+ * Hidden keys for a LIST of records shown inside one module.
+ *
+ * `moduleId` is not optional in practice and must not be dropped: a field's
+ * grant can differ by module, so resolving this globally both missed
+ * per-module hides and over-stripped fields a module re-opens.
+ */
+async function hiddenKeysFor(
+  ctx: AuthContext,
+  fields: Field[],
+  moduleId: string | null,
+): Promise<Set<string>> {
   if (ctx.isAdmin) return new Set();
-  const grants = await fieldGrants(ctx, fields);
+  const grants = await fieldGrants(ctx, fields, moduleId);
   const hidden = new Set<string>();
   for (const f of fields) {
     if (grants.get(f.id) === 'hidden') hidden.add(f.key);
@@ -308,7 +320,7 @@ export async function listRecords(
 
   const total = count ?? 0;
   const columns = moduleId ? columnsForModule(config, moduleId) : [];
-  const hidden = await hiddenKeysFor(ctx, columns);
+  const hidden = await hiddenKeysFor(ctx, columns, moduleId ?? null);
 
   /*
    * Values arrive separately and already stripped — `values` is no longer a
@@ -414,7 +426,10 @@ export async function getRecord(ctx: AuthContext, recordId: string): Promise<Rec
   const valuesById = await valuesByRecordId(supabase, [recordId]);
   (data as Record<string, unknown>).values = valuesById.get(recordId) ?? {};
 
-  const hidden = await hiddenKeysFor(ctx, config.fields);
+  // Per RECORD, not global: this record's modules decide which per-module
+  // field grants apply, and `record_values_for` already stripped by the same
+  // rule in the database.
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
   const row = mapRow(data as Record<string, unknown>);
   return { ...row, values: stripHidden(row.values, hidden) };
 }
@@ -650,7 +665,10 @@ export async function setValue(
   // precisely so a future second caller cannot forget it.
   assertWritable(field);
 
-  const effective = capGrant(await fieldCap(ctx, recordId, field.id), await fieldGrant(ctx, field));
+  // `fieldCap` is the whole chain now, field included — capping it again with
+  // a globally-resolved `fieldGrant` would reintroduce the per-module hole it
+  // exists to close.
+  const effective = await fieldCap(ctx, recordId, field.id);
   if (effective !== 'edit') throw new Error(`No edit access to ${field.label}`);
 
   // Same placement, same reason: a `team_member` write is a change to who can
@@ -731,39 +749,32 @@ export async function setValues(
 ): Promise<SetValuesResult> {
   if (!changes.length) throw new Error('setValues called with no changes');
 
-  // One module-ceiling lookup for the record, shared by every field below.
-  const moduleCap = ctx.isAdmin
-    ? ('edit' as Grant)
-    : ((await moduleWriteCap(ctx, [recordId])).get(recordId) ?? 'hidden');
-
   const config = await loadConfig();
-  const tabCapCache = new Map<string, Grant>();
-
-  const subtabCapCache = new Map<string, Grant>();
 
   // Checked for the WHOLE batch before anything is written: a batch that would
   // touch one read-only field is refused entirely rather than partially applied.
   for (const { field } of changes) assertWritable(field);
 
+  /*
+   * One resolution per DISTINCT field, each one the full module -> tab ->
+   * subtab -> field chain capped inside every module this record is displayed
+   * in.
+   *
+   * The previous shape cached a module ceiling, a tab grant and a subtab grant
+   * separately and capped the three together. With per-module grants that is
+   * not the same calculation: each part took its best across the record's
+   * modules, so the combination could pass a check that no single module
+   * allowed. `fieldCapsFor` does the capping inside each module first.
+   */
+  const capCache = new Map<string, Grant>();
   for (const { field } of changes) {
     const dbField = config.fields.find((f) => f.id === field.id || f.key === field.key);
-    const tabId = dbField?.tabId;
-    let tabCap: Grant = 'edit';
-    if (!ctx.isAdmin && tabId) {
-      if (!tabCapCache.has(tabId)) tabCapCache.set(tabId, await tabGrant(ctx, tabId));
-      tabCap = tabCapCache.get(tabId)!;
+    const cacheKey = dbField?.id ?? field.key;
+    if (!capCache.has(cacheKey)) {
+      const caps = await fieldCapsFor(ctx, [recordId], dbField);
+      capCache.set(cacheKey, caps.get(recordId) ?? 'hidden');
     }
-    // Same subtab ceiling the read path applies, cached per subtab so a batch
-    // spanning one subtab costs one lookup rather than one per field.
-    const subtabId = dbField?.subtabId;
-    let subtabCap: Grant = 'edit';
-    if (!ctx.isAdmin && subtabId) {
-      if (!subtabCapCache.has(subtabId)) subtabCapCache.set(subtabId, await subtabGrant(ctx, subtabId));
-      subtabCap = subtabCapCache.get(subtabId)!;
-    }
-    const above = capGrant(moduleCap, capGrant(tabCap, subtabCap));
-    const effective = capGrant(above, await fieldGrant(ctx, field));
-    if (effective !== 'edit') throw new Error(`No edit access to ${field.label}`);
+    if (capCache.get(cacheKey) !== 'edit') throw new Error(`No edit access to ${field.label}`);
   }
 
   // `team_member` is the one type whose VALUE is a permission, so it is checked

@@ -31,16 +31,50 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadConfig } from './config';
-import { capGrant, moduleGrant, tabGrant, type AuthContext, type Grant } from './permissions';
+import {
+  capGrant,
+  fieldGrant,
+  moduleGrant,
+  subtabGrant,
+  tabGrant,
+  type AuthContext,
+  type Grant,
+} from './permissions';
+import type { Field } from './config';
+
+type RecordModule = { id: string; adminOnly: boolean };
 
 /**
- * The highest module-level grant this viewer holds over any module the record
- * is displayed in. Highest, because a record shown in both Leads and Deals is
- * one record: holding Edit on either module is holding Edit on it.
+ * ── THE ONE RULE EVERY RECORD-SCOPED ANSWER FOLLOWS ───────────────────────
+ * For each module the record is actually displayed in, cap the whole chain
+ * WITHIN that module — module grant, then tab, then subtab, then field — and
+ * keep the best result across modules.
+ *
+ * ⚠ CAP FIRST, THEN TAKE THE BEST. Doing it the other way round — resolving
+ * each level's best across modules and capping the results together — reads as
+ * equivalent and is not. Take a record in Leads and Deals with:
+ *
+ *            module    tab       subtab      capped within the module
+ *   Leads     edit      edit      hidden   →  hidden
+ *   Deals     edit      hidden    edit     →  hidden
+ *
+ * The correct answer is Hidden: there is no module in which the viewer can
+ * reach that subtab. Best-per-level gives tab = Edit and subtab = Edit, and
+ * caps them to EDIT — access granted through a combination that exists in
+ * neither module. That is why this takes the whole chain as one list rather
+ * than exposing a per-level helper callers compose themselves.
+ *
+ * Best-across-modules is not new: it is what the module ceiling already did —
+ * "a record shown in both Leads and Deals is one record: holding Edit on
+ * either module is holding Edit on it." Taking the worst instead would mean
+ * adding a record to a second module could only ever REMOVE access.
  */
-export async function moduleWriteCap(
+async function chainCapFor(
   ctx: AuthContext,
   recordIds: string[],
+  /** Each level below the module, resolved IN a given module. Evaluated once
+   *  per distinct module, never once per record. */
+  levels: ((moduleId: string) => Promise<Grant>)[],
 ): Promise<Map<string, Grant>> {
   const out = new Map<string, Grant>();
   if (!recordIds.length) return out;
@@ -48,6 +82,64 @@ export async function moduleWriteCap(
     for (const id of recordIds) out.set(id, 'edit');
     return out;
   }
+
+  const modulesByRecord = await recordModulesFor(recordIds);
+
+  // Resolved once per DISTINCT module rather than once per record — a
+  // 500-record bulk edit spans at most six modules.
+  const byModule = new Map<string, RecordModule>();
+  for (const mods of modulesByRecord.values()) for (const m of mods) byModule.set(m.id, m);
+
+  const capByModule = new Map<string, Grant>();
+  await Promise.all(
+    [...byModule.values()].map(async (mod) => {
+      capByModule.set(mod.id, await capInModule(ctx, mod, levels));
+    }),
+  );
+
+  for (const id of recordIds) out.set(id, bestOf(modulesByRecord.get(id) ?? [], capByModule));
+  return out;
+}
+
+/** The chain capped inside ONE module. */
+async function capInModule(
+  ctx: AuthContext,
+  mod: RecordModule,
+  levels: ((moduleId: string) => Promise<Grant>)[],
+): Promise<Grant> {
+  let g = await moduleGrant(ctx, mod.id, mod.adminOnly);
+  for (const level of levels) {
+    if (g === 'hidden') break; // nothing below can re-open it
+    g = capGrant(g, await level(mod.id));
+  }
+  return g;
+}
+
+function bestOf(mods: RecordModule[], capByModule: Map<string, Grant>): Grant {
+  let best: Grant = 'hidden';
+  for (const mod of mods) {
+    const g = capByModule.get(mod.id) ?? 'hidden';
+    if (g === 'edit') return 'edit';
+    if (g === 'view') best = 'view';
+  }
+  return best;
+}
+
+/**
+ * The highest module-level grant this viewer holds over any module the record
+ * is displayed in.
+ */
+export async function moduleWriteCap(
+  ctx: AuthContext,
+  recordIds: string[],
+): Promise<Map<string, Grant>> {
+  return chainCapFor(ctx, recordIds, []);
+}
+
+/** The record's `record_modules` rows, batched. */
+async function recordModulesFor(recordIds: string[]): Promise<Map<string, RecordModule[]>> {
+  const out = new Map<string, RecordModule[]>();
+  if (!recordIds.length) return out;
 
   const supabase = await createSupabaseServerClient();
 
@@ -82,19 +174,12 @@ export async function moduleWriteCap(
 
   const config = await loadConfig();
   const moduleById = new Map(config.modules.map((m) => [m.id, m]));
-  // One `moduleGrant` round trip per DISTINCT module, not per record — a
-  // 500-record bulk edit spans at most six modules.
-  const grantByModule = new Map<string, Grant>();
-  for (const id of new Set(data.map((r) => r.module_id as string))) {
-    const mod = moduleById.get(id);
-    if (mod) grantByModule.set(id, await moduleGrant(ctx, mod.id, mod.adminOnly));
-  }
 
-  for (const id of recordIds) out.set(id, 'hidden');
+  for (const id of recordIds) out.set(id, []);
   for (const r of data) {
-    const g = grantByModule.get(r.module_id as string) ?? 'hidden';
-    const best = out.get(r.record_id as string) ?? 'hidden';
-    if (g === 'edit' || (g === 'view' && best === 'hidden')) out.set(r.record_id as string, g);
+    const mod = moduleById.get(r.module_id as string);
+    if (!mod) continue;
+    out.get(r.record_id as string)?.push({ id: mod.id, adminOnly: mod.adminOnly });
   }
   return out;
 }
@@ -119,49 +204,96 @@ export async function tabAccess(ctx: AuthContext, recordId: string, tabKey: stri
 /** The same chain, for a caller that already holds the tab's id — a field
  * knows its `tabId`, and so does a note's scope. */
 export async function tabAccessById(ctx: AuthContext, recordId: string, tabId: string): Promise<Grant> {
-  if (ctx.isAdmin) return 'edit';
+  return (await tabCapsFor(ctx, [recordId], tabId)).get(recordId) ?? 'hidden';
+}
 
-  /*
-   * ── RESOLVED PER MODULE, THEN THE BEST TAKEN ──────────────────────────
-   * A tab grant can now differ by module (Admin-Module-Plan §2.2), and a
-   * record can sit in several. So this pairs each of the record's modules with
-   * the tab grant AS RESOLVED IN THAT MODULE, caps one under the other, and
-   * keeps the best.
-   *
-   * Best-wins is not a new rule — it is the one `moduleWriteCap` already
-   * applied to modules alone: "a record shown in both Leads and Deals is one
-   * record: holding Edit on either module is holding Edit on it." Taking the
-   * worst instead would mean adding a record to a second module could only
-   * ever REMOVE access, which is not what adding it anywhere means.
-   *
-   * With only global grants — every row today — this returns exactly what the
-   * previous implementation did, because the per-module lookup falls back to
-   * the global one.
-   */
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('record_modules')
-    .select('module_id')
-    .eq('record_id', recordId);
-  if (error) throw error;
+/** Batched `tabAccessById` — module ceiling, then the tab under it. */
+export async function tabCapsFor(
+  ctx: AuthContext,
+  recordIds: string[],
+  tabId: string,
+): Promise<Map<string, Grant>> {
+  return chainCapFor(ctx, recordIds, [(moduleId) => tabGrant(ctx, tabId, moduleId)]);
+}
 
-  const config = await loadConfig();
-  const moduleById = new Map(config.modules.map((m) => [m.id, m]));
-
-  let best: Grant = 'hidden';
-  for (const row of data ?? []) {
-    const mod = moduleById.get(row.module_id as string);
-    if (!mod) continue;
-
-    const [mg, tg] = await Promise.all([
-      moduleGrant(ctx, mod.id, mod.adminOnly),
-      tabGrant(ctx, tabId, mod.id),
-    ]);
-    const here = capGrant(mg, tg);
-    if (here === 'edit') return 'edit';
-    if (here === 'view') best = 'view';
+/**
+ * The full write chain for one field on a set of records:
+ * module -> tab -> subtab -> the field itself, capped inside each of the
+ * record's modules before the best is taken.
+ *
+ * This returns the FINAL answer, not a ceiling to be capped again by the
+ * caller. Handing back a ceiling was the shape that let a caller cap two
+ * independently-best-of levels together and land on a grant that held in no
+ * single module — see the note on `chainCapFor`.
+ */
+export async function fieldCapsFor(
+  ctx: AuthContext,
+  recordIds: string[],
+  field: Field | undefined,
+): Promise<Map<string, Grant>> {
+  const levels: ((moduleId: string) => Promise<Grant>)[] = [];
+  // A field always has a tab. The empty chain only covers a field deleted from
+  // config between render and submit, where the module ceiling alone decides.
+  if (field) {
+    levels.push((moduleId) => tabGrant(ctx, field.tabId, moduleId));
+    if (field.subtabId) {
+      const subtabId = field.subtabId;
+      levels.push((moduleId) => subtabGrant(ctx, subtabId, moduleId));
+    }
+    levels.push((moduleId) => fieldGrant(ctx, field, moduleId));
   }
-  return best;
+  return chainCapFor(ctx, recordIds, levels);
+}
+
+/**
+ * Which of `fields` this viewer may not see ON THIS RECORD, by field key.
+ *
+ * Per record rather than global because a field's grant can differ by module
+ * and a record's modules differ by record. The activity log is the caller that
+ * makes this matter: its rows carry `from_value` and `to_value` verbatim, so a
+ * field hidden only in the module a record lives in still leaked its values
+ * through the history when this was resolved globally.
+ */
+export async function hiddenFieldKeysFor(
+  ctx: AuthContext,
+  recordId: string,
+  fields: Field[],
+): Promise<Set<string>> {
+  const hidden = new Set<string>();
+  if (ctx.isAdmin || !fields.length) return hidden;
+
+  // ONE module lookup for the whole field list. Calling `fieldCapsFor` per
+  // field would be ~200 round trips on a drawer open; every level below the
+  // module reads the per-request grant map in memory, so the rest is free.
+  const mods = (await recordModulesFor([recordId])).get(recordId) ?? [];
+  if (!mods.length) {
+    // In no module at all — archived. Nothing is readable through a display
+    // module, which is what this set is used to decide.
+    for (const f of fields) hidden.add(f.key);
+    return hidden;
+  }
+
+  const moduleCap = new Map<string, Grant>();
+  await Promise.all(
+    mods.map(async (m) => moduleCap.set(m.id, await moduleGrant(ctx, m.id, m.adminOnly))),
+  );
+
+  await Promise.all(
+    fields.map(async (f) => {
+      const capByModule = new Map<string, Grant>();
+      await Promise.all(
+        mods.map(async (m) => {
+          let g = moduleCap.get(m.id) ?? 'hidden';
+          if (g !== 'hidden') g = capGrant(g, await tabGrant(ctx, f.tabId, m.id));
+          if (g !== 'hidden' && f.subtabId) g = capGrant(g, await subtabGrant(ctx, f.subtabId, m.id));
+          if (g !== 'hidden') g = capGrant(g, await fieldGrant(ctx, f, m.id));
+          capByModule.set(m.id, g);
+        }),
+      );
+      if (bestOf(mods, capByModule) === 'hidden') hidden.add(f.key);
+    }),
+  );
+  return hidden;
 }
 
 /**

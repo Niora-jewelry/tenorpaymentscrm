@@ -15,8 +15,8 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
-import { fieldGrants } from './permissions';
 import { loadConfig } from './config';
+import { hiddenFieldKeysFor } from './tabAccess';
 
 export type ActivityEntry = {
   id: string;
@@ -61,11 +61,11 @@ export async function listActivity(
   }));
 
   if (!ctx.isAdmin) {
+    // Resolved against THIS RECORD, not globally. These rows carry `from_value`
+    // and `to_value` verbatim, so a field hidden only in the module this record
+    // lives in was handing its old and new values back through the history.
     const config = await loadConfig();
-    const grants = await fieldGrants(ctx, config.fields);
-    const hiddenKeys = new Set(
-      config.fields.filter((f) => grants.get(f.id) === 'hidden').map((f) => f.key),
-    );
+    const hiddenKeys = await hiddenFieldKeysFor(ctx, recordId, config.fields);
     rows = rows.filter((r) => !r.fieldKey || !hiddenKeys.has(r.fieldKey));
   }
 

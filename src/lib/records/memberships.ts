@@ -9,6 +9,9 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
+import { moduleGrant } from './permissions';
+import { loadConfig } from './config';
+import { moduleWriteCap } from './tabAccess';
 
 /** Batched — one query for a whole page of the dashboard, not one per row. */
 export async function membershipsForMany(_ctx: AuthContext, recordIds: string[]): Promise<Record<string, string[]>> {
@@ -37,12 +40,50 @@ export async function membershipsFor(_ctx: AuthContext, recordId: string): Promi
   return (data ?? []).map((r) => r.module_id as string);
 }
 
-/** Replaces the full membership set. Passing `[]` is the Archive action. */
+/**
+ * Replaces the full membership set. Passing `[]` is the Archive action.
+ *
+ * ── THE GUARD, AND WHY IT IS HERE ────────────────────────────────────────
+ * This took an `AuthContext` and never read it. `set_record_memberships`
+ * checks `record_visible()` and nothing else, so anyone who could SEE a record
+ * could move it between modules — including into a module hidden to them, and
+ * including into none at all, which is Archive. A member holding Tickets =
+ * View could archive a record out of every colleague's dashboard.
+ *
+ * Membership is a write to the record, so it needs Edit on the record, and
+ * each module added or removed needs Edit on THAT module: adding a record to
+ * Deals is a change to Deals, and it should not be reachable by someone who
+ * cannot open Deals.
+ *
+ * Unchanged modules are deliberately not checked. Archiving a record out of
+ * Leads should not be blocked because it also sits in a module the viewer
+ * cannot see — that membership is not being touched.
+ */
 export async function setMemberships(
-  _ctx: AuthContext,
+  ctx: AuthContext,
   recordId: string,
   moduleIds: string[],
 ): Promise<void> {
+  if (!ctx.isAdmin) {
+    const cap = (await moduleWriteCap(ctx, [recordId])).get(recordId) ?? 'hidden';
+    if (cap !== 'edit') throw new Error('You do not have edit access to this record.');
+
+    const config = await loadConfig();
+    const before = new Set(await membershipsFor(ctx, recordId));
+    const after = new Set(moduleIds);
+    const touched = [...new Set([...before, ...after])].filter(
+      (id) => before.has(id) !== after.has(id),
+    );
+
+    for (const id of touched) {
+      const mod = config.modules.find((m) => m.id === id);
+      if (!mod) throw new Error('That module no longer exists.');
+      if ((await moduleGrant(ctx, mod.id, mod.adminOnly)) !== 'edit') {
+        throw new Error(`You do not have edit access to ${mod.label}.`);
+      }
+    }
+  }
+
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('set_record_memberships', {
     p_record_id: recordId,

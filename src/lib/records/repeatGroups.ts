@@ -13,8 +13,8 @@
  */
 import 'server-only';
 import type { AuthContext } from './permissions';
-import { fieldGrant } from './permissions';
 import type { Field } from './config';
+import { fieldCapsFor } from './tabAccess';
 import { setValue } from './records';
 
 type Instance = Record<string, unknown>;
@@ -35,9 +35,17 @@ export type RepeatMutationResult = { ok: true; updatedAt: string } | { ok: false
 /** Every sibling must be individually edit-granted before ANY write happens
  * — partial success would desync the arrays permanently (one location gains
  * "Owner 3", the other doesn't), which is worse than refusing outright. */
-async function requireEditOnAll(ctx: AuthContext, siblings: Field[]): Promise<string | null> {
-  for (const f of siblings) {
-    const grant = await fieldGrant(ctx, f);
+async function requireEditOnAll(
+  ctx: AuthContext,
+  recordId: string,
+  siblings: Field[],
+): Promise<string | null> {
+  // The full per-record chain, not the field's global grant: a repeat group
+  // lives on a tab and in a module, and either can close it.
+  const caps = await Promise.all(
+    siblings.map(async (f) => [f, (await fieldCapsFor(ctx, [recordId], f)).get(recordId)] as const),
+  );
+  for (const [f, grant] of caps) {
     if (grant !== 'edit') return `No edit access to ${f.label}`;
   }
   return null;
@@ -51,7 +59,7 @@ export async function addRepeatInstance(
   currentUpdatedAt: string,
   max: number,
 ): Promise<RepeatMutationResult> {
-  const denied = await requireEditOnAll(ctx, siblings);
+  const denied = await requireEditOnAll(ctx, recordId, siblings);
   if (denied) return { ok: false, message: denied };
 
   const count = repeatInstanceCount(currentValues, siblings.map((s) => s.key));
@@ -81,7 +89,7 @@ export async function removeRepeatInstance(
 ): Promise<RepeatMutationResult> {
   if (index === 0) return { ok: false, message: 'The first instance cannot be removed.' };
 
-  const denied = await requireEditOnAll(ctx, siblings);
+  const denied = await requireEditOnAll(ctx, recordId, siblings);
   if (denied) return { ok: false, message: denied };
 
   let at = currentUpdatedAt;

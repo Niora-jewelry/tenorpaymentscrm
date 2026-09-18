@@ -50,7 +50,12 @@ describe('read-only fields', () => {
     // skipped for exactly the person most able to do damage with it.
     const body = bodyOf('setValue');
     const guardAt = body.indexOf('assertWritable(field)');
-    const grantAt = body.indexOf('capGrant(');
+    // `fieldCap` IS the permission chain — module, tab, subtab and the field
+    // itself, capped per module. This used to look for `capGrant(` instead,
+    // which stopped matching when the chain moved inside `fieldCapsFor`; the
+    // assertion is about ordering, so it anchors on the call that resolves the
+    // grant rather than on one operator that happened to appear in it.
+    const grantAt = body.indexOf('fieldCap(');
     expect(guardAt).toBeGreaterThan(-1);
     expect(grantAt).toBeGreaterThan(-1);
     expect(guardAt).toBeLessThan(grantAt);

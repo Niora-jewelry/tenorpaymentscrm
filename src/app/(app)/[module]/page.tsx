@@ -100,12 +100,21 @@ export default async function ModulePage({
   // Layer 1 (admin order + selection) → layer 2 (this user's saved order) —
   // "admin default → user override → permission filter" (§16). Layer 3
   // (hidden fields absent) is `fieldGrants` below.
+  const displayModuleGrantsForList = await Promise.all(
+    config.modules
+      .filter((m) => m.kind === 'display')
+      .map(async (m) => [m, await moduleGrant(ctx, m.id, m.adminOnly)] as const),
+  );
+  const visibleDisplayModules = displayModuleGrantsForList
+    .filter(([, g]) => g !== 'hidden')
+    .map(([m]) => m);
+
   const adminColumns = columnsForModule(config, mod.id);
   const orderedColumnIds = resolveOrder(adminColumns.map((f) => f.id), savedColumnOrder);
   const columnById = new Map(adminColumns.map((f) => [f.id, f]));
   const orderedDbColumns = orderedColumnIds.map((id) => columnById.get(id)).filter((f): f is Field => Boolean(f));
 
-  const grants = await fieldGrants(ctx, orderedDbColumns);
+  const grants = await fieldGrants(ctx, orderedDbColumns, mod.id);
   const visibleDbColumns = orderedDbColumns.filter((f) => grants.get(f.id) !== 'hidden');
   const columns = visibleDbColumns.map((f) => adaptFieldForDashboard(config, f));
   // Capped by the module grant — a field's own grant decides what it is at
@@ -133,7 +142,7 @@ export default async function ModulePage({
   const pipelineStatusDbFields = modulePipelinesRaw
     .map((p) => (p.statusFieldId ? statusFieldById.get(p.statusFieldId) : undefined))
     .filter((f): f is Field => Boolean(f));
-  const statusGrants = await fieldGrants(ctx, pipelineStatusDbFields);
+  const statusGrants = await fieldGrants(ctx, pipelineStatusDbFields, mod.id);
   const pipelineFilterOptions = modulePipelinesRaw
     .filter((p) => p.statusFieldId && statusGrants.get(p.statusFieldId) !== 'hidden')
     .map((p) => ({
@@ -215,9 +224,12 @@ export default async function ModulePage({
           rows={rows}
           columns={columns}
           grantByKey={grantByKey}
-          displayModules={config.modules
-            .filter((m) => m.kind === 'display')
-            .map((m) => ({ id: m.id, slug: m.slug, label: m.label }))}
+          /* Only modules this viewer can open. This drives the bulk bar's
+           * "add to module" picker, so an unfiltered list both offered a
+           * module the gate in `setMemberships` refuses and named a module
+           * the viewer is not meant to know exists — it shipped the whole
+           * module table, ids included, in the page payload. */
+          displayModules={visibleDisplayModules.map((m) => ({ id: m.id, slug: m.slug, label: m.label }))}
           hasCustomColumnOrder={Boolean(savedColumnOrder?.length)}
           filters={savedFilters}
           pipelines={pipelineFilterOptions}
@@ -404,8 +416,27 @@ async function RecordDrawer({
    * Passwords were never part of this: `password_enc` is not selectable by the
    * request-scoped client at the column-grant level (migration 12).
    */
+  /*
+   * ⚠ EVERY GRANT BELOW IS RESOLVED **IN THIS MODULE**.
+   *
+   * Admin-Module-Plan §2.2: "which drawer tabs and subtabs the user sees
+   * WITHIN THAT MODULE". These lookups used to omit the module and so read
+   * only the global grant — which meant a tab or field restricted in one
+   * module alone was restricted in none of them. The per-module write path,
+   * the resolvers and the matrix UI were all already correct; this screen was
+   * the one place the module was in scope and simply not passed, so the
+   * feature resolved correctly everywhere except where a user could see it.
+   *
+   * This is deliberately NOT the best-across-modules rule the write path uses
+   * (`tabAccess.ts`). The drawer is opened FROM a module, so the module is a
+   * known fact rather than a claim, and the same record opened from Leads and
+   * from Deals is supposed to differ. The write path cannot rely on that: its
+   * module arrives from the browser, so it resolves from `record_modules` and
+   * takes the best — never narrower than what this screen displays, so nothing
+   * shown here can be refused on save.
+   */
   const allTabs = tabsForModule(config, moduleId);
-  const rawTabGrants = await tabGrants(ctx, allTabs.map((t) => t.id));
+  const rawTabGrants = await tabGrants(ctx, allTabs.map((t) => t.id), moduleId);
   const tabGrantById = new Map(
     allTabs.map((t) => [t.id, capGrant(grant, rawTabGrants.get(t.id) ?? 'edit')] as const),
   );
@@ -423,7 +454,7 @@ async function RecordDrawer({
    * re-open what the tab closed.
    */
   const allSubtabs = dbTabs.flatMap((t) => subtabsForModule(config, moduleId, t.id));
-  const rawSubtabGrants = await subtabGrants(ctx, allSubtabs.map((s) => s.id));
+  const rawSubtabGrants = await subtabGrants(ctx, allSubtabs.map((s) => s.id), moduleId);
   const subtabGrantById = new Map(
     allSubtabs.map((s) => [
       s.id,
@@ -529,6 +560,12 @@ async function RecordDrawer({
   const authorNameMap = await profileNamesFor(ctx, Array.from(authorIds));
   const authorNames = Object.fromEntries(authorNameMap) as Record<string, string>;
 
+  const allDisplayModules = config.modules.filter((m) => m.kind === 'display');
+  const displayModuleGrants = await Promise.all(
+    allDisplayModules.map(async (m) => [m, await moduleGrant(ctx, m.id, m.adminOnly)] as const),
+  );
+  const displayModules = displayModuleGrants.filter(([, g]) => g !== 'hidden').map(([m]) => m);
+
   const headerFields = headerFieldsForModule(config, moduleId);
 
   // The tab half of the grant chain. A tab resolved to Hidden is dropped from
@@ -540,7 +577,7 @@ async function RecordDrawer({
   // One grant lookup for every field across every tab/subtab, keyed by the
   // adapted (key-based) field id — the same shape RealFieldGrid consumes.
   const allTabFields = dbTabs.flatMap((t) => fieldsInTab(config, t.id));
-  const grants = await fieldGrants(ctx, allTabFields);
+  const grants = await fieldGrants(ctx, allTabFields, moduleId);
   const grantByKey: Record<string, 'hidden' | 'view' | 'edit'> = {};
   // Capped by module THEN tab: without this a module or tab set to View still
   // handed the drawer a page of Edit fields, because the three scopes resolve
@@ -824,7 +861,12 @@ async function RecordDrawer({
         <MembershipsForm
           moduleSlug={moduleSlug}
           recordId={record.id}
-          allModules={config.modules.filter((m) => m.kind === 'display')}
+          /* Only modules this viewer can actually open. It listed every display
+           * module regardless of grant, so a hidden module appeared as a
+           * toggle — offering a control the gate in `setMemberships` now
+           * refuses, and naming a module the viewer is not supposed to know
+           * exists. */
+          allModules={displayModules}
           current={memberships}
         />
       </div>

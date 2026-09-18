@@ -24,13 +24,22 @@
  * hanging because a phone token 500'd would be a far worse bug than not being
  * able to dial.
  *
- * ── UNVERIFIED, AND WORTH TESTING FIRST ──────────────────────────────────
- * ⚠ MULTIPLE TABS. Two tabs means two Devices registered on the same
- * `user_<uuid>` identity. Asked directly, Donny's answer was that he never
- * tested it — he only ever exercised navigating within the CRM during a call.
- * Twilio may ring all of them, ring the most recent, or error. This is the
- * first thing to check with a real user, because people keep CRMs open in
- * several tabs and the failure would look like "inbound calls are flaky".
+ * ── MULTIPLE TABS — RESOLVED, AND HANDLED BELOW ──────────────────────────
+ * Two tabs means two Devices registered on the same `user_<uuid>` identity.
+ * Twilio's documented behaviour (confirmed by Donny 2026-09-17, from Twilio's
+ * own docs rather than from a test of this code): the call is sent to ALL
+ * devices holding that identity, whoever answers first gets it, and the other
+ * legs are CANCELLED.
+ *
+ * That is why the `incoming` handler registers `cancel` alongside `accept` and
+ * `disconnect`. Without it, answering in one tab would leave the call bar
+ * stuck ringing forever in every other tab — the visible half of this is
+ * handled, not left to chance.
+ *
+ * It also means a single inbound call produces exactly ONE `phone_calls` row:
+ * the row is created by /api/twilio/voice, which runs once per call before
+ * Twilio fans it out to any device, so the number of open tabs cannot multiply
+ * the call log.
  */
 import {
   createContext,

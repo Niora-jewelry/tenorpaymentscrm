@@ -198,6 +198,15 @@ export function RealFieldGrid({
   isAdmin: boolean;
 }) {
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
+  /*
+   * View preferences (field order) persist in the background. They were
+   * `await someAction(...)` with nothing around them, so a failed save was
+   * completely invisible: the UI had already applied the change locally, and
+   * it silently reverted on the next page load — which reads as the CRM
+   * forgetting your layout at random. Lower stakes than a refused write, so a
+   * quiet line rather than an alert. But not silence.
+   */
+  const [prefError, setPrefError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   /* Fields whose last write did not land. Derived from `conflicts` rather than
@@ -347,7 +356,12 @@ export function RealFieldGrid({
       // router.refresh() was a second, fully redundant ~2s round trip for the
       // exact same data (confirmed live: it fired its own separate _rsc GET
       // well after the action's POST had already resolved).
-      await reorderFieldsAction(moduleSlug, tabId, subtabId, ids);
+      try {
+        setPrefError(null);
+        await reorderFieldsAction(moduleSlug, tabId, subtabId, ids);
+      } catch {
+        setPrefError('Your field order could not be saved and will reset on reload.');
+      }
     });
   };
 
@@ -562,7 +576,12 @@ export function RealFieldGrid({
                   // revalidatePath, which already refreshes this route as
                   // part of the action's own response.
                   startTransition(async () => {
-                    await resetFieldOrderAction(moduleSlug, tabId, subtabId);
+                    try {
+                      setPrefError(null);
+                      await resetFieldOrderAction(moduleSlug, tabId, subtabId);
+                    } catch {
+                      setPrefError('Could not reset the field order.');
+                    }
                   })
                 }
                 className="ml-auto text-[11.5px] font-semibold text-brand-700 hover:underline"
@@ -570,6 +589,11 @@ export function RealFieldGrid({
                 Reset to default
               </button>
             </div>
+          ) : null}
+          {prefError ? (
+            <p role="status" className="mt-1 text-[11px] text-ink-500">
+              {prefError}
+            </p>
           ) : null}
           <DndContext
             id={`field-dnd-${tabId}-${subtabId ?? '_'}`}

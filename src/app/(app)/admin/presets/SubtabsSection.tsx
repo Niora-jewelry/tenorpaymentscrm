@@ -189,6 +189,7 @@ function SubtabRow({
   modules: ModuleOption[];
 }) {
   const [assigning, setAssigning] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [draftLabel, setDraftLabel] = useState(subtab.label);
   const [draftDescription, setDraftDescription] = useState(subtab.description ?? '');
@@ -323,6 +324,11 @@ function SubtabRow({
       </ChipCell>
 
       <ActionCell>
+        {assignError ? (
+          <p role="alert" className="mb-1 text-[11px] text-danger">
+            {assignError}
+          </p>
+        ) : null}
         {unassigned.length > 0 ? (
           assigning ? (
             <select
@@ -333,8 +339,18 @@ function SubtabRow({
                 const moduleId = e.target.value;
                 if (!moduleId) return;
                 startTransition(async () => {
-                  await assignSubtabToModulesAction(subtab.id, [moduleId]);
-                  setAssigning(false);
+                  /* Returns void and throws on refusal — unguarded, the picker
+                     just closed and the subtab was never added to the module,
+                     with nothing said. */
+                  try {
+                    setAssignError(null);
+                    await assignSubtabToModulesAction(subtab.id, [moduleId]);
+                    setAssigning(false);
+                  } catch (err) {
+                    setAssignError(
+                      err instanceof Error ? err.message : 'Could not add it to that module.',
+                    );
+                  }
                 });
               }}
               className="w-full rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-field"

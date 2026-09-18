@@ -41,8 +41,19 @@ export function NumbersSection({
 
   const toggleActive = (numberId: string, isActive: boolean) =>
     startTransition(async () => {
-      setError(null);
-      await setNumberActiveAction(numberId, isActive);
+      /*
+       * Deactivating a number takes telephony away from whoever holds it. The
+       * action returns void and throws on refusal, so unguarded the row's
+       * Active pill simply stayed as it was with nothing said — and an admin
+       * who thinks they have switched a number off, but has not, is a billing
+       * problem rather than a cosmetic one.
+       */
+      try {
+        setError(null);
+        await setNumberActiveAction(numberId, isActive);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not change that number.');
+      }
     });
 
   return (

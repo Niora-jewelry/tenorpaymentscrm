@@ -102,6 +102,14 @@ export function RecordsTable({
   const [confirmBulk, setConfirmBulk] = useState<null | 'archive' | 'delete' | 'restore'>(null);
   const [report, setReport] = useState<ProtoSkipReport>(null);
   const [pending, setPending] = useState(false);
+  /*
+   * View preferences (filters, column order) persist in the background. These
+   * were bare `await someAction(...)` calls, so a failed save was invisible:
+   * the table had already applied the change locally and it silently reverted
+   * on the next load, reading as the CRM forgetting your view at random.
+   * Quieter than a refused write, but not silent.
+   */
+  const [prefError, setPrefError] = useState<string | null>(null);
 
   // Optimistic mirror of the server `rows` prop — see file header. Resynced
   // whenever a fresh server render actually supplies new `rows` (a real
@@ -429,7 +437,12 @@ export function RecordsTable({
    * DataTable's own column filters, so both reset to page 1 the same way. */
   const commitFilters = (f: Record<string, Filter>) => {
     startTransition(async () => {
-      await setFiltersAction(moduleSlug, f);
+      try {
+        setPrefError(null);
+        await setFiltersAction(moduleSlug, f);
+      } catch {
+        setPrefError('Your filters could not be saved and will reset on reload.');
+      }
       // Back to page 1: the result set just changed size, and staying on
       // page 5 of a set that now has two pages shows an empty table with
       // no explanation.
@@ -443,6 +456,12 @@ export function RecordsTable({
         <div className="mb-2.5 flex shrink-0 flex-wrap items-center gap-2">
           <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} />
         </div>
+      ) : null}
+
+      {prefError ? (
+        <p role="status" className="mb-1.5 shrink-0 text-[11px] text-ink-500">
+          {prefError}
+        </p>
       ) : null}
 
       <DataTable
@@ -475,12 +494,22 @@ export function RecordsTable({
           // same redundant-double-fetch pattern already fixed in
           // RealFieldGrid.tsx's reorder/repeat-group actions.
           startTransition(async () => {
-            await reorderColumnsAction(moduleSlug, ids);
+            try {
+              setPrefError(null);
+              await reorderColumnsAction(moduleSlug, ids);
+            } catch {
+              setPrefError('Your column order could not be saved and will reset on reload.');
+            }
           });
         }}
         onResetColumnOrder={() => {
           startTransition(async () => {
-            await resetColumnOrderAction(moduleSlug);
+            try {
+              setPrefError(null);
+              await resetColumnOrderAction(moduleSlug);
+            } catch {
+              setPrefError('Could not reset the column order.');
+            }
           });
         }}
         filters={filters}
@@ -489,7 +518,12 @@ export function RecordsTable({
         onSetFilters={commitFilters}
         onClearFilters={() => {
           startTransition(async () => {
-            await clearFiltersAction(moduleSlug);
+            try {
+              setPrefError(null);
+              await clearFiltersAction(moduleSlug);
+            } catch {
+              setPrefError('Could not clear your saved filters.');
+            }
             resetToFirstPage();
           });
         }}

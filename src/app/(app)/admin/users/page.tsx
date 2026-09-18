@@ -52,7 +52,7 @@ export default async function AdminUsersPage() {
             {pendingInvites ? ` · ${pendingInvites} invite${pendingInvites === 1 ? '' : 's'} outstanding` : ''}
           </p>
         </div>
-        <InviteUserDialog roles={roles} />
+        <InviteUserDialog roles={roles} templates={templates} />
       </div>
 
       <UsersTable users={users} templates={templates} currentUserId={ctx.userId} />

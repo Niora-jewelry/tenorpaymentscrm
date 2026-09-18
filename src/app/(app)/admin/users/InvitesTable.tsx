@@ -129,7 +129,18 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                     ) : null}
                   </td>
                   <td className="border-b border-line-faint px-3 py-2.5">
-                    <OutlineChip>{i.roleName}</OutlineChip>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <OutlineChip>{i.roleName}</OutlineChip>
+                      {/* The permissions this invite will apply. "No template"
+                          is stated rather than left blank, because it is not a
+                          missing value — it means the person will land on the
+                          default, and the default is Edit on everything unset. */}
+                      {i.templateLabel ? (
+                        <OutlineChip>{i.templateLabel}</OutlineChip>
+                      ) : (
+                        <span className="text-[11.5px] text-ink-400">No template</span>
+                      )}
+                    </span>
                   </td>
                   <td className="border-b border-line-faint px-3 py-2.5 text-ink-600">
                     {i.invitedByName ?? '—'}

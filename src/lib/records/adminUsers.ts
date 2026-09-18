@@ -166,7 +166,20 @@ export async function inviteUser(
 
   const { error: insertErr } = await supabase
     .from('invites')
-    .insert({ email: normalizedEmail, invited_by: ctx.userId, role_id: input.roleId, status: 'pending' });
+    .insert({
+      email: normalizedEmail,
+      invited_by: ctx.userId,
+      role_id: input.roleId,
+      /*
+       * Carried on the invite and applied by `complete_signup` in the SAME
+       * transaction as the profile insert (migration 71). Applying it from
+       * here after signup would leave a gap in which the account exists with
+       * no template — and an unset scope resolves to EDIT, so that gap is a
+       * window of full access. Closing it is the entire point.
+       */
+      template_id: input.templateId ?? null,
+      status: 'pending',
+    });
   if (insertErr) return { ok: false, message: insertErr.message };
 
   return { ok: true };
@@ -282,6 +295,10 @@ export type AdminInviteRow = {
   id: string;
   email: string;
   roleName: string;
+  /** The permission template this invite will apply on acceptance. Null when
+   *  the admin chose none — which means the person lands on the default, and
+   *  the default is Edit on everything unset. */
+  templateLabel: string | null;
   status: InviteStatus;
   invitedByName: string | null;
   createdAt: string;
@@ -304,20 +321,23 @@ export async function listInvites(ctx: AuthContext): Promise<AdminInviteRow[]> {
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
 
-  const [invitesRes, rolesRes, profilesRes] = await Promise.all([
+  const [invitesRes, rolesRes, profilesRes, templatesRes] = await Promise.all([
     supabase
       .from('invites')
-      .select('id, email, role_id, status, invited_by, created_at, expires_at, accepted_at')
+      .select('id, email, role_id, template_id, status, invited_by, created_at, expires_at, accepted_at')
       .order('created_at', { ascending: false })
       .limit(200),
     supabase.from('roles').select('id, name'),
     supabase.from('profiles').select('id, email, full_name'),
+    supabase.from('permission_templates').select('id, label'),
   ]);
   if (invitesRes.error) throw invitesRes.error;
   if (rolesRes.error) throw rolesRes.error;
   if (profilesRes.error) throw profilesRes.error;
+  if (templatesRes.error) throw templatesRes.error;
 
   const roleById = new Map((rolesRes.data ?? []).map((r) => [r.id, r.name as string]));
+  const templateById = new Map((templatesRes.data ?? []).map((t) => [t.id, t.label as string]));
   const personById = new Map(
     (profilesRes.data ?? []).map((p) => [p.id, (p.full_name as string | null) ?? (p.email as string)]),
   );
@@ -327,6 +347,7 @@ export async function listInvites(ctx: AuthContext): Promise<AdminInviteRow[]> {
     id: i.id,
     email: i.email,
     roleName: roleById.get(i.role_id) ?? 'Unknown role',
+    templateLabel: i.template_id ? (templateById.get(i.template_id) ?? null) : null,
     status: i.status as InviteStatus,
     invitedByName: i.invited_by ? (personById.get(i.invited_by) ?? null) : null,
     createdAt: i.created_at,

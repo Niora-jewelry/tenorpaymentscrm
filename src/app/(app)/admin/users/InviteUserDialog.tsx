@@ -10,9 +10,16 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import type { RoleOption } from '@/lib/records/adminUsers';
+import type { TemplateOption } from '@/lib/records/adminTemplates';
 import { InviteForm } from './InviteForm';
 
-export function InviteUserDialog({ roles }: { roles: RoleOption[] }) {
+export function InviteUserDialog({
+  roles,
+  templates,
+}: {
+  roles: RoleOption[];
+  templates: TemplateOption[];
+}) {
   const [open, setOpen] = useState(false);
   // Bumped every time the dialog opens, so `InviteForm` remounts fresh —
   // `useActionState` inside it would otherwise keep showing the PREVIOUS
@@ -61,7 +68,7 @@ export function InviteUserDialog({ roles }: { roles: RoleOption[] }) {
               </div>
             </div>
 
-            <InviteForm key={openCount} roles={roles} onClose={() => setOpen(false)} />
+            <InviteForm key={openCount} roles={roles} templates={templates} onClose={() => setOpen(false)} />
           </div>
         </div>
       ) : null}

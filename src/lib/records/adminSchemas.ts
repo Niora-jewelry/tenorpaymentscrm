@@ -526,6 +526,19 @@ export type ClearUserGrantInput = z.infer<typeof clearUserGrantSchema>;
 export const inviteUserSchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address.').max(254),
   roleId: uuid,
+  /*
+   * Permissions chosen at invite time — the client's own request: "when
+   * inviting a user I should be able to immediately assign permissions".
+   *
+   * Optional, because "configure them by hand later" stays a legitimate
+   * choice. A `<select>` submits '' for its empty option and cannot submit
+   * null, so the empty string is normalised here at the boundary rather than
+   * being special-cased by every caller downstream.
+   */
+  templateId: z
+    .union([uuid, z.literal('')])
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export const userIdSchema = z.object({ userId: uuid });

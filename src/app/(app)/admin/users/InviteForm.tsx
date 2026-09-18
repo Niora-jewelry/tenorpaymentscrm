@@ -5,6 +5,7 @@ import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { inviteUserAction, type InviteState } from './actions';
 import type { RoleOption } from '@/lib/records/adminUsers';
+import type { TemplateOption } from '@/lib/records/adminTemplates';
 
 const initial: InviteState = { ok: false };
 
@@ -12,7 +13,15 @@ const initial: InviteState = { ok: false };
  * `key`) fresh on every open — this component's own `useActionState`
  * naturally resets to `initial` on remount, without needing an effect that
  * sets state in response to state (`react-hooks/set-state-in-effect`). */
-export function InviteForm({ roles, onClose }: { roles: RoleOption[]; onClose: () => void }) {
+export function InviteForm({
+  roles,
+  templates,
+  onClose,
+}: {
+  roles: RoleOption[];
+  templates: TemplateOption[];
+  onClose: () => void;
+}) {
   // `isPending` — the third element, previously discarded. Sending an invite
   // writes a row and, once a mailer is configured, sends an email; on the live
   // remote database that is a visible wait during which this dialog gave no
@@ -75,6 +84,46 @@ export function InviteForm({ roles, onClose }: { roles: RoleOption[]; onClose: (
           <option key={r.id} value={r.id}>{r.name}</option>
         ))}
       </select>
+
+      {/*
+        ── PERMISSIONS, AT INVITE TIME ──────────────────────────────────
+        The client's request: "when inviting a user I should be able to
+        immediately assign permissions". A template IS a named set of
+        permissions, so picking one here is the whole answer — and it is
+        applied by `complete_signup` in the same transaction that creates the
+        profile, so there is never a moment where the account exists
+        unconfigured.
+
+        That moment is the reason this matters. An unset scope resolves to
+        EDIT, not Hidden — the rule the Permissions screen warns about in its
+        own words — so the gap between someone accepting an invite and an admin
+        getting round to them was a window of full access.
+
+        A scope-by-scope matrix is deliberately NOT offered here: it would
+        duplicate the Permissions screen and the two would drift.
+      */}
+      <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">
+        Permissions
+      </label>
+      <select
+        name="templateId"
+        disabled={isPending}
+        defaultValue=""
+        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
+      >
+        {/* Not a template is a real choice, not an empty state — an admin may
+            intend to configure someone by hand. It is named accordingly, and
+            says what it means rather than leaving a blank row. */}
+        <option value="">No template — full access until configured</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      <p className="mt-1 text-[11.5px] text-ink-400">
+        Applied the moment they finish signing up. Editing the template later reaches them too.
+      </p>
 
       {state.message ? (
         <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-bad">

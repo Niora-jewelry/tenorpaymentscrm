@@ -92,9 +92,26 @@ function CredentialRow({ row }: { row: LoginRow }) {
     startTransition(async () => {
       const result = revealed ? { ok: true, password: revealed } : await revealPasswordAction(row.id);
       if (result.ok && result.password != null) {
-        void navigator.clipboard?.writeText(result.password);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
+        /*
+         * ⚠ AWAITED, AND ONLY THEN REPORTED AS COPIED.
+         *
+         * `void navigator.clipboard?.writeText(...)` swallows the rejection,
+         * so the UI said "Copied" whether or not anything reached the
+         * clipboard. For a PASSWORD that is the worst possible lie: the user
+         * pastes with confidence and gets silence, or worse, whatever was
+         * there before.
+         *
+         * It rejects more often than you would think — a non-secure context, a
+         * browser clipboard policy, or the document not being focused are all
+         * enough.
+         */
+        try {
+          await navigator.clipboard.writeText(result.password);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        } catch {
+          setError(true);
+        }
       } else {
         setError(true);
       }

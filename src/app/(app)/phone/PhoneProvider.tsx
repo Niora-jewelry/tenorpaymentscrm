@@ -51,6 +51,7 @@ import {
   type ReactNode,
 } from 'react';
 import { dialAction } from '../phoneActions';
+import { describePhoneError, type PhoneError } from '@/lib/phone/errors';
 
 /** Minimal shapes — the SDK is imported dynamically, so it has no static type here. */
 type TwilioCall = {
@@ -75,7 +76,8 @@ export type ActiveCall = {
 
 type PhoneContextValue = {
   deviceState: DeviceState;
-  errorMessage: string | null;
+  /** Structured, so the UI can show a cause AND what to do about it. */
+  error: PhoneError | null;
   activeCall: ActiveCall | null;
   /** Null unless a call is ringing IN and has not been answered. */
   incoming: ActiveCall | null;
@@ -95,7 +97,7 @@ export function usePhone(): PhoneContextValue {
 
 export function PhoneProvider({ children }: { children: ReactNode }) {
   const [deviceState, setDeviceState] = useState<DeviceState>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [error, setError] = useState<PhoneError | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<ActiveCall | null>(null);
 
@@ -132,8 +134,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       const device = new Device(token, { logLevel: 'error' });
 
       device.on('registered', () => setDeviceState('ready'));
-      device.on('error', (err: { message?: string }) => {
-        setErrorMessage(err?.message ?? 'The phone connection failed.');
+      device.on('error', (...args: unknown[]) => {
+        setError(describePhoneError(args[0]));
         setDeviceState('error');
       });
 
@@ -198,7 +200,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       // Not having a phone is normal for most users. Record the reason and
       // leave the app alone.
-      setErrorMessage(err.message);
+      setError(describePhoneError(err));
       setDeviceState('error');
     });
     return () => {
@@ -208,14 +210,14 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   const dial = useCallback(
     async (to: string) => {
-      setErrorMessage(null);
+      setError(null);
 
       // The ROW COMES FIRST. Its id is handed to Twilio as a custom parameter
       // and is what the status and recording callbacks match on — a dial that
       // skipped this would connect fine and log nothing.
       const created = await dialAction(to);
       if (!created.ok) {
-        setErrorMessage(created.message);
+        setError({ message: created.message, kind: 'config', code: null });
         return;
       }
 
@@ -256,13 +258,12 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
           setActiveCall(null);
         });
         call.on('error', (...args: unknown[]) => {
-          const err = args[0] as { message?: string } | undefined;
-          setErrorMessage(err?.message ?? 'The call failed.');
+          setError(describePhoneError(args[0]));
           callRef.current = null;
           setActiveCall(null);
         });
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'The call could not be placed.');
+        setError(describePhoneError(err));
         setActiveCall(null);
       }
     },
@@ -284,7 +285,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   return (
     <PhoneContext.Provider
-      value={{ deviceState, errorMessage, activeCall, incoming, dial, hangUp, answer, reject }}
+      value={{ deviceState, error, activeCall, incoming, dial, hangUp, answer, reject }}
     >
       {children}
     </PhoneContext.Provider>

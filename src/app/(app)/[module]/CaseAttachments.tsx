@@ -89,13 +89,32 @@ export function CaseAttachments({
     });
   };
 
+  /**
+   * ⚠ THE TAB IS OPENED BEFORE THE AWAIT, NOT AFTER.
+   *
+   * A browser only allows `window.open` while it can still see the user's
+   * click. After an `await` that gesture is gone, so the popup is BLOCKED —
+   * and blocked silently: no exception, so the `catch` below never fires and
+   * the attachment simply never opens. `FilesPanel` and `StatementsPanel`
+   * already did it this way; this one did not, so case attachments were the
+   * one download in the CRM that quietly did nothing.
+   *
+   * So: open a blank tab on the click, point it at the signed URL when that
+   * arrives, and close it again if the request fails rather than leaving a
+   * stranded about:blank.
+   */
   const download = (id: string) => {
     setBusyId(id);
+    const tab = window.open('', '_blank', 'noopener,noreferrer');
     startTransition(async () => {
       try {
         const url = await getFileUrlAction(id);
-        window.open(url, '_blank', 'noopener,noreferrer');
+        if (tab) tab.location.assign(url);
+        // A blocked popup is the only way `tab` is null. Say so — the previous
+        // behaviour was indistinguishable from a broken button.
+        else setError('Your browser blocked the new tab. Allow pop-ups for this site to open attachments.');
       } catch {
+        tab?.close();
         setError('Could not open that file.');
       } finally {
         setBusyId(null);

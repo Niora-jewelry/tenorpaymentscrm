@@ -10,7 +10,7 @@
  * screen repeats it. The alternative — a dial button that just does nothing —
  * is the version that generates support tickets.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Button, EmptyState, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
@@ -20,9 +20,53 @@ import { usePhone } from './PhoneProvider';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
 
+/**
+ * Is the microphone actually available to us?
+ *
+ * ── WHY ASK INSTEAD OF WAITING FOR THE FAILURE ───────────────────────────
+ * Once a browser has recorded a "block" for a site it stops prompting. So a
+ * user who dismissed the prompt once gets no prompt ever again, no warning,
+ * and no clue — just a call that fails at the moment they need it, with the
+ * SDK blaming "the browser or end-user".
+ *
+ * `navigator.permissions` tells us up front, so the page can say so while
+ * nothing is happening rather than at the worst possible moment.
+ *
+ * Wrapped in try/catch and defaulting to 'unknown' because Permissions API
+ * support for the microphone name is uneven — Safari has historically not
+ * supported it. Unknown means "say nothing", never "assume broken".
+ */
+function useMicrophonePermission(): 'granted' | 'denied' | 'prompt' | 'unknown' {
+  const [state, setState] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
+
+  useEffect(() => {
+    let status: PermissionStatus | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        if (cancelled) return;
+        setState(status.state);
+        status.onchange = () => setState(status!.state);
+      } catch {
+        // Not supported here. Stay quiet rather than guessing.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (status) status.onchange = null;
+    };
+  }, []);
+
+  return state;
+}
+
 export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: string | null }) {
-  const { dial, deviceState, errorMessage, activeCall } = usePhone();
+  const { dial, deviceState, error, activeCall } = usePhone();
   const [number, setNumber] = useState('');
+  const micPermission = useMicrophonePermission();
 
   const busy = activeCall !== null;
 
@@ -89,11 +133,56 @@ export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: stri
           </Button>
         </div>
 
-        {errorMessage ? (
-          <p className="mt-3 inline-flex items-start gap-1.5 rounded-lg bg-red-50 px-2.5 py-2 text-[12px] text-red-700">
-            <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
-            <span>{phrase(errorMessage)}</span>
-          </p>
+        {micPermission === 'denied' ? (
+          /*
+           * Shown BEFORE anything is attempted. The browser will not prompt
+           * again on its own, so without this the first sign of trouble is a
+           * failed call — and the error text points at the browser or the
+           * user rather than at a setting either of them can change.
+           */
+          <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2.5 text-[12px] text-red-700">
+            <p className="flex items-start gap-1.5 font-semibold">
+              <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
+              <span>Your browser is blocking the microphone for this site.</span>
+            </p>
+            <p className="mt-1 pl-[18px] font-normal opacity-90">
+              Calls need it. Click the icon to the left of the address bar, set Microphone to Allow,
+              then reload this page.
+            </p>
+          </div>
+        ) : null}
+
+        {error ? (
+          /*
+           * Cause on the first line, what to do on the second. The SDK's own
+           * text names the symptom and hides the cause — "an unknown error has
+           * occurred" was a blocked WebSocket, and "the browser denied
+           * permissions" was one of our own response headers. Both sent people
+           * looking in the wrong place, which is the whole reason this shows a
+           * hint rather than just a message.
+           */
+          <div
+            role="alert"
+            className={`mt-3 rounded-xl px-3 py-2.5 text-[12px] ${
+              error.kind === 'call'
+                ? 'bg-canvas text-ink-600'
+                : 'bg-red-50 text-red-700'
+            }`}
+          >
+            <p className="flex items-start gap-1.5 font-semibold">
+              <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
+              <span>{error.message}</span>
+            </p>
+            {error.hint ? (
+              <p className="mt-1 pl-[18px] font-normal opacity-90">{error.hint}</p>
+            ) : null}
+            {error.code ? (
+              /* Kept on purpose: Twilio's docs are searchable by number and a
+                 support ticket needs it. Explaining an error is not a reason to
+                 hide what it was. */
+              <p className="mt-1 pl-[18px] text-[11px] opacity-60 tabular">Twilio code {error.code}</p>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
@@ -144,24 +233,4 @@ export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: stri
       </section>
     </div>
   );
-}
-
-/**
- * The token route's error codes, in English.
- *
- * These come back as machine strings so the route stays a clean API; turning
- * them into sentences is this screen's job, and an unrecognised one falls
- * through unchanged rather than being swallowed.
- */
-function phrase(message: string): string {
-  if (message === 'no_phone_number_assigned') {
-    return 'You have no phone number assigned. An administrator can assign one under Admin → Phone numbers.';
-  }
-  if (message === 'phone_not_permitted') {
-    return 'Your permissions do not include the phone. Ask an administrator about the Communication → Phone subtab.';
-  }
-  if (message === 'twilio_not_configured') {
-    return 'Telephony is not configured on this deployment.';
-  }
-  return message;
 }

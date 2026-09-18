@@ -191,6 +191,15 @@ function CaseCard({
   const [solutionDraft, setSolutionDraft] = useState('');
   const [replyDraft, setReplyDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Reply failures get their OWN message, rendered under the reply box.
+   * `error` renders at the top of the expanded case, which is fine for the
+   * solution editor sitting near it — but the reply box is at the very bottom,
+   * under the issue text and every existing reply. A failed reply reported up
+   * there is off-screen on any case with real content, so the user sees the
+   * spinner stop and nothing else.
+   */
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   // A View tab takes the manager's own controls away too — being a ticket
   // manager is not a route around the tab's grant.
@@ -202,7 +211,14 @@ function CaseCard({
     const formData = new FormData();
     formData.set('body', replyDraft.trim());
     startTransition(async () => {
-      await addCaseReplyAction(moduleSlug, c.id, formData);
+      setReplyError(null);
+      const result = await addCaseReplyAction(moduleSlug, c.id, formData);
+      if (!result.ok) {
+        // The draft is deliberately NOT cleared — someone who has just typed a
+        // reply to a merchant should not lose it because the server refused.
+        setReplyError(result.message ?? 'Could not send that reply.');
+        return;
+      }
       setReplyDraft('');
       router.refresh();
     });
@@ -389,6 +405,11 @@ function CaseCard({
                   Reply
                 </Button>
               </div>
+              ) : null}
+              {replyError ? (
+                <p role="alert" className="mt-1.5 text-[11.5px] text-danger">
+                  {replyError}
+                </p>
               ) : null}
             </div>
           </div>

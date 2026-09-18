@@ -405,11 +405,33 @@ export async function createCaseAction(
   return { ok: true };
 }
 
-export async function addCaseReplyAction(moduleSlug: string, caseId: string, formData: FormData): Promise<void> {
+/**
+ * Returns an `ActionState`, like `setCaseStateAction` and
+ * `setCaseSolutionAction` beside it.
+ *
+ * It used to return void and let a refusal throw. `addReply` goes through
+ * `requireTabEdit`, so a viewer without Cases = Edit hits a real exception —
+ * and with nothing catching it the reply simply did not send, the spinner
+ * stopped, the draft stayed in the box and NOTHING said why. Its two siblings
+ * already reported their failures; this one was the outlier.
+ */
+export async function addCaseReplyAction(
+  moduleSlug: string,
+  caseId: string,
+  formData: FormData,
+): Promise<ActionState> {
   const ctx = await authorize();
   const body = String(formData.get('body') ?? '').trim();
-  if (body) await addReply(ctx, caseId, body);
+  if (!body) return { ok: false, message: 'Write a reply first.' };
+
+  try {
+    await addReply(ctx, caseId, body);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not send that reply.' };
+  }
+
   revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
 }
 
 export async function setCaseStateAction(moduleSlug: string, caseId: string, close: boolean): Promise<ActionState> {

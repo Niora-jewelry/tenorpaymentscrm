@@ -43,6 +43,7 @@ export function UpdatesPanel({
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState('');
+  const [postError, setPostError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const threads = useMemo(() => {
@@ -58,9 +59,22 @@ export function UpdatesPanel({
     const formData = new FormData();
     formData.set('body', draft.trim());
     startTransition(async () => {
-      await addUpdateAction(moduleSlug, recordId, null, formData);
-      setDraft('');
-      router.refresh();
+      /*
+       * These actions return void and THROW on refusal — `requireTabEdit`
+       * raises for a viewer without Edit on the tab, and the data layer
+       * refuses an author's edit of someone else's post. Unguarded, the throw
+       * skipped `router.refresh()` and the click did nothing visible at all.
+       */
+      try {
+        setPostError(null);
+        await addUpdateAction(moduleSlug, recordId, null, formData);
+        setDraft('');
+        router.refresh();
+      } catch (e) {
+        // The draft survives on purpose — nobody should lose what they wrote
+        // because the server said no.
+        setPostError(e instanceof Error ? e.message : 'Could not post that update.');
+      }
     });
   };
 
@@ -86,6 +100,11 @@ export function UpdatesPanel({
             Post update
           </Button>
         </div>
+        {postError ? (
+          <p role="alert" className="mt-1.5 text-[11.5px] text-danger">
+            {postError}
+          </p>
+        ) : null}
       </div>
       ) : null}
 
@@ -150,7 +169,13 @@ function Thread({
     const formData = new FormData();
     formData.set('body', draft.trim());
     startTransition(async () => {
-      await addUpdateAction(moduleSlug, root.recordId, root.id, formData);
+      try {
+        setError(null);
+        await addUpdateAction(moduleSlug, root.recordId, root.id, formData);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not post that reply.');
+        return;
+      }
       setDraft('');
       setOpen(true);
       router.refresh();
@@ -171,8 +196,13 @@ function Thread({
 
   const remove = () => {
     startTransition(async () => {
-      await deleteUpdateAction(moduleSlug, root.id);
-      router.refresh();
+      try {
+        setError(null);
+        await deleteUpdateAction(moduleSlug, root.id);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete that update.');
+      }
     });
   };
 

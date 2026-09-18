@@ -107,7 +107,14 @@ export function NoteThread({
     const formData = new FormData();
     formData.set('body', draft.trim());
     startTransition(async () => {
-      await addNoteAction(moduleSlug, recordId, scopeKind, scopeId, formData);
+      try {
+        setError(null);
+        await addNoteAction(moduleSlug, recordId, scopeKind, scopeId, formData);
+      } catch (e) {
+        // Draft kept deliberately — see the Updates panel.
+        setError(e instanceof Error ? e.message : 'Could not add that note.');
+        return;
+      }
       setDraft('');
       router.refresh();
     });
@@ -127,8 +134,13 @@ export function NoteThread({
 
   const remove = (noteId: string) => {
     startTransition(async () => {
-      await deleteNoteAction(moduleSlug, noteId);
-      router.refresh();
+      try {
+        setError(null);
+        await deleteNoteAction(moduleSlug, noteId);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete that note.');
+      }
     });
   };
 

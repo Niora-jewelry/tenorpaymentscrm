@@ -603,7 +603,26 @@ export async function createRecord(
       p_record_id: id,
       p_module_ids: moduleIds,
     });
-    if (memErr) throw memErr;
+    if (memErr) {
+      /*
+       * Both, or neither. A record is inserted before it can be placed —
+       * `record_modules` has nothing to reference until the row exists — so a
+       * failure here used to leave a record in NO module: invisible in every
+       * display module, reachable only through the admin-only Records List,
+       * and impossible for its own creator to find or finish.
+       *
+       * That is not hypothetical. It is exactly what happened whenever a
+       * member pressed New record, for as long as `set_record_memberships`
+       * refused a record that was not yet in a module (fixed in migration 84).
+       * The orphans it made are the reason this rollback exists as well.
+       *
+       * Service-role, because the half-made record is not visible to the
+       * request-scoped client — that is the whole problem — and `records` is
+       * no longer deletable by `authenticated` at all (migration 82).
+       */
+      await supabaseAdmin().from('records').delete().eq('id', id);
+      throw memErr;
+    }
   }
 
   return { id };

@@ -17,9 +17,28 @@ const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  /*
+   * ⚠ `microphone=(self)`, NOT `microphone=()`.
+   *
+   * An empty allowlist disables the feature for EVERY origin, our own
+   * included — so the browser refuses getUserMedia outright, often without
+   * even showing the permission prompt, and the Voice SDK reports:
+   *
+   *   PermissionDeniedError (31401): The browser or end-user denied
+   *   permissions to user media.
+   *
+   * That message blames the browser or the user, which sends you into Chrome's
+   * site settings looking for a block that is not there. The block is this
+   * header. `(self)` permits our own origin and still denies every embedded
+   * third party — which was the point of the directive.
+   *
+   * Everything else stays fully disabled: the CRM has no use for a camera,
+   * location, payment handler or USB device, and an unused capability is one
+   * more thing a compromised script could reach for.
+   */
   {
     key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    value: 'camera=(), microphone=(self), geolocation=(), payment=(), usb=()',
   },
   // Do not leak session identifiers to any cross-origin resource.
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },

@@ -103,6 +103,42 @@ function mapRow(r: Record<string, unknown>): RecordRow {
 }
 
 /** Strips any key in `values` whose field the viewer may not see at all. */
+/**
+ * Every column of `records` EXCEPT `values`.
+ *
+ * `values` is no longer selectable by `authenticated` (migration 75): field
+ * permissions could not be enforced while the whole jsonb blob came back in one
+ * column, so the column was revoked and handed back through
+ * `record_values_for()`, which strips the viewer's hidden keys in the database.
+ *
+ * Spelled out rather than `*` because `*` now FAILS for a signed-in user, and
+ * failing loudly at the query is better than a column quietly going missing.
+ */
+const RECORD_COLUMNS =
+  'id, deal_name, creator_kind, creator_user_id, creator_campaign_id, created_at, updated_at, deleted_at';
+
+/**
+ * Stripped values for a page of records, in one round trip.
+ *
+ * Batched deliberately: the dashboard renders 50 rows, and one call per row is
+ * the N+1 that turns a page into 50 queries.
+ */
+async function valuesByRecordId(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  ids: string[],
+): Promise<Map<string, Record<string, unknown>>> {
+  const out = new Map<string, Record<string, unknown>>();
+  if (!ids.length) return out;
+
+  const { data, error } = await supabase.rpc('record_values_for', { p_ids: ids });
+  if (error) throw error;
+
+  for (const row of (data ?? []) as { id: string; values: Record<string, unknown> | null }[]) {
+    out.set(row.id, row.values ?? {});
+  }
+  return out;
+}
+
 function stripHidden(values: Record<string, unknown>, hiddenKeys: Set<string>): Record<string, unknown> {
   if (!hiddenKeys.size) return values;
   const out: Record<string, unknown> = {};
@@ -170,10 +206,11 @@ export async function listRecords(
   // surface that as a `ParserError` rather than a row type. The actual
   // shape returned is read explicitly by `mapRow` below regardless, so the
   // cast just opts this one query out of that compile-time inference.
-  let query = supabase
-    .from('records')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .select(isRecordsList ? '*' : '*, record_modules!inner(module_id)', { count: 'exact' }) as any;
+  const selectList = isRecordsList
+    ? RECORD_COLUMNS
+    : `${RECORD_COLUMNS}, record_modules!inner(module_id)`;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = supabase.from('records').select(selectList, { count: 'exact' }) as any;
   query = query.is('deleted_at', null);
 
   if (!isRecordsList) {
@@ -273,8 +310,19 @@ export async function listRecords(
   const columns = moduleId ? columnsForModule(config, moduleId) : [];
   const hidden = await hiddenKeysFor(ctx, columns);
 
-  const rows = ((data ?? []) as Record<string, unknown>[]).map((r) => {
-    const row = mapRow(r);
+  /*
+   * Values arrive separately and already stripped — `values` is no longer a
+   * selectable column for a signed-in user (migration 75). One batched call for
+   * the whole page, not one per row.
+   */
+  const raw = (data ?? []) as Record<string, unknown>[];
+  const valuesById = await valuesByRecordId(supabase, raw.map((r) => r.id as string));
+
+  const rows = raw.map((r) => {
+    const row = mapRow({ ...r, values: valuesById.get(r.id as string) ?? {} });
+    // `stripHidden` is now belt-and-braces: the database already removed these
+    // keys. Kept because the boundary being elsewhere is no reason for this
+    // layer to start trusting its input.
     return { ...row, values: stripHidden(row.values, hidden) };
   });
 
@@ -355,12 +403,16 @@ export async function getRecord(ctx: AuthContext, recordId: string): Promise<Rec
 
   const { data, error } = await supabase
     .from('records')
-    .select('*')
+    .select(RECORD_COLUMNS)
     .eq('id', recordId)
     .is('deleted_at', null)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
+
+  // Values come separately now, already stripped by the database.
+  const valuesById = await valuesByRecordId(supabase, [recordId]);
+  (data as Record<string, unknown>).values = valuesById.get(recordId) ?? {};
 
   const hidden = await hiddenKeysFor(ctx, config.fields);
   const row = mapRow(data as Record<string, unknown>);

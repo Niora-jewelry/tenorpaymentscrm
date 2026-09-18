@@ -134,11 +134,50 @@ suite('Module 2 record lifecycle against the live database', () => {
     );
     expect(result!.ok).toBe(true);
 
+    /*
+     * Read back through `record_values_for()`, not `records.values`.
+     *
+     * `authenticated` no longer holds SELECT on that column (migration 76):
+     * every field lives in one jsonb blob, so a row policy could not withhold
+     * the hidden ones, and a signed-in user could read a `sensitive` field —
+     * an EIN — straight from the API whatever their permissions said. The
+     * column was revoked and handed back through a function that strips the
+     * viewer's hidden keys in the database.
+     *
+     * This assertion used to read the column directly. It now reads the only
+     * route that still exists, which is the point.
+     */
     const [row] = await asAuthenticated<{ value: string }>(
-      `select values ->> 'legal_business_name' as value from records where id = $1`,
+      `select (v.values ->> 'legal_business_name') as value
+         from record_values_for(array[$1]::uuid[]) v`,
       [recordId],
     );
     expect(row!.value).toBe('Test Merchant LLC');
+  });
+
+  it('refuses a direct read of records.values, whatever the row policy says', async () => {
+    /*
+     * The boundary itself, pinned. The record is visible to this user — the
+     * test above just wrote to it — so this is not row visibility failing. It
+     * is the column grant, which is the only thing in Postgres that can
+     * withhold one column of a row a user is otherwise allowed to read.
+     */
+    /*
+     * Inside a SAVEPOINT. This suite shares one transaction, and a failed
+     * statement poisons it — every later test then dies with "current
+     * transaction is aborted" and the real failure is six tests up. The
+     * savepoint contains the damage to the one query that is supposed to fail.
+     */
+    await db.query('savepoint denied_read');
+    let message = '';
+    try {
+      await asAuthenticated(`select values from records where id = $1`, [recordId]);
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    } finally {
+      await db.query('rollback to savepoint denied_read');
+    }
+    expect(message).toMatch(/permission denied/i);
   });
 
   it('rejects a stale write — the concurrent-conflict case — and reports the current value', async () => {

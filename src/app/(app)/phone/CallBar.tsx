@@ -11,6 +11,16 @@
  * Deliberately NOT a dialog. A modal would trap focus and block whatever the
  * user was typing — including, plausibly, notes about the very merchant now
  * calling. It sits above the content and takes nothing away.
+ *
+ * ⚠ z-[90] IS ABOVE EVERY OTHER LAYER, AND HAS TO BE. The stack in this app is
+ * drawer overlay z-[60], the record drawer z-[70], dialogs z-[80]. At the z-50
+ * this started on, an incoming call was hidden BEHIND the record drawer —
+ * which is the single most likely moment for one to arrive, since you are
+ * looking at a merchant when they ring you back. The call could not be
+ * answered and nothing explained why.
+ *
+ * Nothing may sit above this. A ringing phone is the one thing in the CRM that
+ * expires if it is not seen.
  */
 import { Icon } from '@/proto/ui/icons';
 import { Button } from '@/proto/ui/kit';
@@ -29,7 +39,7 @@ export function CallBar() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-line bg-white/95 px-4 py-3 shadow-lg backdrop-blur"
+      className="fixed bottom-5 left-1/2 z-[90] -translate-x-1/2 rounded-2xl border border-line bg-white/95 px-4 py-3 shadow-lg backdrop-blur"
     >
       <div className="flex flex-wrap items-center gap-3">
         <span

@@ -49,7 +49,6 @@ export function CommunicationPanel({
   subtabLabel: string;
   messages: Message[];
   moduleSlug: string;
-  recordId: string;
   calls: PhoneCall[];
   smsMessages: PhoneMessage[];
 }) {
@@ -88,24 +87,22 @@ export function CommunicationPanel({
         Sync is forward-only — no historical backfill.
       </SpecNote>
 
-      {channel === 'text' ? (
-        /*
-         * The live SMS thread, below whatever the `messages` table already
-         * holds for this channel. Two sources on one screen is not ideal, but
-         * the alternative was hiding the seeded demo history the client is
-         * testing against — and these ARE different things: `messages` is what
-         * arrived through a provider webhook, `phone_messages` is what we sent
-         * and received over Twilio ourselves.
-         */
-        <SmsThread
-          moduleSlug={moduleSlug}
-          messages={smsMessages}
-          toE164={replyTarget(smsMessages, calls)}
-        />
-      ) : null}
+      {/*
+        ── ORDER MATTERS ON THE TEXT SUBTAB ───────────────────────────────
+        History first, composer LAST. A conversation reads downward to the
+        newest message with the send box beneath it; the first arrangement put
+        the composer on top with older messages below, which reads backwards.
 
+        The empty state is also suppressed once live texts exist. Two sources
+        feed this tab — `messages` (arrived through a provider webhook) and
+        `phone_messages` (sent and received over Twilio by us) — and checking
+        only the first one printed "No messages yet. Nothing has arrived on
+        this channel." directly above a visible thread of real texts.
+      */}
       {channelMessages.length === 0 ? (
-        <EmptyState icon={CHANNEL_ICON[channel]} title="No messages yet" body="Nothing has arrived on this channel." />
+        channel === 'text' && smsMessages.length > 0 ? null : (
+          <EmptyState icon={CHANNEL_ICON[channel]} title="No messages yet" body="Nothing has arrived on this channel." />
+        )
       ) : (
         <ul className="space-y-2">
           {channelMessages.map((m) => {
@@ -133,6 +130,14 @@ export function CommunicationPanel({
           })}
         </ul>
       )}
+
+      {channel === 'text' ? (
+        <SmsThread
+          moduleSlug={moduleSlug}
+          messages={smsMessages}
+          toE164={replyTarget(smsMessages, calls)}
+        />
+      ) : null}
     </div>
   );
 }

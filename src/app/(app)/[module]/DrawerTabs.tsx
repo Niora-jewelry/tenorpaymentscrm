@@ -357,7 +357,6 @@ export function DrawerTabs({
             comingSoon={activeSubtab?.comingSoon ?? false}
             subtabLabel={activeSubtab?.label ?? ''}
             messages={messages}
-            recordId={recordId}
             moduleSlug={moduleSlug}
             calls={phoneCalls}
             smsMessages={smsMessages}

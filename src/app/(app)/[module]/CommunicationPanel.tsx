@@ -61,20 +61,22 @@ export function CommunicationPanel({
   );
 
   /*
-   * Phone and Call recordings were seeded `coming_soon` because no provider was
-   * wired. Twilio now is, so they render for real and the flag is ignored for
-   * these two — deliberately not cleared in the database, because an admin can
-   * still switch a subtab off there and that must keep working.
+   * The flag decides, not this file.
    *
-   * Teams has no provider and is still genuinely coming soon.
+   * An earlier version checked the subtab key BEFORE `comingSoon` so the new
+   * Twilio panels would render regardless of what the database said. That
+   * worked and was wrong: it moved the decision into code, where an admin
+   * cannot reach it, and quietly removed their ability to switch Phone or Call
+   * recordings back off. Migration 70 clears the flag for those two instead —
+   * configuration, not code (CLAUDE.md rule 1).
    */
-  if (subtabId === 'phone') return <PhonePanel calls={calls} />;
-  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} />;
-
   if (comingSoon) {
     const icon = subtabId === 'teams' ? 'video' : subtabId === 'recordings' ? 'mic' : 'phone';
     return <ComingSoon what={subtabLabel} icon={icon} />;
   }
+
+  if (subtabId === 'phone') return <PhonePanel calls={calls} />;
+  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} />;
 
   return (
     <div className="space-y-3">

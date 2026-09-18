@@ -47,7 +47,33 @@ function contentSecurityPolicy(): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    `connect-src 'self' ${supabaseOrigin} ${supabaseWs}`.trim(),
+    /*
+     * ⚠ TWILIO'S SIGNALLING WEBSOCKET MUST BE HERE OR THE PHONE CANNOT REGISTER.
+     *
+     * The Voice SDK opens a WebSocket to `chunderw-vpc-gll[-region].twilio.com`
+     * and posts telemetry to `eventgw.twilio.com`. With CSP enforced and these
+     * missing, `device.register()` fails and the SDK reports
+     * `UnknownError (31000): An unknown error has occurred` — which names
+     * nothing, points nowhere, and looks like a Twilio fault rather than our
+     * own header. It happened exactly once, the day CSP_ENFORCE was turned on,
+     * and it cost an afternoon to recognise.
+     *
+     * The token request still succeeds when this is wrong, which is what makes
+     * it so confusing: the dialer shows the user's own number quite happily and
+     * then refuses to connect.
+     *
+     * Wildcarded on purpose — Twilio picks an edge by region
+     * (chunderw-vpc-gll-us1, -ie1, -au1 …) and pinning one would break the
+     * moment the account's edge changed.
+     */
+    `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://*.twilio.com wss://*.twilio.com`.trim(),
+    /*
+     * Call recordings are played from short-lived Supabase Storage URLs. Without
+     * an explicit media-src this falls back to default-src 'self' and every
+     * <audio> silently refuses to play — the same class of bug as the line
+     * above, just quieter, because it only shows up once a recording exists.
+     */
+    `media-src 'self' blob: ${supabaseOrigin}`.trim(),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

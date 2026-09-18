@@ -64,20 +64,45 @@ export function NotificationBell({
     };
   }, [open]);
 
+  /*
+   * ── PAINT OPTIMISTICALLY, BUT ROLL BACK ON FAILURE ─────────────────────
+   * These fired `void markNotificationReadAction(...)` — the badge cleared
+   * locally and the rejection went nowhere. When the write actually failed (an
+   * expired session is the common one) the notification stayed unread on the
+   * server, reappeared on the next page load, and looked like the bell
+   * randomly forgetting what you had read.
+   *
+   * Optimistic paint is still right — a read marker must not wait on a round
+   * trip — so the fix is to keep the paint and undo it if the server refuses.
+   * Same shape the dashboard's inline cell edit already uses: snapshot, paint,
+   * restore on error.
+   */
   const openNotification = (n: NotificationRow) => {
     setOpen(false);
+
     if (!n.readAt) {
+      const previous = { notifications, unreadCount };
       setNotifications((list) => list.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
       setUnreadCount((c) => Math.max(0, c - 1));
-      void markNotificationReadAction(n.id);
+
+      markNotificationReadAction(n.id).catch(() => {
+        setNotifications(previous.notifications);
+        setUnreadCount(previous.unreadCount);
+      });
     }
+
     if (n.recordId) router.push(`/records?record=${n.recordId}`);
   };
 
   const markAllRead = () => {
+    const previous = { notifications, unreadCount };
     setNotifications((list) => list.map((x) => ({ ...x, readAt: x.readAt ?? new Date().toISOString() })));
     setUnreadCount(0);
-    void markAllNotificationsReadAction();
+
+    markAllNotificationsReadAction().catch(() => {
+      setNotifications(previous.notifications);
+      setUnreadCount(previous.unreadCount);
+    });
   };
 
   return (

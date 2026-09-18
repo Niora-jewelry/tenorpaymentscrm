@@ -1437,10 +1437,19 @@ function CredentialRow({ recordId, row }: { recordId: string; row: import('../sc
           icon={copied ? 'check' : 'copy'}
           size={22}
           title="Copy without revealing"
-          onClick={() => {
-            void navigator.clipboard?.writeText(row.pass);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
+          /* Awaited, then reported — never the other way round. `void
+             writeText(...)` swallows the rejection, so the tick appeared
+             whether or not anything reached the clipboard. The real Logins
+             panel had the same bug; this is the prototype the client is
+             shown, so it has to tell the truth too. */
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(row.pass);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            } catch {
+              setCopied(false);
+            }
           }}
         />
       </span>

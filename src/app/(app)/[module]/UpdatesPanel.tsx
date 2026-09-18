@@ -70,10 +70,10 @@ export function UpdatesPanel({
         await addUpdateAction(moduleSlug, recordId, null, formData);
         setDraft('');
         router.refresh();
-      } catch (e) {
+      } catch {
         // The draft survives on purpose — nobody should lose what they wrote
         // because the server said no.
-        setPostError(e instanceof Error ? e.message : 'Could not post that update.');
+        setPostError('Could not post that update.');
       }
     });
   };
@@ -172,8 +172,8 @@ function Thread({
       try {
         setError(null);
         await addUpdateAction(moduleSlug, root.recordId, root.id, formData);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not post that reply.');
+      } catch {
+        setError('Could not post that reply.');
         return;
       }
       setDraft('');
@@ -200,8 +200,8 @@ function Thread({
         setError(null);
         await deleteUpdateAction(moduleSlug, root.id);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not delete that update.');
+      } catch {
+        setError('Could not delete that update.');
       }
     });
   };

@@ -51,8 +51,8 @@ export function NumbersSection({
       try {
         setError(null);
         await setNumberActiveAction(numberId, isActive);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not change that number.');
+      } catch {
+        setError('Could not change that number.');
       }
     });
 

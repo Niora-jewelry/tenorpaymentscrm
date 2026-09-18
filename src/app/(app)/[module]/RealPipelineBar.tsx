@@ -74,8 +74,8 @@ export function RealPipelineBar({
         setError(null);
         await setPipelineStepAction(moduleSlug, recordId, moduleId, pipelineId, stepId);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not move this record.');
+      } catch {
+        setError('Could not move this record.');
       }
     });
   };
@@ -86,8 +86,8 @@ export function RealPipelineBar({
         setError(null);
         await clearPipelineAction(moduleSlug, recordId, moduleId);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not take this record off the pipeline.');
+      } catch {
+        setError('Could not take this record off the pipeline.');
       }
     });
   };

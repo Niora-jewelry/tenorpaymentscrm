@@ -48,9 +48,9 @@ export function CustomEntries({
       try {
         setError(null);
         await addCustomEntryAction(moduleSlug, recordId, formData);
-      } catch (e) {
+      } catch {
         // Inputs kept — nobody should retype what they just entered.
-        setError(e instanceof Error ? e.message : 'Could not add that entry.');
+        setError('Could not add that entry.');
         return;
       }
       setLabel('');
@@ -144,8 +144,8 @@ function EntryRow({
       try {
         setRowError(null);
         await updateCustomEntryAction(moduleSlug, entry.id, formData);
-      } catch (e) {
-        setRowError(e instanceof Error ? e.message : 'Could not save that entry.');
+      } catch {
+        setRowError('Could not save that entry.');
         return;
       }
       setEditing(false);
@@ -159,8 +159,8 @@ function EntryRow({
         setRowError(null);
         await deleteCustomEntryAction(moduleSlug, entry.id);
         router.refresh();
-      } catch (e) {
-        setRowError(e instanceof Error ? e.message : 'Could not delete that entry.');
+      } catch {
+        setRowError('Could not delete that entry.');
       }
     });
   };

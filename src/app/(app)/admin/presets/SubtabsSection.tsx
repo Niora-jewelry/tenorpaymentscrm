@@ -346,9 +346,9 @@ function SubtabRow({
                     setAssignError(null);
                     await assignSubtabToModulesAction(subtab.id, [moduleId]);
                     setAssigning(false);
-                  } catch (err) {
+                  } catch {
                     setAssignError(
-                      err instanceof Error ? err.message : 'Could not add it to that module.',
+                      'Could not add it to that module.',
                     );
                   }
                 });

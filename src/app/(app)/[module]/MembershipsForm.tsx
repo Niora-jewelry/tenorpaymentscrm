@@ -38,8 +38,8 @@ export function MembershipsForm({
         setError(null);
         await toggleMembershipAction(moduleSlug, recordId, targetModuleId, on);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not change that membership.');
+      } catch {
+        setError('Could not change that membership.');
       }
     });
   };
@@ -94,8 +94,8 @@ export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; re
             setArchiveError(null);
             await archiveRecordAction(moduleSlug, recordId);
             router.refresh();
-          } catch (e) {
-            setArchiveError(e instanceof Error ? e.message : 'Could not archive this record.');
+          } catch {
+            setArchiveError('Could not archive this record.');
           }
         })
       }

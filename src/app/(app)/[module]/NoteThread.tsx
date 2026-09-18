@@ -110,9 +110,9 @@ export function NoteThread({
       try {
         setError(null);
         await addNoteAction(moduleSlug, recordId, scopeKind, scopeId, formData);
-      } catch (e) {
+      } catch {
         // Draft kept deliberately — see the Updates panel.
-        setError(e instanceof Error ? e.message : 'Could not add that note.');
+        setError('Could not add that note.');
         return;
       }
       setDraft('');
@@ -138,8 +138,8 @@ export function NoteThread({
         setError(null);
         await deleteNoteAction(moduleSlug, noteId);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not delete that note.');
+      } catch {
+        setError('Could not delete that note.');
       }
     });
   };

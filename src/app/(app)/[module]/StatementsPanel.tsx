@@ -155,8 +155,8 @@ function PeriodRow({
         setError(null);
         await deleteStatementAction(moduleSlug, fileId);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not delete that statement.');
+      } catch {
+        setError('Could not delete that statement.');
       }
     });
   };

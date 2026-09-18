@@ -263,6 +263,8 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
           setActiveCall(null);
         });
       } catch (err) {
+        /* Kept: this one is a TWILIO error, not a Server Action rejection, so
+           it carries a real code that describePhoneError can translate. */
         setError(describePhoneError(err));
         setActiveCall(null);
       }

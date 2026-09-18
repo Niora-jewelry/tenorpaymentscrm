@@ -236,9 +236,9 @@ function TabRow({ tab, index, modules }: { tab: AdminTabRow; index: number; modu
                     setAssignError(null);
                     await assignTabToModulesAction(tab.id, [moduleId]);
                     setAssigning(false);
-                  } catch (err) {
+                  } catch {
                     setAssignError(
-                      err instanceof Error ? err.message : 'Could not add it to that module.',
+                      'Could not add it to that module.',
                     );
                   }
                 });

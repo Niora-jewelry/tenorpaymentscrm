@@ -117,8 +117,8 @@ function AddRowForm({
         await addOtherFileRowAction(moduleSlug, recordId, formData);
         router.refresh();
         onDone();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not add that row.');
+      } catch {
+        setError('Could not add that row.');
       }
     });
   };
@@ -226,8 +226,8 @@ function FileRowView({
         setError(null);
         await deleteFileAction(moduleSlug, fileId);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not delete that file.');
+      } catch {
+        setError('Could not delete that file.');
       }
     });
   };

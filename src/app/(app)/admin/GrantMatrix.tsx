@@ -1,55 +1,46 @@
 'use client';
 
 /**
- * The permission grant matrix — read (Phase 6b), write (Phase 6c).
+ * The permission screen — one row per scope, one control, one answer.
  *
- * One component, two subjects: a template (`/admin/templates/[templateId]`)
- * and a real person (`/admin/users/[userId]/permissions`). The difference is a
- * column, not a screen — a template has grants, a user has grants *and*
- * overrides — and building it twice is how the two would come to disagree about
- * what "not set" means.
+ * One component, two subjects: a template (`/admin/templates/[templateId]`) and
+ * a real person (`/admin/users/[userId]/permissions`). Building it twice is how
+ * the two would come to disagree about what "not set" means.
  *
- * ── EXACTLY ONE COLUMN IS EDITABLE, AND WHICH ONE DEPENDS ON THE ROUTE ───
- * The template screen edits the Template column. A person's screen edits their
- * Override column and shows the template's as read-only, with a link to go and
- * change it there. That is not a simplification: editing a template from inside
- * one person's screen would silently change everyone else attached to it, on a
- * page whose entire framing is "this person". The write path each route passes
- * in decides which column is live, so the component cannot offer the wrong one.
+ * ── THE REDESIGN, AND WHAT IT REMOVED ────────────────────────────────────
+ * This screen used to show FOUR columns per row — Template, Override, Resolves,
+ * In the app — plus a four-entry legend explaining them and three notice blocks
+ * above the grid. Everything was accurate and almost nobody could read it: two
+ * of the columns were intermediate values that only matter when they disagree,
+ * and the disagreement was exactly what the reader had to work out for
+ * themselves.
  *
- * ── FOUR STATES ──────────────────────────────────────────────────────────
- * Hidden / View / Edit / **Not set**. The fourth was the whole point of 6b: an
- * unset scope resolves to *Edit*, so rendering it as an empty cell would read as
- * "no access" and be wrong in the most dangerous direction. It is drawn as a
- * real state, it is a real choice in the editor (clearing a grant, not setting
- * one), and the legend says what it does.
+ * It is now two things per row:
  *
- * ── TWO RESOLUTION COLUMNS, NOT ONE ──────────────────────────────────────
- * "Resolves" is `effective_grant()`'s answer. "In the app" is what the person
- * actually experiences after the admin shortcut, the admin-only module floor and
- * the two field caps. They differ constantly — for an admin subject, *every* row
- * differs — and collapsing them into one column would either hide the caps or
- * misattribute them to the template.
+ *   SETTING — the one control, a visible four-state segmented button rather
+ *             than a dropdown. The states are what you set; nothing is nested.
+ *   RESULT  — what the person actually gets, after every cap. A padlock appears
+ *             only when the result differs from the setting, and says why.
  *
- * Both are recomputed here the instant a cell is clicked, by `resolveScope` —
- * the SAME function that produced the server-rendered values, imported from the
- * client-safe `grantRules.ts` rather than copied. Without that, the two columns
- * that explain the screen would lag a round trip behind the column being edited,
- * which on a 148-row grid reads as the screen being wrong.
+ * The intermediate "Resolves" value did not vanish — it is in the padlock's
+ * explanation, which is the only moment it is worth knowing. On the person's
+ * screen the template's value is an inline hint on the row ("Sales Rep: Hidden")
+ * instead of a column, because it is context, not a second thing to compare.
  *
- * ── LOCKED OPTIONS (Phase 6d) ────────────────────────────────────────────
- * Two levels can be set, stored, and then silently overridden by a read-time
- * floor: Edit on a read-only field, Hidden on Deal Name. 6c made the writer
- * refuse both with a message; 6d greys them out so an honest click never reaches
- * that refusal. The greyed set comes from `lockedGrantLevels`, which is *derived
- * from the writer's own refusal function* rather than listed again here — a UI
- * whose locks were maintained separately would eventually forbid something the
- * server allows, which is the same lie as this phase's, pointing the other way.
+ * ── WHAT DID NOT CHANGE ──────────────────────────────────────────────────
+ * Every rule underneath. The four states, the module → tab → subtab → field
+ * ceiling chain, the locked levels derived from the writer's own refusal
+ * function, optimistic edits with rollback and per-row errors, the counts
+ * recomputed over pending edits, orphan grants, and the admin short-circuit.
+ * This was a presentation change; `resolveScope` still produces every value on
+ * screen, imported from the client-safe `grantRules.ts` so it cannot drift from
+ * what the server will render next.
  *
- * The admin shortcut and the admin-only module floor are NOT locked, for that
- * reason: both are no-ops only while a role or a module setting stays as it is
- * today, and 6c already declined to refuse them at the writer. They keep the
- * padlock's hover and a live control. See `lockedGrantLevels`.
+ * ── EXACTLY ONE COLUMN IS WRITABLE, AND THE ROUTE DECIDES ────────────────
+ * The template screen writes the template. A person's screen writes their
+ * override and shows the template's value read-only. Editing a template from
+ * inside one person's screen would silently change everyone else attached to
+ * it, on a page whose entire framing is "this person".
  */
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -99,25 +90,34 @@ function GrantCell({ grant, muted }: { grant: Grant | null; muted?: boolean }) {
 }
 
 /**
- * The editable version of the same cell — Phase 6c.
+ * The one control: four states, all visible, one click each.
  *
- * A native `<select>` rather than a four-button segmented control, deliberately:
- * this grid is 148 rows deep and every row would otherwise carry four buttons,
- * and a select is keyboard- and screen-reader-navigable for free. It is styled
- * as the chip it replaces so an editable column reads as the same kind of thing
- * as the read-only one next to it, only live.
+ * ── WHY A SEGMENTED CONTROL AND NOT A DROPDOWN ───────────────────────────
+ * It used to be a `<select>`, chosen when the grid was 148 rows deep and four
+ * buttons a row seemed extravagant. But tabs collapse by default, so a normal
+ * screen shows about twenty rows, not a hundred and fifty — and a dropdown
+ * hides the very thing this screen exists to communicate: that there are four
+ * states and which one is chosen. Reading a column of dropdowns tells you
+ * nothing until you open one.
  *
- * `''` is "Not set" — clearing the grant, which is a real choice and not the
- * same as Hidden. It is listed FIRST because it is the state a scope starts in,
- * not last as a "none of the above". It is also never locked: clearing is always
- * allowed, whatever the caps say.
+ * ── "NOT SET" IS FIRST, AND LABELLED ─────────────────────────────────────
+ * It is the state a scope starts in, not a "none of the above", and it is the
+ * MOST permissive value in the model — an unset scope resolves to Edit. Drawing
+ * it as an empty cell would read as "no access" and be wrong in the most
+ * dangerous direction, so it is a button like the others with a word on it.
  *
- * Phase 6d: a level the writer would refuse is `disabled` AND says so in its own
- * text. Greying alone is not enough — a disabled `<option>` is a faint visual
- * difference and nothing at all to a screen reader, so the reason has to be in
- * the text and in the control's hover, not only in the colour.
+ * ── LOCKED LEVELS ────────────────────────────────────────────────────────
+ * A level the writer would refuse is disabled and carries its reason on hover.
+ * The list comes from `lockedGrantLevels`, derived from the writer's own
+ * refusal function rather than restated here — a UI maintaining its own copy
+ * would eventually forbid something the server allows, which is the same lie
+ * pointing the other way.
+ *
+ * The value the cell currently HOLDS is never disabled: a capped grant can
+ * genuinely exist, and a control refusing to show what it is holding would
+ * misreport the database.
  */
-function GrantSelect({
+function GrantToggle({
   value,
   caps,
   busy,
@@ -130,45 +130,53 @@ function GrantSelect({
   label: string;
   onChange: (next: Grant | null) => void;
 }) {
-  const s = value ? GRANT_STYLE[value] : NOT_SET;
   const locks = lockedGrantLevels(caps);
   const reasonFor = (g: Grant) => locks.find((l) => l.level === g)?.reason ?? null;
 
-  // Fills its cell rather than hugging its text: the chip was a ~46px target in
-  // a 76px column, so a click that plainly landed "on the column" missed it. The
-  // hover is what says the whole cell is the control.
+  const options: { key: string; level: Grant | null; text: string }[] = [
+    { key: 'unset', level: null, text: 'Not set' },
+    ...GRANT_LEVELS.map((g) => ({ key: g, level: g as Grant | null, text: GRANT_STYLE[g].label })),
+  ];
+
   return (
-    <select
+    <div
+      role="group"
       aria-label={label}
-      title={locks.length ? locks.map((l) => l.reason).join(' ') : undefined}
-      value={value ?? ''}
-      disabled={busy}
-      onChange={(e) => onChange((e.target.value || null) as Grant | null)}
-      // A tab's whole header strip toggles the tab on click, and this select
-      // sits inside one. Without this, changing a tab's own grant would collapse
-      // the tab out from under the cursor doing it.
+      // The tab header strip toggles the tab on click and this sits inside one:
+      // without stopping propagation, changing a tab's grant collapses the tab
+      // out from under the cursor doing it.
       onClick={(e) => e.stopPropagation()}
-      className={`${CELL_BASE} w-full cursor-pointer appearance-none justify-center text-center outline-none transition hover:brightness-[.96] hover:shadow-[0_1px_2px_rgba(8,32,47,.12)] ${s.className} ${
-        busy ? 'opacity-40 hover:brightness-100 hover:shadow-none' : ''
+      className={`inline-flex overflow-hidden rounded-lg border border-line bg-canvas/60 ${
+        busy ? 'opacity-40' : ''
       }`}
     >
-      <option value="">{NOT_SET.label}</option>
-      {GRANT_LEVELS.map((g) => {
-        // Never disable the value the cell actually holds. A capped grant can
-        // still exist — migration 39 guards the scope, not the level, and rows
-        // predating 6c or written by direct SQL are real — and a control that
-        // refused to display what it is holding would misreport the database.
-        // The floors cancel such a grant on read anyway; clearing it is always
-        // available on the option above.
-        const reason = value === g ? null : reasonFor(g);
+      {options.map((o) => {
+        const active = value === o.level;
+        // Never disable what the cell holds — see the header.
+        const reason = active || o.level === null ? null : reasonFor(o.level);
+        const disabled = busy || Boolean(reason);
+
         return (
-          <option key={g} value={g} disabled={Boolean(reason)}>
-            {GRANT_STYLE[g].label}
-            {reason ? ' — not available' : ''}
-          </option>
+          <button
+            key={o.key}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            title={reason ?? undefined}
+            onClick={() => onChange(o.level)}
+            className={`px-2 py-1 text-[11.5px] font-semibold transition-colors ${
+              active
+                ? o.level
+                  ? `${GRANT_STYLE[o.level].className} border-0`
+                  : 'bg-ink-800 text-white'
+                : 'text-ink-500 hover:bg-white hover:text-ink-800'
+            } ${disabled && !active ? 'cursor-not-allowed opacity-35 hover:bg-transparent' : ''}`}
+          >
+            {o.text}
+          </button>
         );
       })}
-    </select>
+    </div>
   );
 }
 
@@ -225,6 +233,7 @@ function ScopeLine({
   editable,
   busy,
   error,
+  templateName,
   onEdit,
 }: {
   row: ScopeRow;
@@ -234,84 +243,88 @@ function ScopeLine({
   editable: EditableColumn;
   busy: boolean;
   error: string | null;
+  /** The template this person is attached to, for the inline hint. */
+  templateName: string | null;
   onEdit: (row: ScopeRow, column: 'template' | 'user', next: Grant | null) => void;
 }) {
+  /*
+   * The padlock appears only when the RESULT differs from what this row is set
+   * to — which is the only moment the distinction is worth a reader's attention.
+   * Its title carries what the old "Resolves" column used to show, plus the
+   * reason, so nothing was lost by removing that column: "Set to Edit, but the
+   * module caps it at View."
+   */
   const capped = row.effective !== row.resolved;
 
-  /**
-   * The padlock's hover — Phase 6d gave it a second source.
-   *
-   * `row.lock` explains the RESOLUTION: why "In the app" differs from
-   * "Resolves", which is the pair of columns the padlock sits beside. A write
-   * lock explains the CONTROL: why an option is greyed out. For a read-only
-   * field both exist and describe one rule in two directions, so the resolution
-   * wording wins and the control carries its own; for Deal Name in its ordinary
-   * state there is no resolution lock at all, and without this the only hint
-   * that Hidden is unavailable would be inside an unopened dropdown.
-   */
   const writeLocks = editable ? lockedGrantLevels(row.caps) : [];
-  const lockNote = row.lock ?? (writeLocks.length ? writeLocks.map((l) => l.reason).join(' ') : null);
+  const lockNote =
+    (capped
+      ? `This row resolves to ${GRANT_STYLE[row.resolved].label}, but the app gives ${
+          GRANT_STYLE[row.effective].label
+        }. ${row.lock ?? ''}`.trim()
+      : row.lock) ?? (writeLocks.length ? writeLocks.map((l) => l.reason).join(' ') : null);
+
+  // Which value this screen is responsible for, and which is context.
+  const ownValue = editable === 'user' ? row.userGrant : row.templateGrant;
+  const inherited = editable === 'user' ? row.templateGrant : null;
 
   return (
     <div
       className={`border-b border-line-faint last:border-b-0 ${indent ? 'pl-8' : ''} ${
-        alt ? 'bg-gray-100' : ''
+        alt ? 'bg-canvas/40' : ''
       }`}
     >
       <div className="flex items-center gap-3 px-3 py-1.5">
         <span className="min-w-0 flex-1">
-          {/* Field rows sit inside an expanded tab and are the bulk of the 148;
-              they stay at 13px, and only the module and tab rows they hang off
-              take the larger size. */}
-          <span className={`${indent ? 'text-[13px]' : 'text-base'} text-ink-800`}>{row.label}</span>
+          <span className={`${indent ? 'text-[13px]' : 'text-[14px] font-medium'} text-ink-800`}>
+            {row.label}
+          </span>
           <span className="ml-1.5 font-mono text-[11px] text-ink-300">{row.detail}</span>
+        </span>
+
+        {/* The template's value as CONTEXT, not a column to compare against.
+            Only rendered when the template actually says something — an empty
+            column on every row was most of what made this screen unreadable. */}
+        {showOverride && editable === 'user' ? (
+          <span className="w-[150px] shrink-0 text-right text-[11.5px] text-ink-400">
+            {inherited ? (
+              <>
+                {templateName ?? 'Template'}:{' '}
+                <span className="font-medium text-ink-600">{GRANT_STYLE[inherited].label}</span>
+              </>
+            ) : null}
+          </span>
+        ) : null}
+
+        <span className="shrink-0">
+          {editable ? (
+            <GrantToggle
+              value={ownValue}
+              caps={row.caps}
+              busy={busy}
+              label={
+                editable === 'user' ? `Permission for ${row.label}` : `Template permission for ${row.label}`
+              }
+              onChange={(next) => onEdit(row, editable, next)}
+            />
+          ) : (
+            <GrantCell grant={ownValue} />
+          )}
+        </span>
+
+        <span className="flex w-[92px] shrink-0 items-center justify-end gap-1">
+          <GrantCell grant={row.effective} />
           {lockNote ? (
-            <span className="ml-1.5 inline-flex items-center gap-1 align-middle text-ink-300" title={lockNote}>
+            <span className="inline-flex items-center text-ink-300" title={lockNote}>
               <Icon name="lock" size={11} />
             </span>
           ) : null}
         </span>
-
-        <span className="w-[76px] shrink-0 text-right">
-          {editable === 'template' ? (
-            <GrantSelect
-              value={row.templateGrant}
-              caps={row.caps}
-              busy={busy}
-              label={`Template grant for ${row.label}`}
-              onChange={(next) => onEdit(row, 'template', next)}
-            />
-          ) : (
-            <GrantCell grant={row.templateGrant} />
-          )}
-        </span>
-        {showOverride ? (
-          <span className="w-[76px] shrink-0 text-right">
-            {editable === 'user' ? (
-              <GrantSelect
-                value={row.userGrant}
-                caps={row.caps}
-                busy={busy}
-                label={`Personal override for ${row.label}`}
-                onChange={(next) => onEdit(row, 'user', next)}
-              />
-            ) : (
-              <GrantCell grant={row.userGrant} />
-            )}
-          </span>
-        ) : null}
-        <span className="w-[64px] shrink-0 text-right">
-          <GrantCell grant={row.resolved} muted={capped} />
-        </span>
-        <span className="w-[64px] shrink-0 text-right">
-          <GrantCell grant={row.effective} />
-        </span>
       </div>
 
-      {/* Against the row, not in a toast at the top: on a 148-row grid, an
-          error that does not say WHICH cell it belongs to is barely an error at
-          all. The optimistic value has already been rolled back by the time
-          this renders. */}
+      {/* Against the row, not in a toast at the top: an error that does not say
+          WHICH cell it belongs to is barely an error at all. The optimistic
+          value has already been rolled back by the time this renders. */}
       {error ? (
         <p className="flex items-start gap-1.5 px-3 pb-1.5 text-[12px] text-[#b02a30]">
           <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
@@ -322,15 +335,26 @@ function ScopeLine({
   );
 }
 
-function HeaderRow({ showOverride, first }: { showOverride: boolean; first: string }) {
+function HeaderRow({
+  showOverride,
+  first,
+  editable,
+}: {
+  showOverride: boolean;
+  first: string;
+  editable: EditableColumn;
+}) {
   const th = 'shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[.04em] text-ink-400';
   return (
     <div className="flex items-center gap-3 border-b border-line-soft bg-canvas px-3 py-1.5">
       <span className={`min-w-0 flex-1 text-left ${th}`}>{first}</span>
-      <span className={`w-[76px] ${th}`}>Template</span>
-      {showOverride ? <span className={`w-[76px] ${th}`}>Override</span> : null}
-      <span className={`w-[64px] ${th}`}>Resolves</span>
-      <span className={`w-[64px] ${th}`}>In the app</span>
+      {showOverride && editable === 'user' ? <span className={`w-[150px] ${th}`}>From template</span> : null}
+      {/* Two headers now, matching the two things on a row. "Resolves" is gone
+          as a column: it was an intermediate value that only matters when it
+          disagrees with the result, and that case is exactly what the padlock
+          on the result now explains. */}
+      <span className={`${th} w-[196px]`}>Setting</span>
+      <span className={`w-[92px] ${th}`}>Result</span>
     </div>
   );
 }
@@ -553,6 +577,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       editable={writer?.column ?? null}
       busy={busyKey === rowKey(row)}
       error={errors.get(rowKey(row)) ?? null}
+      templateName={subject.kind === 'user' ? subject.templateLabel : null}
       onEdit={onEdit}
     />
   );
@@ -572,48 +597,31 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
 
   return (
     <div className="space-y-4">
-      {writer ? (
-        <PlaceholderNotice title="A scope with no entry resolves to Edit, not Hidden">
-          <p>
-            &ldquo;Not set&rdquo; is the <strong>most permissive</strong> state in this model, not the
-            least — a template that grants nothing restricts nothing. Setting a cell back to Not set means{' '}
-            {writer.column === 'template'
-              ? 'inherit the default, which is Edit'
-              : "fall back to the template's value, whatever that is"}
-            .
-          </p>
-          <p>
-            Changes save as you make them, and take effect on the affected person&rsquo;s{' '}
-            <strong>next request</strong> — there is no push step and nothing to publish.
-          </p>
-        </PlaceholderNotice>
-      ) : (
-        <PlaceholderNotice title="Read-only — nothing on this screen changes a permission">
-          <p>
-            This is the resolved state as the database holds it today; every value here is reported, not
-            editable.
-          </p>
-          <p>
-            <strong>A scope with no entry resolves to Edit</strong>, not Hidden. &ldquo;Not set&rdquo; is
-            the most permissive state in the model, which is why it is drawn as a state rather than an
-            empty cell.
-          </p>
-        </PlaceholderNotice>
-      )}
+      {/*
+        ONE rule, stated once. This used to be three notice blocks and a
+        four-entry legend totalling about 400 words, which is more text than the
+        grid it explained — and the one thing a reader must know was buried in
+        the middle of it.
+      */}
+      <p className="flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09]">
+        <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
+        <span>
+          <strong className="font-semibold">Not set means full access, not none.</strong> Access starts
+          open, so a template that sets nothing takes nothing away. To restrict a whole module, set the{' '}
+          <strong className="font-semibold">module</strong> row — everything inside it follows.
+          {writer ? ' Changes save as you click them.' : ' This screen is read-only.'}
+        </span>
+      </p>
 
       {subject.kind === 'user' && subject.isAdmin ? (
-        <PlaceholderNotice title={`${subject.label} is an admin — none of these grants apply to them`}>
-          <p>
-            Every module, tab and field resolves to <strong>Edit</strong> for an admin before any template
-            or override is consulted, so the &ldquo;In the app&rdquo; column below reads Edit throughout
-            regardless of what the other columns say. The one exception is a read-only field, which is
-            capped at View for everyone.
-          </p>
-          <p>
-            Testing that a grant actually restricts anything needs a non-admin account. Every profile in
-            this database is currently a super admin.
-          </p>
-        </PlaceholderNotice>
+        <p className="flex items-start gap-2 rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-600">
+          <Icon name="info" size={14} className="mt-[2px] shrink-0 text-ink-400" />
+          <span>
+            <strong className="font-semibold text-ink-800">{subject.label} is an admin</strong>, so every
+            row resolves to Edit whatever is set here. These settings are saved and will apply if the
+            account stops being an admin.
+          </span>
+        </p>
       ) : null}
 
       {matrix.orphans.length > 0 ? (
@@ -661,9 +669,8 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink-900">Modules</h2>
           <EnforcementChip kind="module" />
-          <p className="w-full text-[12px] text-ink-400">{ENFORCEMENT_NOTE.module.note}</p>
         </div>
-        <HeaderRow showOverride={showOverride} first="Module" />
+        <HeaderRow showOverride={showOverride} first="Module" editable={writer?.column ?? null} />
         {modules.map((m) => line(m, false))}
         {modules.length === 0 ? (
           <p className="px-3 py-4 text-[12.5px] text-ink-400">No module matches that.</p>
@@ -675,12 +682,13 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink-900">Tabs &amp; fields</h2>
           <EnforcementChip kind="tab" />
-          <p className="w-full text-[12px] text-ink-400">
-            Tabs and fields are global — one set for the whole CRM, so a grant here applies in every
-            module at once. {ENFORCEMENT_NOTE.tab.note}
-          </p>
+          {/* This line used to read "Tabs and fields are global — one set for
+              the whole CRM, so a grant here applies in every module at once."
+              That was true until per-module grants landed and is now exactly
+              backwards, which is worse than saying nothing. The module picker
+              above the grid says which scope is being edited. */}
         </div>
-        <HeaderRow showOverride={showOverride} first="Tab / field" />
+        <HeaderRow showOverride={showOverride} first="Tab / field" editable={writer?.column ?? null} />
 
         {tabs.map((t) => {
           const open = isOpen(t.tab.id);
@@ -767,80 +775,6 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         ) : null}
       </section>
 
-      <Legend showOverride={showOverride} editable={writer?.column ?? null} />
-    </div>
-  );
-}
-
-function Legend({ showOverride, editable }: { showOverride: boolean; editable: EditableColumn }) {
-  return (
-    <div className="rounded-xl border border-line bg-white px-4 py-3 text-[12px] text-ink-500 shadow-[0_1px_2px_rgba(8,32,47,.05)]">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[.04em] text-ink-400">What the columns mean</p>
-      <dl className="grid gap-1.5 sm:grid-cols-2">
-        <div>
-          <dt className="inline font-medium text-ink-700">Template</dt>
-          <dd className="inline">
-            {' '}
-            — the setting saved on this template. Blank means the template says nothing about it.
-            {editable === 'user'
-              ? ' You cannot change it from this screen, because it would change everyone else on the same template too.'
-              : ''}
-          </dd>
-        </div>
-        {showOverride ? (
-          <div>
-            <dt className="inline font-medium text-ink-700">Override</dt>
-            <dd className="inline">
-              {' '}
-              — a setting for this one person only. When it is filled in, it wins over the template.
-              {editable === 'user' ? ' Filling one in here is what makes the badge say “(edited)”.' : ''}
-            </dd>
-          </div>
-        ) : null}
-        <div>
-          <dt className="inline font-medium text-ink-700">Resolves</dt>
-          <dd className="inline">
-            {' '}
-            — what the two columns on the left add up to: the person&rsquo;s own setting if there is one,
-            otherwise the template&rsquo;s, and if neither is filled in, Edit.
-          </dd>
-        </div>
-        <div>
-          <dt className="inline font-medium text-ink-700">In the app</dt>
-          <dd className="inline">
-            {' '}
-            — what the person actually gets when they use the CRM. This can be stricter than
-            &ldquo;Resolves&rdquo;, because{' '}
-            <strong className="font-medium text-ink-700">a module limits everything inside it</strong>:
-            set a module to View and every tab and field inside it is view-only too, no matter what
-            their own rows say — and a tab limits its fields the same way. Admins always get Edit, and
-            some rows are fixed for other reasons. A{' '}
-            <Icon name="lock" size={11} className="inline align-[-1px]" /> marks a row where something
-            other than its own setting decided the answer; hover over it to see what.
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-2.5 border-t border-line-faint pt-2">
-        <strong className="font-medium text-ink-700">Blank does not mean hidden.</strong> If nothing is
-        filled in — not here and not on the template — the person gets full{' '}
-        <strong className="font-medium text-ink-700">Edit</strong> access. Access starts open, so a
-        template that sets nothing takes nothing away. To make a whole module read-only, set the{' '}
-        <em>module</em> row to View and everything inside it follows; leaving the rows underneath blank
-        does not restrict anything on its own.
-      </p>
-      {editable ? (
-        <p className="mt-2 border-t border-line-faint pt-2">
-          <strong className="font-medium text-ink-700">Greyed-out choices</strong> are the two the app
-          would ignore anyway: <strong className="font-medium text-ink-700">Edit</strong> on a field
-          nobody is allowed to type into, and{' '}
-          <strong className="font-medium text-ink-700">Hidden</strong> on Deal Name, which always has to
-          stay visible. Choosing one would show a promise here that the app would not keep, so they
-          cannot be picked or saved. Choices marked with a padlock{' '}
-          <em>can</em> still be picked — they simply make no difference today, because of the
-          person&rsquo;s role or because the module is admin-only, but they are worth saving for the day
-          that changes.
-        </p>
-      ) : null}
     </div>
   );
 }

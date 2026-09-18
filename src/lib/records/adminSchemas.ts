@@ -499,8 +499,20 @@ const grantScopeShape = {
    * '' for its "All modules" option and cannot submit null, so the empty
    * string is normalised here at the boundary rather than in four call sites.
    */
+  /*
+   * ⚠ `.nullable()` AS WELL AS `.optional()`, and that is not belt-and-braces.
+   *
+   * `.optional()` permits `undefined` only. The permission screens pass an
+   * explicit `null` for "All modules" — which is the DEFAULT state of both
+   * screens — so with optional alone every grant write was rejected by Zod
+   * before reaching the data layer, and the row reported a bare "Invalid
+   * input". It broke setting any permission at all, on both screens, while
+   * typecheck, 308 tests and the build stayed green: nothing exercised the
+   * action with a null until the UI did.
+   */
   moduleId: z
     .union([uuid, z.literal('')])
+    .nullable()
     .optional()
     .transform((v) => (v ? v : null)),
 };

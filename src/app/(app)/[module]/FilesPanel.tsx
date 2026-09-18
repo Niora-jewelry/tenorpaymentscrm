@@ -99,15 +99,27 @@ function AddRowForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
     if (!name.trim()) return;
     const formData = new FormData();
     formData.set('name', name.trim());
     startTransition(async () => {
-      await addOtherFileRowAction(moduleSlug, recordId, formData);
-      router.refresh();
-      onDone();
+      /*
+       * `addOtherFileRowAction` returns void and throws on refusal
+       * (`requireTabEdit`). Unguarded, the throw skipped both `router.refresh`
+       * and `onDone`, so the form stayed open with the typed name still in it
+       * and nothing said why — which looks like the Add button not working.
+       */
+      try {
+        setError(null);
+        await addOtherFileRowAction(moduleSlug, recordId, formData);
+        router.refresh();
+        onDone();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not add that row.');
+      }
     });
   };
 
@@ -131,6 +143,11 @@ function AddRowForm({
       <Button size="sm" variant="ghost" disabled={pending} onClick={onDone}>
         Cancel
       </Button>
+      {error ? (
+        <p role="alert" className="text-[11.5px] text-danger">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -197,8 +214,21 @@ function FileRowView({
 
   const remove = (fileId: string) => {
     startTransition(async () => {
-      await deleteFileAction(moduleSlug, fileId);
-      router.refresh();
+      /*
+       * Wrapped because these actions return void and THROW on refusal —
+       * `requireTabEdit` raises for a viewer without Edit on this tab. Left
+       * unguarded, the click did nothing at all: the throw skipped
+       * `router.refresh()`, the row stayed on screen, and no message appeared.
+       * A delete that silently does nothing is indistinguishable from a broken
+       * button.
+       */
+      try {
+        setError(null);
+        await deleteFileAction(moduleSlug, fileId);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete that file.');
+      }
     });
   };
 

@@ -143,8 +143,21 @@ function PeriodRow({
 
   const remove = (fileId: string) => {
     startTransition(async () => {
-      await deleteStatementAction(moduleSlug, fileId);
-      router.refresh();
+      /*
+       * Wrapped because these actions return void and THROW on refusal —
+       * `requireTabEdit` raises for a viewer without Edit on this tab. Left
+       * unguarded, the click did nothing at all: the throw skipped
+       * `router.refresh()`, the row stayed on screen, and no message appeared.
+       * A delete that silently does nothing is indistinguishable from a broken
+       * button.
+       */
+      try {
+        setError(null);
+        await deleteStatementAction(moduleSlug, fileId);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not delete that statement.');
+      }
     });
   };
 

@@ -31,6 +31,13 @@ export function CustomEntries({
   const [pending, startTransition] = useTransition();
   const [label, setLabel] = useState('');
   const [value, setValue] = useState('');
+  /*
+   * These actions return void and throw on refusal. Unguarded, a denied add
+   * left the typed label and value sitting in the inputs with no message — and
+   * a denied delete left the entry on screen, which reads as the button not
+   * working rather than as permission being refused.
+   */
+  const [error, setError] = useState<string | null>(null);
 
   const add = () => {
     if (!label.trim()) return;
@@ -38,7 +45,14 @@ export function CustomEntries({
     formData.set('label', label.trim());
     formData.set('value', value.trim());
     startTransition(async () => {
-      await addCustomEntryAction(moduleSlug, recordId, formData);
+      try {
+        setError(null);
+        await addCustomEntryAction(moduleSlug, recordId, formData);
+      } catch (e) {
+        // Inputs kept — nobody should retype what they just entered.
+        setError(e instanceof Error ? e.message : 'Could not add that entry.');
+        return;
+      }
       setLabel('');
       setValue('');
       router.refresh();
@@ -47,6 +61,11 @@ export function CustomEntries({
 
   return (
     <div className="space-y-4">
+      {error ? (
+        <p role="alert" className="text-[11.5px] text-danger">
+          {error}
+        </p>
+      ) : null}
       <SpecNote>
         Anything here belongs to <strong>this record only</strong>. It is not a field: adding one
         does not put it on every other merchant, and because there is no definition behind it, it
@@ -113,6 +132,7 @@ function EntryRow({
   const [now] = useState(() => new Date());
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
   const [label, setLabel] = useState(entry.label);
   const [value, setValue] = useState(entry.value ?? '');
 
@@ -121,7 +141,13 @@ function EntryRow({
       const formData = new FormData();
       formData.set('label', label);
       formData.set('value', value);
-      await updateCustomEntryAction(moduleSlug, entry.id, formData);
+      try {
+        setRowError(null);
+        await updateCustomEntryAction(moduleSlug, entry.id, formData);
+      } catch (e) {
+        setRowError(e instanceof Error ? e.message : 'Could not save that entry.');
+        return;
+      }
       setEditing(false);
       router.refresh();
     });
@@ -129,8 +155,13 @@ function EntryRow({
 
   const remove = () => {
     startTransition(async () => {
-      await deleteCustomEntryAction(moduleSlug, entry.id);
-      router.refresh();
+      try {
+        setRowError(null);
+        await deleteCustomEntryAction(moduleSlug, entry.id);
+        router.refresh();
+      } catch (e) {
+        setRowError(e instanceof Error ? e.message : 'Could not delete that entry.');
+      }
     });
   };
 
@@ -166,6 +197,11 @@ function EntryRow({
       <span className="truncate text-[13px] font-medium text-ink-900">{entry.label}</span>
       <span className="min-w-0">
         <span className="block truncate text-[13px] text-ink-700">{entry.value || '—'}</span>
+        {rowError ? (
+          <span role="alert" className="block text-[11px] text-danger">
+            {rowError}
+          </span>
+        ) : null}
         <span className="block text-[11px] text-ink-400">
           {authorName} · {relative(entry.createdAt, now)}
         </span>

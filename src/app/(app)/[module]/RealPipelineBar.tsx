@@ -36,7 +36,7 @@
  * one already behind says "Move back". The chips are buttons and always were —
  * what was missing was any hint that clicking one is a recorded action.
  */
-import { Fragment, useTransition } from 'react';
+import { Fragment, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { SWATCHES } from '@/proto/ui/tokens';
@@ -60,18 +60,35 @@ export function RealPipelineBar({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  /*
+   * Moving a record's stage is a real state change, and these actions return
+   * void and throw on refusal. Unguarded, a denied move skipped
+   * `router.refresh()` and the bar simply did not budge — the classic "the
+   * button does nothing", with nothing to click next except the same button.
+   */
+  const [error, setError] = useState<string | null>(null);
 
   const setStep = (pipelineId: string, stepId: string) => {
     startTransition(async () => {
-      await setPipelineStepAction(moduleSlug, recordId, moduleId, pipelineId, stepId);
-      router.refresh();
+      try {
+        setError(null);
+        await setPipelineStepAction(moduleSlug, recordId, moduleId, pipelineId, stepId);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not move this record.');
+      }
     });
   };
 
   const clear = () => {
     startTransition(async () => {
-      await clearPipelineAction(moduleSlug, recordId, moduleId);
-      router.refresh();
+      try {
+        setError(null);
+        await clearPipelineAction(moduleSlug, recordId, moduleId);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not take this record off the pipeline.');
+      }
     });
   };
 
@@ -90,6 +107,7 @@ export function RealPipelineBar({
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-t border-line-soft py-2.5">
         <Icon name="route" size={13} className="text-ink-300" />
         <span className="text-[12px] text-ink-400">Not on a pipeline in this module.</span>
+        {error ? <span role="alert" className="text-[11.5px] text-danger">{error}</span> : null}
         {assignable.map((p) => (
           <button
             key={p.id}
@@ -119,6 +137,11 @@ export function RealPipelineBar({
 
   return (
     <div className="border-t border-line-soft py-2.5">
+      {error ? (
+        <p role="alert" className="mb-1.5 text-[11.5px] text-danger">
+          {error}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon name="route" size={13} className="text-ink-400" />
         <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-500">

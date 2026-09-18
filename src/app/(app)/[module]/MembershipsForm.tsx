@@ -1,6 +1,6 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
@@ -24,17 +24,30 @@ export function MembershipsForm({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  /*
+   * Which modules a record appears in is a real change — archiving is exactly
+   * "remove from all of them". The action returns void and throws on refusal,
+   * so unguarded a denied toggle left the checkbox looking however the click
+   * left it, with `router.refresh()` skipped and nothing said.
+   */
+  const [error, setError] = useState<string | null>(null);
 
   const toggle = (targetModuleId: string, on: boolean) => {
     startTransition(async () => {
-      await toggleMembershipAction(moduleSlug, recordId, targetModuleId, on);
-      router.refresh();
+      try {
+        setError(null);
+        await toggleMembershipAction(moduleSlug, recordId, targetModuleId, on);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not change that membership.');
+      }
     });
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">In modules</span>
+      {error ? <span role="alert" className="text-[11.5px] text-danger">{error}</span> : null}
       {allModules.map((m) => {
         const on = current.includes(m.id);
         return (
@@ -61,8 +74,15 @@ export function MembershipsForm({
 export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; recordId: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   return (
+    <>
+    {archiveError ? (
+      <span role="alert" className="text-[11.5px] text-danger">
+        {archiveError}
+      </span>
+    ) : null}
     <button
       type="button"
       disabled={pending}
@@ -70,8 +90,13 @@ export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; re
       title="Clear every display membership — stays in the Records List"
       onClick={() =>
         startTransition(async () => {
-          await archiveRecordAction(moduleSlug, recordId);
-          router.refresh();
+          try {
+            setArchiveError(null);
+            await archiveRecordAction(moduleSlug, recordId);
+            router.refresh();
+          } catch (e) {
+            setArchiveError(e instanceof Error ? e.message : 'Could not archive this record.');
+          }
         })
       }
       className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] font-semibold text-ink-500 transition-colors duration-150 hover:border-warn/40 hover:bg-warn-bg hover:text-warn disabled:cursor-wait disabled:opacity-60"
@@ -83,5 +108,6 @@ export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; re
       {pending ? <Spinner /> : <Icon name="archive" size={13} />}
       {pending ? 'Archiving…' : 'Archive'}
     </button>
+    </>
   );
 }

@@ -21,18 +21,28 @@ import { templateGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../GrantMatrix';
 import { setTemplateGrantAction, clearTemplateGrantAction } from '../actions';
+import { ModuleScopePicker } from '../../ModuleScopePicker';
+import { loadConfig } from '@/lib/records/config';
 
 export default async function TemplateGrantsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ templateId: string }>;
+  searchParams: Promise<{ module?: string }>;
 }) {
   const { templateId } = await params;
+  const { module: moduleParam } = await searchParams;
 
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
-  const matrix = await templateGrantMatrix(ctx, templateId);
+  const config = await loadConfig();
+  // Validated against the real module list — a mistyped link must not silently
+  // write a per-module grant nobody intended.
+  const activeModuleId = config.modules.some((m) => m.id === moduleParam) ? moduleParam! : null;
+
+  const matrix = await templateGrantMatrix(ctx, templateId, activeModuleId);
   if (!matrix || matrix.subject.kind !== 'template') notFound();
   const { subject } = matrix;
 
@@ -43,11 +53,11 @@ export default async function TemplateGrantsPage({
     column: 'template',
     set: async (scopeKind, scopeId, level) => {
       'use server';
-      return setTemplateGrantAction(templateId, scopeKind, scopeId, level);
+      return setTemplateGrantAction(templateId, scopeKind, scopeId, level, activeModuleId);
     },
     clear: async (scopeKind, scopeId) => {
       'use server';
-      return clearTemplateGrantAction(templateId, scopeKind, scopeId);
+      return clearTemplateGrantAction(templateId, scopeKind, scopeId, activeModuleId);
     },
   };
 
@@ -72,6 +82,14 @@ export default async function TemplateGrantsPage({
           in front of it.
         </p>
       </div>
+
+      <ModuleScopePicker
+        modules={config.modules
+          .filter((m) => !m.adminOnly)
+          .map((m) => ({ id: m.id, label: m.label }))}
+        activeModuleId={activeModuleId}
+        basePath={`/admin/templates/${templateId}`}
+      />
 
       <GrantMatrix matrix={matrix} writer={writer} />
     </div>

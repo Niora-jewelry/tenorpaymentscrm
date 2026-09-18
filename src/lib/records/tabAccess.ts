@@ -120,11 +120,48 @@ export async function tabAccess(ctx: AuthContext, recordId: string, tabKey: stri
  * knows its `tabId`, and so does a note's scope. */
 export async function tabAccessById(ctx: AuthContext, recordId: string, tabId: string): Promise<Grant> {
   if (ctx.isAdmin) return 'edit';
-  const [caps, tg] = await Promise.all([
-    moduleWriteCap(ctx, [recordId]),
-    tabGrant(ctx, tabId),
-  ]);
-  return capGrant(caps.get(recordId) ?? 'hidden', tg);
+
+  /*
+   * ── RESOLVED PER MODULE, THEN THE BEST TAKEN ──────────────────────────
+   * A tab grant can now differ by module (Admin-Module-Plan §2.2), and a
+   * record can sit in several. So this pairs each of the record's modules with
+   * the tab grant AS RESOLVED IN THAT MODULE, caps one under the other, and
+   * keeps the best.
+   *
+   * Best-wins is not a new rule — it is the one `moduleWriteCap` already
+   * applied to modules alone: "a record shown in both Leads and Deals is one
+   * record: holding Edit on either module is holding Edit on it." Taking the
+   * worst instead would mean adding a record to a second module could only
+   * ever REMOVE access, which is not what adding it anywhere means.
+   *
+   * With only global grants — every row today — this returns exactly what the
+   * previous implementation did, because the per-module lookup falls back to
+   * the global one.
+   */
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('record_modules')
+    .select('module_id')
+    .eq('record_id', recordId);
+  if (error) throw error;
+
+  const config = await loadConfig();
+  const moduleById = new Map(config.modules.map((m) => [m.id, m]));
+
+  let best: Grant = 'hidden';
+  for (const row of data ?? []) {
+    const mod = moduleById.get(row.module_id as string);
+    if (!mod) continue;
+
+    const [mg, tg] = await Promise.all([
+      moduleGrant(ctx, mod.id, mod.adminOnly),
+      tabGrant(ctx, tabId, mod.id),
+    ]);
+    const here = capGrant(mg, tg);
+    if (here === 'edit') return 'edit';
+    if (here === 'view') best = 'view';
+  }
+  return best;
 }
 
 /**

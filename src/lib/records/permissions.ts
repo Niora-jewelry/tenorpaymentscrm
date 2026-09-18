@@ -237,8 +237,30 @@ async function allGrantsFor(userId: string): Promise<Map<string, Grant>> {
  * `moduleGrant` / `tabGrant` below, never directly — those apply the floors
  * and admin shortcuts a bare lookup does not.
  */
-async function rawGrant(ctx: AuthContext, kind: GrantScope, scopeId: string): Promise<Grant> {
+async function rawGrant(
+  ctx: AuthContext,
+  kind: GrantScope,
+  scopeId: string,
+  moduleId?: string | null,
+): Promise<Grant> {
   const grants = await allGrantsFor(ctx.userId);
+
+  /*
+   * Module-specific first, then global — the same order `effective_grant()`
+   * applies in SQL, and the reason `effective_grants()` now emits two key
+   * shapes (migration 79):
+   *
+   *   "tab:<id>"              a grant that applies everywhere
+   *   "tab:<id>:<module_id>"  a grant for one module only
+   *
+   * Reading only the general key would ignore every per-module override;
+   * reading only the specific one would ignore every global grant. Both, in
+   * this order, is the rule.
+   */
+  if (moduleId) {
+    const specific = grants.get(`${kind}:${scopeId}:${moduleId}`);
+    if (specific) return specific;
+  }
   return grants.get(`${kind}:${scopeId}`) ?? GRANT_DEFAULT;
 }
 
@@ -274,8 +296,16 @@ export async function moduleGrant(
  * the control now does something, in both halves: `tabAccess.ts` resolves it
  * for every render and every write, and `capGrant` chains it under the module.
  */
-export async function tabGrant(ctx: AuthContext, tabId: string): Promise<Grant> {
-  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'tab', tabId);
+export async function tabGrant(
+  ctx: AuthContext,
+  tabId: string,
+  /** The module this tab is being viewed in. Omitted means "no particular
+   *  module", which resolves to the global grant — the behaviour before
+   *  per-module grants existed, and still the right answer when there is
+   *  genuinely no module in hand. */
+  moduleId?: string | null,
+): Promise<Grant> {
+  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'tab', tabId, moduleId);
   return resolveTabGrant(raw, ctx.isAdmin);
 }
 
@@ -283,16 +313,24 @@ export async function tabGrant(ctx: AuthContext, tabId: string): Promise<Grant> 
  * Subtab-level access. Same shape as `tabGrant`, resolved from the same
  * per-request grant set, and free for the same reason.
  */
-export async function subtabGrant(ctx: AuthContext, subtabId: string): Promise<Grant> {
-  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'subtab', subtabId);
+export async function subtabGrant(
+  ctx: AuthContext,
+  subtabId: string,
+  moduleId?: string | null,
+): Promise<Grant> {
+  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'subtab', subtabId, moduleId);
   return resolveSubtabGrant(raw, ctx.isAdmin);
 }
 
 /** Subtab grants for a whole tab's worth of subtabs, in no round trips beyond
  *  the one `allGrantsFor` already made. */
-export async function subtabGrants(ctx: AuthContext, subtabIds: string[]): Promise<Map<string, Grant>> {
+export async function subtabGrants(
+  ctx: AuthContext,
+  subtabIds: string[],
+  moduleId?: string | null,
+): Promise<Map<string, Grant>> {
   const entries = await Promise.all(
-    subtabIds.map(async (id) => [id, await subtabGrant(ctx, id)] as const),
+    subtabIds.map(async (id) => [id, await subtabGrant(ctx, id, moduleId)] as const),
   );
   return new Map(entries);
 }
@@ -300,9 +338,13 @@ export async function subtabGrants(ctx: AuthContext, subtabIds: string[]): Promi
 /** Tab grants for a whole drawer's tab strip. Genuinely one round trip now:
  * every element resolves out of the single per-request `allGrantsFor` set, so
  * this `Promise.all` awaits cached work rather than 13 separate queries. */
-export async function tabGrants(ctx: AuthContext, tabIds: string[]): Promise<Map<string, Grant>> {
+export async function tabGrants(
+  ctx: AuthContext,
+  tabIds: string[],
+  moduleId?: string | null,
+): Promise<Map<string, Grant>> {
   const entries = await Promise.all(
-    tabIds.map(async (id) => [id, await tabGrant(ctx, id)] as const),
+    tabIds.map(async (id) => [id, await tabGrant(ctx, id, moduleId)] as const),
   );
   return new Map(entries);
 }
@@ -316,8 +358,9 @@ export async function tabGrants(ctx: AuthContext, tabIds: string[]): Promise<Map
 export async function fieldGrant(
   ctx: AuthContext,
   field: { id: string; key: string; readOnly: boolean },
+  moduleId?: string | null,
 ): Promise<Grant> {
-  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'field', field.id);
+  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'field', field.id, moduleId);
   return resolveFieldGrant(raw, field, ctx.isAdmin);
 }
 
@@ -330,9 +373,10 @@ export async function fieldGrant(
 export async function fieldGrants(
   ctx: AuthContext,
   fields: { id: string; key: string; readOnly: boolean }[],
+  moduleId?: string | null,
 ): Promise<Map<string, Grant>> {
   const entries = await Promise.all(
-    fields.map(async (f) => [f.id, await fieldGrant(ctx, f)] as const),
+    fields.map(async (f) => [f.id, await fieldGrant(ctx, f, moduleId)] as const),
   );
   return new Map(entries);
 }

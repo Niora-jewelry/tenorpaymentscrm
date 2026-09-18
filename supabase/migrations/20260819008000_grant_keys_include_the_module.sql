@@ -1,0 +1,36 @@
+-- =============================================================================
+-- Part 80: drop the old primary keys, which still forbade per-module grants.
+--
+-- ── WHAT 77 MISSED ───────────────────────────────────────────────────────
+-- Migration 77 added `module_id` and a unique index across
+-- (subject, scope_kind, scope_id, module_id), and stopped there. The original
+-- PRIMARY KEY — (subject, scope_kind, scope_id), with no module — was left in
+-- place, and a primary key is a unique constraint: it kept refusing exactly the
+-- pair of rows the feature is made of.
+--
+-- Found by writing the two rows an admin would actually produce — "Pricing =
+-- View everywhere" and "Pricing = Hidden in Deals":
+--
+--   ERROR: duplicate key value violates unique constraint "user_grants_pkey"
+--
+-- Everything up to that point had passed: the column existed, the resolvers
+-- read it, the matrix rendered it, 308 tests and the build were green. None of
+-- them ever tried to hold a global grant and a module grant at the same time,
+-- which is the only state that reveals this.
+--
+-- ⚠ This is the third time in this run that a migration applied cleanly and
+-- left the thing it was for still broken (73's OR-ed policies, 76's
+-- column-versus-table grant, and now this). The pattern is the same each time:
+-- the statement was valid, so nothing complained, and only exercising the
+-- actual behaviour afterwards found it.
+--
+-- ── SAFE TO DROP ─────────────────────────────────────────────────────────
+-- Checked before writing this: no foreign key anywhere references either
+-- primary key. The unique indexes created in 77 —
+-- `user_grants_scope_module_key` and `template_grants_scope_module_key`, both
+-- NULLS NOT DISTINCT — become the real key, and they are already what the
+-- upsert conflict target names.
+-- =============================================================================
+
+alter table user_grants drop constraint if exists user_grants_pkey;
+alter table template_grants drop constraint if exists template_grants_pkey;

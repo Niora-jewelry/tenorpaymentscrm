@@ -222,29 +222,78 @@ export type GrantMatrix = {
 export type GrantKey = `${GrantScope}:${string}`;
 const grantKey = (kind: GrantScope, scopeId: string): GrantKey => `${kind}:${scopeId}`;
 
+/**
+ * The grants in force for one subject, in one module context.
+ *
+ * ⚠ THE MODULE FILTER IS NOT OPTIONAL POLISH. Rows are keyed `kind:id`, and
+ * since §2.2's per-module granularity a subject can hold TWO rows for the same
+ * scope — one global, one for a module. Reading both into the same map would
+ * let whichever arrived last win, so the matrix would show Leads' value while
+ * claiming to describe every module, at random.
+ *
+ * `moduleId` null means the global rows alone — the "All modules" view, and
+ * exactly what this function returned before modules existed.
+ *
+ * With a module, the module's own row wins where it exists and the global row
+ * shows through where it does not, which is the same precedence
+ * `effective_grant()` applies. `moduleSpecific` reports WHICH keys came from
+ * the module, so the matrix can mark them as overrides rather than leaving an
+ * admin unable to tell an inherited value from one set here.
+ */
 async function readGrants(
   table: 'template_grants' | 'user_grants',
   column: 'template_id' | 'user_id',
   ownerId: string,
-): Promise<Map<GrantKey, Grant>> {
+  moduleId: string | null = null,
+): Promise<{ grants: Map<GrantKey, Grant>; moduleSpecific: Set<GrantKey> }> {
   const { data, error } = await supabaseAdmin()
     .from(table)
-    .select('scope_kind, scope_id, grant_level')
+    .select('scope_kind, scope_id, grant_level, module_id')
     .eq(column, ownerId);
   if (error) throw error;
-  return new Map(
-    (data ?? []).map((r) => [grantKey(r.scope_kind as GrantScope, r.scope_id as string), r.grant_level as Grant]),
-  );
+
+  const rows = (data ?? []) as {
+    scope_kind: GrantScope;
+    scope_id: string;
+    grant_level: Grant;
+    module_id: string | null;
+  }[];
+
+  const grants = new Map<GrantKey, Grant>();
+  const moduleSpecific = new Set<GrantKey>();
+
+  // Global first, so the module pass below overwrites rather than races.
+  for (const r of rows) {
+    if (r.module_id === null) grants.set(grantKey(r.scope_kind, r.scope_id), r.grant_level);
+  }
+  if (moduleId) {
+    for (const r of rows) {
+      if (r.module_id !== moduleId) continue;
+      const key = grantKey(r.scope_kind, r.scope_id);
+      grants.set(key, r.grant_level);
+      moduleSpecific.add(key);
+    }
+  }
+
+  return { grants, moduleSpecific };
 }
 
-export async function listTemplateGrants(ctx: AuthContext, templateId: string): Promise<Map<GrantKey, Grant>> {
+export async function listTemplateGrants(
+  ctx: AuthContext,
+  templateId: string,
+  moduleId: string | null = null,
+): Promise<Map<GrantKey, Grant>> {
   assertAdmin(ctx);
-  return readGrants('template_grants', 'template_id', templateId);
+  return (await readGrants('template_grants', 'template_id', templateId, moduleId)).grants;
 }
 
-export async function listUserGrants(ctx: AuthContext, userId: string): Promise<Map<GrantKey, Grant>> {
+export async function listUserGrants(
+  ctx: AuthContext,
+  userId: string,
+  moduleId: string | null = null,
+): Promise<Map<GrantKey, Grant>> {
   assertAdmin(ctx);
-  return readGrants('user_grants', 'user_id', userId);
+  return (await readGrants('user_grants', 'user_id', userId, moduleId)).grants;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -393,7 +442,13 @@ async function buildMatrix(
  * is an admin" would make it unreadable. The per-user matrix is where a real
  * person's admin status enters.
  */
-export async function templateGrantMatrix(ctx: AuthContext, templateId: string): Promise<GrantMatrix | null> {
+export async function templateGrantMatrix(
+  ctx: AuthContext,
+  templateId: string,
+  /** Which module's values to show. Null is the "All modules" view: the global
+   *  grants, and what this screen showed before §2.2's per-module granularity. */
+  moduleId: string | null = null,
+): Promise<GrantMatrix | null> {
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
 
@@ -405,7 +460,7 @@ export async function templateGrantMatrix(ctx: AuthContext, templateId: string):
   if (attachedRes.error) throw attachedRes.error;
   if (!templateRes.data) return null;
 
-  const templateGrants = await listTemplateGrants(ctx, templateId);
+  const templateGrants = await listTemplateGrants(ctx, templateId, moduleId);
 
   return buildMatrix(
     {
@@ -429,7 +484,11 @@ export async function templateGrantMatrix(ctx: AuthContext, templateId: string):
  * labels are *defined by* `user_grants` rows, and nothing in the build could
  * create one before 6c. This screen is where they become visible.
  */
-export async function userGrantMatrix(ctx: AuthContext, userId: string): Promise<GrantMatrix | null> {
+export async function userGrantMatrix(
+  ctx: AuthContext,
+  userId: string,
+  moduleId: string | null = null,
+): Promise<GrantMatrix | null> {
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
 
@@ -445,7 +504,7 @@ export async function userGrantMatrix(ctx: AuthContext, userId: string): Promise
   const [roleRes, assignmentRes, userGrants] = await Promise.all([
     supabase.from('roles').select('name, is_admin').eq('id', profile.role_id).maybeSingle(),
     supabase.from('user_templates').select('template_id').eq('user_id', userId).maybeSingle(),
-    listUserGrants(ctx, userId),
+    listUserGrants(ctx, userId, moduleId),
   ]);
   if (roleRes.error) throw roleRes.error;
   if (assignmentRes.error) throw assignmentRes.error;
@@ -461,7 +520,7 @@ export async function userGrantMatrix(ctx: AuthContext, userId: string): Promise
       .maybeSingle();
     if (error) throw error;
     templateLabel = template?.label ?? null;
-    templateGrants = await listTemplateGrants(ctx, templateId);
+    templateGrants = await listTemplateGrants(ctx, templateId, moduleId);
   }
 
   const hasOverrides = userGrants.size > 0;
@@ -567,6 +626,11 @@ async function upsertGrant(
   scopeKind: GrantScope,
   scopeId: string,
   level: Grant,
+  /** Null writes the GLOBAL row — the grant that applies in every module, and
+   *  what every grant was before Admin-Module-Plan §2.2's per-module
+   *  granularity was implemented. A module id writes an override for that
+   *  module alone. */
+  moduleId: string | null = null,
 ): Promise<GrantResult> {
   const capped = await refuseCappedGrant(scopeKind, scopeId, level);
   if (capped) return capped;
@@ -574,11 +638,20 @@ async function upsertGrant(
   const { error } = await supabaseAdmin()
     .from(table)
     .upsert(
-      { [column]: ownerId, scope_kind: scopeKind, scope_id: scopeId, grant_level: level },
-      // The primary key, spelled out: PostgREST needs the conflict target to
+      {
+        [column]: ownerId,
+        scope_kind: scopeKind,
+        scope_id: scopeId,
+        // A module-scope grant already names its module in scope_id; carrying
+        // one here too is refused by a CHECK (migration 77).
+        module_id: scopeKind === 'module' ? null : moduleId,
+        grant_level: level,
+      },
+      // The unique index, spelled out: PostgREST needs the conflict target to
       // UPDATE rather than fail, and every one of these is a re-set of a cell
-      // that usually already has a row.
-      { onConflict: `${column},scope_kind,scope_id` },
+      // that usually already has a row. It includes module_id now, so setting
+      // a Deals override does not overwrite the global row.
+      { onConflict: `${column},scope_kind,scope_id,module_id` },
     );
   if (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) return scopeGone;
@@ -606,13 +679,24 @@ async function deleteGrant(
   ownerId: string,
   scopeKind: GrantScope,
   scopeId: string,
+  moduleId: string | null = null,
 ): Promise<GrantResult> {
-  const { error } = await supabaseAdmin()
+  let query = supabaseAdmin()
     .from(table)
     .delete()
     .eq(column, ownerId)
     .eq('scope_kind', scopeKind)
     .eq('scope_id', scopeId);
+
+  /*
+   * `.is()` for the global row, `.eq()` for a module's. PostgREST renders
+   * `.eq('module_id', null)` as `module_id=eq.null`, which matches NOTHING in
+   * SQL — clearing a global grant would silently do nothing and the cell would
+   * keep its value with no error.
+   */
+  query = moduleId ? query.eq('module_id', moduleId) : query.is('module_id', null);
+
+  const { error } = await query;
   if (error) return { ok: false, message: error.message };
   invalidateGrants();
   return { ok: true };
@@ -628,12 +712,27 @@ async function deleteGrant(
  */
 export async function setTemplateGrant(ctx: AuthContext, input: SetTemplateGrantInput): Promise<GrantResult> {
   assertAdmin(ctx);
-  return upsertGrant('template_grants', 'template_id', input.templateId, input.scopeKind, input.scopeId, input.level);
+  return upsertGrant(
+    'template_grants',
+    'template_id',
+    input.templateId,
+    input.scopeKind,
+    input.scopeId,
+    input.level,
+    input.moduleId ?? null,
+  );
 }
 
 export async function clearTemplateGrant(ctx: AuthContext, input: ClearTemplateGrantInput): Promise<GrantResult> {
   assertAdmin(ctx);
-  return deleteGrant('template_grants', 'template_id', input.templateId, input.scopeKind, input.scopeId);
+  return deleteGrant(
+    'template_grants',
+    'template_id',
+    input.templateId,
+    input.scopeKind,
+    input.scopeId,
+    input.moduleId ?? null,
+  );
 }
 
 /**
@@ -652,10 +751,25 @@ export async function clearTemplateGrant(ctx: AuthContext, input: ClearTemplateG
  */
 export async function setUserGrant(ctx: AuthContext, input: SetUserGrantInput): Promise<GrantResult> {
   assertAdmin(ctx);
-  return upsertGrant('user_grants', 'user_id', input.userId, input.scopeKind, input.scopeId, input.level);
+  return upsertGrant(
+    'user_grants',
+    'user_id',
+    input.userId,
+    input.scopeKind,
+    input.scopeId,
+    input.level,
+    input.moduleId ?? null,
+  );
 }
 
 export async function clearUserGrant(ctx: AuthContext, input: ClearUserGrantInput): Promise<GrantResult> {
   assertAdmin(ctx);
-  return deleteGrant('user_grants', 'user_id', input.userId, input.scopeKind, input.scopeId);
+  return deleteGrant(
+    'user_grants',
+    'user_id',
+    input.userId,
+    input.scopeKind,
+    input.scopeId,
+    input.moduleId ?? null,
+  );
 }

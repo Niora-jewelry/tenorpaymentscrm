@@ -142,10 +142,13 @@ export async function setUserGrantAction(
   scopeKind: GrantScope,
   scopeId: string,
   level: Grant,
+  /** Null/omitted writes the grant that applies in EVERY module. A module id
+   *  writes an override for that module alone — §2.2's per-module granularity. */
+  moduleId?: string | null,
 ): Promise<GrantResult> {
   const ctx = await authorize();
 
-  const parsed = setUserGrantSchema.safeParse({ userId, scopeKind, scopeId, level });
+  const parsed = setUserGrantSchema.safeParse({ userId, scopeKind, scopeId, level, moduleId });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await setUserGrant(ctx, parsed.data);
@@ -162,10 +165,11 @@ export async function clearUserGrantAction(
   userId: string,
   scopeKind: GrantScope,
   scopeId: string,
+  moduleId?: string | null,
 ): Promise<GrantResult> {
   const ctx = await authorize();
 
-  const parsed = clearUserGrantSchema.safeParse({ userId, scopeKind, scopeId });
+  const parsed = clearUserGrantSchema.safeParse({ userId, scopeKind, scopeId, moduleId });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await clearUserGrant(ctx, parsed.data);

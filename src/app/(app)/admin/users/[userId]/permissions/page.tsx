@@ -30,18 +30,31 @@ import { OutlineChip } from '@/proto/ui/kit';
 import { PlaceholderNotice } from '../../../PlaceholderNotice';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../../GrantMatrix';
 import { setUserGrantAction, clearUserGrantAction } from '../../actions';
+import { ModuleScopePicker } from '../../../ModuleScopePicker';
+import { loadConfig } from '@/lib/records/config';
 
 export default async function UserPermissionsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ userId: string }>;
+  searchParams: Promise<{ module?: string }>;
 }) {
   const { userId } = await params;
+  const { module: moduleParam } = await searchParams;
 
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
-  const matrix = await userGrantMatrix(ctx, userId);
+  const config = await loadConfig();
+  /*
+   * Validated against the real module list rather than trusted from the URL.
+   * An unknown id falls back to "All modules" — the safe reading, since a
+   * mistyped link must not silently write a per-module grant nobody intended.
+   */
+  const activeModuleId = config.modules.some((m) => m.id === moduleParam) ? moduleParam! : null;
+
+  const matrix = await userGrantMatrix(ctx, userId, activeModuleId);
   if (!matrix || matrix.subject.kind !== 'user') notFound();
   const { subject } = matrix;
 
@@ -51,11 +64,13 @@ export default async function UserPermissionsPage({
     column: 'user',
     set: async (scopeKind, scopeId, level) => {
       'use server';
-      return setUserGrantAction(userId, scopeKind, scopeId, level);
+      // Bound here alongside the user id, for the same reason: the client must
+      // not be able to send back a different module than the one it was shown.
+      return setUserGrantAction(userId, scopeKind, scopeId, level, activeModuleId);
     },
     clear: async (scopeKind, scopeId) => {
       'use server';
-      return clearUserGrantAction(userId, scopeKind, scopeId);
+      return clearUserGrantAction(userId, scopeKind, scopeId, activeModuleId);
     },
   };
 
@@ -91,6 +106,16 @@ export default async function UserPermissionsPage({
           </p>
         </PlaceholderNotice>
       ) : null}
+
+      <ModuleScopePicker
+        modules={config.modules
+          // Admin-only modules are never grantable to a non-admin, so offering
+          // the Records List here would be a control with no effect.
+          .filter((m) => !m.adminOnly)
+          .map((m) => ({ id: m.id, label: m.label }))}
+        activeModuleId={activeModuleId}
+        basePath={`/admin/users/${userId}/permissions`}
+      />
 
       <GrantMatrix matrix={matrix} writer={writer} />
     </div>

@@ -487,7 +487,23 @@ const grantScopeSchema = z.enum(GRANT_SCOPES);
  * against the config it just loaded. A schema copy would be a second one to keep
  * in step and could only check what the request claimed about itself.
  */
-const grantScopeShape = { scopeKind: grantScopeSchema, scopeId: uuid };
+const grantScopeShape = {
+  scopeKind: grantScopeSchema,
+  scopeId: uuid,
+  /*
+   * Which module this grant applies to — Admin-Module-Plan §2.2's per-module
+   * granularity.
+   *
+   * Absent or empty means the GLOBAL row: the grant applies in every module,
+   * which is what every grant meant before this existed. A `<select>` submits
+   * '' for its "All modules" option and cannot submit null, so the empty
+   * string is normalised here at the boundary rather than in four call sites.
+   */
+  moduleId: z
+    .union([uuid, z.literal('')])
+    .optional()
+    .transform((v) => (v ? v : null)),
+};
 
 export const setTemplateGrantSchema = z.object({
   templateId: uuid,

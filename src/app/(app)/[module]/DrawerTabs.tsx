@@ -127,6 +127,11 @@ export function DrawerTabs({
 }) {
   const [activeTabId, setActiveTabId] = useState(tabs[0]?.id ?? '');
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  /* Every visible tab read-only means the ceiling is the MODULE, not any one
+   * tab — a different setting, on a different screen, so the notice below says
+   * so rather than blaming whichever tab happens to be open. */
+  const readOnlyThroughout = tabs.length > 0 && tabs.every((t) => !t.editable);
   const [activeSubtabId, setActiveSubtabId] = useState<string | undefined>(activeTab?.subtabs[0]?.id);
 
   /*
@@ -214,6 +219,16 @@ export function DrawerTabs({
               }`}
             >
               {t.label}
+              {/* A tab the viewer cannot edit says so in the strip, so "why
+                * won't this save" is answered before they try. Hidden tabs
+                * never reach here — the page drops them entirely. */}
+              {!t.editable ? (
+                <Icon
+                  name="lock"
+                  size={11}
+                  className={`ml-1.5 shrink-0 ${active ? 'text-brand-600' : 'text-ink-400'}`}
+                />
+              ) : null}
               {t.count != null ? <CountPill n={t.count} active={active} /> : null}
               {t.fieldCompleteness ? (
                 <span className="ml-1.5">
@@ -224,6 +239,37 @@ export function DrawerTabs({
           );
         })}
       </nav>
+
+      {/*
+        ── WHY A SENTENCE AND NOT JUST DISABLED INPUTS ───────────────────────
+        A read-only tab used to render fields that simply refused to accept
+        typing, with nothing on screen explaining it. That reads as a broken
+        page, not as a permission — the same confusion a missing tab causes
+        when nobody says the tab was hidden on purpose.
+
+        The wording distinguishes the two cases, because the fix is different:
+        the whole record being view-only is a MODULE grant, while one tab being
+        view-only is a TAB grant, and an admin looking for the setting needs to
+        know which screen to open.
+      */}
+      {!activeTab.editable ? (
+        <div className="flex items-center gap-2 border-b border-line-soft bg-warn-bg px-3 py-1.5 text-[12px] leading-snug text-ink-700">
+          <Icon name="lock" size={12} className="shrink-0 text-warn" />
+          <span>
+            {readOnlyThroughout ? (
+              <>
+                <strong className="font-semibold">Read-only.</strong> You have view access to this
+                record, so nothing on it can be changed.
+              </>
+            ) : (
+              <>
+                <strong className="font-semibold">Read-only.</strong> {activeTab.label} is view-only
+                for you — other tabs on this record may still be editable.
+              </>
+            )}
+          </span>
+        </div>
+      ) : null}
 
       {activeTab.subtabs.length ? (
         <div className="flex gap-1 overflow-x-auto border-b border-line-soft bg-canvas/50 px-1 py-1.5">

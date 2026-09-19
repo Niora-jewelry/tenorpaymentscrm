@@ -72,6 +72,23 @@ const GRANTS = [
  * so without these rows every module would be empty and the tour would show
  * nothing at all.
  *
+ * ⚠ MEMBERSHIP IS WRITTEN THROUGH `values.team_members_assigned`, NOT BY
+ * INSERTING `record_team_members` ROWS.
+ *
+ * `sync_record_team_members()` is an AFTER INSERT OR UPDATE OF "values" trigger
+ * that REBUILDS `record_team_members` from that field — it deletes every row
+ * whose user is not in the array. A row inserted directly therefore survives
+ * only until somebody edits any field on that record, and then vanishes with
+ * no error anywhere.
+ *
+ * That is not theoretical: the first version of this script inserted the rows
+ * directly, and the demo account silently lost access to a record the moment a
+ * value on it was changed. The drawer then rendered "record unavailable" with
+ * nothing in the log to explain it.
+ *
+ * Appending to the field is the supported path and the same one the Team
+ * member(s) assigned control uses, so the membership is durable.
+ *
  * Records are chosen by the exact set of modules they sit in. The last entry
  * is the interesting one: a record in BOTH Leads and Deals shows no Pricing
  * tab when opened from Leads and shows it when opened from Deals, because the
@@ -188,9 +205,19 @@ async function main() {
       [[...pick.modules].sort(), pick.count],
     );
     for (const r of rows) {
+      // Appends, never replaces: these are the client's own records and the
+      // people already on them must stay. The trigger turns this into the
+      // `record_team_members` row.
       const res = await client.query(
-        `insert into record_team_members (record_id, user_id) values ($1, $2)
-         on conflict do nothing`,
+        `update records
+            set values = jsonb_set(
+                  values,
+                  '{team_members_assigned}',
+                  coalesce(values -> 'team_members_assigned', '[]'::jsonb) || to_jsonb($2::text),
+                  true
+                )
+          where id = $1
+            and not (coalesce(values -> 'team_members_assigned', '[]'::jsonb) @> to_jsonb($2::text))`,
         [r.id, profile.id],
       );
       added += res.rowCount;

@@ -95,6 +95,25 @@ const CALL_SELECT =
   'id, record_id, direction, from_e164, to_e164, status, started_at, ended_at, duration_seconds, owner_id, phone_recordings(id, kind, duration_seconds, storage_path)';
 
 /**
+ * Correct any dial that never reached Twilio, before the history is read.
+ *
+ * `createOutboundCall` writes the row first (its id is the correlation key the
+ * callbacks carry), so a hand-off that never happens — microphone denied, CSP,
+ * a dead token, a closed tab — leaves a row at 'queued' that no callback will
+ * ever finalise. See migration 89.
+ *
+ * Done on the read path rather than on a schedule because there is no
+ * scheduler here and this needs none: the only moment a stale row matters is
+ * when somebody looks at the list, and the sweep is a no-op once it has run.
+ * Failures are swallowed deliberately — a tidy-up must never be the reason the
+ * call history fails to load.
+ */
+async function expireStaleCalls(): Promise<void> {
+  const { error } = await supabaseAdmin().rpc('expire_stale_phone_calls');
+  if (error) console.error('[phone] expireStaleCalls failed', error);
+}
+
+/**
  * Every call on one record, newest first.
  *
  * The embedded recordings come back filtered by their OWN policy, so a
@@ -104,6 +123,8 @@ const CALL_SELECT =
  */
 export async function callsForRecord(ctx: AuthContext, recordId: string): Promise<PhoneCall[]> {
   if (!(await canSeePhone(ctx))) return [];
+
+  await expireStaleCalls();
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
@@ -120,6 +141,8 @@ export async function callsForRecord(ctx: AuthContext, recordId: string): Promis
 /** This user's own call history, across every record and none. */
 export async function callsForUser(ctx: AuthContext, limit = 100): Promise<PhoneCall[]> {
   if (!(await canSeePhone(ctx))) return [];
+
+  await expireStaleCalls();
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase

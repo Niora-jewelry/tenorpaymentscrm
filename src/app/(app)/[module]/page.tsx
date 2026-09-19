@@ -14,7 +14,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { HeaderValue } from '@/proto/ui/value';
-import { authorize, moduleGrant, fieldGrants, tabGrants, subtabGrants, capGrant } from '@/lib/records/permissions';
+import { authorize, moduleGrant, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -466,6 +466,12 @@ async function RecordDrawer({
    *  module, so `kind` identifies them unambiguously. */
   const shows = (kind: string) => dbTabs.some((t) => t.kind === kind);
 
+  /** The resolved grant on the tab of this kind — Hidden when there isn't one. */
+  const grantOfKind = (kind: string): Grant => {
+    const t = dbTabs.find((x) => x.kind === kind);
+    return (t ? tabGrantById.get(t.id) : undefined) ?? 'hidden';
+  };
+
   const [
     memberships, entries, cases, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
@@ -483,8 +489,31 @@ async function RecordDrawer({
     // other independent fetches instead of blocking all of them. Skipped
     // entirely when Files is hidden, which also avoids a WRITE for a tab the
     // viewer cannot open.
+    /*
+     * ⚠ OPENING A DRAWER MUST NOT REQUIRE WRITE ACCESS.
+     *
+     * `ensureApplicationRows` creates the five locked Application rows on a
+     * record's first-ever open. It goes through `ensure_application_file_rows`,
+     * which is SECURITY INVOKER and is therefore authorised by the `file_rows`
+     * policy — and that policy now requires Edit on the Files tab (migration
+     * 88), as it should, because it is an INSERT.
+     *
+     * The consequence was that a viewer holding View on Files could no longer
+     * open the record AT ALL: the write was attempted during render, RLS
+     * refused it, and the whole drawer became an error page. Seen the moment
+     * the migration landed, on the Tickets module.
+     *
+     * So the rows are created only by someone who may create them. A View-only
+     * viewer reads whatever rows already exist — which is every record anyone
+     * has opened once, and an empty Files tab otherwise. That is the correct
+     * outcome for read-only access, and it is honest: it does not silently
+     * perform a write on their behalf.
+     */
     shows('files')
-      ? ensureApplicationRows(ctx, record.id).then(() => fileRowsFor(ctx, record.id, 'application'))
+      ? (grantOfKind('files') === 'edit'
+          ? ensureApplicationRows(ctx, record.id)
+          : Promise.resolve()
+        ).then(() => fileRowsFor(ctx, record.id, 'application'))
       : [],
     shows('files') ? fileRowsFor(ctx, record.id, 'other') : [],
     shows('logins') ? loginsFor(ctx, record.id) : [],

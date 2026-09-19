@@ -87,6 +87,37 @@ export async function POST(request: NextRequest) {
     const callId = params.CallId ?? '';
     const cb = callId ? `?callId=${encodeURIComponent(callId)}` : '';
 
+    /*
+     * ⚠ STAMP THE PARENT CallSid NOW, not at the end of the call.
+     *
+     * `createOutboundCall` inserts the row BEFORE the browser dials, so it has
+     * no SID. Nothing else wrote one until `/api/twilio/status` fired — and
+     * that only fires on `completed`. So for the entire duration of a live
+     * call the row read `status='queued', twilio_call_sid=null`, which is
+     * character-for-character what a dial that never left the browser looks
+     * like.
+     *
+     * Migration 89's sweep uses exactly that signature to retire dead dials,
+     * so a real conversation lasting over two minutes would have been marked
+     * 'failed' while it was still in progress. The final callback would later
+     * correct it, but anyone watching the history mid-call saw a lie, and a
+     * lost callback would have made it permanent.
+     *
+     * This is the first moment Twilio and our row id are both in hand, so it
+     * is the right place. `status` is left alone — `/api/twilio/status` owns
+     * that, and writing a guess here would race it.
+     *
+     * Failure is non-fatal: the call is worth more than the log entry.
+     */
+    if (callId && params.CallSid) {
+      const { error: stampErr } = await supabase
+        .from('phone_calls')
+        .update({ twilio_call_sid: params.CallSid })
+        .eq('id', callId)
+        .is('twilio_call_sid', null);
+      if (stampErr) console.error('[twilio/voice] could not stamp outbound CallSid', stampErr);
+    }
+
     const dial = response.dial({
       callerId: myNumber.e164,
       answerOnBridge: true,
@@ -136,6 +167,11 @@ export async function POST(request: NextRequest) {
       owner_id: ownerUserId,
       created_by_id: null,
       record_id: recordId,
+      // Known here, unlike on an outbound row, and recorded immediately for
+      // the same reason: without it a ringing inbound call is indistinguishable
+      // from a dial that never happened, and migration 89's sweep would retire
+      // it mid-conversation.
+      twilio_call_sid: params.CallSid || null,
     })
     .select('id')
     .single();

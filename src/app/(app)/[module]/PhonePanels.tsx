@@ -174,7 +174,16 @@ export function RecordingsPanel({ calls }: { calls: PhoneCall[] }) {
  * most of them expired before anyone pressed play, and would hand out links
  * nobody asked for.
  */
-function RecordingRow({ recording }: { recording: { id: string; kind: 'call' | 'voicemail'; durationSeconds: number | null; storagePath: string | null } }) {
+/**
+ * Exported because the standalone Phone page needs it too.
+ *
+ * Recordings were reachable ONLY from inside a record's drawer, so a call that
+ * matched no merchant produced audio that existed in storage, was listed in
+ * `phone_recordings`, and had nowhere in the app it could be played. Every call
+ * to or from a number that is not on a record — which is most testing, and any
+ * call to a new prospect — fell into that hole.
+ */
+export function RecordingRow({ recording }: { recording: { id: string; kind: 'call' | 'voicemail'; durationSeconds: number | null; storagePath: string | null } }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

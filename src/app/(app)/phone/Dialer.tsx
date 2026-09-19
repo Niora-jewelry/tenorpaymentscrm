@@ -16,6 +16,7 @@ import { Button, EmptyState, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneCall } from '@/lib/phone/calls';
+import { RecordingRow } from '@/app/(app)/[module]/PhonePanels';
 import { usePhone } from './PhoneProvider';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
@@ -202,8 +203,9 @@ export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: stri
               return (
                 <li
                   key={call.id}
-                  className="flex flex-wrap items-center gap-2 rounded-xl border border-line-soft px-3 py-2"
+                  className="rounded-xl border border-line-soft px-3 py-2"
                 >
+                  <div className="flex flex-wrap items-center gap-2">
                   <Icon
                     name={call.direction === 'in' ? 'reply' : 'send'}
                     size={12}
@@ -225,6 +227,21 @@ export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: stri
                   >
                     Call back
                   </Button>
+                  </div>
+
+                  {/*
+                    The recording belongs HERE as well as in the drawer. A call
+                    to a number that is on no record — every test call, and any
+                    call to a new prospect — has no drawer to appear in, so
+                    without this its audio is stored and unreachable.
+                  */}
+                  {call.recordings.length > 0 ? (
+                    <div className="mt-2 space-y-2 border-t border-line-faint pt-2">
+                      {call.recordings.map((rec) => (
+                        <RecordingRow key={rec.id} recording={rec} />
+                      ))}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}

@@ -80,7 +80,7 @@ export function CommunicationPanel({
 
   return (
     <div className="space-y-3">
-      <LastMessageReceived messages={messages} smsMessages={smsMessages} now={now} />
+      <LastMessageReceived channel={channel} messages={messages} smsMessages={smsMessages} now={now} />
 
       <SpecNote>
         Inbound messages land on a record by matching the sender against <strong>sync-enabled</strong>{' '}
@@ -161,26 +161,43 @@ export function CommunicationPanel({
 type InboundSummary = { channel: MessageChannel; body: string | null; from: string; sentAt: string };
 
 function LastMessageReceived({
+  channel,
   messages,
   smsMessages,
   now,
 }: {
+  /** The subtab being viewed. The summary is ABOUT this channel — see below. */
+  channel: MessageChannel;
   messages: Message[];
   smsMessages: PhoneMessage[];
   now: number;
 }) {
+  /*
+   * ⚠ SCOPED TO THE SUBTAB YOU ARE ON.
+   *
+   * This header sits above whichever channel subtab is open, so an unscoped
+   * "last message received" put a TEXT at the top of the Email subtab —
+   * an SMS pill and an Indian mobile number above an empty email thread
+   * reading "No messages yet". The two statements were both true and read as a
+   * contradiction.
+   *
+   * Texts only join in on the Text subtab, where they belong: `phone_messages`
+   * IS the text channel, while `messages` carries email and the rest.
+   */
   const inbound: InboundSummary[] = [
     ...messages
-      .filter((m) => m.direction === 'in')
+      .filter((m) => m.direction === 'in' && m.channel === channel)
       .map((m) => ({ channel: m.channel, body: m.body, from: m.from, sentAt: m.sentAt })),
-    ...smsMessages
-      .filter((m) => m.direction === 'in')
-      .map((m) => ({
-        channel: 'text' as MessageChannel,
-        body: m.body,
-        from: m.fromE164,
-        sentAt: m.sentAt,
-      })),
+    ...(channel === 'text'
+      ? smsMessages
+          .filter((m) => m.direction === 'in')
+          .map((m) => ({
+            channel: 'text' as MessageChannel,
+            body: m.body,
+            from: m.fromE164,
+            sentAt: m.sentAt,
+          }))
+      : []),
   ].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 
   const last = inbound[0];
@@ -193,7 +210,7 @@ function LastMessageReceived({
           Last message received
         </span>
         <span className="text-[13px] text-ink-400">
-          Nothing inbound yet — every message on this record was sent by us.
+          Nothing inbound on this channel yet — everything here was sent by us.
         </span>
       </div>
     );

@@ -88,7 +88,7 @@ function Ended({
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border border-line bg-white p-3.5 shadow-[0_8px_30px_rgba(8,32,47,.14)]"
+      className="fixed bottom-4 right-4 z-50 w-[min(94vw,480px)] rounded-2xl border border-line bg-white p-4 shadow-[0_10px_36px_rgba(8,32,47,.16)]"
     >
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-700">
@@ -96,8 +96,8 @@ function Ended({
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold text-ink-900">Call ended</p>
-          <p className="mt-0.5 truncate text-[12.5px] text-ink-500">
+          <p className="text-[13.5px] font-semibold text-ink-900">Call ended</p>
+          <p className="mt-0.5 truncate text-[13px] font-medium text-ink-700">
             {formatPhoneDisplay(endedCall.peer)}
           </p>
           {failed ? (
@@ -115,7 +115,7 @@ function Ended({
               type="button"
               disabled={pending}
               onClick={open}
-              className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
             >
               {pending ? 'Opening…' : 'View recording'}
             </button>

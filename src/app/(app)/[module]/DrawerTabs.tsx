@@ -96,10 +96,16 @@ export function DrawerTabs({
   authorNames,
   viewerId,
   isAdmin,
+  openTabId,
+  openSubtabId,
 }: {
   moduleSlug: string;
   recordId: string;
   tabs: TabPayload[];
+  /** Already resolved from `?tab=`/`?subtab=` against the tabs this viewer can
+   *  see, so these are either usable ids or null — never a hidden tab. */
+  openTabId?: string | null;
+  openSubtabId?: string | null;
   grantByKey: Record<string, Grant>;
   values: Record<string, unknown>;
   updatedAt: string;
@@ -125,14 +131,16 @@ export function DrawerTabs({
   viewerId: string;
   isAdmin: boolean;
 }) {
-  const [activeTabId, setActiveTabId] = useState(tabs[0]?.id ?? '');
+  const [activeTabId, setActiveTabId] = useState(openTabId ?? tabs[0]?.id ?? '');
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
   /* Every visible tab read-only means the ceiling is the MODULE, not any one
    * tab — a different setting, on a different screen, so the notice below says
    * so rather than blaming whichever tab happens to be open. */
   const readOnlyThroughout = tabs.length > 0 && tabs.every((t) => !t.editable);
-  const [activeSubtabId, setActiveSubtabId] = useState<string | undefined>(activeTab?.subtabs[0]?.id);
+  const [activeSubtabId, setActiveSubtabId] = useState<string | undefined>(
+    openSubtabId ?? activeTab?.subtabs[0]?.id,
+  );
 
   /*
    * ⚠️ THE EDITED VALUES LIVE HERE, not inside `RealFieldGrid`.

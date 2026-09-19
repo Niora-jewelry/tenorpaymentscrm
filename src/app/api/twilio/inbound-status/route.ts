@@ -31,6 +31,7 @@ import {
   reconstructPublicUrl,
 } from '@/lib/twilio/webhook-request';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { notifyAboutCall } from '@/lib/phone/notify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -84,6 +85,16 @@ export async function POST(request: NextRequest) {
       .is('deleted_at', null);
 
     if (error) console.error('[twilio/inbound-status] finalize failed', error);
+
+    /*
+     * The bell entry for an inbound call. A missed one matters most — it is by
+     * definition the call nobody was present for, so the notification is the
+     * only thing that will bring anyone back to it.
+     */
+    const answered = dialStatus === 'completed';
+    await notifyAboutCall(supabaseAdmin(), callId, 'call', (peer) =>
+      answered ? `Call with ${peer} ended` : `Missed call from ${peer}`,
+    );
   }
 
   if (VOICEMAIL_DIAL_STATUSES.has(dialStatus)) {

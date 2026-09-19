@@ -23,9 +23,17 @@ import {
   reconstructPublicUrl,
 } from '@/lib/twilio/webhook-request';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { notifyAboutCall } from '@/lib/phone/notify';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/** m:ss — the same shape the call list shows, so the bell and the log agree. */
+function formatDuration(total: number): string {
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
 
 export async function POST(request: NextRequest) {
   const params = await readTwilioForm(request);
@@ -57,6 +65,21 @@ export async function POST(request: NextRequest) {
     .is('deleted_at', null);
 
   if (error) console.error('[twilio/status] update failed', error);
+
+  /*
+   * The bell entry. Raised here rather than in the browser because the call
+   * usually outlives the tab that placed it — and a missed call is precisely
+   * the case where nobody was watching.
+   */
+  const status = params.CallStatus || '';
+  const answered = status === 'completed' && (duration ?? 0) > 0;
+  if (status && status !== 'in-progress' && status !== 'ringing' && status !== 'initiated') {
+    await notifyAboutCall(supabaseAdmin(), callId, 'call', (peer) =>
+      answered
+        ? `Call with ${peer} ended${duration ? ` — ${formatDuration(duration)}` : ''}`
+        : `Call with ${peer} ${status === 'no-answer' ? 'was not answered' : status}`,
+    );
+  }
 
   return new NextResponse('OK', { status: 200 });
 }

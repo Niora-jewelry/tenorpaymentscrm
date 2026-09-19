@@ -20,6 +20,8 @@ import { canSeePhone, canUsePhone, canHearRecordings } from './access';
 import { resolveUserActiveNumber } from './numbers';
 import { resolveRecordByPhone } from './records';
 import { normalizePhone } from './normalize';
+import { loadConfig } from '@/lib/records/config';
+import { moduleGrant } from '@/lib/records/permissions';
 
 export type PhoneCall = {
   id: string;
@@ -248,4 +250,43 @@ export async function signedRecordingUrl(
 
   if (signError) throw signError;
   return signed.signedUrl;
+}
+
+/**
+ * The URL for one call: its record's Communication tab, else the Phone page.
+ *
+ * Shares the "first module this viewer can open" rule with the notification
+ * bell — a call and its notification must not disagree about where the call
+ * lives. Kept here rather than in `notifications.ts` because the input is a
+ * call id; the bell's version starts from a record id.
+ */
+export async function callDestination(ctx: AuthContext, callId: string): Promise<string> {
+  const FALLBACK = '/phone';
+  if (!callId) return FALLBACK;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('phone_calls')
+    .select('record_id')
+    .eq('id', callId)
+    .maybeSingle();
+  // A call the viewer cannot see reads as null here, and the Phone page is the
+  // right answer for that too: it will simply not be listed.
+  if (error || !data?.record_id) return FALLBACK;
+
+  const recordId = data.record_id as string;
+  const { data: mods } = await supabase
+    .from('record_modules')
+    .select('module_id')
+    .eq('record_id', recordId);
+
+  const config = await loadConfig();
+  const inRecord = new Set((mods ?? []).map((m) => m.module_id as string));
+  for (const m of config.modules) {
+    if (m.adminOnly || !inRecord.has(m.id)) continue;
+    if ((await moduleGrant(ctx, m.id, m.adminOnly)) !== 'hidden') {
+      return `/${m.slug}?record=${recordId}&tab=communication&subtab=recordings`;
+    }
+  }
+  return FALLBACK;
 }

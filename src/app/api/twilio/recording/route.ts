@@ -30,6 +30,7 @@ import {
   reconstructPublicUrl,
 } from '@/lib/twilio/webhook-request';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { notifyAboutCall } from '@/lib/phone/notify';
 import { serverEnv } from '@/lib/env.server';
 
 export const runtime = 'nodejs';
@@ -145,6 +146,21 @@ export async function POST(request: NextRequest) {
     if (insert.error && insert.error.code !== '23505') {
       console.error('[twilio/recording] insert failed', insert.error);
       return new NextResponse('OK', { status: 200 });
+    }
+
+    /*
+     * Announced only after a CONFIRMED store — not when Twilio finishes
+     * recording. A bell entry offering to play audio that is not in our bucket
+     * yet sends the listener to a spinner. The duplicate-key branch above
+     * deliberately falls through to here without notifying twice: 23505 means
+     * this callback is a retry of one already handled.
+     */
+    if (!insert.error) {
+      await notifyAboutCall(supabaseAdmin(), callRowId, kind === 'voicemail' ? 'voicemail' : 'recording', (peer) =>
+        kind === 'voicemail'
+          ? `New voicemail from ${peer}`
+          : `Recording ready for your call with ${peer}`,
+      );
     }
   }
 

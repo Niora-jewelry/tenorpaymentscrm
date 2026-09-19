@@ -75,12 +75,12 @@ export function CommunicationPanel({
     return <ComingSoon what={subtabLabel} icon={icon} />;
   }
 
-  if (subtabId === 'phone') return <PhonePanel calls={calls} />;
-  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} />;
+  if (subtabId === 'phone') return <PhonePanel calls={calls} moduleSlug={moduleSlug} />;
+  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} moduleSlug={moduleSlug} />;
 
   return (
     <div className="space-y-3">
-      <LastMessageReceived messages={messages} now={now} />
+      <LastMessageReceived messages={messages} smsMessages={smsMessages} now={now} />
 
       <SpecNote>
         Inbound messages land on a record by matching the sender against <strong>sync-enabled</strong>{' '}
@@ -144,8 +144,46 @@ export function CommunicationPanel({
   );
 }
 
-function LastMessageReceived({ messages, now }: { messages: Message[]; now: number }) {
-  const last = messages.find((m) => m.direction === 'in');
+/**
+ * ⚠ SMS LIVES IN A DIFFERENT TABLE, AND THIS SUMMARY HAS TO READ BOTH.
+ *
+ * `messages` is the `messages` table — email and the other channels. Inbound
+ * texts are `phone_messages`, written by the Twilio webhook. This read only the
+ * first, so a record whose only inbound contact was a text displayed
+ * "Nothing inbound yet — every message on this record was sent by us" directly
+ * above the text itself. Seen on a real record the first time an inbound SMS
+ * arrived.
+ *
+ * The two are merged into one shape here rather than being joined upstream:
+ * they are genuinely different tables with different lifecycles, and the only
+ * place that needs them as one list is this summary.
+ */
+type InboundSummary = { channel: MessageChannel; body: string | null; from: string; sentAt: string };
+
+function LastMessageReceived({
+  messages,
+  smsMessages,
+  now,
+}: {
+  messages: Message[];
+  smsMessages: PhoneMessage[];
+  now: number;
+}) {
+  const inbound: InboundSummary[] = [
+    ...messages
+      .filter((m) => m.direction === 'in')
+      .map((m) => ({ channel: m.channel, body: m.body, from: m.from, sentAt: m.sentAt })),
+    ...smsMessages
+      .filter((m) => m.direction === 'in')
+      .map((m) => ({
+        channel: 'text' as MessageChannel,
+        body: m.body,
+        from: m.fromE164,
+        sentAt: m.sentAt,
+      })),
+  ].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+
+  const last = inbound[0];
 
   if (!last) {
     return (

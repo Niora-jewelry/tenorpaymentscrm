@@ -17,6 +17,7 @@ import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneCall } from '@/lib/phone/calls';
 import { RecordingRow } from '@/app/(app)/[module]/PhonePanels';
+import { TelephonyDelete } from '../TelephonyDelete';
 import { usePhone } from './PhoneProvider';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
@@ -227,6 +228,7 @@ export function Dialer({ calls, myNumber }: { calls: PhoneCall[]; myNumber: stri
                   >
                     Call back
                   </Button>
+                  <TelephonyDelete kind="call" id={call.id} />
                   </div>
 
                   {/*

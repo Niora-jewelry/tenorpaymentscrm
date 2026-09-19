@@ -12,12 +12,35 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Icon } from '@/proto/ui/icons';
+import { Icon, type IconName } from '@/proto/ui/icons';
 import { relative } from '@/proto/ui/tokens';
 import { getNotificationsAction, markNotificationReadAction, markAllNotificationsReadAction } from './actions';
 import type { NotificationRow } from '@/lib/records/notifications';
 
 const POLL_MS = 25_000;
+
+/** Tells a call apart from a text apart from a mention at a glance, without
+ *  reading the sentence. Falls back to the bell for anything unmapped. */
+const KIND_ICON: Record<string, IconName> = {
+  mention: 'quote',
+  update: 'message-square',
+  case: 'lifebuoy',
+  call: 'phone',
+  voicemail: 'mic',
+  recording: 'mic',
+  sms: 'message-square',
+};
+
+/** What the row offers to do, so the hover hint matches where it actually goes. */
+const OPEN_LABEL: Record<string, string> = {
+  call: 'Open call',
+  voicemail: 'Play voicemail',
+  recording: 'Play recording',
+  sms: 'Open conversation',
+  mention: 'Open update',
+  update: 'Open update',
+  case: 'Open case',
+};
 
 export function NotificationBell({
   initialNotifications,
@@ -91,7 +114,14 @@ export function NotificationBell({
       });
     }
 
-    if (n.recordId) router.push(`/records?record=${n.recordId}`);
+    /*
+     * `href` is resolved on the server against the modules this viewer can
+     * actually open, and carries the tab and subtab the notification is about.
+     * This used to be a hard-coded `/records?record=…` — the Records List is
+     * admin-only, so a member clicking their own mention was pushed into a
+     * module the gate immediately redirects them out of.
+     */
+    if (n.href) router.push(n.href);
   };
 
   const markAllRead = () => {
@@ -218,16 +248,24 @@ export function NotificationBell({
                     />
                     <span className="min-w-0 flex-1">
                       <span className={`block text-[12.5px] leading-[1.45] ${n.readAt ? 'text-ink-600' : 'text-ink-900'}`}>
+                        <Icon
+                          name={KIND_ICON[n.sourceKind] ?? 'bell'}
+                          size={11}
+                          className="mr-1.5 inline-block align-[-1px] text-ink-400"
+                        />
                         {n.body}
                       </span>
                       <span className="mt-1 flex items-center gap-1.5 text-[11px] text-ink-400">
                         <Icon name="clock" size={10} />
                         {relative(n.createdAt, now)}
-                        {n.recordId ? (
+                        {/* Only promise a destination when there is one. A
+                            record in no module this viewer can open has no
+                            link, and saying "Open record" there would be a lie. */}
+                        {n.href ? (
                           <>
                             <span aria-hidden className="text-line">·</span>
                             <span className="font-medium text-brand-700 opacity-0 transition-opacity group-hover/row:opacity-100">
-                              Open record
+                              {OPEN_LABEL[n.sourceKind] ?? 'Open record'}
                             </span>
                           </>
                         ) : null}

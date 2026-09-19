@@ -24,6 +24,7 @@ import { Button, EmptyState, SpecNote, Spinner, StatusPill } from '@/proto/ui/ki
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneCall } from '@/lib/phone/calls';
+import { TelephonyDelete } from '../TelephonyDelete';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import { getRecordingUrlAction, sendSmsAction } from '../phoneActions';
 
@@ -59,7 +60,7 @@ function callTone(call: PhoneCall): { label: string; swatch: 'teal' | 'blue' | '
  * Phone — the call log for this record
  * ==================================================================== */
 
-export function PhonePanel({ calls }: { calls: PhoneCall[] }) {
+export function PhonePanel({ calls, moduleSlug }: { calls: PhoneCall[]; moduleSlug?: string }) {
   if (calls.length === 0) {
     return (
       <EmptyState
@@ -97,6 +98,7 @@ export function PhonePanel({ calls }: { calls: PhoneCall[] }) {
                 <span className="ml-auto text-[11.5px] text-ink-400 tabular">
                   {formatDateTime(call.startedAt)}
                 </span>
+                <TelephonyDelete kind="call" id={call.id} moduleSlug={moduleSlug} />
               </div>
 
               {call.recordings.length > 0 ? (
@@ -118,7 +120,7 @@ export function PhonePanel({ calls }: { calls: PhoneCall[] }) {
  * Call recordings — every recording on this record, flattened
  * ==================================================================== */
 
-export function RecordingsPanel({ calls }: { calls: PhoneCall[] }) {
+export function RecordingsPanel({ calls, moduleSlug }: { calls: PhoneCall[]; moduleSlug?: string }) {
   const rows = calls.flatMap((call) =>
     call.recordings.map((rec) => ({ call, rec })),
   );
@@ -155,6 +157,7 @@ export function RecordingsPanel({ calls }: { calls: PhoneCall[] }) {
               <span className="ml-auto text-[11.5px] text-ink-400 tabular">
                 {formatDateTime(call.startedAt)}
               </span>
+              <TelephonyDelete kind="recording" id={rec.id} moduleSlug={moduleSlug} />
             </div>
             <div className="mt-2.5">
               <RecordingRow recording={rec} />
@@ -282,6 +285,7 @@ export function SmsThread({
                 <span className="ml-auto text-[11.5px] text-ink-400 tabular">
                   {formatDateTime(m.sentAt)}
                 </span>
+                <TelephonyDelete kind="sms" id={m.id} moduleSlug={moduleSlug} />
               </div>
               <p className="mt-1 text-[13.5px] leading-relaxed text-ink-700">{m.body}</p>
               {m.direction === 'out' ? (

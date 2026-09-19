@@ -15,6 +15,7 @@ import { PeopleProvider } from '@/proto/ui/people';
 import { Sidebar } from './Sidebar';
 import { PhoneProvider } from './phone/PhoneProvider';
 import { CallBar } from './phone/CallBar';
+import { CallEndedToast } from './phone/CallEndedToast';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await authorize();
@@ -83,6 +84,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       />
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       <CallBar />
+      {/* Outlives the call bar by design: it appears exactly when the bar goes. */}
+      <CallEndedToast />
     </div>
     </PhoneProvider>
     </PeopleProvider>

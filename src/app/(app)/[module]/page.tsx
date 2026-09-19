@@ -52,10 +52,10 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ record?: string; page?: string }>;
+  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string }>;
 }) {
   const { module: slug } = await params;
-  const { record: recordId, page: pageParam } = await searchParams;
+  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey } = await searchParams;
 
   // `page` was never read, so `listRecords` always returned page 0 and every
   // record past the first 50 (ordered by Deal Name) was unreachable from any
@@ -270,6 +270,8 @@ export default async function ModulePage({
               moduleId={mod.id}
               recordPromise={recordPromise!}
               grant={grant}
+              openTabKey={tabKey ?? null}
+              openSubtabKey={subtabKey ?? null}
             />
           </Suspense>
         </DrawerShell>
@@ -380,9 +382,18 @@ async function RecordDrawer({
   moduleId,
   recordPromise,
   grant,
+  openTabKey,
+  openSubtabKey,
 }: {
   moduleSlug: string;
   moduleId: string;
+  /** `?tab=` / `?subtab=` — which tab to open on, by KEY rather than id.
+   *  Keys are stable across databases; ids are not, so a link in a
+   *  notification or an email keeps working after a reseed. Ignored when the
+   *  tab is hidden for this viewer, which is why it is resolved against the
+   *  already-filtered `dbTabs` rather than against config. */
+  openTabKey?: string | null;
+  openSubtabKey?: string | null;
   /** Started by `ModulePage` before it awaited its own queries, so this read
    *  overlaps the dashboard's instead of queueing behind it. Awaited here, so
    *  a failure lands inside the Suspense boundary and takes only the drawer. */
@@ -918,6 +929,19 @@ async function RecordDrawer({
         moduleSlug={moduleSlug}
         recordId={record.id}
         tabs={tabs}
+        /*
+         * Resolved HERE, against the tabs this viewer actually gets, not in the
+         * client component. A link asking for a tab that is Hidden for them
+         * must fall back to the first visible one rather than opening an empty
+         * shell — and the server is the only place that knows which tabs
+         * survived the grant chain.
+         */
+        openTabId={tabs.find((t) => t.key === openTabKey)?.id ?? null}
+        openSubtabId={
+          tabs
+            .find((t) => t.key === openTabKey)
+            ?.subtabs.find((sub) => sub.key === openSubtabKey)?.id ?? null
+        }
         grantByKey={grantByKey}
         values={record.values}
         updatedAt={record.updatedAt}

@@ -74,11 +74,19 @@ export type ActiveCall = {
   status: 'ringing' | 'connected';
 };
 
+/** The call that just finished, kept only long enough to offer a way back to
+ *  it. Cleared when dismissed or when the next call starts. */
+export type EndedCall = { callId: string | null; peer: string; direction: 'in' | 'out' };
+
 type PhoneContextValue = {
   deviceState: DeviceState;
   /** Structured, so the UI can show a cause AND what to do about it. */
   error: PhoneError | null;
   activeCall: ActiveCall | null;
+  /** Set the moment a call disconnects, so something can offer "view the
+   *  recording" without the user hunting for the record again. */
+  endedCall: EndedCall | null;
+  dismissEndedCall: () => void;
   /** Null unless a call is ringing IN and has not been answered. */
   incoming: ActiveCall | null;
   dial: (to: string) => Promise<void>;
@@ -99,6 +107,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
   const [deviceState, setDeviceState] = useState<DeviceState>('idle');
   const [error, setError] = useState<PhoneError | null>(null);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [endedCall, setEndedCall] = useState<EndedCall | null>(null);
   const [incoming, setIncoming] = useState<ActiveCall | null>(null);
 
   const deviceRef = useRef<unknown>(null);
@@ -168,6 +177,9 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         call.on('disconnect', () => {
           callRef.current = null;
           setIncoming(null);
+          // Captured BEFORE the state is cleared — `setActiveCall(null)` would
+          // otherwise take the peer and the call id with it.
+          setEndedCall({ direction: 'in', peer, callId });
           setActiveCall(null);
         });
         call.on('cancel', () => {
@@ -208,9 +220,13 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     };
   }, [ensureDevice]);
 
+  const dismissEndedCall = useCallback(() => setEndedCall(null), []);
+
   const dial = useCallback(
     async (to: string) => {
       setError(null);
+      // The previous call's notice must not sit over the next one.
+      setEndedCall(null);
 
       // The ROW COMES FIRST. Its id is handed to Twilio as a custom parameter
       // and is what the status and recording callbacks match on — a dial that
@@ -251,6 +267,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
         );
         call.on('disconnect', () => {
           callRef.current = null;
+          setEndedCall({ direction: 'out', peer: created.toE164, callId: created.callId });
           setActiveCall(null);
         });
         call.on('cancel', () => {
@@ -287,7 +304,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   return (
     <PhoneContext.Provider
-      value={{ deviceState, error, activeCall, incoming, dial, hangUp, answer, reject }}
+      value={{ deviceState, error, activeCall, incoming, endedCall, dismissEndedCall, dial, hangUp, answer, reject }}
     >
       {children}
     </PhoneContext.Provider>

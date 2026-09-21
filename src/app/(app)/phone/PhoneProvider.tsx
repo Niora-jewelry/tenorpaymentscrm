@@ -140,7 +140,15 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
       // Dynamic import: the Voice SDK is ~100KB and touches browser-only APIs,
       // so it must not be in the server bundle or the initial payload.
       const { Device } = await import('@twilio/voice-sdk');
-      const device = new Device(token, { logLevel: 'error' });
+      /*
+       * `logLevel: 'error'` was silent about WHY registration failed — the
+       * Device surfaces a bare error with no code for a rejected token, and
+       * the console had nothing either. 'warn' keeps normal operation quiet
+       * while letting the SDK print the rejection, which is the one thing
+       * needed to tell "the API key changed" apart from "the microphone is
+       * blocked".
+       */
+      const device = new Device(token, { logLevel: 'warn' });
 
       device.on('registered', () => setDeviceState('ready'));
       device.on('error', (...args: unknown[]) => {

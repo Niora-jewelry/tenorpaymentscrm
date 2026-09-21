@@ -195,8 +195,27 @@ export function describePhoneError(error: unknown): PhoneError {
 
   if (known) return { ...known, code };
 
-  // Unknown: keep Twilio's own words rather than inventing better ones, and
-  // keep the code so it can be looked up.
+  /*
+   * Unknown: keep Twilio's own words rather than inventing better ones, and
+   * keep the code so it can be looked up.
+   *
+   * ⚠ THE NO-CODE, NO-MESSAGE CASE IS THE ONE THAT MATTERS.
+   * "The phone ran into a problem." with nothing else was a dead end — it
+   * appeared on screen with no code, no stage and nothing in any log, which
+   * is precisely the shape of failure this project keeps having to chase by
+   * hand. If Twilio gave us neither a code nor a message, say so plainly and
+   * point at where the answer actually is, rather than implying we know
+   * something we do not.
+   */
+  if (!raw && code == null) {
+    return {
+      message: 'The phone could not start, and the browser reported no reason.',
+      hint: 'Open the browser console on this page — the Twilio SDK logs the real error there. Most often it is a rejected access token (the Twilio API key changed) or a blocked microphone.',
+      kind: 'unknown',
+      code: null,
+    };
+  }
+
   return {
     message: raw || 'The phone ran into a problem.',
     kind: 'unknown',

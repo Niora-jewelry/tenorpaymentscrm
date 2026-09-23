@@ -1,7 +1,8 @@
 'use client';
 
-import { useActionState, useEffect, useRef } from 'react';
-import Link from 'next/link';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { InvitePermissionsStep } from './InvitePermissionsStep';
+import type { ModuleOption } from '../ModuleScopePicker';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { inviteUserAction, type InviteState } from './actions';
@@ -17,11 +18,17 @@ const initial: InviteState = { ok: false };
 export function InviteForm({
   roles,
   templates,
+  modules,
   onClose,
+  onStepChange,
 }: {
   roles: RoleOption[];
   templates: TemplateOption[];
+  /** Non-admin-only modules, for step two's per-module picker. */
+  modules: ModuleOption[];
   onClose: () => void;
+  /** Lets the dialog widen for the matrix — a 440px modal cannot hold it. */
+  onStepChange?: (step: 'form' | 'permissions') => void;
 }) {
   // `isPending` — the third element, previously discarded. Sending an invite
   // writes a row and, once a mailer is configured, sends an email; on the live
@@ -30,11 +37,42 @@ export function InviteForm({
   // press it again.
   const [state, action, isPending] = useActionState(inviteUserAction, initial);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Kept so step two can name the person without re-reading the form, which
+  // has been replaced by then.
+  const [submittedEmail, setSubmittedEmail] = useState('');
+
+  const onPermissions = Boolean(state.ok && state.inviteId);
+  useEffect(() => {
+    onStepChange?.(onPermissions ? 'permissions' : 'form');
+  }, [onPermissions, onStepChange]);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
+  /*
+   * ── STEP TWO, IN THE SAME DIALOG ──────────────────────────────────────
+   * The client asked to adjust permissions "before sending invite". Sending
+   * the admin to another page to do it is not that, and it loses the invite
+   * they were halfway through. So the created invite stays on screen and the
+   * matrix swaps in against it.
+   *
+   * The invite genuinely exists by this point — that is what makes the matrix
+   * writable, since `invite_grants` has to point at an invite — and nothing
+   * has been emailed, so "before sending" still holds.
+   */
+  if (state.ok && state.inviteId) {
+    return (
+      <InvitePermissionsStep
+        inviteId={state.inviteId}
+        email={submittedEmail}
+        modules={modules}
+        onDone={onClose}
+      />
+    );
+  }
+
+  // Invite created but no id came back — nothing to adjust, so just confirm it.
   if (state.ok) {
     return (
       <div className="mt-4">
@@ -42,35 +80,7 @@ export function InviteForm({
           <Icon name="check" size={14} strokeWidth={2.5} />
           Invite created.
         </p>
-
-        {/*
-          ── THE SECOND HALF OF THE CLIENT'S ASK ──────────────────────────
-          "assign a template and also adjust permissions before sending
-          invite". The template was chosen above; this is where the personal
-          override goes, and it is offered HERE rather than left to be found
-          later because "before" is the whole point of the request.
-
-          Skipping it is a real choice, not an unfinished one — the template
-          alone is what most people need — so it sits beside Done rather than
-          blocking it.
-        */}
-        {state.inviteId ? (
-          <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">
-            Their permissions come from the template you chose. To change anything for this person
-            alone, adjust it now — it is applied the moment they finish signing up.
-          </p>
-        ) : null}
-
-        <div className="mt-5 flex justify-end gap-2">
-          {state.inviteId ? (
-            <Link
-              href={`/admin/users/invites/${state.inviteId}/permissions`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[13px] font-semibold text-ink-700 transition-colors hover:border-brand-200 hover:bg-brand-50"
-            >
-              <Icon name="sliders" size={13} />
-              Adjust permissions
-            </Link>
-          ) : null}
+        <div className="mt-5 flex justify-end">
           <Button type="button" variant="primary" onClick={onClose}>
             Done
           </Button>
@@ -87,6 +97,8 @@ export function InviteForm({
         name="email"
         type="email"
         required
+        // Kept because step two names the person, and the form is gone by then.
+        onChange={(e) => setSubmittedEmail(e.target.value)}
         disabled={isPending}
         placeholder="name@company.com"
         className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"

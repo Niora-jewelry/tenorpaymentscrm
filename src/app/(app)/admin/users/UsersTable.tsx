@@ -47,10 +47,18 @@ import { startImpersonationAction } from './impersonateActions';
  */
 function templateBadge(u: AdminUserRow) {
   const hasOverrides = u.overrideCount > 0;
+  /*
+   * The truncation has to happen INSIDE the chip, not on a wrapper around it.
+   * Wrapping it clipped the chip's own border and cut the text mid-word with
+   * no ellipsis — "Template: Demo Rep (permissions tou" in the client's
+   * screenshot. The chip keeps its shape; only its label shortens.
+   */
   const chip = (tone: 'brand' | 'warn', text: string) => (
-    <span title={text} className="inline-block max-w-[220px] truncate align-middle">
-      <OutlineChip tone={tone}>{text}</OutlineChip>
-    </span>
+    <OutlineChip tone={tone}>
+      <span title={text} className="block max-w-[200px] truncate">
+        {text}
+      </span>
+    </OutlineChip>
   );
   if (u.templateLabel && hasOverrides) return chip('brand', `Template: ${u.templateLabel} (edited)`);
   if (u.templateLabel) return chip('brand', `Template: ${u.templateLabel}`);
@@ -206,7 +214,7 @@ export function UsersTable({
                   <div className="font-medium text-ink-900">{u.fullName ?? u.email}</div>
                   {u.fullName ? <div className="text-[12px] text-ink-400">{u.email}</div> : null}
                 </td>
-                <td className="border-b border-line-faint px-3 py-2.5 text-ink-700">
+                <td className="whitespace-nowrap border-b border-line-faint px-3 py-2.5 align-middle text-ink-700">
                   {u.roleName}
                   {u.isAdmin ? <span className="ml-1.5 text-[11px] text-brand-600">(admin)</span> : null}
                 </td>
@@ -309,7 +317,7 @@ export function UsersTable({
                       : `${u.visibilityGrantCount} grant${u.visibilityGrantCount === 1 ? '' : 's'}`}
                   </Link>
                 </td>
-                <td className="border-b border-line-faint px-3 py-2.5">
+                <td className="border-b border-line-faint px-3 py-2.5 align-middle">
                   <StatusPill label={u.status === 'active' ? 'Active' : 'Paused'} swatch={u.status === 'active' ? 'teal' : 'amber'} />
                 </td>
                 {/* Admin §2.2: "the user list shows a last-login column;
@@ -318,7 +326,7 @@ export function UsersTable({
                     had nowhere to go. A person who has never signed in still
                     links — failed attempts and refused signups are exactly what
                     an admin looks for on an account with no successful login. */}
-                <td className="border-b border-line-faint px-3 py-2.5 tabular">
+                <td className="whitespace-nowrap border-b border-line-faint px-3 py-2.5 align-middle tabular">
                   <Link
                     href={`/admin/users/${u.id}/login-history`}
                     title={`Login history for ${u.email}`}
@@ -328,11 +336,11 @@ export function UsersTable({
                     {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : 'Never'}
                   </Link>
                 </td>
-                <td className="border-b border-line-faint px-3 py-2.5 text-right">
+                <td className="w-px whitespace-nowrap border-b border-line-faint px-3 py-2.5 text-right align-middle">
                   {isSelf ? (
                     <span className="text-[11.5px] text-ink-400">You</span>
                   ) : (
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                       {/*
                         The client's "I need the ability to sign in as other
                         user types to test". Offered only where it can work and

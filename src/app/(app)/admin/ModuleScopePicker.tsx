@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * "Which module am I setting permissions for?"
  *
@@ -31,12 +33,24 @@ export function ModuleScopePicker({
   modules,
   activeModuleId,
   basePath,
+  onSelect,
 }: {
   modules: ModuleOption[];
   /** Null = the "All modules" view. */
   activeModuleId: string | null;
-  /** The page this picker sits on, without a query string. */
-  basePath: string;
+  /** The page this picker sits on, without a query string. Ignored when
+   *  `onSelect` is given. */
+  basePath?: string;
+  /**
+   * Switch modules WITHOUT navigating.
+   *
+   * On a page the URL is the right place for this state — it makes the view
+   * linkable and survives a reload. Inside the invite dialog it is not: a
+   * navigation would close the dialog and lose the half-finished invite, which
+   * is exactly what the client asked us to avoid. When this is supplied the
+   * picker renders buttons and hands the choice back instead.
+   */
+  onSelect?: (moduleId: string | null) => void;
 }) {
   const options: { id: string | null; label: string }[] = [
     { id: null, label: 'All modules' },
@@ -52,16 +66,31 @@ export function ModuleScopePicker({
       <div className="mt-2 flex flex-wrap gap-1.5">
         {options.map((o) => {
           const active = o.id === activeModuleId;
+          const className = `rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+            active
+              ? 'bg-brand-950 text-white'
+              : 'border border-line bg-white text-ink-600 hover:border-brand-200 hover:bg-brand-50'
+          }`;
+
+          if (onSelect) {
+            return (
+              <button
+                key={o.id ?? 'all'}
+                type="button"
+                onClick={() => onSelect(o.id)}
+                className={className}
+              >
+                {o.label}
+              </button>
+            );
+          }
+
           return (
             <Link
               key={o.id ?? 'all'}
-              href={o.id ? `${basePath}?module=${o.id}` : basePath}
+              href={o.id ? `${basePath}?module=${o.id}` : (basePath ?? '')}
               scroll={false}
-              className={`rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                active
-                  ? 'bg-brand-950 text-white'
-                  : 'border border-line bg-white text-ink-600 hover:border-brand-200 hover:bg-brand-50'
-              }`}
+              className={className}
             >
               {o.label}
             </Link>

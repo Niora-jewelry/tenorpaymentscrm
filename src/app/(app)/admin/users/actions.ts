@@ -33,8 +33,10 @@ import {
   setUserGrant,
   clearInviteGrant,
   setInviteGrant,
+  inviteGrantMatrix,
   type GrantResult,
 } from '@/lib/records/adminGrants';
+import type { GrantMatrix as GrantMatrixData } from '@/lib/records/adminGrants';
 import {
   grantRecordVisibility,
   revokeRecordVisibility,
@@ -434,4 +436,30 @@ export async function clearInviteGrantAction(
   revalidatePath(`/admin/users/invites/${parsed.data.inviteId}/permissions`);
   revalidatePath('/admin/users');
   return { ok: true };
+}
+
+
+/**
+ * The invite's permission matrix, fetched from inside the invite dialog.
+ *
+ * The client's ask was to adjust permissions "before sending invite", and
+ * sending them to another page to do it is not that. So the dialog fetches the
+ * matrix and renders it in place — which needs the data as a return value
+ * rather than as page props, hence this action.
+ *
+ * Plain data on purpose: `GrantMatrix` is a client component and its props are
+ * already serialisable, so nothing has to be rebuilt for this to cross the
+ * boundary.
+ */
+export async function inviteMatrixAction(
+  inviteId: string,
+  moduleId: string | null,
+): Promise<GrantMatrixData | null> {
+  const ctx = await authorize();
+  if (!ctx.isAdmin) return null;
+
+  const parsed = inviteIdSchema.safeParse({ inviteId });
+  if (!parsed.success) return null;
+
+  return inviteGrantMatrix(ctx, parsed.data.inviteId, moduleId);
 }

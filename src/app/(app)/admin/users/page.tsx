@@ -18,6 +18,7 @@ import { listTemplates } from '@/lib/records/adminTemplates';
 import { UsersTable } from './UsersTable';
 import { InviteUserDialog } from './InviteUserDialog';
 import { InvitesTable } from './InvitesTable';
+import { loadConfig } from '@/lib/records/config';
 
 export default async function AdminUsersPage() {
   const ctx = await authorize();
@@ -34,12 +35,18 @@ export default async function AdminUsersPage() {
    */
   await sweepExpiredInvites(ctx);
 
-  const [users, roles, templates, invites] = await Promise.all([
+  const [users, roles, templates, invites, config] = await Promise.all([
     listUsers(ctx),
     listRoles(ctx),
     listTemplates(ctx),
     listInvites(ctx),
+    loadConfig(),
   ]);
+  // Only modules a non-admin could ever be granted — the Records List is
+  // admin-only, so offering it in the picker would be a control with no effect.
+  const grantableModules = config.modules
+    .filter((m) => !m.adminOnly)
+    .map((m) => ({ id: m.id, label: m.label }));
   const pendingInvites = invites.filter((i) => i.status === 'pending').length;
 
   return (
@@ -52,7 +59,7 @@ export default async function AdminUsersPage() {
             {pendingInvites ? ` · ${pendingInvites} invite${pendingInvites === 1 ? '' : 's'} outstanding` : ''}
           </p>
         </div>
-        <InviteUserDialog roles={roles} templates={templates} />
+        <InviteUserDialog roles={roles} templates={templates} modules={grantableModules} />
       </div>
 
       <UsersTable users={users} templates={templates} currentUserId={ctx.userId} />

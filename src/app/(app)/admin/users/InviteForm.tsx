@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { inviteUserAction, type InviteState } from './actions';
@@ -39,9 +40,37 @@ export function InviteForm({
       <div className="mt-4">
         <p className="flex items-center gap-1.5 text-[13px] text-ok">
           <Icon name="check" size={14} strokeWidth={2.5} />
-          Invite sent.
+          Invite created.
         </p>
-        <div className="mt-5 flex justify-end">
+
+        {/*
+          ── THE SECOND HALF OF THE CLIENT'S ASK ──────────────────────────
+          "assign a template and also adjust permissions before sending
+          invite". The template was chosen above; this is where the personal
+          override goes, and it is offered HERE rather than left to be found
+          later because "before" is the whole point of the request.
+
+          Skipping it is a real choice, not an unfinished one — the template
+          alone is what most people need — so it sits beside Done rather than
+          blocking it.
+        */}
+        {state.inviteId ? (
+          <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">
+            Their permissions come from the template you chose. To change anything for this person
+            alone, adjust it now — it is applied the moment they finish signing up.
+          </p>
+        ) : null}
+
+        <div className="mt-5 flex justify-end gap-2">
+          {state.inviteId ? (
+            <Link
+              href={`/admin/users/invites/${state.inviteId}/permissions`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[13px] font-semibold text-ink-700 transition-colors hover:border-brand-200 hover:bg-brand-50"
+            >
+              <Icon name="sliders" size={13} />
+              Adjust permissions
+            </Link>
+          ) : null}
           <Button type="button" variant="primary" onClick={onClose}>
             Done
           </Button>

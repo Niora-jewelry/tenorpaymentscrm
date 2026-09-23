@@ -241,8 +241,8 @@ const grantKey = (kind: GrantScope, scopeId: string): GrantKey => `${kind}:${sco
  * admin unable to tell an inherited value from one set here.
  */
 async function readGrants(
-  table: 'template_grants' | 'user_grants',
-  column: 'template_id' | 'user_id',
+  table: 'template_grants' | 'user_grants' | 'invite_grants',
+  column: 'template_id' | 'user_id' | 'invite_id',
   ownerId: string,
   moduleId: string | null = null,
 ): Promise<{ grants: Map<GrantKey, Grant>; moduleSpecific: Set<GrantKey> }> {
@@ -620,8 +620,8 @@ async function refuseCappedGrant(
  * would break it silently: a stale permission looks exactly like a correct one.
  */
 async function upsertGrant(
-  table: 'template_grants' | 'user_grants',
-  column: 'template_id' | 'user_id',
+  table: 'template_grants' | 'user_grants' | 'invite_grants',
+  column: 'template_id' | 'user_id' | 'invite_id',
   ownerId: string,
   scopeKind: GrantScope,
   scopeId: string,
@@ -674,8 +674,8 @@ async function upsertGrant(
  * cell is already unset, which is the state the caller asked for.
  */
 async function deleteGrant(
-  table: 'template_grants' | 'user_grants',
-  column: 'template_id' | 'user_id',
+  table: 'template_grants' | 'user_grants' | 'invite_grants',
+  column: 'template_id' | 'user_id' | 'invite_id',
   ownerId: string,
   scopeKind: GrantScope,
   scopeId: string,
@@ -768,6 +768,119 @@ export async function clearUserGrant(ctx: AuthContext, input: ClearUserGrantInpu
     'user_grants',
     'user_id',
     input.userId,
+    input.scopeKind,
+    input.scopeId,
+    input.moduleId ?? null,
+  );
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Invites — permissions chosen BEFORE the person exists                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The client's ask: "assign a template and also adjust permissions before
+ * sending invite". The template half has been on the invite since migration
+ * 71; these three functions are the override half (migration 93).
+ *
+ * ── IT REUSES THE `user` SUBJECT SHAPE DELIBERATELY ──────────────────────
+ * `GrantMatrix` reads exactly three things off its subject: whether to show
+ * the override column, the template name for the inline hint, and whether the
+ * subject is an admin (in which case every grant is moot). An invite answers
+ * all three, so it renders as the identical screen the admin will use after
+ * the person signs up — same columns, same wording, same behaviour — with no
+ * change to the shared component and therefore no risk to the two screens
+ * already built on it.
+ */
+export async function inviteGrantMatrix(
+  ctx: AuthContext,
+  inviteId: string,
+  moduleId: string | null = null,
+): Promise<GrantMatrix | null> {
+  assertAdmin(ctx);
+  const supabase = supabaseAdmin();
+
+  const { data: invite, error } = await supabase
+    .from('invites')
+    .select('id, email, role_id, template_id, status')
+    .eq('id', inviteId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!invite) return null;
+
+  const [roleRes, inviteGrants] = await Promise.all([
+    supabase.from('roles').select('name, is_admin').eq('id', invite.role_id as string).maybeSingle(),
+    readGrants('invite_grants', 'invite_id', inviteId, moduleId).then((r) => r.grants),
+  ]);
+  if (roleRes.error) throw roleRes.error;
+
+  const templateId = (invite.template_id as string | null) ?? null;
+  let templateLabel: string | null = null;
+  let templateGrants = new Map<GrantKey, Grant>();
+  if (templateId) {
+    const { data: template, error: tErr } = await supabase
+      .from('permission_templates')
+      .select('label')
+      .eq('id', templateId)
+      .maybeSingle();
+    if (tErr) throw tErr;
+    templateLabel = template?.label ?? null;
+    templateGrants = await listTemplateGrants(ctx, templateId, moduleId);
+  }
+
+  const hasOverrides = inviteGrants.size > 0;
+  const permissionLabel = templateLabel
+    ? hasOverrides
+      ? `Template: ${templateLabel} (edited)`
+      : `Template: ${templateLabel}`
+    : hasOverrides
+      ? 'Custom'
+      : 'Default';
+
+  return buildMatrix(
+    {
+      kind: 'user',
+      id: invite.id as string,
+      label: invite.email as string,
+      email: invite.email as string,
+      isAdmin: roleRes.data?.is_admin ?? false,
+      roleName: roleRes.data?.name ?? 'Unknown role',
+      templateId,
+      templateLabel,
+      permissionLabel,
+    },
+    templateGrants,
+    inviteGrants,
+    roleRes.data?.is_admin ?? false,
+  );
+}
+
+export async function setInviteGrant(
+  ctx: AuthContext,
+  input: { inviteId: string; scopeKind: GrantScope; scopeId: string; level: Grant; moduleId?: string | null },
+): Promise<GrantResult> {
+  assertAdmin(ctx);
+  return upsertGrant(
+    'invite_grants',
+    'invite_id',
+    input.inviteId,
+    input.scopeKind,
+    input.scopeId,
+    input.level,
+    input.moduleId ?? null,
+  );
+}
+
+export async function clearInviteGrant(
+  ctx: AuthContext,
+  input: { inviteId: string; scopeKind: GrantScope; scopeId: string; moduleId?: string | null },
+): Promise<GrantResult> {
+  assertAdmin(ctx);
+  return deleteGrant(
+    'invite_grants',
+    'invite_id',
+    input.inviteId,
     input.scopeKind,
     input.scopeId,
     input.moduleId ?? null,

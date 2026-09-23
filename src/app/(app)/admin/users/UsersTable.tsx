@@ -35,11 +35,24 @@ import type { TemplateOption } from '@/lib/records/adminTemplates';
 
 /** The client's three labels, plus the state he did not name (no template and
  * no overrides). Computed from real rows every render, never stored. */
+/**
+ * The three labels from the client's spec §8, as one chip.
+ *
+ * `max-w` + `truncate` because a template may be called anything — "Demo Rep
+ * (permissions tour)" is real, and unconstrained it wrapped to three lines and
+ * pushed the row's other cells out of shape. The full text stays available as
+ * a tooltip rather than being lost.
+ */
 function templateBadge(u: AdminUserRow) {
   const hasOverrides = u.overrideCount > 0;
-  if (u.templateLabel && hasOverrides) return <OutlineChip tone="brand">Template: {u.templateLabel} (edited)</OutlineChip>;
-  if (u.templateLabel) return <OutlineChip tone="brand">Template: {u.templateLabel}</OutlineChip>;
-  if (hasOverrides) return <OutlineChip tone="warn">Custom</OutlineChip>;
+  const chip = (tone: 'brand' | 'warn', text: string) => (
+    <span title={text} className="inline-block max-w-[220px] truncate align-middle">
+      <OutlineChip tone={tone}>{text}</OutlineChip>
+    </span>
+  );
+  if (u.templateLabel && hasOverrides) return chip('brand', `Template: ${u.templateLabel} (edited)`);
+  if (u.templateLabel) return chip('brand', `Template: ${u.templateLabel}`);
+  if (hasOverrides) return chip('warn', 'Custom');
   return <span className="text-ink-400">Default</span>;
 }
 
@@ -131,12 +144,25 @@ export function UsersTable({
   const offboardingUser = users.find((u) => u.id === offboarding) ?? null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
-      <table className="w-full border-separate border-spacing-0 text-[13.5px]">
+    /*
+     * ── WHY THIS SCROLLS INSTEAD OF FITTING ──────────────────────────────
+     * Seven columns, one of which holds a permission badge AND a template
+     * dropdown side by side. With `overflow-hidden` and no minimum width the
+     * browser had to make it fit, so it crushed the columns: the badge wrapped
+     * onto three lines, the dropdown collapsed to a sliver, and the two
+     * overlapped. That is the "corrupted" screen in the client's screenshot —
+     * not corruption, a table with nowhere to go.
+     *
+     * A minimum width plus horizontal scroll is the honest fix. Below roughly
+     * 1100px the table scrolls sideways and every cell stays readable, which
+     * is what a dense admin table should do rather than degrade into overlap.
+     */
+    <div className="overflow-x-auto rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+      <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-[13.5px]">
         <thead>
           <tr>
             {['User', 'Role', 'Permissions', 'Record access', 'Status', 'Last login', ''].map((h) => (
-              <th key={h} className="border-b border-line-soft bg-white px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[.04em] text-ink-400">
+              <th key={h} className="whitespace-nowrap border-b border-line-soft bg-white px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[.04em] text-ink-400">
                 {h}
               </th>
             ))}
@@ -161,8 +187,12 @@ export function UsersTable({
                   {u.roleName}
                   {u.isAdmin ? <span className="ml-1.5 text-[11px] text-brand-600">(admin)</span> : null}
                 </td>
-                <td className="border-b border-line-faint px-3 py-2.5">
-                  <div className="flex items-center gap-2">
+                <td className="border-b border-line-faint px-3 py-2.5 align-top">
+                  {/* Stacked, not side by side. "Template: Support Agent
+                      (edited)" next to a select is wider than any sensible
+                      column, and forcing them onto one line is what produced
+                      the overlap. */}
+                  <div className="flex min-w-[230px] flex-col items-start gap-1.5">
                     {/* The badge summarises this person's permission state in
                         three words; the link is where you see the 148 scopes
                         behind it, template grant and override side by side —

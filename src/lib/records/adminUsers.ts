@@ -137,7 +137,7 @@ export async function listRoles(ctx: AuthContext): Promise<RoleOption[]> {
 export async function inviteUser(
   ctx: AuthContext,
   input: InviteUserInput,
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<{ ok: true; inviteId: string | null } | { ok: false; message: string }> {
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
   // Trimmed and lower-cased by the schema (Phase 6c) rather than here — the
@@ -164,7 +164,7 @@ export async function inviteUser(
     .eq('status', 'pending');
   if (revokeErr) throw revokeErr;
 
-  const { error: insertErr } = await supabase
+  const { data: inserted, error: insertErr } = await supabase
     .from('invites')
     .insert({
       email: normalizedEmail,
@@ -179,10 +179,14 @@ export async function inviteUser(
        */
       template_id: input.templateId ?? null,
       status: 'pending',
-    });
+    })
+    // Returned so the caller can offer "adjust permissions" immediately — the
+    // client's "before sending invite", which needs the invite's id to exist.
+    .select('id')
+    .single();
   if (insertErr) return { ok: false, message: insertErr.message };
 
-  return { ok: true };
+  return { ok: true, inviteId: (inserted?.id as string | undefined) ?? null };
 }
 
 /** Sets `status = 'suspended'` AND bumps `sessions_valid_from` — the second

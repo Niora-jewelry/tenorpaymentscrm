@@ -533,6 +533,16 @@ export const setUserGrantSchema = z.object({
 
 export const clearUserGrantSchema = z.object({ userId: uuid, ...grantScopeShape });
 
+/** The same two shapes again, for a grant decided BEFORE the person exists —
+ *  the client's "adjust permissions before sending invite" (migration 93). */
+export const setInviteGrantSchema = z.object({
+  inviteId: uuid,
+  ...grantScopeShape,
+  level: grantLevelSchema,
+});
+
+export const clearInviteGrantSchema = z.object({ inviteId: uuid, ...grantScopeShape });
+
 export type SetTemplateGrantInput = z.infer<typeof setTemplateGrantSchema>;
 export type ClearTemplateGrantInput = z.infer<typeof clearTemplateGrantSchema>;
 export type SetUserGrantInput = z.infer<typeof setUserGrantSchema>;

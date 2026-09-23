@@ -26,6 +26,7 @@ import { Icon } from '@/proto/ui/icons';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { revokeInviteAction, renewInviteAction } from './actions';
 import type { AdminInviteRow } from '@/lib/records/adminUsers';
+import Link from 'next/link';
 
 function statusPill(invite: AdminInviteRow) {
   if (invite.status === 'accepted') return <StatusPill label="Accepted" swatch="teal" />;
@@ -160,6 +161,19 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                       <span className="text-[11.5px] text-ink-400">Working…</span>
                     ) : (
                       <span className="flex items-center justify-end gap-1">
+                        {/* Permissions stay editable for as long as the invite
+                            is pending — the rows are copied into `user_grants`
+                            at signup, so after that this link would edit
+                            something nothing reads. */}
+                        {i.status === 'pending' ? (
+                          <Link
+                            href={`/admin/users/invites/${i.id}/permissions`}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-ink-600 transition-colors hover:bg-canvas hover:text-ink-900"
+                          >
+                            <Icon name="sliders" size={12} />
+                            Permissions
+                          </Link>
+                        ) : null}
                         {/* Renew is offered on anything past its date, whether
                             the sweep has relabelled it yet or not. */}
                         {i.status === 'expired' || i.isStale ? (

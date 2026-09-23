@@ -28,7 +28,13 @@ import {
   revokeInvite, renewInvite,
   type PurgeOutcome,
 } from '@/lib/records/adminUsers';
-import { clearUserGrant, setUserGrant, type GrantResult } from '@/lib/records/adminGrants';
+import {
+  clearUserGrant,
+  setUserGrant,
+  clearInviteGrant,
+  setInviteGrant,
+  type GrantResult,
+} from '@/lib/records/adminGrants';
 import {
   grantRecordVisibility,
   revokeRecordVisibility,
@@ -40,6 +46,8 @@ import {
   assignTemplateSchema,
   setUserGrantSchema,
   clearUserGrantSchema,
+  setInviteGrantSchema,
+  clearInviteGrantSchema,
   recordVisibilityGrantSchema,
   revokeVisibilityGrantSchema,
   reassignUserRecordsSchema,
@@ -48,7 +56,14 @@ import {
 } from '@/lib/records/adminSchemas';
 import type { Grant, GrantScope } from '@/lib/records/grantRules';
 
-export type InviteState = { ok: boolean; message?: string };
+export type InviteState = {
+  ok: boolean;
+  message?: string;
+  /** Set on a successful invite, so the drawer can link straight to that
+   *  invite's permission matrix — the client's "adjust permissions before
+   *  sending invite". */
+  inviteId?: string | null;
+};
 
 export async function inviteUserAction(_prev: InviteState, formData: FormData): Promise<InviteState> {
   const ctx = await authorize();
@@ -64,7 +79,7 @@ export async function inviteUserAction(_prev: InviteState, formData: FormData): 
   if (!result.ok) return result;
 
   revalidatePath('/admin/users');
-  return { ok: true };
+  return { ok: true, inviteId: result.inviteId };
 }
 
 export async function pauseUserAction(userId: string): Promise<InviteState> {
@@ -367,6 +382,56 @@ export async function renewInviteAction(inviteId: string): Promise<InviteState> 
   const result = await renewInvite(ctx, parsed.data.inviteId);
   if (!result.ok) return result;
 
+  revalidatePath('/admin/users');
+  return { ok: true };
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Invite permissions — set before the person exists                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The same pair as `setUserGrantAction`/`clearUserGrantAction`, addressed to an
+ * INVITE instead of a user. `complete_signup` copies these into `user_grants`
+ * the moment the person finishes signing up, so what the admin sets here is
+ * what they get — no gap where the account is live with only its template.
+ */
+export async function setInviteGrantAction(
+  inviteId: string,
+  scopeKind: GrantScope,
+  scopeId: string,
+  level: Grant,
+  moduleId?: string | null,
+): Promise<GrantResult> {
+  const ctx = await authorize();
+
+  const parsed = setInviteGrantSchema.safeParse({ inviteId, scopeKind, scopeId, level, moduleId });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await setInviteGrant(ctx, parsed.data);
+  if (!result.ok) return result;
+
+  revalidatePath(`/admin/users/invites/${parsed.data.inviteId}/permissions`);
+  revalidatePath('/admin/users');
+  return { ok: true };
+}
+
+export async function clearInviteGrantAction(
+  inviteId: string,
+  scopeKind: GrantScope,
+  scopeId: string,
+  moduleId?: string | null,
+): Promise<GrantResult> {
+  const ctx = await authorize();
+
+  const parsed = clearInviteGrantSchema.safeParse({ inviteId, scopeKind, scopeId, moduleId });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await clearInviteGrant(ctx, parsed.data);
+  if (!result.ok) return result;
+
+  revalidatePath(`/admin/users/invites/${parsed.data.inviteId}/permissions`);
   revalidatePath('/admin/users');
   return { ok: true };
 }

@@ -1,25 +1,81 @@
 /**
- * Transactional email.
+ * Transactional email, over SMTP.
  *
- * Spec §8: "OTP and invite emails require a production-grade transactional
- * sender from day one — Supabase's built-in SMTP is dev-only. Configure a
- * dedicated provider (Resend or Postmark recommended) in Phase 1; Outlook
- * integration on the roadmap does not cover transactional auth email."
+ * Spec 8: "OTP and invite emails require a production-grade transactional
+ * sender from day one - Supabase's built-in SMTP is dev-only. Configure a
+ * dedicated provider (Resend or Postmark recommended)."
+ *
+ * Resend and Postmark were the spec's SUGGESTIONS. The client supplied a
+ * Microsoft 365 mailbox instead, so that is what this sends through. The
+ * requirement the sentence actually makes - a real sender, not Supabase's
+ * dev SMTP - is met either way.
  *
  * OTP mail carries a CODE, never a link. Nothing in the message is a bearer
  * token that survives forwarding, and there is no link to phish.
+ *
+ * -- WHY NODEMAILER AND NOT A HAND-ROLLED SOCKET --------------------------
+ * A raw SMTP conversation is easy to get working and hard to get right:
+ * header folding, quoted-printable for non-ASCII subjects, dot-stuffing a
+ * body line that begins with ".", CRLF discipline, connection reuse. Every
+ * one of those is a silent corruption rather than an error, and a mangled
+ * login code is indistinguishable from a wrong one. This is a solved problem
+ * and not worth re-solving inside an auth path.
+ *
+ * -- THE TRANSPORT IS CREATED ONCE ---------------------------------------
+ * `pool: true` keeps one authenticated connection rather than reconnecting
+ * per message. Microsoft throttles aggressively on new connections, and OTP
+ * sends arrive in bursts (request, resend, a colleague signing up minutes
+ * later).
  */
 import 'server-only';
-import { Resend } from 'resend';
+import nodemailer, { type Transporter } from 'nodemailer';
 import { serverEnv, isProduction } from '@/lib/env.server';
 import { OTP_TTL_SECONDS } from '@/lib/security/otp';
 
-let resend: Resend | null = null;
+let transport: Transporter | null = null;
 
-function client(): Resend | null {
-  if (!serverEnv.RESEND_API_KEY) return null;
-  resend ??= new Resend(serverEnv.RESEND_API_KEY);
-  return resend;
+function client(): Transporter | null {
+  /*
+   * THE TEST SUITE NEVER SENDS REAL MAIL.
+   *
+   * `flow.integration.test.ts` drives the genuine signup path against the live
+   * database using addresses at @tapdash.test, which is not a real domain. The
+   * moment SMTP was configured those tests began failing at RCPT TO — the
+   * server was right to reject them, and the suite was right to notice, but a
+   * test run must not be attempting delivery to invented addresses at all.
+   *
+   * Checked before the host so it holds however the environment is configured.
+   */
+  if (serverEnv.NODE_ENV === 'test') return null;
+
+  // The host is the switch. Without it there is no mail provider at all, and
+  // the caller falls back to printing the code locally.
+  if (!serverEnv.SMTP_HOST) return null;
+
+  transport ??= nodemailer.createTransport({
+    host: serverEnv.SMTP_HOST,
+    port: serverEnv.SMTP_PORT,
+    /*
+     * `secure: false` with port 587 means STARTTLS, not plaintext - the
+     * connection opens unencrypted and is upgraded before AUTH. Microsoft 365
+     * does not offer implicit TLS on 465, so 587 + STARTTLS is the only shape
+     * that works there. `requireTLS` makes the upgrade mandatory rather than
+     * opportunistic, so a server that declines it fails instead of sending
+     * the password in the clear.
+     */
+    secure: serverEnv.SMTP_PORT === 465,
+    requireTLS: serverEnv.SMTP_PORT !== 465,
+    auth: { user: serverEnv.SMTP_USER, pass: serverEnv.SMTP_PASSWORD },
+    pool: true,
+    maxConnections: 2,
+    // An auth path must not hang on a slow mail server. Failing in seconds
+    // and telling the user beats a request that never returns.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+
+  return transport;
 }
 
 export type SendResult = { ok: true } | { ok: false; error: string };
@@ -44,7 +100,7 @@ async function send(to: string, subject: string, html: string, text: string): Pr
       [
         '',
         `┌${line}┐`,
-        `  EMAIL (dev — no RESEND_API_KEY set, nothing was sent)`,
+        `  EMAIL (dev - no SMTP_HOST set, nothing was sent)`,
         `  To:      ${to}`,
         `  Subject: ${subject}`,
         code ? `  CODE:    ${code}` : '',
@@ -58,17 +114,19 @@ async function send(to: string, subject: string, html: string, text: string): Pr
   }
 
   try {
-    const { error } = await api.emails.send({
-      from: serverEnv.EMAIL_FROM,
-      to,
-      subject,
-      html,
-      text,
-    });
-    if (error) return { ok: false, error: error.message };
+    await api.sendMail({ from: serverEnv.EMAIL_FROM, to, subject, html, text });
     return { ok: true };
   } catch (cause) {
-    return { ok: false, error: cause instanceof Error ? cause.message : 'Send failed' };
+    /*
+     * Reported, never thrown. The caller decides what the user sees, and an
+     * OTP request that 500s tells an attacker more than one that fails
+     * politely. The reason is logged server-side because "email is not
+     * arriving" is otherwise a blind investigation - a rejected app password
+     * and a throttled connection look identical from the outside.
+     */
+    const error = cause instanceof Error ? cause.message : 'Send failed';
+    console.error('[email] SMTP send failed', { to, subject, error });
+    return { ok: false, error };
   }
 }
 

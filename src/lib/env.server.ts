@@ -38,17 +38,35 @@ const serverSchema = z.object({
   LOGIN_ENC_KEY: z.string().min(32),
 
   /**
-   * Transactional email. Supabase's built-in SMTP is dev-only (spec §8).
+   * Transactional email, over SMTP.
    *
-   * A blank value is treated as "not configured" rather than invalid, so local
-   * development works with an empty key — codes print to the server console.
-   * In production a missing key makes sending fail LOUDLY; it never silently
-   * swallows a login code.
+   * Spec 8 asked for "a production-grade transactional sender" and named
+   * Resend as a suggestion, not a requirement. The client supplied a Microsoft
+   * 365 mailbox instead, so that is what this sends through: verified working
+   * on smtp-mail.outlook.com:587 with STARTTLS and an app password.
+   *
+   * A blank host is treated as "not configured" rather than invalid, so local
+   * development works with nothing set - codes print to the server console
+   * instead. In production a missing host makes sending fail LOUDLY; it never
+   * silently swallows a login code.
+   *
+   * SMTP_PASSWORD is an APP PASSWORD, not the mailbox password. Microsoft
+   * refuses the account password outright once MFA is on, which is the failure
+   * that looks like "wrong credentials" and is not.
    */
-  RESEND_API_KEY: z
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim().length > 0 ? v.trim() : undefined)),
+    .transform((v) => {
+      const n = Number.parseInt((v ?? '').trim(), 10);
+      // 587 is the submission port and the one Microsoft 365 supports.
+      // Anything unparseable falls back rather than throwing, because a typo
+      // here must not stop the whole app booting.
+      return Number.isFinite(n) && n > 0 ? n : 587;
+    }),
+  SMTP_USER: optionalString,
+  SMTP_PASSWORD: optionalString,
   EMAIL_FROM: z
     .string()
     .optional()
@@ -87,7 +105,10 @@ const parsed = serverSchema.safeParse({
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   OTP_PEPPER: process.env.OTP_PEPPER,
   LOGIN_ENC_KEY: process.env.LOGIN_ENC_KEY,
-  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   EMAIL_FROM: process.env.EMAIL_FROM,
   TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
   TWILIO_API_KEY_SID: process.env.TWILIO_API_KEY_SID,

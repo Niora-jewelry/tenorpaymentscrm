@@ -30,6 +30,11 @@ export const AUTH_EVENTS = {
   inviteAccepted: 'invite_accepted',
   passwordChanged: 'password_changed',
   passwordResetCompleted: 'password_reset_completed',
+  /* An admin borrowing another account to see what that person sees. Both ends
+   * are recorded, naming the admin AND the target, so "who actually did this"
+   * stays answerable — the whole reason the feature is safe to hand over. */
+  impersonationStarted: 'impersonation_started',
+  impersonationEnded: 'impersonation_ended',
   sessionRejectedSuspended: 'session_rejected_suspended',
   sessionRejectedEpoch: 'session_rejected_epoch',
   sessionRejectedIdle: 'session_rejected_idle',

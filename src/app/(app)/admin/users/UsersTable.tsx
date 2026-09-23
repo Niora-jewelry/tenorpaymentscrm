@@ -24,6 +24,7 @@
  * database at write time, not from this table's possibly-stale render.
  */
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { StatusPill, OutlineChip, Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
@@ -32,6 +33,7 @@ import { pauseUserAction, resumeUserAction, assignTemplateAction } from './actio
 import { OffboardDialog } from './OffboardDialog';
 import type { AdminUserRow } from '@/lib/records/adminUsers';
 import type { TemplateOption } from '@/lib/records/adminTemplates';
+import { startImpersonationAction } from './impersonateActions';
 
 /** The client's three labels, plus the state he did not name (no template and
  * no overrides). Computed from real rows every render, never stored. */
@@ -104,6 +106,8 @@ export function UsersTable({
       return next;
     });
 
+  const router = useRouter();
+
   const runPause = (id: string) => {
     setBusyId(id);
     startTransition(async () => {
@@ -112,6 +116,25 @@ export function UsersTable({
       setFor(setNotice, id, result.ok ? null : (result.message ?? 'That did not work.'));
     });
   };
+  /*
+   * Unlike pause/resume this REPLACES the session, so there is nothing
+   * sensible to do on success — the page the admin is looking at belongs to
+   * somebody else now. `router.refresh()` re-renders the whole tree under the
+   * new session, which is what puts the banner up and swaps the sidebar.
+   */
+  const runImpersonate = (id: string) => {
+    setBusyId(id);
+    startTransition(async () => {
+      const result = await startImpersonationAction(id);
+      setBusyId(null);
+      if (result.ok) {
+        router.refresh();
+        return;
+      }
+      setFor(setNotice, id, result.message ?? 'That did not work.');
+    });
+  };
+
   const runResume = (id: string) => {
     setBusyId(id);
     startTransition(async () => {
@@ -310,6 +333,25 @@ export function UsersTable({
                     <span className="text-[11.5px] text-ink-400">You</span>
                   ) : (
                     <div className="flex items-center justify-end gap-1">
+                      {/*
+                        The client's "I need the ability to sign in as other
+                        user types to test". Offered only where it can work and
+                        is worth doing: an admin sees everything already, and a
+                        paused account must not hold a session at all — the
+                        library refuses both, this just does not tempt anyone.
+                      */}
+                      {!u.isAdmin && u.status === 'active' ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          icon="eye"
+                          disabled={busy}
+                          onClick={() => runImpersonate(u.id)}
+                          title={`See the CRM exactly as ${u.email} sees it`}
+                        >
+                          Sign in as
+                        </Button>
+                      ) : null}
                       {u.status === 'active' ? (
                         <Button size="sm" variant="ghost" icon="lock" disabled={busy} onClick={() => runPause(u.id)}>
                           Pause

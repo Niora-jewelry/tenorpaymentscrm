@@ -15,6 +15,7 @@ import { PeopleProvider } from '@/proto/ui/people';
 import { Sidebar } from './Sidebar';
 import { PhoneProvider } from './phone/PhoneProvider';
 import { CallBar } from './phone/CallBar';
+import { ImpersonationBanner } from './ImpersonationBanner';
 import { CallEndedToast } from './phone/CallEndedToast';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -70,6 +71,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       progress, so the cost on every other page is one null check.
     */}
     <PhoneProvider>
+      {/* Above everything, so no page can cover it and nothing can dismiss it. */}
+      <ImpersonationBanner />
     <div className="flex h-screen overflow-hidden bg-canvas">
       <Sidebar
         storageModules={storageModules}

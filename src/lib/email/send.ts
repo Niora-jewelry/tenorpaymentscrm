@@ -85,8 +85,41 @@ async function send(to: string, subject: string, html: string, text: string): Pr
 
   if (!api) {
     if (isProduction) {
-      // Silently "succeeding" here would mean users never receive codes while
-      // the app reports success. Fail loudly instead.
+      /*
+       * Silently "succeeding" here would mean users never receive codes while
+       * the app reports success. Fail loudly instead.
+       *
+       * -- AND SAY SO IN THE LOG ------------------------------------------
+       * This branch used to return without a word, which made it the hardest
+       * of the failure modes to diagnose: the user sees the same polite
+       * "try again in a moment" they would see for a rejected password or a
+       * throttled connection, and the server says nothing to tell the three
+       * apart. It is also the likeliest of them, because it is what a
+       * deployment with the variables unset does, and what a long-running
+       * process started BEFORE they were set does -- the environment is read
+       * once at boot, so editing .env under a running server changes nothing
+       * until it is restarted.
+       */
+      const missing = (
+        [
+          ['SMTP_HOST', serverEnv.SMTP_HOST],
+          ['SMTP_USER', serverEnv.SMTP_USER],
+          ['SMTP_PASSWORD', serverEnv.SMTP_PASSWORD],
+        ] as const
+      )
+        .filter(([, v]) => !v)
+        .map(([k]) => k);
+
+      console.error(
+        '[email] not configured - nothing was sent.',
+        missing.length
+          ? `Missing in this process's environment: ${missing.join(', ')}. ` +
+              'If these are set in .env, the server was started before they were ' +
+              'added and needs restarting; on a hosted deployment they must be set ' +
+              'in the project settings and the app redeployed.'
+          : 'The transport could not be created.',
+        { to, subject },
+      );
       return { ok: false, error: 'Email is not configured' };
     }
     /*

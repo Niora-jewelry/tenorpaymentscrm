@@ -73,7 +73,7 @@ export function InviteUserDialog({
               <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-700">
                 <Icon name="users" size={16} strokeWidth={2} />
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <h2 className="text-[16px] font-semibold text-ink-900">Invite a user</h2>
                 <p className="mt-0.5 text-[12.5px] text-ink-400">
                   {step === 'permissions'
@@ -82,6 +82,51 @@ export function InviteUserDialog({
                 </p>
               </div>
             </div>
+
+            {/*
+              A two-step flow has to SAY it is two steps, or the first screen
+              reads as the whole thing and the second arrives as a surprise.
+              Shown above the form so it frames both steps rather than
+              appearing only once you are already in one.
+            */}
+            <ol className="mt-4 flex items-center gap-2" aria-label="Invite progress">
+              {[
+                { n: 1, label: 'Account' },
+                { n: 2, label: 'Permissions' },
+              ].map((s2, i) => {
+                const active = step === 'form' ? s2.n === 1 : s2.n === 2;
+                const done = step === 'permissions' && s2.n === 1;
+                return (
+                  <li key={s2.n} className="flex flex-1 items-center gap-2">
+                    <span
+                      aria-current={active ? 'step' : undefined}
+                      className={`grid size-[22px] shrink-0 place-items-center rounded-full text-[11.5px] font-semibold transition-colors ${
+                        done
+                          ? 'bg-ok text-white'
+                          : active
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-canvas text-ink-400'
+                      }`}
+                    >
+                      {done ? <Icon name="check" size={12} strokeWidth={3} /> : s2.n}
+                    </span>
+                    <span
+                      className={`whitespace-nowrap text-[12.5px] ${
+                        active ? 'font-semibold text-ink-900' : 'text-ink-400'
+                      }`}
+                    >
+                      {s2.label}
+                    </span>
+                    {i === 0 ? (
+                      <span
+                        aria-hidden
+                        className={`h-px flex-1 transition-colors ${done ? 'bg-ok/40' : 'bg-line'}`}
+                      />
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
 
             <InviteForm
               key={openCount}

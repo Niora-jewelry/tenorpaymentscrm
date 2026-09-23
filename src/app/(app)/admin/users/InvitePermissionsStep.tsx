@@ -23,6 +23,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { GrantMatrix, type GrantWriter } from '../GrantMatrix';
+import type { GrantResult } from '@/lib/records/adminGrants';
 import { ModuleScopePicker, type ModuleOption } from '../ModuleScopePicker';
 import {
   inviteMatrixAction,
@@ -55,12 +56,32 @@ export function InvitePermissionsStep({
     });
   }, [inviteId, moduleId]);
 
+  /*
+   * Every write is confirmed out loud. The matrix draws the new value
+   * immediately, which tells you the CLICK registered but not that the SAVE
+   * did -- and on an invite the difference matters, because nothing here is
+   * visible again until the person signs up. A refusal from the server
+   * replaces it with the reason.
+   */
+  const [saved, setSaved] = useState<string | null>(null);
+
+  const announce = (result: GrantResult, what: string): GrantResult => {
+    setSaved(result.ok ? what : result.message);
+    return result;
+  };
+
   const writer: GrantWriter = {
     column: 'user',
-    set: (scopeKind, scopeId, level) =>
-      setInviteGrantAction(inviteId, scopeKind, scopeId, level, moduleId),
-    clear: (scopeKind, scopeId) =>
-      clearInviteGrantAction(inviteId, scopeKind, scopeId, moduleId),
+    set: async (scopeKind, scopeId, level) =>
+      announce(
+        await setInviteGrantAction(inviteId, scopeKind, scopeId, level, moduleId),
+        `Saved \u2014 set to ${level}.`,
+      ),
+    clear: async (scopeKind, scopeId) =>
+      announce(
+        await clearInviteGrantAction(inviteId, scopeKind, scopeId, moduleId),
+        'Saved \u2014 back to the template value.',
+      ),
   };
 
   return (
@@ -78,8 +99,21 @@ export function InvitePermissionsStep({
       <ModuleScopePicker
         modules={modules}
         activeModuleId={moduleId}
-        onSelect={setModuleId}
+        onSelect={(id) => {
+          setModuleId(id);
+          setSaved(null);
+        }}
       />
+
+      {saved ? (
+        <p
+          aria-live="polite"
+          className="flex items-center gap-1.5 rounded-lg bg-ok-bg px-3 py-1.5 text-[12.5px] font-medium text-ink-800"
+        >
+          <Icon name="check" size={13} strokeWidth={2.5} className="text-ok" />
+          {saved}
+        </p>
+      ) : null}
 
       {matrix ? (
         <div className="max-h-[52vh] overflow-y-auto pr-1">

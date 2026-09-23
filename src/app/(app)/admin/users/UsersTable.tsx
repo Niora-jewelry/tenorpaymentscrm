@@ -34,6 +34,7 @@ import { OffboardDialog } from './OffboardDialog';
 import type { AdminUserRow } from '@/lib/records/adminUsers';
 import type { TemplateOption } from '@/lib/records/adminTemplates';
 import { startImpersonationAction } from './impersonateActions';
+import { UserRowMenu } from './UserRowMenu';
 
 /** The client's three labels, plus the state he did not name (no template and
  * no overrides). Computed from real rows every render, never stored. */
@@ -176,25 +177,42 @@ export function UsersTable({
 
   return (
     /*
-     * ── WHY THIS SCROLLS INSTEAD OF FITTING ──────────────────────────────
-     * Seven columns, one of which holds a permission badge AND a template
-     * dropdown side by side. With `overflow-hidden` and no minimum width the
-     * browser had to make it fit, so it crushed the columns: the badge wrapped
-     * onto three lines, the dropdown collapsed to a sliver, and the two
-     * overlapped. That is the "corrupted" screen in the client's screenshot —
-     * not corruption, a table with nowhere to go.
+     * FOUR COLUMNS, NOT SEVEN.
      *
-     * A minimum width plus horizontal scroll is the honest fix. Below roughly
-     * 1100px the table scrolls sideways and every cell stays readable, which
-     * is what a dense admin table should do rather than degrade into overlap.
+     * The previous version had seven, one of which held a permission badge AND
+     * a template select side by side. Nothing could make that fit, so it was
+     * given a minimum width and a horizontal scrollbar -- which is an
+     * anti-pattern, not a layout, and the client said so.
+     *
+     * The fix is structural rather than cosmetic: group the columns that
+     * answer the same question, and collapse the row's four buttons into one
+     * overflow menu.
+     *
+     *   USER      who they are         name, address, whether the account is live
+     *   ACCESS    what they can do     role + permission label, both linked
+     *   ACTIVITY  what they have done  last login + how many records they see
+     *   (menu)    everything you can do to them
+     *
+     * Status folds into USER because "paused" is a property of the person, not
+     * a fact worth its own column; record access folds into ACTIVITY because
+     * it is a count, not an action. Nothing was removed -- every link and
+     * control from the old row is still reachable.
      */
-    <div className="overflow-x-auto rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
-      <table className="w-full min-w-[1100px] border-separate border-spacing-0 text-[13.5px]">
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+      <table className="w-full border-separate border-spacing-0 text-[13.5px]">
         <thead>
           <tr>
-            {['User', 'Role', 'Permissions', 'Record access', 'Status', 'Last login', ''].map((h) => (
-              <th key={h} className="whitespace-nowrap border-b border-line-soft bg-white px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[.04em] text-ink-400">
-                {h}
+            {[
+              { label: 'User', className: 'w-[38%]' },
+              { label: 'Access', className: 'w-[30%]' },
+              { label: 'Activity', className: 'w-[26%]' },
+              { label: '', className: 'w-[6%]' },
+            ].map((h) => (
+              <th
+                key={h.label}
+                className={`${h.className} whitespace-nowrap border-b border-line-soft bg-canvas/40 px-4 py-2.5 text-left text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400`}
+              >
+                {h.label}
               </th>
             ))}
           </tr>
@@ -203,31 +221,54 @@ export function UsersTable({
           {users.map((u) => {
             const isSelf = u.id === currentUserId;
             const busy = pending && busyId === u.id;
-            // `undefined` — not staged — is a different state from `''`, which
-            // is the select's own placeholder, so `.get()` is read directly
-            // rather than defaulted.
             const stagedId = staged.get(u.id);
             const rowNotice = notice.get(u.id) ?? null;
+            const paused = u.status !== 'active';
+
             return (
-              <tr key={u.id} className="group">
-                <td className="border-b border-line-faint px-3 py-2.5">
-                  <div className="font-medium text-ink-900">{u.fullName ?? u.email}</div>
-                  {u.fullName ? <div className="text-[12px] text-ink-400">{u.email}</div> : null}
+              <tr key={u.id} className="group align-middle transition-colors hover:bg-canvas/40">
+                <td className="border-b border-line-faint px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    {/* A monogram rather than an avatar image: there are no
+                        photos in this system, and a coloured initial gives the
+                        eye something to track down a long list. */}
+                    <span
+                      aria-hidden
+                      className={`grid size-8 shrink-0 place-items-center rounded-full text-[12.5px] font-semibold ${
+                        paused ? 'bg-canvas text-ink-400' : 'bg-brand-50 text-brand-700'
+                      }`}
+                    >
+                      {(u.fullName ?? u.email).trim().charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-medium text-ink-900">
+                          {u.fullName ?? u.email}
+                        </span>
+                        {isSelf ? (
+                          <span className="shrink-0 rounded bg-canvas px-1.5 py-[1px] text-[10.5px] font-semibold uppercase tracking-[.04em] text-ink-400">
+                            You
+                          </span>
+                        ) : null}
+                        {paused ? <StatusPill label="Paused" swatch="amber" /> : null}
+                      </div>
+                      {u.fullName ? (
+                        <div className="truncate text-[12px] text-ink-400">{u.email}</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </td>
-                <td className="whitespace-nowrap border-b border-line-faint px-3 py-2.5 align-middle text-ink-700">
-                  {u.roleName}
-                  {u.isAdmin ? <span className="ml-1.5 text-[11px] text-brand-600">(admin)</span> : null}
-                </td>
-                <td className="border-b border-line-faint px-3 py-2.5 align-top">
-                  {/* Stacked, not side by side. "Template: Support Agent
-                      (edited)" next to a select is wider than any sensible
-                      column, and forcing them onto one line is what produced
-                      the overlap. */}
-                  <div className="flex min-w-[230px] flex-col items-start gap-1.5">
-                    {/* The badge summarises this person's permission state in
-                        three words; the link is where you see the 148 scopes
-                        behind it, template grant and override side by side —
-                        and, since 6c, where an override is set. */}
+
+                <td className="border-b border-line-faint px-4 py-3">
+                  <div className="flex flex-col items-start gap-1.5">
+                    <span className="text-[12.5px] text-ink-600">
+                      {u.roleName}
+                      {u.isAdmin ? (
+                        <span className="ml-1.5 text-[11px] font-medium text-brand-600">admin</span>
+                      ) : null}
+                    </span>
+                    {/* The badge is the summary; the link is the scopes behind
+                        it, template grant and override side by side. */}
                     <Link
                       href={`/admin/users/${u.id}/permissions`}
                       title={`Permissions for ${u.email}`}
@@ -235,154 +276,59 @@ export function UsersTable({
                     >
                       {templateBadge(u)}
                     </Link>
-                    <select
-                      aria-label={`Assign template to ${u.email}`}
-                      disabled={busy}
-                      value={stagedId ?? ''}
-                      onChange={(e) => {
-                        // Back to the placeholder is "never mind", not "assign
-                        // nothing" — that is what `No template` is for.
-                        setFor(setStaged, u.id, e.target.value || null);
+                  </div>
+                </td>
+
+                <td className="border-b border-line-faint px-4 py-3">
+                  <div className="flex flex-col items-start gap-1">
+                    <Link
+                      href={`/admin/users/${u.id}/login-history`}
+                      title={`Login history for ${u.email}`}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12.5px] text-ink-600 transition-colors hover:text-brand-700 hover:underline"
+                    >
+                      <Icon name="clock" size={12} className="shrink-0 text-ink-400" />
+                      <span className="tabular">
+                        {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : 'Never signed in'}
+                      </span>
+                    </Link>
+                    <Link
+                      href={`/admin/users/${u.id}/record-access`}
+                      title={`Record visibility for ${u.email}`}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-500 transition-colors hover:text-brand-700 hover:underline"
+                    >
+                      <Icon name="eye" size={12} className="shrink-0 text-ink-400" />
+                      {u.visibilityGrantCount === 0
+                        ? 'No extra record access'
+                        : `${u.visibilityGrantCount} record grant${u.visibilityGrantCount === 1 ? '' : 's'}`}
+                    </Link>
+                  </div>
+                </td>
+
+                <td className="border-b border-line-faint px-4 py-3 text-right">
+                  {isSelf ? (
+                    <span className="text-[11.5px] text-ink-300">&mdash;</span>
+                  ) : (
+                    <UserRowMenu
+                      user={u}
+                      templates={templates}
+                      busy={busy}
+                      stagedId={stagedId}
+                      notice={rowNotice}
+                      noTemplateValue={NO_TEMPLATE}
+                      onStage={(value) => {
+                        setFor(setStaged, u.id, value);
                         setFor(setNotice, u.id, null);
                       }}
-                      className={`rounded border border-line bg-white px-1 py-0.5 text-[11.5px] text-ink-400 outline-none transition-opacity focus:opacity-100 group-hover:opacity-100 ${
-                        stagedId === undefined ? 'opacity-0' : 'opacity-100'
-                      }`}
-                    >
-                      <option value="">Assign template…</option>
-                      {/* 6a found the dropdown could never UN-assign, though
-                          `assignTemplate` has always accepted null. Needs its
-                          own sentinel, because `''` is already "nothing staged"
-                          — and the same confirmation applies, since detaching
-                          clears overrides too. */}
-                      <option value={NO_TEMPLATE}>No template</option>
-                      {templates.map((t) => (
-                        <option key={t.id} value={t.id}>{t.label}</option>
-                      ))}
-                    </select>
-                    {stagedId !== undefined ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          icon="check"
-                          disabled={busy}
-                          onClick={() => runAssign(u.id, stagedId, Boolean(rowNotice))}
-                        >
-                          {rowNotice ? 'Confirm' : 'Apply'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={busy}
-                          onClick={() => {
-                            setFor(setStaged, u.id, null);
-                            setFor(setNotice, u.id, null);
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                  {rowNotice ? (
-                    <p className="mt-1 flex items-start gap-1.5 text-[12px] text-[#8a5a09]">
-                      <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
-                      <span>
-                        {rowNotice}
-                        {stagedId !== undefined ? (
-                          <>
-                            {' '}
-                            Assigning <strong>{templateName(templates, stagedId)}</strong>.
-                          </>
-                        ) : null}
-                      </span>
-                    </p>
-                  ) : null}
-                </td>
-                {/* A different question from the column beside it, and kept
-                    visually separate for that reason: Permissions decides what
-                    is shown OF a record this person can see, Record access
-                    decides which records exist for them at all
-                    (`record_visibility_grants` → `can_see_record()`). */}
-                <td className="border-b border-line-faint px-3 py-2.5">
-                  <Link
-                    href={`/admin/users/${u.id}/record-access`}
-                    title={`Record visibility for ${u.email}`}
-                    className="inline-flex items-center gap-1 text-[12.5px] text-brand-700 hover:underline"
-                  >
-                    <Icon name="eye" size={12} />
-                    {u.visibilityGrantCount === 0
-                      ? 'None'
-                      : `${u.visibilityGrantCount} grant${u.visibilityGrantCount === 1 ? '' : 's'}`}
-                  </Link>
-                </td>
-                <td className="border-b border-line-faint px-3 py-2.5 align-middle">
-                  <StatusPill label={u.status === 'active' ? 'Active' : 'Paused'} swatch={u.status === 'active' ? 'teal' : 'amber'} />
-                </td>
-                {/* Admin §2.2: "the user list shows a last-login column;
-                    clicking through opens the user's full login history". The
-                    column was plain text, so the second half of that sentence
-                    had nowhere to go. A person who has never signed in still
-                    links — failed attempts and refused signups are exactly what
-                    an admin looks for on an account with no successful login. */}
-                <td className="whitespace-nowrap border-b border-line-faint px-3 py-2.5 align-middle tabular">
-                  <Link
-                    href={`/admin/users/${u.id}/login-history`}
-                    title={`Login history for ${u.email}`}
-                    className="inline-flex items-center gap-1.5 text-ink-500 transition-colors hover:text-brand-700 hover:underline"
-                  >
-                    <Icon name="clock" size={12} className="shrink-0 text-ink-400" />
-                    {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : 'Never'}
-                  </Link>
-                </td>
-                <td className="w-px whitespace-nowrap border-b border-line-faint px-3 py-2.5 text-right align-middle">
-                  {isSelf ? (
-                    <span className="text-[11.5px] text-ink-400">You</span>
-                  ) : (
-                    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
-                      {/*
-                        The client's "I need the ability to sign in as other
-                        user types to test". Offered only where it can work and
-                        is worth doing: an admin sees everything already, and a
-                        paused account must not hold a session at all — the
-                        library refuses both, this just does not tempt anyone.
-                      */}
-                      {!u.isAdmin && u.status === 'active' ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          icon="eye"
-                          disabled={busy}
-                          onClick={() => runImpersonate(u.id)}
-                          title={`See the CRM exactly as ${u.email} sees it`}
-                        >
-                          Sign in as
-                        </Button>
-                      ) : null}
-                      {u.status === 'active' ? (
-                        <Button size="sm" variant="ghost" icon="lock" disabled={busy} onClick={() => runPause(u.id)}>
-                          Pause
-                        </Button>
-                      ) : (
-                        <Button size="sm" variant="ghost" icon="check" disabled={busy} onClick={() => runResume(u.id)}>
-                          Resume
-                        </Button>
-                      )}
-                      {/* Pause's two successors — §2.1's soft and full delete —
-                          behind one control, because neither is a single click:
-                          both are blocked until this person's records have been
-                          handed to someone else. */}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="trash"
-                        disabled={busy}
-                        onClick={() => setOffboarding(u.id)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
+                      onApply={(sel, confirm) => runAssign(u.id, sel, confirm)}
+                      onCancelStage={() => {
+                        setFor(setStaged, u.id, null);
+                        setFor(setNotice, u.id, null);
+                      }}
+                      onImpersonate={() => runImpersonate(u.id)}
+                      onPause={() => runPause(u.id)}
+                      onResume={() => runResume(u.id)}
+                      onRemove={() => setOffboarding(u.id)}
+                    />
                   )}
                 </td>
               </tr>

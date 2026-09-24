@@ -27,6 +27,7 @@ import {
   getUserRecordCount, reassignUserRecords, softDeleteUser, restoreUser, purgeUser,
   revokeInvite, renewInvite,
   type PurgeOutcome,
+  sendInviteNotification,
 } from '@/lib/records/adminUsers';
 import {
   clearUserGrant,
@@ -361,6 +362,33 @@ export async function purgeUserAction(userId: string): Promise<InviteState & { o
  * clause rather than here: an accepted invite is the audit record of how a real
  * account came to exist, and it must stay as it is.
  */
+/**
+ * Send the "you're invited" email for an invite that already exists.
+ *
+ * Called when the admin finishes step two of the invite dialog, and again
+ * from Resend in the invites table. Separate from `inviteUserAction` on
+ * purpose: the invite row has to exist before its permissions can be set, so
+ * the row is created first and announced last - which is the order the client
+ * asked for, "assign a template and adjust permissions BEFORE sending".
+ *
+ * Returns the address on success so the dialog can name it in the
+ * confirmation rather than saying something vague about "the user".
+ */
+export async function sendInviteEmailAction(
+  inviteId: string,
+): Promise<InviteState & { email?: string }> {
+  const ctx = await authorize();
+
+  const parsed = inviteIdSchema.safeParse({ inviteId });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await sendInviteNotification(ctx, parsed.data.inviteId);
+  if (!result.ok) return { ok: false, message: result.message };
+
+  revalidatePath('/admin/users');
+  return { ok: true, email: result.email };
+}
+
 export async function revokeInviteAction(inviteId: string): Promise<InviteState> {
   const ctx = await authorize();
 

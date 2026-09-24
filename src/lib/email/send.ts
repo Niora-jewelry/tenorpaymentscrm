@@ -171,6 +171,60 @@ async function send(
 
 const MINUTES = Math.round(OTP_TTL_SECONDS / 60);
 
+/**
+ * The timestamp carried by every email.
+ *
+ * Gmail hides text that repeats across similar messages behind a "..."
+ * control, which swallowed the security notice when several codes arrived
+ * together. A line that differs every time keeps each message whole, and lets
+ * someone holding two unexpired codes tell which is newer.
+ */
+function sendStamp(): string {
+  return (
+    new Date().toLocaleString('en-GB', {
+      timeZone: 'UTC',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }) + ' UTC'
+  );
+}
+
+/**
+ * The origin that links in emails are built from.
+ *
+ * `NEXT_PUBLIC_APP_URL` is the configured answer and is used whenever it is
+ * sensible. The fallback exists for one specific, silent failure: that
+ * variable is `http://localhost:3000` in local development, and a deployment
+ * that inherits it unchanged sends every invited person a button pointing at
+ * their OWN machine. The link is not broken in a way anyone can see - it
+ * opens a browser, fails to connect, and looks like the recipient's problem.
+ *
+ * So in production a localhost value is refused in favour of the deployment's
+ * own hostname, which the platform sets and nobody has to remember to.
+ */
+function appOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const platform =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
+
+  const looksLocal = !configured || /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(configured);
+
+  if (isProduction && looksLocal && platform) {
+    console.warn(
+      '[email] NEXT_PUBLIC_APP_URL is unset or points at localhost in production; ' +
+        `using ${platform} for email links instead. Set it to the real site URL.`,
+    );
+    return `https://${platform.replace(/\/+$/, '')}`;
+  }
+
+  return (configured || 'http://localhost:3000').replace(/\/+$/, '');
+}
+
+
+
 /*
  * -- WHY THIS IS TABLES AND INLINE STYLES ---------------------------------
  * Outlook on Windows renders mail through Word, not a browser. Flexbox, grid
@@ -209,21 +263,55 @@ const BRAND = {
 
 const FONT = 'Segoe UI,Helvetica,Arial,sans-serif';
 
-function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string): string {
-  const heading = purpose === 'signup' ? 'Finish setting up your account' : 'Reset your password';
-  const lede =
-    purpose === 'signup'
-      ? 'Enter this code to finish creating your TapDash account.'
-      : 'Enter this code to choose a new password for your TapDash account.';
+/**
+ * The official TapDash logo, as supplied by the client.
+ *
+ * Its natural size is 1457x1251. Rendered at 132px wide it is a shade over
+ * 11x down, so it stays sharp on a 2x display without shipping a second
+ * asset. `width` and `height` are set as ATTRIBUTES as well as in the style:
+ * Outlook ignores CSS sizing on an image, and an unsized 1457px-wide logo
+ * would blow the 600px layout apart.
+ *
+ * -- WHAT HAPPENS WHEN IT DOES NOT LOAD ----------------------------------
+ * Outlook and most corporate clients block remote images until the reader
+ * allows them, so this WILL sometimes render as nothing. The alt text is
+ * therefore styled, not left bare: with images off the header still reads
+ * "TapDash" in the brand colour at a sensible size, rather than showing a
+ * broken-image icon above a login code - which is what phishing looks like.
+ */
+const LOGO_URL = 'https://tapdash.co/wp-content/uploads/2024/08/cropped-TapDash-Logo-PNG.png';
+const LOGO_W = 132;
+const LOGO_H = 113;
 
-  /*
-   * The preheader is the grey line an inbox shows after the subject. Left
-   * unset, clients scrape it from the first text in the body - which here
-   * would be the "T" of the logo followed by "TapDash", telling the reader
-   * nothing they cannot already see in the sender name. The zero-width
-   * spaces after it stop Gmail dragging later body text in behind it.
-   */
-  const preheader = `Your ${MINUTES}-minute code is ${code}`;
+/** Minimal escaping for the few values that come from a database row rather
+ *  than from this file - an inviter's display name, a role label. None of it
+ *  is attacker-controlled today, but it is interpolated into markup, and a
+ *  name containing an apostrophe or an ampersand should not be able to break
+ *  the email it appears in. */
+function esc(v: string): string {
+  return v
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Every email this app sends is this shell with a different middle.
+ *
+ * Having one of these is the point: the logo, the width, the card, the
+ * footer and the Outlook workarounds are decided once. A second template
+ * written alongside the first is how two emails from the same product end up
+ * looking like they came from different companies.
+ */
+function emailShell(opts: {
+  title: string;
+  preheader: string;
+  bodyHtml: string;
+  stamp: string;
+}): string {
+  // Zero-width spaces after the preheader stop Gmail dragging body text in
+  // behind it in the inbox list.
   const pad = '&#8203;&nbsp;'.repeat(12);
 
   return `<!doctype html>
@@ -234,28 +322,48 @@ function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string)
 <meta name="x-apple-disable-message-reformatting">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>${heading}</title>
+<title>${esc(opts.title)}</title>
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 </head>
 <body style="margin:0;padding:0;width:100%;background:${BRAND.canvas};">
 
-<div style="display:none;font-size:1px;color:${BRAND.canvas};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${preheader}${pad}</div>
+<div style="display:none;font-size:1px;color:${BRAND.canvas};line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${esc(opts.preheader)}${pad}</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.canvas};">
 <tr><td align="center" style="padding:32px 16px;">
 
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
 
-  <tr><td style="padding:0 4px 20px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-      <td width="34" height="34" align="center" valign="middle" bgcolor="${BRAND.accent}"
-          style="width:34px;height:34px;background:${BRAND.accent};border-radius:9px;font-family:${FONT};font-size:16px;font-weight:700;color:${BRAND.accentInk};text-align:center;">T</td>
-      <td style="padding-left:10px;font-family:${FONT};font-size:18px;font-weight:600;letter-spacing:-.01em;color:${BRAND.ink};">TapDash</td>
-    </tr></table>
+  <tr><td align="center" style="padding:0 4px 22px;">
+    <img src="${LOGO_URL}" width="${LOGO_W}" height="${LOGO_H}" alt="TapDash"
+         style="display:block;width:${LOGO_W}px;height:${LOGO_H}px;border:0;outline:none;text-decoration:none;font-family:${FONT};font-size:19px;font-weight:700;color:${BRAND.ink};">
   </td></tr>
 
   <tr><td bgcolor="#ffffff" style="background:#ffffff;border:1px solid ${BRAND.line};border-radius:14px;padding:36px 32px;">
+${opts.bodyHtml}
+  </td></tr>
 
+  <tr><td align="center" style="padding:18px 8px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
+    TapDash &mdash; merchant services CRM<br>
+    <span style="color:#8aa3b5;">Automated message, sent ${esc(opts.stamp)}. Replies to this address are not monitored.</span>
+  </td></tr>
+
+</table>
+
+</td></tr>
+</table>
+</body>
+</html>`;
+}
+
+function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string): string {
+  const heading = purpose === 'signup' ? 'Finish setting up your account' : 'Reset your password';
+  const lede =
+    purpose === 'signup'
+      ? 'Enter this code to finish creating your TapDash account.'
+      : 'Enter this code to choose a new password for your TapDash account.';
+
+  const body = `
     <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">${heading}</h1>
 
     <p style="margin:0 0 26px;font-family:${FONT};font-size:15px;line-height:1.6;color:${BRAND.muted};">${lede}</p>
@@ -276,21 +384,14 @@ function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string)
         Not by phone, not by email, not over chat. If you did not request it you can ignore
         this message &mdash; nothing changes until the code is entered.
       </td></tr>
-    </table>
+    </table>`;
 
-  </td></tr>
-
-  <tr><td style="padding:18px 8px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
-    TapDash &mdash; merchant services CRM<br>
-    <span style="color:#8aa3b5;">Automated message, sent ${stamp}. Replies to this address are not monitored.</span>
-  </td></tr>
-
-</table>
-
-</td></tr>
-</table>
-</body>
-</html>`;
+  return emailShell({
+    title: heading,
+    preheader: `Your ${MINUTES}-minute code is ${code}`,
+    bodyHtml: body,
+    stamp,
+  });
 }
 
 function codeEmailText(code: string, purpose: 'signup' | 'reset', stamp: string): string {
@@ -315,25 +416,7 @@ export function sendOtpEmail(
   code: string,
   purpose: 'signup' | 'reset',
 ): Promise<SendResult> {
-  /*
-   * The send time goes in the body, and it is not decoration.
-   *
-   * Gmail hides text that repeats across similar messages behind a "..."
-   * control. That is what swallowed the security notice in the first of these
-   * that went out, because three near-identical codes arrived within minutes
-   * of each other. A line that differs every time keeps each message whole.
-   * Separately, it lets someone holding two unexpired codes tell which is the
-   * newer one - which is exactly the situation a resend creates.
-   */
-  const stamp =
-    new Date().toLocaleString('en-GB', {
-      timeZone: 'UTC',
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }) + ' UTC';
+  const stamp = sendStamp();
 
   const subject =
     purpose === 'signup' ? 'Your TapDash signup code' : 'Your TapDash password reset code';
@@ -358,5 +441,128 @@ export function sendOtpEmail(
       'Auto-Submitted': 'auto-generated',
       'X-Auto-Response-Suppress': 'All',
     },
+  );
+}
+
+
+/**
+ * "You have been invited to TapDash."
+ *
+ * -- WHY THIS DID NOT EXIST BEFORE, AND WHY IT DOES NOW -------------------
+ * `InvitesTable` carried a comment explaining that an expired invite offers
+ * Renew rather than Resend, "because there is no invite email in this build".
+ * That was a coherent position: an invite is permission for someone to
+ * complete signup, and the code proving their address is requested BY THEM at
+ * /signup, so there was nothing to resend.
+ *
+ * It had one hole, which is what the client hit. Nothing told the invited
+ * person they had been invited. An admin filled in the dialog, chose a
+ * template, tuned the permissions, pressed Done - and the other party heard
+ * nothing at all, because the only notification in the system was a code they
+ * could not request without first knowing to go to /signup.
+ *
+ * -- IT STILL CARRIES NO CREDENTIAL --------------------------------------
+ * This is a notification, not a magic link. There is no token in the URL and
+ * nothing here grants access: it points at /signup, where the person proves
+ * their own address with a code exactly as before. Forwarding this email to
+ * someone else gives them nothing, because the invite is bound to the address
+ * it was issued to. That keeps the project's standing rule intact - no
+ * default credential is ever left behind - while still telling the person
+ * they are expected.
+ */
+export function sendInviteEmail(
+  to: string,
+  opts: { invitedBy?: string | null; roleName?: string | null; expiresAt?: string | null },
+): Promise<SendResult> {
+  const stamp = sendStamp();
+  const signupUrl = `${appOrigin()}/signup`;
+
+  const inviter = opts.invitedBy?.trim();
+  const role = opts.roleName?.trim();
+
+  const expires = opts.expiresAt
+    ? new Date(opts.expiresAt).toLocaleDateString('en-GB', {
+        timeZone: 'UTC',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null;
+
+  const introHtml = inviter
+    ? `<strong style="color:${BRAND.ink};">${esc(inviter)}</strong> has invited you to TapDash, the merchant services CRM.`
+    : 'You have been invited to TapDash, the merchant services CRM.';
+
+  const body = `
+    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:22px;line-height:1.3;font-weight:600;color:${BRAND.ink};">You&rsquo;re invited to TapDash</h1>
+
+    <p style="margin:0 0 22px;font-family:${FONT};font-size:15px;line-height:1.65;color:${BRAND.muted};">
+      ${introHtml}${role ? ` You&rsquo;ll join as <strong style="color:${BRAND.ink};">${esc(role)}</strong>.` : ''}
+      Create your account to get started.
+    </p>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+      <tr><td align="center" bgcolor="${BRAND.accent}" style="background:${BRAND.accent};border-radius:10px;">
+        <a href="${signupUrl}" style="display:inline-block;padding:14px 30px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1;color:${BRAND.accentInk};text-decoration:none;border-radius:10px;">Create your account</a>
+      </td></tr>
+    </table>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td bgcolor="${BRAND.panel}" style="background:${BRAND.panel};border:1px solid ${BRAND.line};border-radius:10px;padding:16px 18px;font-family:${FONT};font-size:13.5px;line-height:1.7;color:${BRAND.muted};">
+        Sign up with this address: <strong style="color:${BRAND.ink};">${esc(to)}</strong><br>
+        TapDash is invite-only, so another address will not be recognised.
+      </td></tr>
+    </table>
+
+    ${
+      expires
+        ? `<p style="margin:18px 0 0;font-family:${FONT};font-size:13.5px;line-height:1.6;color:${BRAND.muted};">
+             This invitation expires on <strong style="color:${BRAND.ink};">${esc(expires)}</strong>.
+           </p>`
+        : ''
+    }
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+      <tr><td style="border-top:1px solid ${BRAND.line};padding-top:18px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BRAND.muted};">
+        If the button does not work, open this link:<br>
+        <span style="color:${BRAND.ink};word-break:break-all;">${esc(signupUrl)}</span><br><br>
+        Not expecting this? You can ignore this email &mdash; no account exists until you create one.
+      </td></tr>
+    </table>`;
+
+  const text = [
+    "You're invited to TapDash",
+    '',
+    inviter
+      ? `${inviter} has invited you to TapDash, the merchant services CRM.`
+      : 'You have been invited to TapDash, the merchant services CRM.',
+    role ? `You'll join as ${role}.` : null,
+    '',
+    `Create your account: ${signupUrl}`,
+    '',
+    `Sign up with this address: ${to}`,
+    'TapDash is invite-only, so another address will not be recognised.',
+    expires ? `This invitation expires on ${expires}.` : null,
+    '',
+    'Not expecting this? Ignore this email - no account exists until you create one.',
+    '',
+    `Automated message, sent ${stamp}. Replies are not monitored.`,
+  ]
+    /* `null` is an absent line, `''` a deliberate blank one. Filtering on
+       falsiness collapsed both and ran the whole message into one block. */
+    .filter((l): l is string => l !== null)
+    .join('\n');
+
+  return send(
+    to,
+    'You have been invited to TapDash',
+    emailShell({
+      title: "You're invited to TapDash",
+      preheader: 'Create your account to get started.',
+      bodyHtml: body,
+      stamp,
+    }),
+    text,
+    { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
   );
 }

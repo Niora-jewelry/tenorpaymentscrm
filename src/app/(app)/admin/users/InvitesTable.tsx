@@ -13,18 +13,29 @@
  * pending would answer today's question and lose that, so past invites stay,
  * visibly settled, with no actions on them.
  *
- * ── WHY AN EXPIRED INVITE OFFERS "RENEW" AND NOT "RESEND" ────────────────
- * There is no invite email in this build, deliberately: an invite is permission
- * for a person to complete signup, and the code that proves their address is
- * requested by them at /signup. So "resend" would send nothing. What an admin
- * actually wants when someone says their invite expired is more time, which is
- * what Renew gives.
+ * ── RENEW AND RESEND ARE DIFFERENT THINGS ────────────────────────────────
+ * This block used to explain that only Renew was offered, because there was
+ * no invite email in this build: an invite is permission for a person to
+ * complete signup, and the code proving their address is requested BY THEM at
+ * /signup, so there was nothing to resend.
+ *
+ * That changed when the invite email was added — the person now has to be
+ * told they were invited at all. The two actions are still distinct and both
+ * are needed:
+ *
+ *   Renew  — the invite is past its date. Gives it more time. Changes the row.
+ *   Resend — the invite is live but the person was never told, or the email
+ *            failed. Sends the same invitation again. Changes nothing.
+ *
+ * Resend is therefore hidden on a stale invite: `sendInviteNotification`
+ * refuses an expired one outright, so offering it would only produce an error
+ * telling the admin to press Renew, which is already sitting next to it.
  */
 import { useState, useTransition } from 'react';
 import { OutlineChip, StatusPill, Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { formatDateTime } from '@/proto/ui/tokens';
-import { revokeInviteAction, renewInviteAction } from './actions';
+import { revokeInviteAction, renewInviteAction, sendInviteEmailAction } from './actions';
 import type { AdminInviteRow } from '@/lib/records/adminUsers';
 import Link from 'next/link';
 
@@ -38,14 +49,19 @@ function statusPill(invite: AdminInviteRow) {
 export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<Map<string, string>>(new Map());
+  /* Carries a tone, not just words. Every message here used to be rendered
+     red under a warning triangle, which was right while the only outcomes
+     were failures. Resend can succeed, and a confirmation drawn as an error
+     is worse than no confirmation at all. */
+  type RowNotice = { tone: 'ok' | 'bad'; text: string };
+  const [notice, setNotice] = useState<Map<string, RowNotice>>(new Map());
   const [showSettled, setShowSettled] = useState(false);
 
-  const setNoticeFor = (id: string, message: string | null) =>
+  const setNoticeFor = (id: string, message: string | null, tone: 'ok' | 'bad' = 'bad') =>
     setNotice((prev) => {
       const next = new Map(prev);
       if (message === null) next.delete(id);
-      else next.set(id, message);
+      else next.set(id, { tone, text: message });
       return next;
     });
 
@@ -123,9 +139,18 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                   <td className="border-b border-line-faint px-3 py-2.5">
                     <div className="font-medium text-ink-900">{i.email}</div>
                     {rowNotice ? (
-                      <p className="mt-1 flex items-start gap-1.5 text-[12px] text-[#b02a30]">
-                        <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
-                        {rowNotice}
+                      <p
+                        role="status"
+                        className={`mt-1 flex items-start gap-1.5 text-[12px] ${
+                          rowNotice.tone === 'ok' ? 'text-ok' : 'text-[#b02a30]'
+                        }`}
+                      >
+                        <Icon
+                          name={rowNotice.tone === 'ok' ? 'check' : 'alert-triangle'}
+                          size={12}
+                          className="mt-[2px] shrink-0"
+                        />
+                        {rowNotice.text}
                       </p>
                     ) : null}
                   </td>
@@ -184,6 +209,30 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                             onClick={() => run(i.id, () => renewInviteAction(i.id))}
                           >
                             Renew
+                          </Button>
+                        ) : null}
+                        {/* Resend covers the two ways a pending invite ends up
+                            unannounced: the admin closed the dialog without
+                            sending, or the send itself failed. Not offered on a
+                            stale one, because `sendInviteNotification` refuses
+                            an expired invite — Renew first, which is the button
+                            immediately to the left. */}
+                        {i.status === 'pending' && !i.isStale ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            icon="mail"
+                            onClick={() =>
+                              run(i.id, async () => {
+                                const r = await sendInviteEmailAction(i.id);
+                                if (r.ok) {
+                                  setNoticeFor(i.id, `Invitation email sent to ${i.email}.`, 'ok');
+                                }
+                                return r;
+                              })
+                            }
+                          >
+                            Resend
                           </Button>
                         ) : null}
                         {i.status === 'pending' ? (

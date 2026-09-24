@@ -16,6 +16,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { invalidateGrants, type AuthContext } from './permissions';
+import { sendInviteEmail } from '@/lib/email/send';
 import type { AssignTemplateInput, InviteUserInput } from './adminSchemas';
 
 function assertAdmin(ctx: AuthContext): void {
@@ -359,6 +360,85 @@ export async function listInvites(ctx: AuthContext): Promise<AdminInviteRow[]> {
     acceptedAt: i.accepted_at,
     isStale: i.status === 'pending' && new Date(i.expires_at).getTime() <= now,
   }));
+}
+
+/**
+ * Tell the invited person they have been invited.
+ *
+ * -- WHY THIS IS SEPARATE FROM `inviteUser` -------------------------------
+ * The invite row is created when the admin finishes step one of the dialog,
+ * because the permission matrix in step two has to have an invite to write
+ * `invite_grants` against. If the email went out there, it would go out
+ * BEFORE the permissions were set - and the client's instruction was the
+ * opposite: assign the template and adjust permissions, and only then send.
+ *
+ * So creating the invite and announcing it are two steps, and this is the
+ * second. The dialog calls it when Done is pressed.
+ *
+ * -- WHAT HAPPENS IF THE ADMIN NEVER PRESSES DONE -------------------------
+ * Nothing is sent, and the invite still exists and still works - it is a
+ * pending row, and the person could sign up if they learned of it by other
+ * means. That is a real state, so `InvitesTable` offers Resend to get out of
+ * it, rather than leaving the invite silently unannounced forever.
+ *
+ * -- FAILING TO SEND IS NOT FAILING TO INVITE -----------------------------
+ * A returned `ok: false` means the mail did not go; the invite is untouched
+ * and still valid. The caller says so in those words rather than implying the
+ * invite failed, because retrying the invite is the wrong fix and would
+ * revoke and recreate a row the admin has already configured.
+ */
+export async function sendInviteNotification(
+  ctx: AuthContext,
+  inviteId: string,
+): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
+  assertAdmin(ctx);
+  const supabase = supabaseAdmin();
+
+  const { data: invite, error } = await supabase
+    .from('invites')
+    .select('id, email, status, expires_at, role_id, invited_by')
+    .eq('id', inviteId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!invite) return { ok: false, message: 'That invite no longer exists.' };
+
+  /*
+   * Only a live invite is announced. Mailing "you're invited" about a revoked
+   * or already-accepted one invites the person to walk into a signup that
+   * will refuse them, which is worse than silence.
+   */
+  if (invite.status !== 'pending') {
+    return { ok: false, message: `That invite is ${invite.status}, so nothing was sent.` };
+  }
+  if (new Date(invite.expires_at).getTime() <= Date.now()) {
+    return { ok: false, message: 'That invite has expired. Renew it first, then resend.' };
+  }
+
+  const [roleRes, inviterRes] = await Promise.all([
+    supabase.from('roles').select('name').eq('id', invite.role_id).maybeSingle(),
+    invite.invited_by
+      ? supabase.from('profiles').select('full_name, email').eq('id', invite.invited_by).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  const inviter = inviterRes.data
+    ? ((inviterRes.data.full_name as string | null) ?? (inviterRes.data.email as string | null))
+    : null;
+
+  const sent = await sendInviteEmail(invite.email as string, {
+    invitedBy: inviter,
+    roleName: (roleRes.data?.name as string | undefined) ?? null,
+    expiresAt: invite.expires_at as string,
+  });
+
+  if (!sent.ok) {
+    return {
+      ok: false,
+      message: `The invite is saved, but the email could not be sent (${sent.error}).`,
+    };
+  }
+
+  return { ok: true, email: invite.email as string };
 }
 
 /**

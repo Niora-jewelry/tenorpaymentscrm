@@ -29,6 +29,7 @@ import {
   inviteMatrixAction,
   setInviteGrantAction,
   clearInviteGrantAction,
+  sendInviteEmailAction,
 } from './actions';
 import type { GrantMatrix as GrantMatrixData } from '@/lib/records/adminGrants';
 
@@ -46,6 +47,31 @@ export function InvitePermissionsStep({
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<GrantMatrixData | null>(null);
   const [loading, startLoading] = useTransition();
+
+  /*
+   * ── SENDING IS THE LAST THING THAT HAPPENS ────────────────────────────
+   * The invite row already exists — it has to, or the matrix above would
+   * have nothing to write against. What has NOT happened yet is telling the
+   * person, and that is deliberate: the client asked to assign a template
+   * and adjust permissions "before sending invite", so the email goes out
+   * from here, once, when the admin says they are finished.
+   */
+  const [sending, startSending] = useTransition();
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const sendInvitation = () => {
+    setSendError(null);
+    startSending(async () => {
+      try {
+        const result = await sendInviteEmailAction(inviteId);
+        if (result.ok) setSentTo(result.email ?? email);
+        else setSendError(result.message ?? 'The invitation email could not be sent.');
+      } catch {
+        setSendError('The invitation email could not be sent. The invite itself is saved.');
+      }
+    });
+  };
 
   // Refetched whenever the module changes, because the matrix IS per module —
   // the values shown and the values written have to agree, and the server is
@@ -84,6 +110,46 @@ export function InvitePermissionsStep({
       ),
   };
 
+  /*
+   * Sent. The matrix is deliberately replaced rather than left on screen
+   * under a banner: the invitation has gone, so a still-editable permission
+   * grid invites changes that the person has already been emailed about.
+   * Anything further belongs on the Permissions screen, which this says.
+   */
+  if (sentTo) {
+    return (
+      <div className="mt-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-xl border border-ok/25 bg-ok-bg px-4 py-4"
+        >
+          <p className="flex items-center gap-2 text-[14px] font-semibold text-ink-900">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-ok text-white">
+              <Icon name="check" size={13} strokeWidth={3} />
+            </span>
+            Invitation email sent
+          </p>
+          <p className="mt-2 text-[13px] leading-relaxed text-ink-700">
+            <strong className="font-semibold text-ink-900">{sentTo}</strong> has been emailed an
+            invitation to TapDash with a link to create their account. The permissions you set
+            apply the moment they finish signing up.
+          </p>
+          <p className="mt-2 text-[12px] leading-relaxed text-ink-500">
+            Nothing else is needed. If it does not arrive, Resend is available on the invite in
+            the list below.
+          </p>
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <Button type="button" variant="primary" onClick={onDone}>
+            Close
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line-soft bg-ok-bg px-3 py-2">
@@ -92,7 +158,7 @@ export function InvitePermissionsStep({
           Invite created for {email}
         </span>
         <span className="text-[12px] text-ink-500">
-          Anything you change below applies the moment they finish signing up.
+          Nothing has been emailed yet &mdash; set permissions, then send.
         </span>
       </div>
 
@@ -125,13 +191,41 @@ export function InvitePermissionsStep({
         </p>
       )}
 
+      {sendError ? (
+        <p
+          role="alert"
+          className="flex items-start gap-1.5 rounded-lg bg-danger-bg px-3 py-2 text-[12.5px] leading-relaxed text-danger"
+        >
+          <Icon name="alert-triangle" size={13} className="mt-[2px] shrink-0" />
+          <span>
+            {sendError} The invite itself is saved &mdash; use Resend on it rather than inviting
+            this address again.
+          </span>
+        </p>
+      ) : null}
+
       <div className="flex items-center justify-between gap-3 border-t border-line-soft pt-3">
         <p className="text-[12px] text-ink-400">
           Leaving this as it is invites them on the template alone, which is the usual case.
         </p>
-        <Button type="button" variant="primary" onClick={onDone}>
-          Done
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Closing without sending is a real choice: the invite exists and
+              still works, and Resend can announce it later. Named so it does
+              not read as Cancel, which would imply the invite was discarded. */}
+          <Button type="button" variant="ghost" disabled={sending} onClick={onDone}>
+            Close without sending
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            icon="mail"
+            loading={sending}
+            loadingLabel="Sending…"
+            onClick={sendInvitation}
+          >
+            Send invitation
+          </Button>
+        </div>
       </div>
     </div>
   );

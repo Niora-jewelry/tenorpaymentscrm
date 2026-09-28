@@ -43,7 +43,7 @@ import {
 } from '@/lib/records/adminSchemas';
 import {
   createTab, createSubtab, assignTabToModules, assignSubtabToModules,
-  renameTab, renameSubtab, setModuleTabOrder, setModuleSubtabOrder,
+  renameTab, renameSubtab, setModuleTabOrder, setModuleSubtabOrder, setTabModules,
 } from '@/lib/records/adminPresets';
 import { createField, updateField, archiveField, restoreField } from '@/lib/records/adminFields';
 import { setModuleColumns, setModuleHeaderFields } from '@/lib/records/adminColumns';
@@ -121,6 +121,32 @@ export async function renameSubtabAction(_prev: PresetFormState, formData: FormD
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await renameSubtab(ctx, parsed.data.subtabId, parsed.data.label, parsed.data.description);
+  if (!result.ok) return result;
+
+  revalidateConfig();
+  return { ok: true };
+}
+
+/**
+ * Set exactly which modules show a tab.
+ *
+ * Client instruction: "Need ability to edit tab module assignments." The
+ * existing `assignTabToModulesAction` only ever appends, so this is the one
+ * that can also take a tab back off a module.
+ *
+ * Returns a state object rather than throwing, unlike its append-only
+ * neighbour — a refusal here has to be shown next to the checkboxes the admin
+ * just ticked, not swallowed by a `catch` that closes the editor.
+ */
+export async function setTabModulesAction(
+  tabId: string,
+  moduleIds: string[],
+): Promise<PresetFormState> {
+  const ctx = await authorize();
+  const parsed = assignTabSchema.safeParse({ tabId, moduleIds });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await setTabModules(ctx, parsed.data.tabId, parsed.data.moduleIds);
   if (!result.ok) return result;
 
   revalidateConfig();

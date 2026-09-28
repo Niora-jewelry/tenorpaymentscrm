@@ -41,14 +41,36 @@ const labelSchema = z
   .min(1, 'Label is required.')
   .max(120, 'Label must be 120 characters or fewer.');
 
-/** Empty is legitimate — "create the tab now, assign it to modules later" is
- * a supported flow, so an empty selection is valid input, not a mistake. */
+/** Empty is legitimate here — assigning later is still a supported flow for
+ * everything except creating a TAB, which the client has since ruled out. */
 const moduleIdsSchema = z.array(uuid).max(50);
+
+/**
+ * Creating a tab requires at least one module.
+ *
+ * Client instruction: "In presets a tab should not be able to be created with
+ * no module assigned."
+ *
+ * This used to be allowed on purpose — the note above this line said so. The
+ * trouble with it is what the result looks like: a tab with no modules appears
+ * in the Tabs list, has fields pointed at it, can be granted permissions, and
+ * is visible to nobody anywhere in the product. There is no error and nothing
+ * to notice, which is exactly the failure this project's rules are written
+ * against.
+ *
+ * Deliberately NOT applied to subtabs. The instruction names tabs, a subtab is
+ * already anchored to a parent tab, and widening a rule past what was asked
+ * would change behaviour nobody requested.
+ */
+const atLeastOneModuleSchema = z
+  .array(uuid)
+  .min(1, 'Choose at least one module for this tab.')
+  .max(50);
 
 export const createTabSchema = z.object({
   key: keySchema,
   label: labelSchema,
-  moduleIds: moduleIdsSchema,
+  moduleIds: atLeastOneModuleSchema,
 });
 
 export const createSubtabSchema = z.object({

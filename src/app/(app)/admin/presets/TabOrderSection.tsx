@@ -42,6 +42,79 @@ import { Icon } from '@/proto/ui/icons';
 import { setModuleTabOrderAction, setModuleSubtabOrderAction } from './actions';
 import type { AdminSubtabRow, AdminTabRow, ModuleOption } from '@/lib/records/adminPresets';
 
+
+/**
+ * Drag-to-reorder for a list of ids.
+ *
+ * Client instruction: "Tab order should be drag/drop."
+ *
+ * ── THE ARROWS STAY ──────────────────────────────────────────────────────
+ * Drag-and-drop is a mouse gesture. It cannot be performed with a keyboard,
+ * it is awkward on a touchscreen, and it is invisible to a screen reader. The
+ * up/down buttons are how the same reorder is done without a mouse, so they
+ * remain beside the handle rather than being replaced by it. Both write
+ * through the same `move`, so the two can never disagree.
+ *
+ * ── NATIVE HTML5 DRAG, NOT A LIBRARY ─────────────────────────────────────
+ * A dependency for a single sortable list of six rows is not worth the bundle
+ * or the upgrade surface. The native API is enough here; the only part of it
+ * worth commenting is that `onDragOver` MUST call `preventDefault`, because
+ * without it the browser refuses the drop and the row silently springs back.
+ */
+function useDragOrder(move: (from: number, to: number) => void) {
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+
+  const end = () => {
+    setDragging(null);
+    setOver(null);
+  };
+
+  return {
+    dragging,
+    over,
+    /** Spread onto each row. */
+    rowProps: (index: number) => ({
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        setDragging(index);
+        e.dataTransfer.effectAllowed = 'move';
+        // Firefox will not start a drag unless some data is set.
+        e.dataTransfer.setData('text/plain', String(index));
+      },
+      onDragOver: (e: React.DragEvent) => {
+        e.preventDefault(); // without this the drop is rejected
+        e.dataTransfer.dropEffect = 'move';
+        if (index !== over) setOver(index);
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        const from = dragging ?? Number.parseInt(e.dataTransfer.getData('text/plain'), 10);
+        if (Number.isInteger(from) && from !== index) move(from, index);
+        end();
+      },
+      onDragEnd: end,
+    }),
+  };
+}
+
+/** Six dots. A handle that says "drag me" without needing a new icon. */
+function DragHandle({ disabled }: { disabled?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      title="Drag to reorder"
+      className={`grid shrink-0 cursor-grab grid-cols-2 gap-[3px] px-1 active:cursor-grabbing ${
+        disabled ? 'opacity-30' : ''
+      }`}
+    >
+      {Array.from({ length: 6 }).map((_, i) => (
+        <span key={i} className="size-[3px] rounded-full bg-ink-300" />
+      ))}
+    </span>
+  );
+}
+
 export function TabOrderSection({
   tabs,
   subtabs,
@@ -76,6 +149,8 @@ export function TabOrderSection({
     setSaved(null);
   };
 
+  const drag = useDragOrder(move);
+
   const save = () => {
     setError(null);
     startTransition(async () => {
@@ -108,7 +183,18 @@ export function TabOrderSection({
           const t = tabById.get(tabId);
           if (!t) return null;
           return (
-            <div key={tabId} className="flex items-center gap-3 px-4 py-2">
+            <div
+              key={tabId}
+              {...drag.rowProps(i)}
+              className={`flex items-center gap-3 px-4 py-2 transition-colors ${
+                drag.dragging === i ? 'opacity-40' : ''
+              } ${
+                drag.over === i && drag.dragging !== null && drag.dragging !== i
+                  ? 'bg-brand-50 ring-1 ring-inset ring-brand-600/30'
+                  : ''
+              }`}
+            >
+              <DragHandle disabled={pending} />
               <span className="w-5 shrink-0 text-[11.5px] tabular text-ink-300">{i + 1}</span>
               <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-900">{t.label}</span>
               <span className="shrink-0 text-[11.5px] text-ink-400">{t.key}</span>
@@ -232,6 +318,8 @@ function SubtabOrder({
     setSaved(null);
   };
 
+  const drag = useDragOrder(move);
+
   const save = () => {
     setError(null);
     startTransition(async () => {
@@ -276,7 +364,18 @@ function SubtabOrder({
           const st = subtabById.get(subtabId);
           if (!st) return null;
           return (
-            <div key={subtabId} className="flex items-center gap-3 px-4 py-2">
+            <div
+              key={subtabId}
+              {...drag.rowProps(i)}
+              className={`flex items-center gap-3 px-4 py-2 transition-colors ${
+                drag.dragging === i ? 'opacity-40' : ''
+              } ${
+                drag.over === i && drag.dragging !== null && drag.dragging !== i
+                  ? 'bg-brand-50 ring-1 ring-inset ring-brand-600/30'
+                  : ''
+              }`}
+            >
+              <DragHandle disabled={pending} />
               <span className="w-5 shrink-0 text-[11.5px] tabular text-ink-300">{i + 1}</span>
               <span className="min-w-0 flex-1 truncate text-[13.5px] text-ink-900">{st.label}</span>
               <span className="shrink-0 text-[11.5px] text-ink-400">{st.key}</span>

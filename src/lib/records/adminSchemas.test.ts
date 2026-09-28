@@ -28,18 +28,50 @@ const UUID = '00000000-0000-4000-8000-000000000001';
 const UUID_2 = '00000000-0000-4000-8000-000000000002';
 
 describe('createTabSchema', () => {
-  it('accepts a tab with no modules — "create now, assign later" is a real flow', () => {
+  /*
+   * This used to assert the opposite — that a tab with no modules was fine,
+   * because "create now, assign later" was a supported flow. The client has
+   * since ruled it out: "In presets a tab should not be able to be created
+   * with no module assigned."
+   *
+   * The reason it matters is what the old result looked like. A tab with no
+   * modules appeared in the Tabs list, accepted fields, could be granted
+   * permissions, and was visible to nobody anywhere in the product — with no
+   * error and nothing to notice.
+   */
+  it('refuses a tab with no modules', () => {
     const parsed = createTabSchema.safeParse({ key: 'compliance', label: 'Compliance', moduleIds: [] });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(firstIssueMessage(parsed.error)).toMatch(/at least one module/i);
+    }
+  });
+
+  it('accepts a tab with one module', () => {
+    const parsed = createTabSchema.safeParse({ key: 'compliance', label: 'Compliance', moduleIds: [UUID] });
+    expect(parsed.success).toBe(true);
+  });
+
+  /* A subtab is anchored to a parent tab, and the instruction named tabs
+     only, so widening the rule to subtabs would change behaviour nobody
+     asked for. */
+  it('leaves subtabs alone — they may still be created unassigned', () => {
+    const parsed = createSubtabSchema.safeParse({
+      tabId: UUID,
+      key: 'notes',
+      label: 'Notes',
+      moduleIds: [],
+    });
     expect(parsed.success).toBe(true);
   });
 
   it('trims the label and key rather than storing the padding', () => {
-    const parsed = createTabSchema.parse({ key: '  compliance  ', label: '  Compliance  ', moduleIds: [] });
+    const parsed = createTabSchema.parse({ key: '  compliance  ', label: '  Compliance  ', moduleIds: [UUID] });
     expect(parsed).toMatchObject({ key: 'compliance', label: 'Compliance' });
   });
 
   it('rejects a whitespace-only label, which a `required` input still allows', () => {
-    const parsed = createTabSchema.safeParse({ key: 'compliance', label: '   ', moduleIds: [] });
+    const parsed = createTabSchema.safeParse({ key: 'compliance', label: '   ', moduleIds: [UUID] });
     expect(parsed.success).toBe(false);
   });
 
@@ -49,7 +81,7 @@ describe('createTabSchema', () => {
   });
 
   it('rejects a missing key outright — FormData.get returns null, not ""', () => {
-    const parsed = createTabSchema.safeParse({ key: null, label: 'Compliance', moduleIds: [] });
+    const parsed = createTabSchema.safeParse({ key: null, label: 'Compliance', moduleIds: [UUID] });
     expect(parsed.success).toBe(false);
   });
 });

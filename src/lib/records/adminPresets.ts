@@ -336,6 +336,70 @@ export async function assignTabToModules(ctx: AuthContext, tabId: string, module
   await appendToModuleOrder('module_tab_order', 'tab_id', tabId, moduleIds);
 }
 
+/**
+ * Set exactly which modules show a tab — adding AND removing.
+ *
+ * Client instruction: "Need ability to edit tab module assignments."
+ *
+ * `assignTabToModules` above only ever appends, so a tab added to the wrong
+ * module was there permanently: the Tabs screen offered "+ Assign" and nothing
+ * else, and the only way back was the per-module order editor, which is a
+ * different screen reached by a different route and does not look like it
+ * undoes an assignment.
+ *
+ * ── REMOVING IS NOT DELETING ─────────────────────────────────────────────
+ * Taking a tab off a module deletes one `module_tab_order` row. The tab
+ * survives, its fields survive, and every value already entered on it survives
+ * untouched — the tab simply stops being shown in that module's drawer. Put it
+ * back and the data is all still there. Worth being exact about, because
+ * "remove" next to a tab full of merchant data reads as something far more
+ * final than it is.
+ */
+export async function setTabModules(
+  ctx: AuthContext,
+  tabId: string,
+  moduleIds: string[],
+): Promise<Result> {
+  assertAdmin(ctx);
+  const supabase = supabaseAdmin();
+
+  const { data: current, error: readErr } = await supabase
+    .from('module_tab_order')
+    .select('module_id')
+    .eq('tab_id', tabId);
+  if (readErr) return { ok: false, message: readErr.message };
+
+  const have = new Set((current ?? []).map((r) => r.module_id as string));
+  const want = new Set(moduleIds);
+
+  const toRemove = [...have].filter((id) => !want.has(id));
+  const toAdd = [...want].filter((id) => !have.has(id));
+
+  /*
+   * Removals first. If the caller both adds and removes and the add fails,
+   * having already removed leaves the tab on fewer modules than before —
+   * whereas doing it the other way round could leave it on more. Neither is
+   * ideal, but "fewer" is visible on the screen the admin is looking at, and
+   * "more" is a tab quietly appearing somewhere nobody asked for.
+   */
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from('module_tab_order')
+      .delete()
+      .eq('tab_id', tabId)
+      .in('module_id', toRemove);
+    if (error) return { ok: false, message: error.message };
+  }
+
+  if (toAdd.length > 0) {
+    // Appends at the end of each module's existing order, same as assignment
+    // has always done, so a tab added back lands somewhere predictable.
+    await appendToModuleOrder('module_tab_order', 'tab_id', tabId, toAdd);
+  }
+
+  return { ok: true, id: tabId };
+}
+
 export async function assignSubtabToModules(ctx: AuthContext, subtabId: string, moduleIds: string[]): Promise<void> {
   assertAdmin(ctx);
   await appendToModuleOrder('module_subtab_order', 'subtab_id', subtabId, moduleIds);

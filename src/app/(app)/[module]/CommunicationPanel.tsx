@@ -3,12 +3,24 @@
 /**
  * Communication tab — layout ported from `src/proto/ui/tabs.tsx`'s
  * `CommunicationTab`/`LastMessageReceived`, reading the real `messages`
- * table. Teams/Phone/Call recordings stay `ComingSoon` (the client's own
- * spec, not a cut corner — no provider is wired for those yet). Email/
- * Instantly/Text are real reads: no send path exists here because messages
- * only ever arrive through a provider webhook running as the service role,
- * which bypasses RLS entirely (`messages_select`'s own policy comment) — the
- * empty state you see today is real absence of data, not a stubbed screen.
+ * table.
+ *
+ * TEAMS is the only subtab still `ComingSoon`, and it is the client's own
+ * spec rather than a cut corner: no provider is wired for it. Phone and Call
+ * recordings USED to be listed here too — that stopped being true when
+ * Twilio was wired and migration 70 cleared their flags, and they now render
+ * live calls and audio through `PhonePanel`/`RecordingsPanel` below.
+ *
+ * Which of them is a placeholder is read from `subtabs.coming_soon` rather
+ * than decided here, so the next one to go live is a data change and this
+ * comment cannot quietly drift out of date again (CLAUDE.md rule 1).
+ *
+ * Email/Instantly/Text are real reads. There is no send path on THIS panel
+ * because those messages only ever arrive through a provider webhook running
+ * as the service role, which bypasses RLS entirely (`messages_select`'s own
+ * policy comment) — the empty state you see is real absence of data, not a
+ * stubbed screen. Texting a number does have a send path; it lives on the
+ * phone page, which is where a number that matches no record can be reached.
  */
 import { useMemo, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';

@@ -146,6 +146,15 @@ export function HowPermissionsWork() {
               hidden.
             </>,
             <>
+              <strong className="font-semibold text-ink-900">A grant can apply everywhere, or to
+              one module.</strong>{' '}
+              “All modules” is the default and is what nearly every grant should be. Set one against
+              a single module and it applies there only — so hiding a tab in Leads leaves it visible
+              in Deals, and someone who reaches a record through both still sees it. Each module is
+              worked out on its own and the most generous answer wins, so to hide something outright
+              set it on All modules.
+            </>,
+            <>
               <strong className="font-semibold text-ink-900">Which records</strong> someone sees is a
               separate question, answered by the Team member field on each record — not by anything
               on this screen.

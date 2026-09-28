@@ -234,8 +234,10 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
             <Button size="sm" variant="ghost" icon="pencil" onClick={() => setEditing(true)}>
               Rename
             </Button>
-            {/* Phase 6b — the grants themselves, read-only. The chip above says
-                how many there are; this is where you see which. */}
+            {/* The grants themselves. The chip above says how many there are;
+                this is where you see and CHANGE which — the matrix on that
+                page is writable, and an edit reaches everyone attached to the
+                template on their next request. */}
             <Link
               href={`/admin/templates/${template.id}`}
               className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1 text-[12.5px] font-medium text-ink-600 transition-colors hover:border-brand-600 hover:bg-brand-50 hover:text-brand-700"

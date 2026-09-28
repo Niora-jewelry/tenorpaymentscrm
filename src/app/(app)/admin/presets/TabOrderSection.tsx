@@ -163,8 +163,15 @@ export function TabOrderSection({
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
       <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
+        {/* The drag affordance has to be SAID. A grip handle is discoverable
+            only by hovering the right few pixels, and the arrows beside it
+            look like the whole story — an admin who never hovers would never
+            learn the list drags at all. */}
         <h2 className="text-[14px] font-semibold text-ink-900">
-          Tab order <span className="ml-1 font-normal text-ink-400">per module</span>
+          Tab order{' '}
+          <span className="ml-1 font-normal text-ink-400">
+            per module — drag a row, or use the arrows
+          </span>
         </h2>
         <select
           value={moduleId}

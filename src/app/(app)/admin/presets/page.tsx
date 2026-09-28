@@ -68,7 +68,7 @@ export default async function AdminPresetsPage() {
       icon: 'layout-list',
       count: tabs.length,
       description:
-        'The drawer’s top-level tabs. One shared definition across every module; each module chooses which of them it shows, and in what order.',
+        'The drawer’s top-level tabs. One shared definition across every module; each module chooses which of them it shows, and in what order. A tab needs at least one module to exist anywhere — use Edit modules to add or remove them, and drag a tab to reorder it.',
       content: (
         <div className="space-y-4">
           <TabsSection tabs={tabs} modules={modules} />

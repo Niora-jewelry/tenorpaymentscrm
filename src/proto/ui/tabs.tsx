@@ -694,9 +694,26 @@ function EntryRow({
 export function CommunicationTab({ record, subtabId }: { record: RecordRow; subtabId: string }) {
   const { now } = useStore();
 
+  /*
+   * Teams is still the only one with no provider behind it.
+   *
+   * Phone and Call recordings sat here too until Twilio was wired. They are
+   * live in the real drawer now, reading actual calls and audio, so calling
+   * them "coming soon" here was telling anyone who opened the prototype that
+   * a shipped feature did not exist. This is a static design mock with no
+   * call data of its own, so it says where the real thing is rather than
+   * pretending to be it.
+   */
   if (subtabId === 'teams') return <ComingSoon what="Microsoft Teams meetings" icon="video" />;
-  if (subtabId === 'phone') return <ComingSoon what="Twilio call log" icon="phone" />;
-  if (subtabId === 'recordings') return <ComingSoon what="Twilio call recordings" icon="mic" />;
+  if (subtabId === 'phone' || subtabId === 'recordings') {
+    return (
+      <SpecNote>
+        {subtabId === 'phone' ? 'Calls' : 'Call recordings'} are live in the CRM — open a record
+        outside the prototype, or the Phone page, to see real ones. This prototype carries no call
+        data of its own.
+      </SpecNote>
+    );
+  }
 
   const channel = subtabId === 'text' ? 'text' : subtabId === 'instantly' ? 'instantly' : 'email';
   const messages = MESSAGES.filter((m) => m.recordId === record.id && m.channel === channel).sort(

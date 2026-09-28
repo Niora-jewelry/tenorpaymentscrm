@@ -17,7 +17,7 @@ import { callsForUser } from '@/lib/phone/calls';
 import { resolveUserActiveNumber } from '@/lib/phone/numbers';
 import { threadsForUser } from '@/lib/phone/messages';
 import { contactsForUser } from '@/lib/phone/contacts';
-import { Dialer } from './Dialer';
+import { DialPad, CallHistory } from './Dialer';
 import { Threads } from './Threads';
 import { Contacts } from './Contacts';
 
@@ -42,11 +42,34 @@ export default async function PhonePage() {
         </p>
       </div>
 
-      <Dialer calls={calls} myNumber={myNumber?.e164 ?? null} />
+      {/*
+        ── TWO COLUMNS, EACH STACKED ─────────────────────────────────────
+        The grid lives here rather than inside `Dialer`, because the page has
+        four panels in two columns and a component cannot lay out its own
+        siblings.
 
-      <Contacts contacts={contacts} />
+        The pairing is by WIDTH, not by subject. The dial pad and the message
+        composer are both narrow, single-purpose controls; the call list and
+        the address book are both wide lists of records. Putting Messages
+        beside the pad and Contacts beneath the calls means neither column
+        changes width halfway down, which is what made the previous
+        full-width strips look stacked rather than designed.
 
-      <Threads threads={threads} />
+        `items-start` stops a short column stretching to match a tall one -
+        without it an empty Contacts panel would grow to the height of a long
+        call list and sit mostly blank.
+      */}
+      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+        <div className="space-y-5">
+          <DialPad myNumber={myNumber?.e164 ?? null} />
+          <Threads threads={threads} />
+        </div>
+
+        <div className="space-y-5">
+          <CallHistory calls={calls} />
+          <Contacts contacts={contacts} />
+        </div>
+      </div>
     </div>
   );
 }

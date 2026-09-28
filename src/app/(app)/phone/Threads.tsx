@@ -101,28 +101,51 @@ export function Threads({ threads }: { threads: PhoneThread[] }) {
                   setError(null);
                   setSent(false);
                 }}
-                className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left"
+                className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-canvas/50"
               >
-                <Icon
-                  name={t.lastDirection === 'in' ? 'reply' : 'send'}
-                  size={12}
-                  className="text-ink-400"
-                />
-                <span className="text-[13px] font-medium text-ink-900 tabular">
-                  {formatPhoneDisplay(t.threadKey)}
+                {/*
+                  Stacked rather than laid out in one line. This panel now sits
+                  in the narrow column beside the dial pad, where a row of
+                  number + badge + preview + date had nowhere to go and every
+                  part of it truncated at once.
+                */}
+                <span
+                  className={`mt-[2px] grid size-6 shrink-0 place-items-center rounded-full ${
+                    t.lastDirection === 'in' ? 'bg-ok-bg text-ok' : 'bg-brand-50 text-brand-700'
+                  }`}
+                >
+                  <Icon name={t.lastDirection === 'in' ? 'reply' : 'send'} size={11} strokeWidth={2.2} />
                 </span>
-                {t.recordId ? (
-                  <StatusPill label="Matched" swatch="teal" dot={false} />
-                ) : (
-                  // Said out loud rather than hidden: an unmatched thread is the
-                  // case this whole screen exists for.
-                  <StatusPill label="No matching record" swatch="amber" dot={false} />
-                )}
-                <span className="truncate text-[12.5px] text-ink-500">{t.lastBody}</span>
-                <span className="ml-auto whitespace-nowrap text-[11.5px] text-ink-400 tabular">
-                  {formatDateTime(t.lastAt)}
+
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-[13px] font-medium tabular text-ink-900">
+                      {formatPhoneDisplay(t.threadKey)}
+                    </span>
+                    <Icon
+                      name={open ? 'chevron-up' : 'chevron-down'}
+                      size={11}
+                      className="ml-auto shrink-0 text-ink-400"
+                    />
+                  </span>
+
+                  <span className="mt-0.5 block truncate text-[12.5px] text-ink-500">
+                    {t.lastBody}
+                  </span>
+
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {t.recordId ? (
+                      <StatusPill label="Matched" swatch="teal" dot={false} />
+                    ) : (
+                      // Said out loud rather than hidden: an unmatched thread is
+                      // the case this whole screen exists for.
+                      <StatusPill label="No record" swatch="amber" dot={false} />
+                    )}
+                    <span className="whitespace-nowrap text-[11px] tabular text-ink-400">
+                      {formatDateTime(t.lastAt)}
+                    </span>
+                  </span>
                 </span>
-                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={12} className="text-ink-400" />
               </button>
 
               {open ? (

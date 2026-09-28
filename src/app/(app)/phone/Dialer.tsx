@@ -222,7 +222,14 @@ export function CallHistory({ calls }: { calls: PhoneCall[] }) {
             <EmptyState icon="phone" title="No calls yet" body="Calls you make or take appear here." />
           </div>
         ) : (
-          <ul className="mt-3 space-y-2">
+          /*
+             Capped and scrolled. The list is every call this user has made or
+             taken and it only ever grows; unbounded, it pushes Contacts off
+             the bottom of the screen and the page turns into one long scroll
+             where nothing else is reachable. A fixed height keeps both panels
+             on screen together, which is the point of the two-column layout.
+          */
+          <ul className="mt-3 max-h-[440px] space-y-2 overflow-y-auto pr-1">
             {calls.map((call) => {
               const peer = call.direction === 'in' ? call.fromE164 : call.toE164;
               const missed =
@@ -232,7 +239,16 @@ export function CallHistory({ calls }: { calls: PhoneCall[] }) {
                   key={call.id}
                   className="group rounded-xl border border-line-soft px-3 py-2.5 transition-colors hover:border-line hover:bg-canvas/40"
                 >
-                  <div className="flex flex-wrap items-center gap-2.5">
+                  {/*
+                    A grid, not a flex row with `ml-auto`. In a panel this wide
+                    the old version left a corridor of empty space between the
+                    number and the buttons, with everything jammed to the two
+                    edges. The middle column now carries what was previously
+                    nowhere - how long the call lasted, and whether it is
+                    attached to a merchant - so the width is used rather than
+                    padded.
+                  */}
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
                     {/* The direction badge is a filled disc rather than a bare
                         glyph: at 12px an arrow alone is hard to tell apart at a
                         glance, and missed calls are the ones that must not be
@@ -251,17 +267,35 @@ export function CallHistory({ calls }: { calls: PhoneCall[] }) {
 
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-[13.5px] font-medium tabular text-ink-900">
+                        <span className="truncate text-[13.5px] font-medium tabular text-ink-900">
                           {formatPhoneDisplay(peer)}
                         </span>
                         {missed ? <StatusPill label="Missed" swatch="red" dot={false} /> : null}
+                        {/* Whether this call reached a merchant record. Stated
+                            rather than left blank, because an unattached call is
+                            the case the standalone phone page exists for. */}
+                        {call.recordId ? (
+                          <StatusPill label="Matched" swatch="teal" dot={false} />
+                        ) : null}
                       </span>
-                      <span className="mt-0.5 block text-[11.5px] tabular text-ink-400">
-                        {formatDateTime(call.startedAt)}
+                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] tabular text-ink-400">
+                        <span>{formatDateTime(call.startedAt)}</span>
+                        {call.durationSeconds !== null && call.durationSeconds > 0 ? (
+                          <>
+                            <span aria-hidden className="text-ink-300">&middot;</span>
+                            <span>{callDuration(call.durationSeconds)}</span>
+                          </>
+                        ) : null}
+                        {!missed && call.status && call.status !== 'completed' ? (
+                          <>
+                            <span aria-hidden className="text-ink-300">&middot;</span>
+                            <span className="capitalize">{call.status.replace(/-/g, ' ')}</span>
+                          </>
+                        ) : null}
                       </span>
                     </span>
 
-                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <span className="flex shrink-0 items-center gap-1.5">
                       <PillButton
                         icon="phone"
                         label="Call back"
@@ -290,7 +324,11 @@ export function CallHistory({ calls }: { calls: PhoneCall[] }) {
                     without this its audio is stored and unreachable.
                   */}
                   {call.recordings.length > 0 ? (
-                    <div className="mt-2 space-y-2 border-t border-line-faint pt-2">
+                    /* Indented to line up under the number rather than starting
+                       at the card's left edge. Full-width it read as a separate
+                       strip belonging to nothing in particular; aligned, it
+                       plainly belongs to the call above it. */
+                    <div className="mt-2 space-y-2 border-t border-line-faint pl-[40px] pt-2">
                       {call.recordings.map((rec) => (
                         <RecordingRow key={rec.id} recording={rec} />
                       ))}
@@ -303,6 +341,13 @@ export function CallHistory({ calls }: { calls: PhoneCall[] }) {
         )}
       </section>
   );
+}
+
+/** "4:07", the way a phone shows it. */
+function callDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const sec = seconds % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 /**

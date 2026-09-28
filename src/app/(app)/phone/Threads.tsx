@@ -13,7 +13,7 @@
  */
 import { useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, EmptyState, StatusPill } from '@/proto/ui/kit';
+import { Button, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneThread } from '@/lib/phone/messages';
@@ -71,12 +71,17 @@ export function Threads({ threads }: { threads: PhoneThread[] }) {
       <section className="rounded-2xl border border-line bg-white p-4">
         <h2 className="text-[13.5px] font-semibold text-ink-900">Messages</h2>
         <div className="mt-3">{composer}</div>
-        <div className="mt-3">
-          <EmptyState
-            icon="message-square"
-            title="No conversations"
-            body="Texts you send or receive appear here, including from numbers that match no record."
-          />
+        {/* Compact rather than the shared `EmptyState`: this panel is 320px
+            wide, and a centred dashed box with twelve units of padding filled
+            the column with almost nothing. */}
+        <div className="mt-3 rounded-xl border border-dashed border-line bg-canvas/40 px-3 py-3">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-ink-700">
+            <Icon name="message-square" size={13} className="text-ink-400" />
+            No conversations
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-400">
+            Texts you send or receive appear here, including from numbers that match no record.
+          </p>
         </div>
       </section>
     );
@@ -88,7 +93,7 @@ export function Threads({ threads }: { threads: PhoneThread[] }) {
 
       <div className="mt-3">{composer}</div>
 
-      <ul className="mt-3 space-y-2">
+      <ul className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-1">
         {threads.map((t) => {
           const open = openKey === t.threadKey;
           return (

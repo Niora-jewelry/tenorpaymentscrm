@@ -21,7 +21,7 @@
  */
 import { useMemo, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, EmptyState, StatusPill, Spinner } from '@/proto/ui/kit';
+import { Button, StatusPill, Spinner } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import { RecordingRow } from '@/app/(app)/[module]/PhonePanels';
@@ -177,12 +177,24 @@ export function Contacts({ contacts }: { contacts: Contact[] }) {
       ) : null}
 
       {contacts.length === 0 && !adding ? (
-        <div className="mt-3">
-          <EmptyState
-            icon="users"
-            title="No contacts yet"
-            body="Add someone by hand, or keep working — a contact appears here automatically when you call or text a number that matches a record."
-          />
+        /*
+          Deliberately NOT the shared `EmptyState`. That component is built for
+          a full page and carries twelve units of vertical padding, which in a
+          panel sitting beneath the call list produced a dashed box several
+          hundred pixels tall saying four words. This says the same thing in
+          the space it deserves.
+        */
+        <div className="mt-3 flex items-start gap-3 rounded-xl border border-dashed border-line bg-canvas/40 px-4 py-4">
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-white text-ink-400">
+            <Icon name="users" size={15} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-ink-700">No contacts yet</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-400">
+              Add someone by hand, or keep working — a contact appears here automatically when you
+              call or text a number that matches a record.
+            </p>
+          </div>
         </div>
       ) : null}
 
@@ -192,7 +204,10 @@ export function Contacts({ contacts }: { contacts: Contact[] }) {
         </p>
       ) : null}
 
-      <ul className="mt-3 space-y-2">
+      {/* Capped for the same reason the call list is: an address book grows
+          without limit, and a panel that grows with it pushes everything else
+          off the screen. */}
+      <ul className="mt-3 max-h-[460px] space-y-2 overflow-y-auto pr-1">
         {filtered.map((c) => {
           const open = openId === c.id;
           const act = activity[c.id];

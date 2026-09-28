@@ -27,7 +27,7 @@
  *     turn a single message into three without a single visible change. See
  *     `lib/phone/segments.ts`.
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Button, StatusPill } from '@/proto/ui/kit';
 import { formatPhoneDisplay, normalizePhone } from '@/lib/phone/normalize';
@@ -56,6 +56,34 @@ export function NewMessage({
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * "Text" on a contact opens this composer with the number already in it.
+   *
+   * A window event rather than lifted state: Contacts and this composer are
+   * siblings under a server component, so sharing state between them would
+   * mean a provider around the whole page for one button. The event carries
+   * an E.164 number that has already been through `normalizePhone` on the way
+   * into the address book, so it lands valid.
+   */
+  useEffect(() => {
+    const onCompose = (e: Event) => {
+      const to = (e as CustomEvent<{ to?: string }>).detail?.to;
+      if (!to) return;
+      setSentTo(null);
+      setTo(to);
+      setOpen(true);
+      // Next frame, so the panel exists before we scroll to it.
+      requestAnimationFrame(() => {
+        wrapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        wrapRef.current?.querySelector('textarea')?.focus();
+      });
+    };
+    window.addEventListener('tapdash:compose-sms', onCompose);
+    return () => window.removeEventListener('tapdash:compose-sms', onCompose);
+  }, []);
 
   const normalized = useMemo(() => normalizePhone(to), [to]);
   const seg = useMemo(() => segmentInfo(body), [body]);
@@ -95,7 +123,7 @@ export function NewMessage({
 
   if (!open) {
     return (
-      <div className="flex flex-wrap items-center gap-2">
+      <div ref={wrapRef} className="flex flex-wrap items-center gap-2">
         <Button size="sm" icon="plus" onClick={() => { setSentTo(null); setOpen(true); }}>
           New message
         </Button>
@@ -114,7 +142,7 @@ export function NewMessage({
   }
 
   return (
-    <div className="rounded-xl border border-line bg-canvas/40 p-3.5">
+    <div ref={wrapRef} className="rounded-xl border border-line bg-canvas/40 p-3.5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
           <Icon name="message-square" size={13} className="text-ink-400" />

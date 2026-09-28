@@ -19,6 +19,7 @@ import { type AuthContext } from '@/lib/records/permissions';
 import { canSeePhone, canUsePhone, canHearRecordings } from './access';
 import { resolveUserActiveNumber } from './numbers';
 import { resolveRecordByPhone } from './records';
+import { fileAutoContact } from './autoContact';
 import { normalizePhone } from './normalize';
 import { loadConfig } from '@/lib/records/config';
 import { moduleGrant } from '@/lib/records/permissions';
@@ -190,6 +191,10 @@ export async function createOutboundCall(
    * gate above has already decided this is allowed. The row's owner is set from
    * the authorised context, never from anything the browser sent.
    */
+  // Resolved once and used twice - for the row and for the address book.
+  // Two lookups of the same number would be two chances to disagree.
+  const outboundRecordId = await resolveRecordByPhone(supabaseAdmin(), normalized.e164);
+
   const { data, error } = await supabaseAdmin()
     .from('phone_calls')
     .insert({
@@ -199,13 +204,20 @@ export async function createOutboundCall(
       to_e164: normalized.e164,
       owner_id: ctx.userId,
       created_by_id: ctx.userId,
-      record_id: await resolveRecordByPhone(supabaseAdmin(), normalized.e164),
+      record_id: outboundRecordId,
       started_at: new Date().toISOString(),
     })
     .select('id')
     .single();
 
   if (error) throw error;
+
+  /*
+   * Dialling a number that belongs to a merchant files it in the caller's
+   * address book. After the insert, not before: the call is what matters, and
+   * a failure filing a contact must not stop it being placed.
+   */
+  await fileAutoContact(supabaseAdmin(), ctx.userId, normalized.e164, outboundRecordId);
   return {
     ok: true,
     callId: data.id as string,

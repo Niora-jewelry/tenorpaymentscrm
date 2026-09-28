@@ -34,6 +34,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolveNumberOwnerId, resolveUserActiveNumber } from '@/lib/phone/numbers';
 import { resolveRecordByPhone } from '@/lib/phone/records';
+import { fileAutoContact } from '@/lib/phone/autoContact';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -147,6 +148,15 @@ export async function POST(request: NextRequest) {
   const ownerUserId = dialedNumber ? await resolveNumberOwnerId(supabase, dialedNumber) : null;
   // TapDash's identity rule: match the caller against sync-enabled phone fields.
   const recordId = await resolveRecordByPhone(supabase, caller);
+
+  /*
+   * An inbound call from a number the CRM already knows files a contact in
+   * the number-owner's address book, per the client's rule. Awaited rather
+   * than fired and forgotten: on a serverless runtime the response ends the
+   * invocation, and a promise still in flight is simply killed. It never
+   * throws, so it cannot cost the call.
+   */
+  await fileAutoContact(supabase, ownerUserId, caller, recordId);
 
   const identity = ownerUserId ? `user_${ownerUserId}` : null;
 

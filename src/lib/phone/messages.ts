@@ -21,6 +21,7 @@ import { getPublicBaseUrl } from '@/lib/twilio/webhook-request';
 import { canSeePhone, canUsePhone } from './access';
 import { resolveUserActiveNumber } from './numbers';
 import { resolveRecordByPhone } from './records';
+import { fileAutoContact } from './autoContact';
 import { normalizePhone } from './normalize';
 
 export type PhoneMessage = {
@@ -176,6 +177,9 @@ export async function sendMessage(
     .single();
 
   if (insertError) throw insertError;
+
+  // Texting a merchant's number files them in the sender's address book.
+  await fileAutoContact(admin, ctx.userId, normalized.e164, recordId);
   const row = inserted as MessageRow;
 
   try {

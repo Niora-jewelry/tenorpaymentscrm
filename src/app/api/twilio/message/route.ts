@@ -24,6 +24,7 @@ import {
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolveNumberOwnerId } from '@/lib/phone/numbers';
 import { resolveRecordByPhone } from '@/lib/phone/records';
+import { fileAutoContact } from '@/lib/phone/autoContact';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -75,6 +76,11 @@ export async function POST(request: NextRequest) {
       record_id: recordId,
       sent_at: new Date().toISOString(),
     });
+
+    // An inbound text from a number the CRM knows files a contact for the
+    // owner of the number it came in on. Awaited, because a promise left in
+    // flight when the response returns is killed on a serverless runtime.
+    await fileAutoContact(supabase, ownerUserId, from, recordId);
 
     if (insert.error && insert.error.code !== '23505') {
       console.error('[twilio/message] insert failed', insert.error);

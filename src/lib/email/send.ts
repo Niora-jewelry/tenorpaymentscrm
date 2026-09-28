@@ -86,6 +86,7 @@ async function send(
   html: string,
   text: string,
   headers?: Record<string, string>,
+  attachments?: { filename: string; content: Buffer }[],
 ): Promise<SendResult> {
   const api = client();
 
@@ -153,7 +154,7 @@ async function send(
   }
 
   try {
-    await api.sendMail({ from: serverEnv.EMAIL_FROM, to, subject, html, text, headers });
+    await api.sendMail({ from: serverEnv.EMAIL_FROM, to, subject, html, text, headers, attachments });
     return { ok: true };
   } catch (cause) {
     /*
@@ -564,5 +565,114 @@ export function sendInviteEmail(
     }),
     text,
     { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+  );
+}
+
+/**
+ * A voicemail, to the inbox the client named.
+ *
+ * Q9 asked whether he wanted the recording attached, a link, or both. "BOTH" -
+ * so this carries the audio AND a signed link. The attachment plays in the
+ * mail client without anyone signing in; the link survives an archived mailbox
+ * that has had its attachments stripped, which is the state every inbox
+ * eventually reaches.
+ *
+ * Both can be absent if the storage read failed. The email still goes, because
+ * "someone left a voicemail at 4:58pm and here is their number" is worth
+ * knowing even when the audio has to be fetched from the CRM by hand.
+ */
+export function sendVoicemailEmail(
+  to: string,
+  opts: {
+    callerE164: string | null;
+    dialedE164: string | null;
+    durationSeconds: number | null;
+    link: string | null;
+    attachment?: { filename: string; content: Buffer };
+  },
+): Promise<SendResult> {
+  const stamp = sendStamp();
+  const caller = opts.callerE164 ?? 'an unknown number';
+  const mins = opts.durationSeconds === null ? null : Math.floor(opts.durationSeconds / 60);
+  const secs = opts.durationSeconds === null ? null : opts.durationSeconds % 60;
+  const length =
+    mins === null ? 'unknown length' : mins > 0 ? `${mins} min ${secs} sec` : `${secs} sec`;
+
+  const rows: [string, string][] = [
+    ['From', caller],
+    ['Length', length],
+    ['Received', stamp],
+  ];
+  if (opts.dialedE164) rows.splice(1, 0, ['Called', opts.dialedE164]);
+
+  const body = `
+    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">New voicemail</h1>
+
+    <p style="margin:0 0 22px;font-family:${FONT};font-size:15px;line-height:1.6;color:${BRAND.muted};">
+      Someone left a message for TapDash.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">
+      <tr><td bgcolor="${BRAND.panel}" style="background:${BRAND.panel};border:1px solid ${BRAND.line};border-radius:10px;padding:16px 18px;font-family:${FONT};font-size:14px;line-height:1.8;color:${BRAND.muted};">
+        ${rows
+          .map(
+            ([k, v]) =>
+              `${esc(k)}: <strong style="color:${BRAND.ink};">${esc(v)}</strong>`,
+          )
+          .join('<br>')}
+      </td></tr>
+    </table>
+
+    ${
+      opts.attachment
+        ? `<p style="margin:0 0 18px;font-family:${FONT};font-size:13.5px;line-height:1.6;color:${BRAND.muted};">
+             The recording is attached to this email.
+           </p>`
+        : ''
+    }
+
+    ${
+      opts.link
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+             <tr><td align="center" bgcolor="${BRAND.accent}" style="background:${BRAND.accent};border-radius:10px;">
+               <a href="${esc(opts.link)}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1;color:${BRAND.accentInk};text-decoration:none;border-radius:10px;">Listen to the message</a>
+             </td></tr>
+           </table>`
+        : `<p style="margin:0 0 18px;font-family:${FONT};font-size:13.5px;line-height:1.6;color:${BRAND.muted};">
+             The recording could not be linked automatically. It is stored in TapDash under this call.
+           </p>`
+    }
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr><td style="border-top:1px solid ${BRAND.line};padding-top:18px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BRAND.muted};">
+        This message is also stored in TapDash, where it stays available after this link expires.
+      </td></tr>
+    </table>`;
+
+  const text = [
+    'New voicemail',
+    '',
+    ...rows.map(([k, v]) => `${k}: ${v}`),
+    '',
+    opts.attachment ? 'The recording is attached to this email.' : '',
+    opts.link ? `Listen: ${opts.link}` : '',
+    '',
+    'This message is also stored in TapDash.',
+  ]
+    .filter((l) => l !== '' || true)
+    .join('\n');
+
+  return send(
+    to,
+    `Voicemail from ${caller}`,
+    emailShell({
+      title: 'New voicemail',
+      preheader: `${caller} - ${length}`,
+      bodyHtml: body,
+      stamp,
+    }),
+    text,
+    { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+    opts.attachment ? [opts.attachment] : undefined,
   );
 }

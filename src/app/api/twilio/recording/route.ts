@@ -26,11 +26,14 @@ import { NextResponse, type NextRequest } from 'next/server';
 import twilio from 'twilio';
 import {
   isValidTwilioSignature,
+  publicOrigin,
   readTwilioForm,
   reconstructPublicUrl,
 } from '@/lib/twilio/webhook-request';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { notifyAboutCall } from '@/lib/phone/notify';
+import { loadIvrState } from '@/lib/phone/ivrConfig';
+import { deliverVoicemail } from '@/lib/phone/voicemailEmail';
 import { serverEnv } from '@/lib/env.server';
 
 export const runtime = 'nodejs';
@@ -58,6 +61,7 @@ export async function POST(request: NextRequest) {
   const duration = durationRaw ? Number.parseInt(durationRaw, 10) : null;
   const callSid = params.CallSid || '';
   const callId = request.nextUrl.searchParams.get('callId');
+  const origin = publicOrigin(request);
   const kind = request.nextUrl.searchParams.get('kind') === 'voicemail' ? 'voicemail' : 'call';
 
   if (!recordingSid || !recordingUrl) {
@@ -161,6 +165,41 @@ export async function POST(request: NextRequest) {
           ? `New voicemail from ${peer}`
           : `Recording ready for your call with ${peer}`,
       );
+
+      /*
+       * ── THE VOICEMAIL EMAIL ───────────────────────────────────────────
+       * Both of the client's documents say voicemail goes to info@tapdash.co,
+       * in capitals, twice each. This is the only place that can send it: the
+       * audio is not ours until the upload above succeeds, so emailing any
+       * earlier would attach a file that does not exist yet.
+       *
+       * Inside the `!insert.error` branch on purpose — a 23505 means this
+       * callback is a retry of one already handled, and the caller should not
+       * receive two copies of the same voicemail.
+       */
+      if (kind === 'voicemail') {
+        const { data: rec } = await supabase
+          .from('phone_recordings')
+          .select('id, duration_seconds, phone_calls (from_e164, to_e164)')
+          .eq('twilio_recording_sid', recordingSid)
+          .maybeSingle();
+
+        const state = await loadIvrState(supabaseAdmin(), origin);
+        const call = (rec as { phone_calls?: { from_e164: string; to_e164: string } } | null)
+          ?.phone_calls;
+
+        if (rec?.id) {
+          await deliverVoicemail(supabaseAdmin(), {
+            recordingId: rec.id as string,
+            storagePath,
+            toEmail: state.voicemailEmail,
+            callerE164: call?.from_e164 ?? null,
+            dialedE164: call?.to_e164 ?? null,
+            durationSeconds: (rec.duration_seconds as number | null) ?? null,
+            appOrigin: origin,
+          });
+        }
+      }
     }
   }
 

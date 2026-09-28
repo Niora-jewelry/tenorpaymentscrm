@@ -77,6 +77,26 @@ const PUBLIC_API_PATHS = new Set([
   '/api/twilio/recording',
   '/api/twilio/message',
   '/api/twilio/message-status',
+
+  /*
+   * The phone menu. Twilio fetches every one of these while a caller is on the
+   * line, so each has to be reachable without a session for exactly the reason
+   * above — a login redirect here does not fail loudly, it returns HTML where
+   * TwiML was expected and the caller hears Twilio's own error message.
+   *
+   * Listed one by one rather than as `/api/twilio/ivr` for the same reason the
+   * block above is: a prefix is a rule that keeps matching things nobody has
+   * thought about yet. Each of these is authenticated by the
+   * `X-Twilio-Signature` check in `withIvr`, which fails closed.
+   */
+  '/api/twilio/ivr/entry',
+  '/api/twilio/ivr/menu',
+  '/api/twilio/ivr/discover',
+  '/api/twilio/ivr/hold',
+  '/api/twilio/ivr/hold-choice',
+  '/api/twilio/ivr/queue-done',
+  '/api/twilio/ivr/agent',
+  '/api/twilio/ivr/voicemail',
 ]);
 
 /** Signed-in users are bounced off these to the dashboard. */

@@ -35,6 +35,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolveNumberOwnerId, resolveUserActiveNumber } from '@/lib/phone/numbers';
 import { resolveRecordByPhone } from '@/lib/phone/records';
 import { fileAutoContact } from '@/lib/phone/autoContact';
+import { loadIvrState, ivrAnswersThisCall } from '@/lib/phone/ivrConfig';
+import { greetingTwiml } from '@/lib/phone/ivr';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -158,6 +160,24 @@ export async function POST(request: NextRequest) {
    */
   await fileAutoContact(supabase, ownerUserId, caller, recordId);
 
+  /*
+   * ── THE PHONE MENU ────────────────────────────────────────────────────
+   * When the menu is switched on AND this is the number it answers on, the
+   * call is handed to it. Both conditions matter:
+   *
+   *   • the switch means it can be turned off without a deploy, which is what
+   *     you want at 9am on a Monday if it misbehaves;
+   *   • the number means turning it on does not hijack every other line. A
+   *     rep's direct number must keep ringing their browser, not read out a
+   *     menu.
+   *
+   * The call row is inserted FIRST, below, so a menu call is logged like any
+   * other and the recording callbacks have something to correlate against.
+   * The menu's own routes take it from there.
+   */
+  const ivr = await loadIvrState(supabase, origin);
+  const menuAnswers = ivrAnswersThisCall(ivr, dialedNumber);
+
   const identity = ownerUserId ? `user_${ownerUserId}` : null;
 
   const { data: inserted, error: insertErr } = await supabase
@@ -170,7 +190,13 @@ export async function POST(request: NextRequest) {
        * born terminal — otherwise it would sit at 'ringing' forever with
        * nothing ever coming to close it.
        */
-      status: identity ? 'ringing' : 'no-answer',
+      /*
+       * A menu call is 'ringing' whatever the number's ownership: the menu
+       * will ring people or take a voicemail, so it is not terminal the way
+       * an unowned direct number is. Marking it 'no-answer' here would retire
+       * it while the caller was still listening to the greeting.
+       */
+      status: identity || menuAnswers ? 'ringing' : 'no-answer',
       from_e164: caller,
       to_e164: dialedNumber,
       started_at: new Date().toISOString(),
@@ -198,6 +224,22 @@ export async function POST(request: NextRequest) {
   const vmDoneCb = rowId
     ? `?callId=${encodeURIComponent(rowId)}&phase=voicemail-end`
     : '?phase=voicemail-end';
+
+  /*
+   * Hand over to the menu. Placed after the row insert so the call is logged,
+   * and before the owner-ringing branch so the menu takes precedence on its
+   * own number — a number can be both the menu's and somebody's, and the menu
+   * is the more specific answer.
+   */
+  if (menuAnswers) {
+    // Returned directly rather than through `xml()`, which expects a
+    // VoiceResponse instance; the menu builds its TwiML as a string so that
+    // every branch of it is unit-testable without Twilio's SDK.
+    return new NextResponse(greetingTwiml(ivr.config, { open: ivr.open }), {
+      status: 200,
+      headers: { 'Content-Type': 'text/xml' },
+    });
+  }
 
   if (identity) {
     /*

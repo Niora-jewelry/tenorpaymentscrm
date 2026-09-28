@@ -18,6 +18,7 @@ import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneThread } from '@/lib/phone/messages';
 import { sendSmsAction } from '../phoneActions';
+import { NewMessage } from './NewMessage';
 import { usePhone } from './PhoneProvider';
 
 export function Threads({ threads }: { threads: PhoneThread[] }) {
@@ -44,10 +45,32 @@ export function Threads({ threads }: { threads: PhoneThread[] }) {
     });
   };
 
+  /*
+   * The composer sits ABOVE the list and outside the empty-state branch,
+   * deliberately. It used to be impossible to start a conversation at all: the
+   * only composers were inside existing threads, and this branch returned
+   * early — so an account with no threads had no way to create its first one,
+   * which is precisely the "text new numbers" case.
+   */
+  const composer = (
+    <NewMessage
+      knownThreadKeys={threads.map((t) => t.threadKey)}
+      // Opening the thread it landed in means the user sees the message they
+      // just sent, rather than being returned to a list and having to find it.
+      onSentToThread={(key) => {
+        setOpenKey(key);
+        setBody('');
+        setError(null);
+        setSent(false);
+      }}
+    />
+  );
+
   if (threads.length === 0) {
     return (
       <section className="rounded-2xl border border-line bg-white p-4">
         <h2 className="text-[13.5px] font-semibold text-ink-900">Messages</h2>
+        <div className="mt-3">{composer}</div>
         <div className="mt-3">
           <EmptyState
             icon="message-square"
@@ -62,6 +85,8 @@ export function Threads({ threads }: { threads: PhoneThread[] }) {
   return (
     <section className="rounded-2xl border border-line bg-white p-4">
       <h2 className="text-[13.5px] font-semibold text-ink-900">Messages</h2>
+
+      <div className="mt-3">{composer}</div>
 
       <ul className="mt-3 space-y-2">
         {threads.map((t) => {

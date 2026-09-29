@@ -77,7 +77,7 @@ begin
   -- unauthorized caller would read as "this month prices nothing", which is a
   -- state a processor can genuinely be in. Written as `is null or not in` so it
   -- fails closed where auth.uid() — and therefore auth_role() — is NULL.
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read the formula registry.'
       using errcode = '42501';

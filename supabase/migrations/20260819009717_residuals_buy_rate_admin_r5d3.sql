@@ -212,7 +212,7 @@ begin
   -- gate is written as `is null or not in` so it fails closed on a
   -- service-role connection, where auth.uid() and therefore auth_role() are
   -- NULL.
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read buy-rate schedules.'
       using errcode = '42501';
@@ -299,7 +299,7 @@ declare
   v_cells    int := 0;
   v_bad      text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change buy-rate schedules.'
       using errcode = '42501';

@@ -265,7 +265,7 @@ declare
   v_month date := date_trunc('month', p_month)::date;
   v_n     int;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read verdict tolerances.'
       using errcode = '42501';
@@ -422,7 +422,7 @@ as $$
 declare
   v_month date;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read volume mapping coverage.'
       using errcode = '42501';

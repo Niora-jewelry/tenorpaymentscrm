@@ -87,7 +87,7 @@ begin
   -- service-role connection (auth.uid() is NULL), and a bare `not in` against
   -- NULL evaluates to NULL, which an IF treats as false and would let the call
   -- through unauthenticated.
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rates.'
       using errcode = '42501';

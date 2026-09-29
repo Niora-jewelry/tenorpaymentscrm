@@ -173,7 +173,7 @@ declare
   v_vol       numeric;
   v_key       text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to import merchant rates.'
       using errcode = '42501';

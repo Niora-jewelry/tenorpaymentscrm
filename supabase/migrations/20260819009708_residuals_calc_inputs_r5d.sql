@@ -364,7 +364,7 @@ declare
   v_mid   text := regexp_replace(coalesce(p_mid, ''), '[^0-9]', '', 'g');
   v_month date := date_trunc('month', p_month)::date;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rates.'
       using errcode = '42501';
@@ -471,7 +471,7 @@ as $$
 declare
   v_month date;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rate coverage.'
       using errcode = '42501';

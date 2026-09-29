@@ -153,7 +153,7 @@ declare
   v_t2        numeric;
   v_t3        numeric;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual verdicts.'
       using errcode = '42501';
@@ -465,7 +465,7 @@ as $$
 declare
   v_signed boolean;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual merchant states.'
       using errcode = '42501';
@@ -609,7 +609,7 @@ as $$
 declare
   v_stored text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual period state.'
       using errcode = '42501';
@@ -692,7 +692,7 @@ declare
   v_row     record;
   v_id      uuid;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to acknowledge a residual verdict.'
       using errcode = '42501';
@@ -814,7 +814,7 @@ declare
   v_actor uuid := auth.uid();
   v_n     int;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to withdraw a residual acknowledgment.'
       using errcode = '42501';
@@ -913,7 +913,7 @@ declare
   v_res    int := 0;
   v_sup    int := 0;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to retire residual acknowledgments.'
       using errcode = '42501';

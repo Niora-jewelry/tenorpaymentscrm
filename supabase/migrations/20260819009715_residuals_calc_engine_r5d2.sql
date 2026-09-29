@@ -413,7 +413,7 @@ declare
   v_failed     boolean;
 begin
   -- ---------- gate ----------
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to run the residual calculation.'
       using errcode = '42501';

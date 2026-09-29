@@ -77,7 +77,7 @@ declare
   v_standing  public.residual_merchant_vendor_costs%rowtype;
   v_versions  int := 0;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant vendor costs.'
       using errcode = '42501';
@@ -165,7 +165,7 @@ declare
   v_bad   text;
   v_mid   text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change merchant vendor costs.'
       using errcode = '42501';
@@ -251,7 +251,7 @@ declare
   v_new_id   uuid;
   v_closed   uuid;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change merchant vendor costs.'
       using errcode = '42501';

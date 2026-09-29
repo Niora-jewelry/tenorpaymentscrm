@@ -259,7 +259,7 @@ declare
   n_line_ok    int := 0; n_line_fail  int := 0;
   n_groups     int := 0;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to run the residual calculation.'
       using errcode = '42501';

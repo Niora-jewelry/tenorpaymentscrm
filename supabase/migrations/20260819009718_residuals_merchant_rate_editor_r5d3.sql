@@ -78,7 +78,7 @@ declare
   v_merchfail jsonb;
   v_fields   jsonb;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rates.'
       using errcode = '42501';
@@ -218,7 +218,7 @@ declare
   v_bad   text;
   v_mid   text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change merchant rates.'
       using errcode = '42501';

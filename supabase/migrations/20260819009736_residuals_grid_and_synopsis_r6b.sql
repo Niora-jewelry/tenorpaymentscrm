@@ -74,7 +74,7 @@ declare
   v_proc     text;
   v_registry uuid;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual period context.'
       using errcode = '42501';
@@ -188,7 +188,7 @@ declare
   v_t2        numeric;
   v_t3        numeric;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual verdicts.'
       using errcode = '42501';
@@ -460,7 +460,7 @@ declare
   v_registry uuid;
   v_mid      text := nullif(regexp_replace(coalesce(p_mid, ''), '[^0-9]', '', 'g'), '');
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read the residual grid.'
       using errcode = '42501';
@@ -633,7 +633,7 @@ as $$
 declare
   v_mid text := nullif(regexp_replace(coalesce(p_mid, ''), '[^0-9]', '', 'g'), '');
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual merchant volumes.'
       using errcode = '42501';
@@ -748,7 +748,7 @@ declare
   v_n_periods int;
   v_n_disclosable int;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read the residual synopsis.'
       using errcode = '42501';
@@ -878,7 +878,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual period history.'
       using errcode = '42501';

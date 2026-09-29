@@ -221,7 +221,7 @@ declare
   v_new_id    uuid;
   v_closed    uuid;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change merchant rates.'
       using errcode = '42501';
@@ -365,7 +365,7 @@ as $$
 declare
   v_mid text := regexp_replace(coalesce(p_mid, ''), '[^0-9]', '', 'g');
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rates.'
       using errcode = '42501';
@@ -479,7 +479,7 @@ declare
   v_vol       numeric;
   v_key       text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to import merchant rates.'
       using errcode = '42501';

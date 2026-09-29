@@ -87,7 +87,7 @@ declare
   v_mid     text;
   v_id      uuid;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to add a residual line.'
       using errcode = '42501';
@@ -181,7 +181,7 @@ declare
   v_after   public.residual_lines;
   v_changed text[];
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to edit a residual line.'
       using errcode = '42501';
@@ -306,7 +306,7 @@ declare
   v_changed text[];
   v_created boolean := false;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to edit residual volumes.'
       using errcode = '42501';

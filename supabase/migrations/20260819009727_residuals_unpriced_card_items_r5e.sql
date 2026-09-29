@@ -121,7 +121,7 @@ declare
   v_cells    int := 0;
   v_bad      text;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to change buy-rate schedules.'
       using errcode = '42501';
@@ -276,7 +276,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read the formula registry.'
       using errcode = '42501';

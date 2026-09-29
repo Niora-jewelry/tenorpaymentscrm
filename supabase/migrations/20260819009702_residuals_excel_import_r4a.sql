@@ -247,7 +247,7 @@ declare
   v_inserted    integer;
 begin
   -- Auth gate FIRST. See the header note: definer bypasses RLS.
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to commit a residual import.'
       using errcode = '42501';

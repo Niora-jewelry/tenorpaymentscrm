@@ -189,7 +189,7 @@ as $$
 declare
   v_key text := public.residual_vendor_provider_key(p_provider);
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read vendor rate cards.'
       using errcode = '42501';
@@ -261,7 +261,7 @@ declare
   v_month    date;
   v_vendor   jsonb := '{}'::jsonb;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read merchant rates.'
       using errcode = '42501';

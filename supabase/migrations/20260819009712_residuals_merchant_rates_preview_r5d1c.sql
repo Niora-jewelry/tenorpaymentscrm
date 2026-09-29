@@ -74,7 +74,7 @@ declare
   v_res    jsonb;
   v_locked jsonb;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to preview a merchant rate import.'
       using errcode = '42501';

@@ -77,7 +77,7 @@ declare
   -- See the header: past this many, nobody is reading individual entries.
   c_max_shown constant int := 20;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to import merchant rates.'
       using errcode = '42501';

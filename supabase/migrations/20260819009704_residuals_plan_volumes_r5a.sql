@@ -656,7 +656,7 @@ declare
   v_plan_swept   integer;
 begin
   -- Auth gate FIRST. Definer bypasses RLS, so this is the only guard.
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to commit a residual import.'
       using errcode = '42501';

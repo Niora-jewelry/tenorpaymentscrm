@@ -70,7 +70,7 @@ as $$
 declare
   v_signed boolean;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to read residual merchant states.'
       using errcode = '42501';

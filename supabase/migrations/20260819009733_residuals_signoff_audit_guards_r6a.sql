@@ -297,7 +297,7 @@ declare
   v_state  record;
   v_ret    record;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to sign off a residual period.'
       using errcode = '42501';
@@ -409,7 +409,7 @@ declare
   v_status text;
   v_month  date;
 begin
-  if public.auth.uid() is null
+  if auth.uid() is null
      or not public.auth_is_admin() then
     raise exception 'Not authorized to reopen a residual period.'
       using errcode = '42501';

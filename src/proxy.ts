@@ -36,7 +36,25 @@ import {
 } from '@/lib/security/prototype-gate';
 
 /** Routes reachable without a session. Everything else requires one. */
-const PUBLIC_PATHS = new Set(['/login', '/signup', '/reset-password']);
+/*
+ * `/sms-terms`, `/privacy-policy` and `/sms-consent` are public because a
+ * CARRIER REVIEWER has to open them from outside, with no account. Two of the
+ * three grounds TapDash's A2P registration was rejected on were precisely
+ * that the terms and privacy URLs could not be verified; a login redirect
+ * there is indistinguishable from the page not existing.
+ *
+ * They hold no customer data and make no authenticated read. The consent form
+ * writes, and carries its own Zod validation and per-IP rate limiting for
+ * exactly that reason — see `(legal)/sms-consent/actions.ts`.
+ */
+const PUBLIC_PATHS = new Set([
+  '/login',
+  '/signup',
+  '/reset-password',
+  '/sms-terms',
+  '/privacy-policy',
+  '/sms-consent',
+]);
 
 /**
  * Public API endpoints.

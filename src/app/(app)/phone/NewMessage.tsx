@@ -33,6 +33,7 @@ import { Button, StatusPill } from '@/proto/ui/kit';
 import { formatPhoneDisplay, normalizePhone } from '@/lib/phone/normalize';
 import { MAX_BODY_LENGTH, segmentInfo } from '@/lib/phone/segments';
 import { sendSmsAction } from '../phoneActions';
+import { ConsentBadge } from './ConsentBadge';
 
 /** Reasons `normalizePhone` refuses, said in words a user can act on. */
 const REFUSAL: Record<'empty' | 'too_short' | 'too_long', string> = {
@@ -193,6 +194,16 @@ export function NewMessage({
           showNumberError ? 'border-danger' : 'border-line'
         }`}
       />
+
+      {/* Consent sits directly under the number, before the message is even
+          typed. Placing it beside the Send button would tell the user only
+          after they had written something, which is the moment they are least
+          inclined to stop and do it properly. */}
+      {e164 ? (
+        <div className="mt-2">
+          <ConsentBadge e164={e164} />
+        </div>
+      ) : null}
 
       {/* Not an error — this send is valid, it simply joins a conversation
           that already exists, and saying so beats a surprise. */}

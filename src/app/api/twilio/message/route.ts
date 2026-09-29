@@ -25,6 +25,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { resolveNumberOwnerId } from '@/lib/phone/numbers';
 import { resolveRecordByPhone } from '@/lib/phone/records';
 import { fileAutoContact } from '@/lib/phone/autoContact';
+import { isStartKeyword, isStopKeyword } from '@/lib/sms/consentText';
+import { recordConsent, revokeConsent } from '@/lib/sms/consent';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,6 +49,37 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = supabaseAdmin();
+
+  /*
+   * ── OPT-OUT AND OPT-IN ────────────────────────────────────────────────
+   * Twilio acts on STOP at its own layer, so a merchant who replies STOP
+   * stops receiving messages whether or not this runs. That is NOT a reason
+   * to skip recording it: Twilio's copy of the fact is not in our audit
+   * trail, and without this the CRM would go on showing the person as
+   * consented and offering a Text button while the carrier silently refused
+   * every message.
+   *
+   * Recorded before the message is stored, so the two cannot disagree if the
+   * insert below fails. The message itself is still logged either way — an
+   * opt-out is part of the conversation and deleting it would hide why the
+   * thread stopped.
+   */
+  if (isStopKeyword(body)) {
+    const n = await revokeConsent(from, 'replied STOP');
+    console.info('[sms] opt-out recorded', { from, revoked: n });
+  } else if (isStartKeyword(body)) {
+    /*
+     * START restores consent, and the wording stored is the verbal script
+     * rather than the web form's: what they actually agreed to was a text
+     * message asking them to reply START, not a checkbox they never saw.
+     */
+    await recordConsent({
+      e164: from,
+      source: 'verbal',
+      note: 'Re-subscribed by replying START to a text message.',
+    });
+    console.info('[sms] opt-in restored by START', { from });
+  }
 
   // Idempotency, same shape as the recording route: pre-check, insert, tolerate
   // a 23505 from a concurrent retry.

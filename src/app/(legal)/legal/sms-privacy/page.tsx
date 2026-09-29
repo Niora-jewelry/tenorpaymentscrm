@@ -55,13 +55,10 @@ export default function PrivacyPolicyPage() {
 
       <H3>How we collect your mobile number and consent</H3>
       <P>
-        We collect your mobile number when you provide it — on our{' '}
-        <Link href="/sms-consent" className="text-brand-700 underline underline-offset-2">
-          consent form
-        </Link>
-        , on a call with a representative, or on signed paperwork. Where a form is used, consent is
-        given by ticking a separate, clearly labelled box that is not selected in advance. Consent
-        to receive text messages is never a condition of purchase.
+        We collect your mobile number when you provide it — on an enquiry or application form on
+        our website, on a call with a representative, or on signed paperwork. Where a form is used,
+        consent is given by ticking a separate, clearly labelled box that is not selected in
+        advance. Consent to receive text messages is never a condition of purchase.
       </P>
 
       {/* ── REQUIRED BY CARRIERS — DO NOT REWORD ─────────────────────────── */}
@@ -88,7 +85,7 @@ export default function PrivacyPolicyPage() {
         <strong className="font-semibold text-ink-900">START</strong> to resubscribe, or{' '}
         <strong className="font-semibold text-ink-900">HELP</strong> for assistance. Message
         frequency varies and message and data rates may apply. Full terms are in our{' '}
-        <Link href="/sms-terms" className="text-brand-700 underline underline-offset-2">
+        <Link href="/legal/sms-terms" className="text-brand-700 underline underline-offset-2">
           SMS Terms &amp; Conditions
         </Link>
         .

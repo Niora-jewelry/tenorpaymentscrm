@@ -54,13 +54,10 @@ export default function SmsTermsPage() {
       <H>2. How you join</H>
       <P>
         You join by giving us your mobile number and agreeing to be contacted by text. That happens
-        in one of three ways: by ticking the consent box on our{' '}
-        <Link href="/sms-consent" className="text-brand-700 underline underline-offset-2">
-          text message consent form
-        </Link>
-        , by telling a TapDash Payments representative on a call, or by signing paperwork carrying
-        our SMS clause. Where a form is used, the consent box is separate from the rest of the form
-        and is never ticked in advance.
+        in one of three ways: by ticking the consent box on an enquiry or application form on our
+        website, by telling a TapDash Payments representative on a call, or by signing paperwork
+        carrying our SMS clause. Where a form is used, the consent box is separate from the rest of
+        the form and is never ticked in advance.
       </P>
       <P>
         <strong className="font-semibold text-ink-900">
@@ -127,7 +124,7 @@ export default function SmsTermsPage() {
           promotional purposes.
         </strong>{' '}
         How we handle your mobile number is set out in full in our{' '}
-        <Link href="/privacy-policy" className="text-brand-700 underline underline-offset-2">
+        <Link href="/legal/sms-privacy" className="text-brand-700 underline underline-offset-2">
           Privacy Policy
         </Link>
         .

@@ -37,23 +37,27 @@ import {
 
 /** Routes reachable without a session. Everything else requires one. */
 /*
- * `/sms-terms`, `/privacy-policy` and `/sms-consent` are public because a
- * CARRIER REVIEWER has to open them from outside, with no account. Two of the
- * three grounds TapDash's A2P registration was rejected on were precisely
- * that the terms and privacy URLs could not be verified; a login redirect
- * there is indistinguishable from the page not existing.
+ * The two legal pages are public because a CARRIER REVIEWER opens them from
+ * outside, with no account. Two of the three grounds TapDash's A2P
+ * registration was rejected on were precisely that the terms and privacy URLs
+ * could not be verified, and a login redirect is indistinguishable from the
+ * page not existing.
  *
- * They hold no customer data and make no authenticated read. The consent form
- * writes, and carries its own Zod validation and per-IP rate limiting for
- * exactly that reason — see `(legal)/sms-consent/actions.ts`.
+ * They are under `/legal/` and named for SMS deliberately. TapDash already
+ * publishes a privacy policy at tapdash.co/privacy-policy; a second page at
+ * the same path would be a competing document about the same company, and a
+ * reviewer finding two would not know which governs. These supplement that
+ * policy rather than replacing it.
+ *
+ * Both are static, hold no customer data, and make no authenticated read —
+ * there is nothing here to protect, only something to publish.
  */
 const PUBLIC_PATHS = new Set([
   '/login',
   '/signup',
   '/reset-password',
-  '/sms-terms',
-  '/privacy-policy',
-  '/sms-consent',
+  '/legal/sms-terms',
+  '/legal/sms-privacy',
 ]);
 
 /**

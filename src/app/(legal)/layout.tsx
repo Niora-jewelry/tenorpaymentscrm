@@ -39,14 +39,11 @@ export default function LegalLayout({ children }: { children: ReactNode }) {
 
       <footer className="mx-auto max-w-[760px] px-6 pb-12 pt-4">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-5 text-[12.5px] text-ink-400">
-          <Link href="/sms-terms" className="hover:text-ink-700">
+          <Link href="/legal/sms-terms" className="hover:text-ink-700">
             SMS Terms
           </Link>
-          <Link href="/privacy-policy" className="hover:text-ink-700">
-            Privacy Policy
-          </Link>
-          <Link href="/sms-consent" className="hover:text-ink-700">
-            Text message consent
+          <Link href="/legal/sms-privacy" className="hover:text-ink-700">
+            SMS Privacy Notice
           </Link>
           <span className="ml-auto">TapDash Payments</span>
         </div>

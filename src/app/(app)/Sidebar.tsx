@@ -297,6 +297,16 @@ export function Sidebar({
               active={pathname === '/admin/numbers'}
               collapsed={collapsed}
             />
+            {/* Residuals sits between Phone numbers and Integrations for the
+                same reason Phone numbers sits above them: it is something an
+                admin operates monthly, not a status page. */}
+            <NavItem
+              href="/admin/residuals"
+              icon="percent"
+              label="Residuals"
+              active={pathname.startsWith('/admin/residuals')}
+              collapsed={collapsed}
+            />
             <NavItem
               href="/admin/integrations"
               icon="link"

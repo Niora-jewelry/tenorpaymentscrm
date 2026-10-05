@@ -4,20 +4,25 @@
  * The residuals screens, behind one tab strip.
  *
  * Same shape as Presets: a strip of sections, each with a count and a line
- * saying what it is for. An admin opening this has one of four questions —
- * what have we imported, what will it calculate with, what does the processor
- * charge us, and which merchants are not matched up — and the strip is those
- * four in that order.
+ * saying what it is for. An admin opening this has one of five questions —
+ * how do I load a statement, what have we loaded, what will it calculate
+ * with, what does the processor charge us, and which merchants are not
+ * matched up — and the strip is those five in that order.
+ *
+ * Import leads, and not because it is the newest. Until a fee report exists
+ * every other tab is describing what the module WOULD do, and a screen whose
+ * first tab shows four zeroes reads as broken rather than as empty. The first
+ * thing offered is therefore the thing that makes the rest mean something.
  */
 import { useState } from 'react';
 import { Icon, type IconName } from '@/proto/ui/icons';
-import { OutlineChip, StatusPill } from '@/proto/ui/kit';
 import type {
   ResidualPeriod,
   ReferenceSummary,
   BuyRateRow,
   LinkWorklistRow,
 } from '@/lib/records/adminResiduals';
+import { ImportSection } from './ImportSection';
 import { PeriodsSection } from './PeriodsSection';
 import { ReferenceSection } from './ReferenceSection';
 import { BuyRatesSection } from './BuyRatesSection';
@@ -27,7 +32,9 @@ type Section = {
   key: string;
   label: string;
   icon: IconName;
-  count: number;
+  /** Omitted where a number would mean nothing — Import is an action, not a
+   *  collection, and a pill reading "1" beside it is noise. */
+  count?: number;
   description: string;
   content: React.ReactNode;
 };
@@ -47,13 +54,21 @@ export function ResidualsTabs({
 }) {
   const sections: Section[] = [
     {
+      key: 'import',
+      label: 'Import',
+      icon: 'upload',
+      description:
+        'Load a processor’s fee report. The columns are confirmed before anything is written, and the engine runs over the month as soon as the lines land.',
+      content: <ImportSection processors={processors} />,
+    },
+    {
       key: 'periods',
       label: 'Periods',
       icon: 'calendar',
       count: periods.length,
       description:
         'One per statement month. A period holds the processor’s fee lines; computing it works out what TapDash earned and compares that against what the processor says.',
-      content: <PeriodsSection periods={periods} />,
+      content: <PeriodsSection periods={periods} processors={processors} />,
     },
     {
       key: 'reference',
@@ -105,13 +120,15 @@ export function ResidualsTabs({
             >
               <Icon name={s.icon} size={13} />
               {s.label}
-              <span
-                className={`rounded-full px-1.5 py-0.5 text-[11px] tabular ${
-                  on ? 'bg-brand-50 text-brand-700' : 'bg-canvas text-ink-400'
-                }`}
-              >
-                {s.count}
-              </span>
+              {s.count === undefined ? null : (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[11px] tabular ${
+                    on ? 'bg-brand-50 text-brand-700' : 'bg-canvas text-ink-400'
+                  }`}
+                >
+                  {s.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -160,9 +177,11 @@ export function Empty({ title, body }: { title: string; body: string }) {
   );
 }
 
-/** A period's state, in the vocabulary the module uses. */
-export function PeriodStatus({ status }: { status: string }) {
-  if (status === 'reconciled') return <StatusPill label="Reconciled" swatch="teal" dot={false} />;
-  if (status === 'ready') return <StatusPill label="Ready" swatch="blue" dot={false} />;
-  return <OutlineChip>{status}</OutlineChip>;
-}
+/*
+ * `PeriodStatus` used to live here. It read the STORED status column, which
+ * since R6a is only ever 'open' or 'reconciled' — so it rendered 'ready' for a
+ * value the CHECK constraint forbids, and rendered a month with four blocked
+ * merchants identically to a clean one. The live version derives the state at
+ * merchant grain and lives in `PeriodsSection`, which is the only place that
+ * needs it.
+ */

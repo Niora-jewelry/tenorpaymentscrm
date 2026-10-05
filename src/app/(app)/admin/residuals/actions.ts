@@ -7,11 +7,23 @@
  * their own `auth_is_admin()` check as well — belt and braces on purpose,
  * because those functions are reachable by any signed-in user through
  * PostgREST and must not depend on this layer having been honest.
+ *
+ * ── THE REQUEST-SCOPED CLIENT, NOT THE SERVICE ROLE ──────────────────────
+ * That second check is what decides which client to use. `auth_is_admin()`
+ * resolves `auth.uid()`, which is NULL for the service-role key, so every one
+ * of these functions answers the service role with 42501. These actions ran
+ * through `supabaseAdmin()` and therefore always failed; the message surfaced
+ * in the UI, so it was not silent here, but it was never going to work.
+ *
+ * The signed-in admin has to BE the caller, which is what
+ * `createSupabaseServerClient()` gives. The `ctx.isAdmin` check above it is
+ * not redundant: it decides the answer in this layer, and the RPC decides it
+ * again at the boundary a PostgREST caller would reach directly.
  */
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export type ResidualActionState = { ok: boolean; message?: string };
 
@@ -31,7 +43,8 @@ export async function linkMidAction(
   const parsed = linkSchema.safeParse({ mid, recordId });
   if (!parsed.success) return { ok: false, message: 'That is not a valid link.' };
 
-  const { data, error } = await supabaseAdmin().rpc('residual_link_mid_to_record', {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('residual_link_mid_to_record', {
     p_mid: parsed.data.mid,
     p_record_id: parsed.data.recordId,
     p_period_id: null,
@@ -60,7 +73,8 @@ export async function sweepLinksAction(): Promise<ResidualActionState> {
   const ctx = await authorize();
   if (!ctx.isAdmin) return { ok: false, message: 'Admin only.' };
 
-  const { data, error } = await supabaseAdmin().rpc('residual_sweep_mid_links');
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('residual_sweep_mid_links');
   if (error) {
     console.error('[residuals] sweep failed', error);
     return { ok: false, message: error.message };

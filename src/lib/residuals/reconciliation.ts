@@ -242,11 +242,29 @@ export type HistoryEntry = {
   detail: Record<string, unknown>;
 };
 
-/** What each history entry is, in the operator's words. */
+/**
+ * What each history entry is, in the operator's words.
+ *
+ * -- THE KEYS ARE residual_period_history's, NOT GUESSES ------------------
+ * It emits exactly four: `calc_run`, `status_transition`, `acknowledgment`
+ * and `manual_edit`. This map previously carried `status`, `ack`,
+ * `ack_withdrawn` and `audit` — names taken from the tables each branch reads
+ * rather than from the branch labels — so three of the four kinds rendered as
+ * their raw code in the "What happened to this month" panel, and a fourth key
+ * matched nothing at all.
+ *
+ * `manual_edit` could not have been seen either way: `tg_residual_audit` was
+ * attached to no table, so that branch returned nothing until migration
+ * 20260819009743. Both halves are asserted in `audit.integration.test.ts`.
+ *
+ * A withdrawn acknowledgment is NOT a fifth kind. The function emits
+ * `acknowledgment` for both, and distinguishes them in the detail payload
+ * (`retired_reason`, `note`) — so the renderer prints the detail rather than
+ * splitting the label.
+ */
 export const HISTORY_KIND_LABEL: Record<string, string> = {
   calc_run: 'Calculated',
-  status: 'Status changed',
-  ack: 'Mismatch acknowledged',
-  ack_withdrawn: 'Acknowledgment withdrawn',
-  audit: 'Recorded',
+  status_transition: 'Status changed',
+  acknowledgment: 'Mismatch acknowledged',
+  manual_edit: 'Edited by hand',
 };

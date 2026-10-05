@@ -25,6 +25,7 @@ import type {
 } from '@/lib/records/adminResiduals';
 import { ImportHistory } from './ImportHistory';
 import { ImportSection } from './ImportSection';
+import { RateImportSection } from './RateImportSection';
 import { PeriodsSection } from './PeriodsSection';
 import { ReferenceSection } from './ReferenceSection';
 import { BuyRatesSection } from './BuyRatesSection';
@@ -69,6 +70,15 @@ export function ResidualsTabs({
           <ImportHistory imports={imports} />
         </div>
       ),
+    },
+    {
+      key: 'rates',
+      label: 'Merchant rates',
+      icon: 'percent',
+      count: reference.ratedMids,
+      description:
+        'What each merchant pays TapDash. Import the rates sheet for all of them at once, or enter one by hand from the reconciliation screen. The engine cannot price a merchant without these.',
+      content: <RateImportSection />,
     },
     {
       key: 'periods',

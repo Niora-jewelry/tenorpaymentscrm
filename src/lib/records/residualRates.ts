@@ -35,6 +35,7 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { RATE_KEYS, type RateEditorData, type StandingRate } from '@/lib/residuals/rates';
+import type { RateImportResult } from '@/lib/residuals/rateImport';
 
 export type { RateEditorData, StandingRate } from '@/lib/residuals/rates';
 
@@ -271,4 +272,102 @@ export async function rateCoverage(
     riskTier: (r.risk_tier as string | null) ?? null,
     lineRows: Number(r.line_rows ?? 0),
   }));
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Bulk import
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function readImportResult(data: unknown): RateImportResult {
+  const d = (data ?? {}) as Record<string, unknown>;
+  return {
+    effectiveFrom: String(d.effective_from ?? '').slice(0, 10),
+    rowsRead: Number(d.rows_read ?? 0),
+    inserted: Number(d.inserted ?? 0),
+    unchanged: Number(d.unchanged ?? 0),
+    closed: Number(d.closed ?? 0),
+    lockedVersions: ((d.locked_versions ?? []) as Record<string, unknown>[]).map((v) => ({
+      mid: String(v.mid),
+      effectiveFrom: String(v.effective_from ?? '').slice(0, 10),
+      effectiveTo: v.effective_to === null || v.effective_to === undefined
+        ? null
+        : String(v.effective_to).slice(0, 10),
+    })),
+    dryRun: d.dry_run === true,
+  };
+}
+
+export type RateImportOutcome =
+  | { ok: true; result: RateImportResult }
+  /** The RPC's bounded rejection. Nothing was written. */
+  | { ok: false; message: string };
+
+/**
+ * An EXACT dry run of the import.
+ *
+ * ── WHY THIS IS NOT A SECOND IMPLEMENTATION ──────────────────────────────
+ * `residual_preview_merchant_rates_import` calls the real
+ * `commit_residual_merchant_rates_import` inside a subtransaction and then
+ * raises `ZZ001` to discard its writes, keeping the result because "plpgsql
+ * variables are not rolled back with the subtransaction".
+ *
+ * So the preview cannot disagree with the commit — it IS the commit. Every
+ * validation, the percent-scale guard, the duplicate-MID check and the
+ * risk-code resolution all fire exactly as they will, and anything that is not
+ * the rollback sentinel "is a genuine validation failure and belongs to the
+ * caller, with its own errcode, message and hint preserved".
+ *
+ * It also reports `locked_versions`, computed on COMMITTED state before the
+ * dry run, so it says what the operator would be doing rather than what the
+ * discarded transaction did.
+ */
+export async function previewRateImport(
+  ctx: AuthContext,
+  effectiveFrom: string,
+  rows: Record<string, string | null>[],
+): Promise<RateImportOutcome> {
+  assertAdmin(ctx);
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('residual_preview_merchant_rates_import', {
+    p_effective_from: effectiveFrom,
+    p_rows: rows,
+  });
+
+  if (error) {
+    console.error('[residuals] rate import preview failed', error);
+    return { ok: false, message: error.message };
+  }
+  return { ok: true, result: readImportResult(data) };
+}
+
+/**
+ * Commits the import.
+ *
+ * `p_import_id` is NULL: `residual_imports` describes a STATEMENT import — it
+ * carries a period and a source_type of 'excel' or 'pdf' — and a sheet of
+ * merchant rates is neither. The RPC takes the argument because a future
+ * provenance record might want one, and passing a fabricated row to satisfy a
+ * nullable parameter would put a fictional statement import in the history
+ * this screen now lists.
+ */
+export async function commitRateImport(
+  ctx: AuthContext,
+  effectiveFrom: string,
+  rows: Record<string, string | null>[],
+): Promise<RateImportOutcome> {
+  assertAdmin(ctx);
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('commit_residual_merchant_rates_import', {
+    p_import_id: null,
+    p_effective_from: effectiveFrom,
+    p_rows: rows,
+  });
+
+  if (error) {
+    console.error('[residuals] rate import commit failed', error);
+    return { ok: false, message: error.message };
+  }
+  return { ok: true, result: readImportResult(data) };
 }

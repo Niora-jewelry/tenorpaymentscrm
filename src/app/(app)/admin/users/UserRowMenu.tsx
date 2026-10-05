@@ -20,8 +20,9 @@
  * it has room to explain itself, instead of being a 90px select wedged beside
  * a badge.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
+import { MenuSurface } from '@/proto/ui/MenuSurface';
 import type { AdminUserRow } from '@/lib/records/adminUsers';
 import type { TemplateOption } from '@/lib/records/adminTemplates';
 
@@ -56,7 +57,13 @@ export function UserRowMenu({
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  /*
+   * The TRIGGER, not the wrapper. `MenuSurface` measures the button to place
+   * itself, and the panel now lives in a portal on <body> rather than inside
+   * this row — see that component for why an absolute panel could not work
+   * here at all.
+   */
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   /*
    * A staged template or a server refusal must not be hidden behind a closed
@@ -67,28 +74,16 @@ export function UserRowMenu({
   const shown = open || stagedId !== undefined || Boolean(notice);
 
 
-  // Click-away and Escape. Without both, a menu left open under another row's
-  // menu is a stack of overlapping panels.
-  useEffect(() => {
-    if (!shown) return;
-    const onDown = (e: MouseEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [shown]);
+  /* Click-away, Escape, scroll and resize all live in `MenuSurface` now, so a
+     menu in a portal still behaves like one anchored to its row. */
 
   const item =
     'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-700 transition-colors hover:bg-canvas disabled:opacity-50';
 
   return (
-    <div ref={wrapRef} className="relative inline-block text-left">
+    <div className="relative inline-block text-left">
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={shown}
@@ -100,11 +95,15 @@ export function UserRowMenu({
         {busy ? <Icon name="clock" size={14} /> : <Icon name="sliders" size={15} />}
       </button>
 
-      {shown ? (
-        <div
-          role="menu"
-          className="absolute right-0 z-30 mt-1 w-[280px] rounded-xl border border-line bg-white p-1.5 shadow-[0_16px_40px_-12px_rgba(8,32,47,.32)]"
-        >
+      <MenuSurface
+        open={shown}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        align="right"
+        width={280}
+        label={`Actions for ${user.email}`}
+      >
+        <>
           {!user.isAdmin && user.status === 'active' ? (
             <button type="button" role="menuitem" className={item} disabled={busy} onClick={onImpersonate}>
               <Icon name="eye" size={14} className="text-ink-400" />
@@ -193,8 +192,8 @@ export function UserRowMenu({
             <Icon name="trash" size={14} />
             Remove from the CRM
           </button>
-        </div>
-      ) : null}
+        </>
+      </MenuSurface>
     </div>
   );
 }

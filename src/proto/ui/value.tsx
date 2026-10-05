@@ -411,6 +411,42 @@ export function FieldRenderer({
   const [saved, setSaved] = useState(false);
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(null);
 
+  /*
+   * ── TAB SHOULD LAND YOU IN A FIELD READY TO TYPE ──────────────────────
+   * The closed cell is a <button>, so Tab has always been able to reach it —
+   * but it only opened on CLICK. Tabbing to a field and typing did nothing,
+   * and the field had to be clicked after being tabbed to, which defeats
+   * tabbing through a form at all. On a tab of thirty mostly-empty fields
+   * that is the difference between typing and clicking thirty times.
+   *
+   * So focus opens it, which is what the existing `editing` effect was
+   * already built for: it focuses the input and selects its contents.
+   */
+  const displayRef = useRef<HTMLButtonElement>(null);
+  /*
+   * Closing the editor returns focus to this button, which would re-open it
+   * instantly and trap the keyboard in one cell. The flag is set by whichever
+   * close ran and consumed by the focus it causes, so a LATER deliberate
+   * focus still opens the field.
+   */
+  const skipNextFocus = useRef(false);
+
+  const closeAndRestoreFocus = () => {
+    skipNextFocus.current = true;
+    /* After the editor unmounts, not before — otherwise the input steals it
+       straight back. */
+    requestAnimationFrame(() => displayRef.current?.focus());
+  };
+
+  const openOnFocus = () => {
+    if (readOnly) return;
+    if (skipNextFocus.current) {
+      skipNextFocus.current = false;
+      return;
+    }
+    setEditing(true);
+  };
+
   useEffect(() => {
     if (!editing) return;
     const el = ref.current;
@@ -424,12 +460,14 @@ export function FieldRenderer({
   const commit = (v: FieldValue) => {
     onChange(v);
     setEditing(false);
+    closeAndRestoreFocus();
     setSaved(true);
     setTimeout(() => setSaved(false), 720);
   };
 
   const cancel = () => {
     setEditing(false);
+    closeAndRestoreFocus();
     onCancel?.();
   };
 
@@ -504,9 +542,11 @@ export function FieldRenderer({
   if (readOnly || (!editing && !livePickerEmpty)) {
     return (
       <button
+        ref={displayRef}
         type="button"
         disabled={readOnly}
         onClick={() => setEditing(true)}
+        onFocus={openOnFocus}
         className={`group w-full rounded-md px-1 py-1 text-left text-[13.5px] leading-snug transition-colors duration-150 ${
           readOnly
             ? // Muted, no hover, no cursor change. Never a lock icon — absence is quieter.
@@ -1326,6 +1366,16 @@ function CurrencyGridCell({
         type="button"
         disabled={readOnly}
         onClick={() => setEditing(true)}
+        /*
+         * Focus swaps to the raw number, as the header above says it does —
+         * it just never did, because only a click opened it. Tabbing into a
+         * money column left a formatted value that could not be typed into.
+         *
+         * No re-open guard is needed here, unlike the drawer cell: closing
+         * happens on the INPUT's commit, so focus is on the input when it
+         * unmounts and never returns to this button.
+         */
+        onFocus={() => setEditing(true)}
         className={`${base} tabular text-right ${readOnly ? '' : 'cursor-text'}`}
       >
         {n == null || !Number.isFinite(n) ? '' : formatCurrency(n)}

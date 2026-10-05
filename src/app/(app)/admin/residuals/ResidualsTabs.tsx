@@ -123,18 +123,51 @@ export function ResidualsTabs({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-1 border-b border-line">
+      {/*
+        ── A REAL TAB LIST, NOT A ROW OF BUTTONS ─────────────────────────
+        `role="tablist"` with arrow-key movement, because six sections
+        navigated only by clicking is the kind of thing that passes review and
+        fails the first person using a keyboard. Left/Right move, Home/End
+        jump, and only the active tab is in the page's tab order — which is
+        what makes Tab leave the strip and land in the panel rather than
+        walking through six buttons first.
+      */}
+      <div
+        role="tablist"
+        aria-label="Residuals sections"
+        className="flex flex-wrap items-center gap-0.5 border-b border-line"
+        onKeyDown={(e) => {
+          const i = sections.findIndex((s) => s.key === active);
+          const to =
+            e.key === 'ArrowRight' ? (i + 1) % sections.length
+            : e.key === 'ArrowLeft' ? (i - 1 + sections.length) % sections.length
+            : e.key === 'Home' ? 0
+            : e.key === 'End' ? sections.length - 1
+            : -1;
+          if (to < 0) return;
+          e.preventDefault();
+          setActive(sections[to].key);
+          /* Move focus with the selection, or the ring is left behind on a
+             tab that is no longer the one being shown. */
+          document.getElementById(`residuals-tab-${sections[to].key}`)?.focus();
+        }}
+      >
         {sections.map((s) => {
           const on = s.key === active;
           return (
             <button
               key={s.key}
+              id={`residuals-tab-${s.key}`}
               type="button"
+              role="tab"
+              aria-selected={on}
+              aria-controls="residuals-panel"
+              tabIndex={on ? 0 : -1}
               onClick={() => setActive(s.key)}
-              className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium transition-colors ${
+              className={`-mb-px flex items-center gap-1.5 rounded-t-lg border-b-2 px-3 py-2.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40 ${
                 on
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-ink-500 hover:text-ink-900'
+                  ? 'border-brand-600 bg-brand-50/50 text-brand-700'
+                  : 'border-transparent text-ink-500 hover:bg-canvas hover:text-ink-900'
               }`}
             >
               <Icon name={s.icon} size={13} />
@@ -142,7 +175,7 @@ export function ResidualsTabs({
               {s.count === undefined ? null : (
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[11px] tabular ${
-                    on ? 'bg-brand-50 text-brand-700' : 'bg-canvas text-ink-400'
+                    on ? 'bg-brand-600/12 text-brand-700' : 'bg-canvas text-ink-400'
                   }`}
                 >
                   {s.count}
@@ -153,11 +186,23 @@ export function ResidualsTabs({
         })}
       </div>
 
-      <p className="mt-3 max-w-[78ch] text-[12.5px] leading-relaxed text-ink-500">
-        {current.description}
-      </p>
-
-      <div className="mt-4">{current.content}</div>
+      {/*
+        The description belongs to the panel, so it sits inside it rather than
+        floating between the strip and the content — where it read as page
+        furniture and got skipped.
+      */}
+      <div
+        id="residuals-panel"
+        role="tabpanel"
+        aria-labelledby={`residuals-tab-${current.key}`}
+        className="mt-4"
+      >
+        <p className="mb-3 flex max-w-[82ch] items-start gap-2 text-[12.5px] leading-relaxed text-ink-500">
+          <Icon name="info" size={13} className="mt-[3px] shrink-0 text-ink-300" />
+          <span>{current.description}</span>
+        </p>
+        {current.content}
+      </div>
     </div>
   );
 }

@@ -297,13 +297,21 @@ export function Sidebar({
               active={pathname === '/admin/numbers'}
               collapsed={collapsed}
             />
-            {/* Residuals sits between Phone numbers and Integrations for the
-                same reason Phone numbers sits above them: it is something an
-                admin operates monthly, not a status page. */}
+            {/*
+              Residuals sits between Phone numbers and Integrations for the
+              same reason Phone numbers sits above them: it is something an
+              admin operates monthly, not a status page.
+
+              "Residuals admin", not "Residuals". The sixth MODULE is also
+              called Residuals and is also in this sidebar, a few items up —
+              two identical labels pointing at different screens, one listing
+              merchant records and one running the calculation. The module owns
+              the plain name because that is the one most people mean.
+            */}
             <NavItem
               href="/admin/residuals"
               icon="percent"
-              label="Residuals"
+              label="Residuals admin"
               active={pathname.startsWith('/admin/residuals')}
               collapsed={collapsed}
             />

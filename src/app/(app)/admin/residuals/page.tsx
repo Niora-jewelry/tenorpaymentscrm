@@ -33,6 +33,8 @@ import {
   processors,
 } from '@/lib/records/adminResiduals';
 import { recentImports } from '@/lib/records/residualImport';
+import { synopsis } from '@/lib/records/residualGrid';
+import { ResidualsHeader } from './ResidualsHeader';
 import { ResidualsTabs } from './ResidualsTabs';
 
 export default async function AdminResidualsPage() {
@@ -50,14 +52,45 @@ export default async function AdminResidualsPage() {
     recentImports(ctx, 20),
   ]);
 
+  /*
+   * The newest period's company-wide figure, for the status header.
+   *
+   * One extra call, and only when there is a period to ask about — the header
+   * exists to answer "where does this stand" without a click, and a month
+   * with no figure is exactly as worth saying as one with a figure.
+   *
+   * `listPeriods` orders newest first, so [0] is the month being worked on.
+   */
+  const latest = periods[0] ?? null;
+  /*
+   * Allowed to fail. The header is a convenience — it says where things stand
+   * before you pick a tab — and a convenience must not be able to take the
+   * whole screen down with it. `synopsis` throws on any read error, and a
+   * period in an odd state (naming no processor, or more than one) is exactly
+   * the case where an admin most needs the rest of this page.
+   *
+   * The same posture `periodHeader` already takes with `residual_period_context`.
+   */
+  const company = await (async () => {
+    if (!latest) return null;
+    try {
+      const totals = await synopsis(ctx, latest.id);
+      return totals.find((t) => t.mid === null) ?? null;
+    } catch (e) {
+      console.error('[residuals] header synopsis failed', e);
+      return null;
+    }
+  })();
+
   return (
     <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-semibold text-ink-900">Residuals</h1>
-        <p className="text-[13px] text-ink-500">
-          What the processor paid, against what TapDash should have earned.
-        </p>
-      </div>
+      <ResidualsHeader
+        periods={periods}
+        netIncome={company?.netIncome ?? null}
+        disclosable={company?.disclosable ?? false}
+        ratedMids={reference.ratedMids}
+        unattached={worklist.length}
+      />
 
       <ResidualsTabs
         periods={periods}

@@ -21,6 +21,7 @@ import { FilesPanel } from './FilesPanel';
 import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
+import { ResidualsPanel } from './ResidualsPanel';
 import type { CustomEntry } from '@/lib/records/customEntries';
 import type { CaseThread, CaseReply } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
@@ -32,6 +33,7 @@ import type { Message } from '@/lib/records/messages';
 import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import type { Note } from '@/lib/records/notes';
+import type { RecordResiduals } from '@/lib/records/recordResiduals';
 
 type Grant = 'hidden' | 'view' | 'edit';
 
@@ -89,6 +91,7 @@ export function DrawerTabs({
   logins,
   statementPeriods,
   statementFiles,
+  residuals,
   messages,
   phoneCalls,
   smsMessages,
@@ -123,6 +126,12 @@ export function DrawerTabs({
   logins: LoginRow[];
   statementPeriods: StatementPeriod[];
   statementFiles: StatementFile[];
+  /**
+   * Null when the Residuals tab is hidden for this viewer, so nothing was
+   * fetched. Distinct from `{ kind: 'admin_only' }`, which means the tab IS
+   * shown and the figures behind it are not.
+   */
+  residuals: RecordResiduals | null;
   messages: Message[];
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
@@ -405,6 +414,21 @@ export function DrawerTabs({
             files={statementFiles}
             editable={activeTab.editable}
           />
+        ) : activeTab.kind === 'residuals' ? (
+          /*
+            The sixth module's own tab. The renderer switches on the tab KIND,
+            never on the module — which module carries this tab is a row in
+            `module_tab_order`, so putting it on Deals as well would be
+            configuration rather than a change here.
+          */
+          residuals === null ? (
+            <p className="flex items-center gap-2 text-[13px] text-ink-400">
+              <Icon name="lock" size={13} />
+              Residual figures are not available to you.
+            </p>
+          ) : (
+            <ResidualsPanel data={residuals} />
+          )
         ) : activeTab.kind === 'communication' ? (
           <CommunicationPanel
             subtabId={activeSubtab?.key ?? 'email'}

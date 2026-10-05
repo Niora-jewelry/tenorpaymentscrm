@@ -30,6 +30,7 @@ import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
 import { loginsFor } from '@/lib/records/logins';
 import { allPeriods, filesForRecord } from '@/lib/records/statements';
+import { residualsForRecord } from '@/lib/records/recordResiduals';
 import { messagesFor } from '@/lib/records/messages';
 import { callsForRecord } from '@/lib/phone/calls';
 import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
@@ -486,7 +487,7 @@ async function RecordDrawer({
   const [
     memberships, entries, cases, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
-    messages, notesByScope, teamRoster, phoneCalls, smsMessages,
+    messages, notesByScope, teamRoster, phoneCalls, smsMessages, residuals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('freeform') ? entriesFor(ctx, record.id) : [],
@@ -544,6 +545,14 @@ async function RecordDrawer({
      */
     shows('communication') ? callsForRecord(ctx, record.id) : [],
     shows('communication') ? smsForRecord(ctx, record.id) : [],
+    /*
+     * Null — not an empty object — when the tab is hidden, so the drawer can
+     * tell "not fetched" from `{ kind: 'admin_only' }`, which means the tab IS
+     * shown and the figures behind it are not. Collapsing those two would make
+     * a hidden tab and a refused one render identically, which is the
+     * distinction this whole panel is built around.
+     */
+    shows('residuals') ? residualsForRecord(ctx, record.id) : Promise.resolve(null),
   ]);
 
   const fileRows: FileRow[] = [...applicationRows, ...otherRows];
@@ -958,6 +967,7 @@ async function RecordDrawer({
         logins={logins}
         statementPeriods={statementPeriods}
         statementFiles={statementFiles}
+        residuals={residuals}
         messages={messages}
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}

@@ -116,6 +116,22 @@ export type ModuleSlug =
 export type TabKind =
   /** Locked system tabs. Non-deletable, non-renamable, orderable. */
   | 'communication' | 'updates' | 'cases' | 'files' | 'logins' | 'statements'
+  /**
+   * The merchant's residual figures, keyed on the MID the record carries.
+   *
+   * A system tab like the six above, and for the same reason: it renders
+   * computed output, so there is nothing for the field editor to place on it
+   * (`accepts_fields = false`). WHICH modules carry it is a row in
+   * `module_tab_order` — it is seeded onto the residuals module because that
+   * is where the client put residuals, and no code knows that.
+   *
+   * This union has to match the `tab_kind` enum in the database. It did not
+   * when the enum gained this value, and nothing complained: a DB tab's kind
+   * arrives as a plain `string`, so the compiler had nothing to check it
+   * against. The prototype reads its own seeded data and was unaffected either
+   * way, which is exactly why the gap would have sat there.
+   */
+  | 'residuals'
   /** Admin-created, holds field groups. */
   | 'custom'
   /**

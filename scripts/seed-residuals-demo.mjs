@@ -39,6 +39,27 @@ const MONTH = '2026-08-01';
 /** Stamped on the period so the remover can find its own work. */
 const TAG = 'DEMO DATA — seeded by scripts/seed-residuals-demo.mjs';
 
+/**
+ * The record ids whose Residuals membership this script created, encoded into
+ * the period's `notes` after the tag.
+ *
+ * Kept with the period rather than in a side table because it is a fact about
+ * this demo and must die with it — and because a `--remove` run has nothing
+ * else to go on. A record already in the module before seeding is deliberately
+ * NOT listed, so removal leaves it alone.
+ */
+function readAddedRecordIds(notes) {
+  if (typeof notes !== 'string') return [];
+  const nl = notes.indexOf(String.fromCharCode(10));
+  if (nl === -1) return [];
+  try {
+    const parsed = JSON.parse(notes.slice(nl + 1));
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 const db = new pg.Client({
   connectionString: DB_URL,
   ssl: { rejectUnauthorized: false },
@@ -68,7 +89,8 @@ async function main() {
   /* ── removal ──────────────────────────────────────────────────────── */
   if (remove) {
     const { rows: periods } = await db.query(
-      `select id from residual_periods where statement_month = $1 and notes = $2`,
+      `select id, notes from residual_periods
+        where statement_month = $1 and notes like $2 || '%'`,
       [MONTH, TAG],
     );
     if (periods.length === 0) {
@@ -109,7 +131,31 @@ async function main() {
         [midList, MONTH, TAG],
       );
     }
-    console.log(`Removed the demo period and ${midList.length} demo rate rows.`);
+
+    /*
+     * Module memberships, but only the ones this script created.
+     *
+     * `added_by` is NOT a usable marker — four pre-existing rows already carry
+     * NULL — so the ids are written into the period's notes at seed time and
+     * read back here. Removing a membership a human added deliberately would
+     * be the script quietly undoing someone's work.
+     */
+    const added = readAddedRecordIds(periods[0]?.notes);
+    let removedMemberships = 0;
+    if (added.length) {
+      const { rowCount } = await db.query(
+        `delete from record_modules
+          where record_id = any($1)
+            and module_id = (select id from modules where slug = 'residuals')`,
+        [added],
+      );
+      removedMemberships = rowCount ?? 0;
+    }
+
+    console.log(
+      `Removed the demo period, ${midList.length} demo rate rows and ` +
+        `${removedMemberships} Residuals membership(s).`,
+    );
     return;
   }
 
@@ -128,7 +174,8 @@ async function main() {
 
   /* ── four real merchants ──────────────────────────────────────────── */
   const { rows: merchants } = await db.query(
-    `select deal_name,
+    `select id,
+            deal_name,
             regexp_replace(coalesce(values->>'mid',''),'[^0-9]','','g') as mid,
             values->>'pricing_risk_level'      as risk,
             nullif(btrim(values->>'td_monthly_fee_tapdash'), '') as monthly_fee_tapdash,
@@ -157,6 +204,15 @@ async function main() {
     `select id from residual_periods where statement_month = $1`,
     [MONTH],
   );
+  /* Memberships from a previous run of this script, so a re-run does not leave
+     a growing set behind. Read before the period is deleted. */
+  const priorAdded = (
+    await db.query(
+      `select notes from residual_periods
+        where statement_month = $1 and notes like $2 || '%'`,
+      [MONTH, TAG],
+    )
+  ).rows.flatMap((r) => readAddedRecordIds(r.notes));
   if (existing.length) {
     const ids = existing.map((p) => p.id);
     for (const t of [
@@ -175,6 +231,47 @@ async function main() {
       [MONTH, TAG],
     )
   ).rows;
+
+  /*
+   * ── THE MODULE MEMBERSHIP, WHICH IS WHAT MAKES THEM VISIBLE ───────────
+   * Seeding residual FIGURES for a merchant does not put that merchant in the
+   * Residuals module. The module is a view over the one record store, and
+   * which records it shows is `record_modules` — so without this the four
+   * merchants have figures nobody can reach from the module, and the Residuals
+   * list shows whatever was already in it.
+   *
+   * Only records not already members are added, and only those are recorded
+   * for removal.
+   */
+  const residualsModuleId = (
+    await db.query(`select id from modules where slug = 'residuals'`)
+  ).rows[0]?.id;
+  if (!residualsModuleId) throw new Error('No residuals module.');
+
+  /* Anything a previous run added and this run will not re-add. */
+  if (priorAdded.length) {
+    await db.query(
+      `delete from record_modules where record_id = any($1) and module_id = $2`,
+      [priorAdded, residualsModuleId],
+    );
+  }
+
+  const addedRecordIds = [];
+  for (const m of merchants) {
+    const { rowCount } = await db.query(
+      `insert into record_modules (record_id, module_id)
+       values ($1,$2)
+       on conflict (record_id, module_id) do nothing`,
+      [m.id, residualsModuleId],
+    );
+    if (rowCount) addedRecordIds.push(m.id);
+  }
+
+  /* Written now that the set is known. The remover reads it back. */
+  await db.query(`update residual_periods set notes = $2 where id = $1`, [
+    periodId,
+    TAG + String.fromCharCode(10) + JSON.stringify(addedRecordIds),
+  ]);
 
   const [{ id: importId }] = (
     await db.query(
@@ -271,6 +368,10 @@ async function main() {
 
   const s = summary[0].s;
   console.log(`\nSeeded ${lineCount} lines across ${merchants.length} merchants for ${MONTH}.`);
+  console.log(
+    `Added ${addedRecordIds.length} of them to the Residuals module` +
+      `${addedRecordIds.length === merchants.length ? '' : ' (the rest were already in it)'}.`,
+  );
   console.log(`Computed: ${s.lines_computed} lines, ${s.merchants_computed} merchants, ` +
               `${s.merchants_failed} skipped, stamped=${s.stamped}`);
   if (!s.stamped) {

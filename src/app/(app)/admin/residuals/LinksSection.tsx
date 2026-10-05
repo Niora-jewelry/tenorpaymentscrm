@@ -29,11 +29,26 @@ import type { LinkWorklistRow } from '@/lib/records/adminResiduals';
 import { Empty, Panel, PanelHead } from './ResidualsTabs';
 import { linkMidAction, sweepLinksAction } from './actions';
 
+/**
+ * What the resolver decided, in words rather than its own vocabulary.
+ *
+ * ── "exact" IS NOT "unmatched" ───────────────────────────────────────────
+ * The worklist returns every MID that is not yet ATTACHED to a record, which
+ * includes the ones that resolve perfectly and simply have not been linked.
+ * Rendering the raw `match_kind` put the word "exact" under a heading reading
+ * "Unmatched MIDs", which is a contradiction an operator has to stop and
+ * resolve — and the wrong resolution is to go looking for a missing record
+ * that is right there.
+ *
+ * So an exact match reads as ready to attach, which is what it is, and only a
+ * genuine miss reads as a miss.
+ */
 function Verdict({ kind, count }: { kind: string; count: number }) {
   if (kind === 'ambiguous') {
     return <StatusPill label={`${count} possible matches`} swatch="amber" dot={false} />;
   }
-  if (kind === 'unmatched') return <OutlineChip>No match</OutlineChip>;
+  if (kind === 'unmatched') return <OutlineChip>No matching record</OutlineChip>;
+  if (kind === 'exact') return <StatusPill label="Matches one record" swatch="blue" dot={false} />;
   return <OutlineChip tone="brand">{kind}</OutlineChip>;
 }
 
@@ -64,8 +79,8 @@ export function LinksSection({ worklist }: { worklist: LinkWorklistRow[] }) {
     return (
       <Panel>
         <Empty
-          title="Nothing unmatched"
-          body="Every statement MID resolves to a merchant record — or there are no statement lines yet, which is the case until a fee report is imported."
+          title="Every MID is attached"
+          body="Each statement MID points at its merchant record — or there are no statement lines yet, which is the case until a fee report is imported."
         />
       </Panel>
     );
@@ -75,7 +90,8 @@ export function LinksSection({ worklist }: { worklist: LinkWorklistRow[] }) {
     <Panel>
       <PanelHead>
         <h2 className="text-[14px] font-semibold text-ink-900">
-          Unmatched MIDs <span className="ml-1 font-normal text-ink-400">({worklist.length})</span>
+          MIDs not yet attached{' '}
+          <span className="ml-1 font-normal text-ink-400">({worklist.length})</span>
         </h2>
         <Button size="sm" variant="ghost" icon="rotate-ccw" disabled={pending} onClick={sweep}>
           {pending ? 'Checking…' : 'Re-check all'}

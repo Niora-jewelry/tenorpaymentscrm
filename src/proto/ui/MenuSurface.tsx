@@ -90,18 +90,30 @@ export function MenuSurface({
 
     panel.style.top = `${Math.max(MARGIN, Math.min(top, window.innerHeight - h - MARGIN))}px`;
     panel.style.left = `${left}px`;
-    panel.style.visibility = 'visible';
   }, [align, anchorRef, width]);
 
   /*
-   * `useLayoutEffect`, so the measurement and the write happen before paint —
-   * with `useEffect` the panel is visible at 0,0 for a frame and then snaps,
-   * which reads as a bug even though the final position is right.
+   * ── RE-PLACED AFTER EVERY RENDER, DELIBERATELY WITH NO DEPS ───────────
+   * Two reasons, and the first was a real bug.
+   *
+   * 1. React owns the `style` PROP. Anything listed there is re-applied on
+   *    every re-render, so a `top`/`left` written imperatively was reset to
+   *    the prop's values the moment the panel's contents changed — staging a
+   *    template, a notice appearing — and the panel jumped or vanished
+   *    mid-use. The prop now carries only `position` and `width`; React never
+   *    sees the coordinates, so it cannot clobber them.
+   *
+   * 2. The panel's HEIGHT changes with its contents. A menu that grows a
+   *    warning paragraph after opening near the bottom of the window has to be
+   *    re-measured, or it hangs off the edge it was just flipped away from.
+   *
+   * No dependency array: this must run after every committed render, and
+   * `place()` is cheap — two reads and three writes on one element.
    */
   useLayoutEffect(() => {
     if (!open) return;
     place();
-  }, [open, place]);
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -158,14 +170,13 @@ export function MenuSurface({
       ref={panelRef}
       role="menu"
       aria-label={label}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width,
-        /* Hidden until `place()` has measured it, which happens before paint. */
-        visibility: 'hidden',
-      }}
+      /*
+       * Only what React may own. `top`, `left` and `visibility` are written by
+       * `place()` and deliberately absent here — see the effect above. No
+       * initial hiding is needed because `useLayoutEffect` runs before paint,
+       * so the first frame the browser draws is already positioned.
+       */
+      style={{ position: 'fixed', width }}
       className="z-[200] max-h-[min(70vh,520px)] overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-[0_16px_40px_-12px_rgba(8,32,47,.32)]"
     >
       {children}

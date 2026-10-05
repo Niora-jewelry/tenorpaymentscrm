@@ -109,11 +109,11 @@ export function ResidualsTabs({
     },
     {
       key: 'links',
-      label: 'Unmatched',
+      label: 'Links',
       icon: 'link',
       count: worklist.length,
       description:
-        'Statement MIDs that do not resolve to a merchant record. Linking is for navigation only — it never affects what is calculated.',
+        'Statement MIDs that are not yet attached to a merchant record — including the ones that match perfectly and just need confirming. Linking is for navigation only; it never affects what is calculated.',
       content: <LinksSection worklist={worklist} />,
     },
   ];

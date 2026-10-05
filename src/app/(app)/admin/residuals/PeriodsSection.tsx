@@ -32,6 +32,7 @@
  * run.
  */
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
 import type { ResidualPeriod } from '@/lib/records/adminResiduals';
@@ -144,8 +145,17 @@ export function PeriodsSection({
         <tbody>
           {periods.map((p) => (
             <tr key={p.id}>
-              <td className="border-b border-line-faint px-4 py-2.5 text-[13.5px] font-medium text-ink-900">
-                {monthLabel(p.statementMonth)}
+              <td className="border-b border-line-faint px-4 py-2.5">
+                {/* The month is the link, because the month IS the thing
+                    being reconciled — a separate "open" action beside it
+                    would be a second way to say one thing. */}
+                <Link
+                  href={`/admin/residuals/${p.id}`}
+                  className="inline-flex items-center gap-1 text-[13.5px] font-medium text-ink-900 underline decoration-ink-300 decoration-1 underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-700"
+                >
+                  {monthLabel(p.statementMonth)}
+                  <Icon name="arrow-right" size={12} />
+                </Link>
               </td>
               <td className="border-b border-line-faint px-4 py-2.5">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -190,7 +200,8 @@ export function PeriodsSection({
       </table>
 
       <p className="border-t border-line-faint px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-400">
-        &ldquo;Not calculated&rdquo; covers a month never computed and one whose inputs have
+        Open a month to reconcile it line by line. &ldquo;Not calculated&rdquo; covers a month
+        never computed and one whose inputs have
         changed since — the module does not distinguish them, because neither can be trusted until
         the engine is re-run. A month only carries a version when every merchant in it computed.
       </p>

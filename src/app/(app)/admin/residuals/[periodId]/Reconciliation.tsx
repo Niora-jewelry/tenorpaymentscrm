@@ -26,6 +26,7 @@
  * thing because the rule shape says the comparison does not apply.
  */
 import { useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
 /*
@@ -45,12 +46,15 @@ import {
   type Synopsis,
   type Verdict,
 } from '@/lib/residuals/reconciliation';
+import type { RateEditorData } from '@/lib/residuals/rates';
 import {
   acknowledgeVerdictAction,
   reopenPeriodAction,
   signOffPeriodAction,
   withdrawAcknowledgmentAction,
 } from './actions';
+import { loadRateEditorAction } from './rateActions';
+import { RateEditor } from './RateEditor';
 
 function monthLabel(iso: string): string {
   return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -78,6 +82,26 @@ export function Reconciliation({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /*
+   * Whether the Pricing-tab sync can reach this month at all.
+   *
+   * ── "BEFORE THIS MONTH", NOT "IS THIS MONTH" ─────────────────────────
+   * The sync opens a row at `date_trunc('month', now())` with NO end date, so
+   * it covers the current month AND every month after it. Only a month BEFORE
+   * the current one is out of its reach.
+   *
+   * This was `=== thisMonth` first, which gets a future-dated period wrong —
+   * it would tell the operator the Pricing tab cannot help when it is in fact
+   * the right place. An integration test caught the same confusion from the
+   * other side, by using a scratch month in 2031 and then asserting the sync
+   * could not reach it.
+   */
+  const syncCanReach = useMemo(() => {
+    const now = new Date();
+    const thisMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    return header.statementMonth.slice(0, 7) >= thisMonth;
+  }, [header.statementMonth]);
 
   const company = totals.find((t) => t.mid === null) ?? null;
   const byMid = useMemo(() => {
@@ -211,6 +235,17 @@ export function Reconciliation({
                 })
               }
               pending={pending}
+              syncCanReach={syncCanReach}
+              periodId={header.id}
+              statementMonth={header.statementMonth}
+              onNotice={(m) => {
+                setError(null);
+                setNotice(m);
+              }}
+              onError={(m) => {
+                setNotice(null);
+                setError(m);
+              }}
               onAcknowledge={(scope, scopeId, step, reason) =>
                 run(() => acknowledgeVerdictAction(header.id, scope, scopeId, step, reason))
               }
@@ -441,13 +476,36 @@ function StatePill({ state }: { state: MerchantState['state'] }) {
   return <OutlineChip>Awaiting volumes</OutlineChip>;
 }
 
-/** What a merchant's state means, and what to do about it. */
-function stateExplanation(s: MerchantState): string {
+/**
+ * What a merchant's state means, and what to do about it.
+ *
+ * ── THE ADVICE FOR A BLOCKED MERCHANT WAS WRONG ──────────────────────────
+ * It said "enter them on the merchant's Pricing tab and re-calculate". That is
+ * true for the CURRENT month and false for every past one, which is every
+ * month a real statement covers.
+ *
+ * `residual_sync_rates_from_record` writes its rates effective from
+ * `residual_rate_effective_month(now())` — `date_trunc('month', now())` — with
+ * no end date. That covers the current month and everything after it, and
+ * nothing before. So filling the Pricing tab today leaves
+ * `residual_merchant_rates_for_month(mid, '2026-05-01')` finding nothing, and
+ * it RAISES rather than returning no rows. An operator following the old
+ * advice would do the suggested thing, re-run the engine, see no change, and
+ * have no way to tell which of the two had failed.
+ *
+ * Backdating is `residual_supersede_merchant_rate`, which takes the effective
+ * date explicitly — the rate editor on this screen. The text below now says
+ * that, and says it differently for a past month than for the current one,
+ * because for the current month the Pricing tab genuinely is the right place.
+ */
+function stateExplanation(s: MerchantState, syncCanReach: boolean): string {
   if (s.state === 'blocked') {
-    const whole = s.skippedWhole > 0;
-    return whole
-      ? 'The engine skipped this merchant whole, because it has no rates on file for the month. Enter them on the merchant’s Pricing tab and re-calculate.'
-      : `${s.blockedLines} line${s.blockedLines === 1 ? '' : 's'} could not be computed — a rate the rule needs is missing. The failure records which one.`;
+    if (s.skippedWhole > 0) {
+      return syncCanReach
+        ? 'The engine skipped this merchant whole: it has no rates on file for this month. Fill in the Pricing tab on the merchant’s record — that syncs rates from the first of the current month, which covers this one — then re-calculate.'
+        : 'The engine skipped this merchant whole: it has no rates on file for THIS month. Rates entered on the Pricing tab start from the current month and never reach an earlier one, so enter them below with this month’s effective date, then re-calculate.';
+    }
+    return `${s.blockedLines} line${s.blockedLines === 1 ? '' : 's'} could not be computed — a rate the rule needs is blank. Each failure records which rate it wanted.`;
   }
   if (s.state === 'awaiting_volumes') {
     return s.awaitingReason === 'no_row'
@@ -469,6 +527,11 @@ function MerchantBlock({
   open,
   onToggle,
   pending,
+  syncCanReach,
+  periodId,
+  statementMonth,
+  onNotice,
+  onError,
   onAcknowledge,
   onWithdraw,
 }: {
@@ -479,10 +542,37 @@ function MerchantBlock({
   open: boolean;
   onToggle: () => void;
   pending: boolean;
+  /** Decides which of two true pieces of advice to give. See `stateExplanation`. */
+  syncCanReach: boolean;
+  periodId: string;
+  statementMonth: string;
+  onNotice: (message: string) => void;
+  onError: (message: string) => void;
   onAcknowledge: (scope: string, scopeId: string, step: number, reason: string) => void;
   onWithdraw: (ackId: string, reason: string) => void;
 }) {
   const name = rows.find((r) => r.merchantName)?.merchantName ?? null;
+  const router = useRouter();
+
+  /** Null until the operator asks; loading while the call is in flight. */
+  const [rates, setRates] = useState<RateEditorData | null>(null);
+  const [loadingRates, startLoad] = useTransition();
+
+  /*
+   * Offered wherever a rate is what the engine is waiting on — a merchant
+   * skipped whole, or one with blocked lines naming a rate it could not find.
+   * Not offered for `awaiting_volumes`, because no rate fixes a missing volume
+   * figure; that needs the PDF statement.
+   */
+  const needsRates = state?.state === 'blocked';
+
+  const openRates = () => {
+    startLoad(async () => {
+      const r = await loadRateEditorAction(periodId, mid);
+      if (r.ok) setRates(r.data);
+      else onError(r.message);
+    });
+  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-white">
@@ -512,10 +602,43 @@ function MerchantBlock({
       {open ? (
         <>
           {state ? (
-            <p className="border-t border-line-faint bg-canvas px-4 py-2 text-[12px] leading-relaxed text-ink-500">
-              {stateExplanation(state)}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line-faint bg-canvas px-4 py-2">
+              <p className="max-w-[86ch] text-[12px] leading-relaxed text-ink-500">
+                {stateExplanation(state, syncCanReach)}
+              </p>
+              {needsRates && rates === null ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="percent"
+                  disabled={loadingRates}
+                  loading={loadingRates}
+                  loadingLabel="Loading…"
+                  onClick={openRates}
+                >
+                  Enter rates
+                </Button>
+              ) : null}
+            </div>
           ) : null}
+
+          {rates !== null ? (
+            <RateEditor
+              periodId={periodId}
+              statementMonth={statementMonth}
+              data={rates}
+              onDone={(message) => {
+                setRates(null);
+                onNotice(message);
+                /* The rate row is written, but the engine has not re-run — the
+                   figures on screen are still the old ones until it does. The
+                   refresh is so the merchant's state reflects the new row. */
+                router.refresh();
+              }}
+              onCancel={() => setRates(null)}
+            />
+          ) : null}
+
           <LineTable
             rows={rows}
             pending={pending}

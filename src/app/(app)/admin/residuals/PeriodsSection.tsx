@@ -37,7 +37,7 @@ import { Icon } from '@/proto/ui/icons';
 import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
 import type { ResidualPeriod } from '@/lib/records/adminResiduals';
 import { Empty, Panel, PanelHead } from './ResidualsTabs';
-import { computePeriodAction } from './importActions';
+import { computePeriodAction, coverageBeforeComputeAction, type CoverageCheck } from './importActions';
 
 function monthLabel(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -77,11 +77,21 @@ export function PeriodsSection({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  /**
+   * The coverage answer for one period, held until the operator decides.
+   *
+   * The handoff's Step 4: "Check coverage first rather than discovering a raise
+   * mid-run." The engine is honest about what it skips, so running blind is
+   * safe — it is just uninformative beforehand, and on a month that takes a
+   * while the difference between a question and a wait is the whole point.
+   */
+  const [ask, setAsk] = useState<{ periodId: string; coverage: CoverageCheck } | null>(null);
   const [pending, startTransition] = useTransition();
 
   const processor = processors[0] ?? 'MAVERICK';
 
-  const recompute = (periodId: string) => {
+  const compute = (periodId: string) => {
+    setAsk(null);
     setError(null);
     setNotice(null);
     setRunningId(periodId);
@@ -90,6 +100,30 @@ export function PeriodsSection({
       setRunningId(null);
       if (r.ok) setNotice(r.message);
       else setError(r.message);
+    });
+  };
+
+  /* Ask first; compute straight away when there is nothing to warn about. */
+  const recompute = (periodId: string) => {
+    setAsk(null);
+    setError(null);
+    setNotice(null);
+    setRunningId(periodId);
+    startTransition(async () => {
+      const c = await coverageBeforeComputeAction(periodId);
+      setRunningId(null);
+
+      if (!c.ok) {
+        /* A failed check must not block the compute — it is a courtesy, and
+           the engine records whatever it skips either way. */
+        compute(periodId);
+        return;
+      }
+      if (c.coverage.withoutRates === 0 && c.coverage.withoutTier === 0) {
+        compute(periodId);
+        return;
+      }
+      setAsk({ periodId, coverage: c.coverage });
     });
   };
 
@@ -129,6 +163,53 @@ export function PeriodsSection({
           <Icon name="alert-triangle" size={13} className="mt-[2px] shrink-0" />
           {error}
         </p>
+      ) : null}
+
+      {ask ? (
+        <div className="border-b border-line-faint bg-[#fdf1d8] px-4 py-3 text-[#8a5a09]">
+          <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+            <Icon name="alert-triangle" size={14} strokeWidth={2} />
+            {ask.coverage.withoutRates > 0
+              ? `${ask.coverage.withoutRates} of ${ask.coverage.inStatements} merchants in this month have no rates on file`
+              : `${ask.coverage.withoutTier} merchant${ask.coverage.withoutTier === 1 ? '' : 's'} have rates but no risk level`}
+          </p>
+          <p className="mt-1 max-w-[86ch] text-[12.5px] leading-relaxed">
+            {ask.coverage.withoutRates > 0 ? (
+              <>
+                The engine will skip {ask.coverage.withoutRates === 1 ? 'it' : 'them'} and record
+                why, so nothing is lost &mdash; but the month will not carry a figure until every
+                merchant in it does.
+                {ask.coverage.examples.length > 0 ? (
+                  <>
+                    {' '}
+                    Starting with{' '}
+                    <span className="tabular">{ask.coverage.examples.join(', ')}</span>
+                    {ask.coverage.withoutRates > ask.coverage.examples.length
+                      ? ` and ${ask.coverage.withoutRates - ask.coverage.examples.length} more`
+                      : ''}
+                    .
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <>
+                Without a risk level the split percentage is unknown, so those merchants cannot be
+                costed. Set it on the Pricing tab or in the rate editor.
+              </>
+            )}
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="secondary" disabled={pending} onClick={() => compute(ask.periodId)}>
+              Calculate anyway
+            </Button>
+            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setAsk(null)}>
+              Not now
+            </Button>
+            <span className="text-[11.5px]">
+              Importing the rates sheet fixes this for every merchant at once.
+            </span>
+          </div>
+        </div>
       ) : null}
 
       <table className="w-full text-left">

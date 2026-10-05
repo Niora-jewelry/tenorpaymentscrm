@@ -38,6 +38,7 @@ import {
   type ImportPreview,
 } from '@/lib/records/residualImport';
 import { TARGETS, type Target } from '@/lib/residuals/mapping';
+import { rateCoverage } from '@/lib/records/residualRates';
 
 const PROCESSOR = z.string().trim().min(1).max(100);
 const SHEET = z.string().min(1).max(200);
@@ -314,4 +315,68 @@ export async function computePeriodAction(
     ok: true,
     message: `Computed ${lines}, and skipped ${skipped} — so the month is not stamped as complete.`,
   };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Before computing
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type CoverageCheck = {
+  /** MIDs with statement lines in the period. */
+  inStatements: number;
+  /** Of those, how many have no rate row covering the month. */
+  withoutRates: number;
+  /** The first few, named, so the operator can go and fix one. */
+  examples: string[];
+  /** Merchants with rates but no risk tier — the split percentage is unknown. */
+  withoutTier: number;
+};
+
+/**
+ * What a compute would skip, asked before running it.
+ *
+ * ── WHY THIS IS A SEPARATE CALL AND NOT JUST THE RESULT ──────────────────
+ * Straight from the handoff's Step 4: "Check coverage first rather than
+ * discovering a raise mid-run", with `residual_merchant_rate_coverage` named
+ * as the way.
+ *
+ * The engine is honest about what it skipped — it records every failure and
+ * withholds `calculation_version` — so running blind is safe, not dangerous.
+ * What it is not is informative BEFOREHAND: an operator who re-calculates a
+ * month expecting figures and gets eleven skipped merchants has spent the run
+ * to learn something a question could have told them, and on a month that
+ * takes a while that is the difference between a check and a wait.
+ *
+ * So this is offered, not enforced. The button still computes if they say so —
+ * a skipped merchant is recorded, not lost.
+ */
+export async function coverageBeforeComputeAction(
+  periodId: string,
+): Promise<{ ok: true; coverage: CoverageCheck } | { ok: false; message: string }> {
+  const ctx = await authorize();
+  if (!ctx.isAdmin) return { ok: false, message: 'Admin only.' };
+
+  const id = z.string().uuid().safeParse(periodId);
+  if (!id.success) return { ok: false, message: 'That is not a period.' };
+
+  try {
+    const rows = await rateCoverage(ctx, id.data);
+    const inStatements = rows.filter((r) => r.inStatements);
+    const missing = inStatements.filter((r) => !r.hasRates);
+
+    return {
+      ok: true,
+      coverage: {
+        inStatements: inStatements.length,
+        withoutRates: missing.length,
+        examples: missing.slice(0, 5).map((r) => r.mid),
+        /* Rates on file but no tier is a different fix from no rates at all:
+           the merchant is priced and the split percentage is unknown. */
+        withoutTier: inStatements.filter((r) => r.hasRates && r.riskTier === null).length,
+      },
+    };
+  } catch (e) {
+    console.error('[residuals] coverage check failed', e);
+    return { ok: false, message: e instanceof Error ? e.message : 'Coverage could not be read.' };
+  }
 }

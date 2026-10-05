@@ -47,6 +47,7 @@ import {
   type Verdict,
 } from '@/lib/residuals/reconciliation';
 import type { RateEditorData } from '@/lib/residuals/rates';
+import type { VolumeRow } from '@/lib/residuals/volumes';
 import {
   acknowledgeVerdictAction,
   reopenPeriodAction,
@@ -55,6 +56,8 @@ import {
 } from './actions';
 import { loadRateEditorAction } from './rateActions';
 import { RateEditor } from './RateEditor';
+import { loadVolumesAction } from './volumeActions';
+import { VolumeEditor } from './VolumeEditor';
 
 function monthLabel(iso: string): string {
   return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -508,9 +511,27 @@ function stateExplanation(s: MerchantState, syncCanReach: boolean): string {
     return `${s.blockedLines} line${s.blockedLines === 1 ? '' : 's'} could not be computed — a rate the rule needs is blank. Each failure records which rate it wanted.`;
   }
   if (s.state === 'awaiting_volumes') {
-    return s.awaitingReason === 'no_row'
-      ? 'No volume figures are on file for this merchant this month, so the rules assessed on volume cannot compute. They come from the PDF statement.'
-      : 'The volume row exists but one or more buckets are blank, which is not the same as zero — the comparison is withheld rather than made against a guess.';
+    /*
+     * ── THE REASON IS QUOTED, NOT RE-DERIVED ────────────────────────────
+     * `residual_merchant_states.awaiting_reason` already returns a sentence —
+     * one of "engine recorded no_volumes", "a mapped row has no volume row for
+     * this merchant-month", or "a needed volume bucket is NULL on the
+     * statement row".
+     *
+     * This used to branch on `=== 'no_row'`, which is not a value that
+     * function ever returns, so the else arm always won: a merchant with NO
+     * volume row at all was told its row existed with a blank bucket. Wrong,
+     * and wrong in the direction that sends the operator looking for a row
+     * that is not there. The reason gated on the state is the function's own
+     * fix-1 behaviour — it explains the state the row is actually in, or it is
+     * NULL — so quoting it cannot drift from it.
+     */
+    const why = s.awaitingReason;
+    const tail =
+      ' Volume figures come from the processor’s PDF statement; they can be entered by hand below.';
+    return why === null
+      ? `The rules assessed on volume cannot compute for this merchant.${tail}`
+      : `${why.charAt(0).toUpperCase()}${why.slice(1)}, so the rules assessed on volume cannot compute — and a blank bucket is not a zero, so the comparison is withheld rather than made against a guess.${tail}`;
   }
   if (s.state === 'mismatch') {
     return `${s.mismatchCount} comparison${s.mismatchCount === 1 ? '' : 's'} disagree${s.mismatchCount === 1 ? 's' : ''} beyond tolerance. Each one is either a real finding or something to acknowledge with a reason.`;
@@ -554,22 +575,45 @@ function MerchantBlock({
   const name = rows.find((r) => r.merchantName)?.merchantName ?? null;
   const router = useRouter();
 
-  /** Null until the operator asks; loading while the call is in flight. */
+  /*
+   * Null until the operator asks. Both editors are fetched on demand — one
+   * call per merchant each, and fetching them for every merchant in a month
+   * would be sixty round trips to render forms nobody has opened.
+   *
+   * Only one is open at a time. They fix different causes and a merchant has
+   * one state, so offering both at once would invite the operator to guess
+   * which is the blocker.
+   */
   const [rates, setRates] = useState<RateEditorData | null>(null);
-  const [loadingRates, startLoad] = useTransition();
+  const [volumes, setVolumes] = useState<VolumeRow | null>(null);
+  const [loading, startLoad] = useTransition();
 
   /*
-   * Offered wherever a rate is what the engine is waiting on — a merchant
-   * skipped whole, or one with blocked lines naming a rate it could not find.
-   * Not offered for `awaiting_volumes`, because no rate fixes a missing volume
-   * figure; that needs the PDF statement.
+   * Offered where a RATE is what the engine is waiting on — a merchant skipped
+   * whole, or one with blocked lines naming a rate it could not find.
    */
   const needsRates = state?.state === 'blocked';
+  /*
+   * And volumes where a VOLUME is. Deliberately separate: no rate fixes a
+   * missing volume figure and no volume fixes a missing rate, and the ladder
+   * already decided which one is standing in the way.
+   */
+  const needsVolumes = state?.state === 'awaiting_volumes';
 
   const openRates = () => {
+    setVolumes(null);
     startLoad(async () => {
       const r = await loadRateEditorAction(periodId, mid);
       if (r.ok) setRates(r.data);
+      else onError(r.message);
+    });
+  };
+
+  const openVolumes = () => {
+    setRates(null);
+    startLoad(async () => {
+      const r = await loadVolumesAction(periodId, mid);
+      if (r.ok) setVolumes(r.row);
       else onError(r.message);
     });
   };
@@ -611,15 +655,41 @@ function MerchantBlock({
                   size="sm"
                   variant="secondary"
                   icon="percent"
-                  disabled={loadingRates}
-                  loading={loadingRates}
+                  disabled={loading}
+                  loading={loading}
                   loadingLabel="Loading…"
                   onClick={openRates}
                 >
                   Enter rates
                 </Button>
               ) : null}
+              {needsVolumes && volumes === null ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon="database"
+                  disabled={loading}
+                  loading={loading}
+                  loadingLabel="Loading…"
+                  onClick={openVolumes}
+                >
+                  Enter volumes
+                </Button>
+              ) : null}
             </div>
+          ) : null}
+
+          {volumes !== null ? (
+            <VolumeEditor
+              periodId={periodId}
+              row={volumes}
+              onDone={(message) => {
+                setVolumes(null);
+                onNotice(message);
+                router.refresh();
+              }}
+              onCancel={() => setVolumes(null)}
+            />
           ) : null}
 
           {rates !== null ? (

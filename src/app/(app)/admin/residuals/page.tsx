@@ -32,18 +32,22 @@ import {
   linkWorklist,
   processors,
 } from '@/lib/records/adminResiduals';
+import { recentImports } from '@/lib/records/residualImport';
 import { ResidualsTabs } from './ResidualsTabs';
 
 export default async function AdminResidualsPage() {
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
-  const [periods, reference, rates, worklist, procs] = await Promise.all([
+  const [periods, reference, rates, worklist, procs, imports] = await Promise.all([
     listPeriods(ctx),
     referenceSummary(ctx),
     buyRates(ctx),
     linkWorklist(ctx, null),
     processors(ctx),
+    /* The handoff's own spec for this page: the last 20 imports with their
+       error_message, "so a failed import is visible without a DB query". */
+    recentImports(ctx, 20),
   ]);
 
   return (
@@ -61,6 +65,7 @@ export default async function AdminResidualsPage() {
         rates={rates}
         worklist={worklist}
         processors={procs}
+        imports={imports}
       />
     </div>
   );

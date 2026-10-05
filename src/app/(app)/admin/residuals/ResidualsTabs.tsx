@@ -16,12 +16,14 @@
  */
 import { useState } from 'react';
 import { Icon, type IconName } from '@/proto/ui/icons';
+import type { ImportHistoryRow } from '@/lib/records/residualImport';
 import type {
   ResidualPeriod,
   ReferenceSummary,
   BuyRateRow,
   LinkWorklistRow,
 } from '@/lib/records/adminResiduals';
+import { ImportHistory } from './ImportHistory';
 import { ImportSection } from './ImportSection';
 import { PeriodsSection } from './PeriodsSection';
 import { ReferenceSection } from './ReferenceSection';
@@ -45,12 +47,14 @@ export function ResidualsTabs({
   rates,
   worklist,
   processors,
+  imports,
 }: {
   periods: ResidualPeriod[];
   reference: ReferenceSummary;
   rates: BuyRateRow[];
   worklist: LinkWorklistRow[];
   processors: string[];
+  imports: ImportHistoryRow[];
 }) {
   const sections: Section[] = [
     {
@@ -59,7 +63,12 @@ export function ResidualsTabs({
       icon: 'upload',
       description:
         'Load a processor’s fee report. The columns are confirmed before anything is written, and the engine runs over the month as soon as the lines land.',
-      content: <ImportSection processors={processors} />,
+      content: (
+        <div className="space-y-4">
+          <ImportSection processors={processors} />
+          <ImportHistory imports={imports} />
+        </div>
+      ),
     },
     {
       key: 'periods',

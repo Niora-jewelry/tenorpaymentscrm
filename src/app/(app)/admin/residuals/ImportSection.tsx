@@ -26,7 +26,13 @@ import { useActionState, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
-import { TARGETS, TARGET_LABEL, REQUIRED_TARGETS, type Target } from '@/lib/residuals/mapping';
+import {
+  POISONED_TARGETS,
+  REQUIRED_TARGETS,
+  TARGETS,
+  TARGET_LABEL,
+  type Target,
+} from '@/lib/residuals/mapping';
 import type { ComputeSummary, SheetPreview } from '@/lib/records/residualImport';
 import { Panel, PanelHead } from './ResidualsTabs';
 import {
@@ -214,12 +220,19 @@ function Wizard({
               <span className="block text-[12px] text-ink-400">
                 {file
                   ? `${(file.size / 1024).toFixed(0)} KB — click to choose a different file`
-                  : '.xlsx, .xls or .csv. Nothing is written until you confirm the columns.'}
+                  : '.xlsx or .xls — not CSV, which would round the figures. Nothing is written until you confirm the columns.'}
               </span>
             </span>
             <input
               type="file"
-              accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              /*
+                No CSV. The handoff is explicit and the reason is arithmetic: a
+                CSV export writes the DISPLAYED text, so a merchant-rates cell
+                holding 0.033816 exports as "3.38%" — "both a 100x scale error
+                and silent precision loss". Reading the .xlsx takes the cell
+                value instead.
+              */
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0] ?? null;
@@ -535,6 +548,19 @@ function MappingPanel({
                     {current !== '' ? (
                       <span className="mt-1 block max-w-[34ch] text-[11px] leading-snug text-ink-400">
                         {TARGET_LABEL[current].hint}
+                      </span>
+                    ) : null}
+                    {/*
+                      Shown on selection, not as a refusal. The column is
+                      importable — it is attribution, and the engine costs from
+                      the template schedule regardless — but a reader comparing
+                      it to a template rate will find a variance that is not
+                      there, which has happened three times.
+                    */}
+                    {current !== '' && POISONED_TARGETS[current] ? (
+                      <span className="mt-1 flex max-w-[34ch] items-start gap-1 text-[11px] leading-snug text-[#8a5a09]">
+                        <Icon name="alert-triangle" size={11} className="mt-[2px] shrink-0" />
+                        {POISONED_TARGETS[current]}
                       </span>
                     ) : null}
                   </td>

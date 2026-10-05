@@ -73,7 +73,10 @@ export const TARGET_LABEL: Record<Target, { label: string; hint: string }> = {
   },
   item_count: { label: 'Item count', hint: 'How many. Multiplied by the merchant’s rate.' },
   amount: { label: 'Amount', hint: 'The report’s own amount for the line.' },
-  buy_rate_per_item: { label: 'Buy rate per item', hint: 'The report’s stated per-item cost, if it gives one.' },
+  buy_rate_per_item: {
+    label: 'Buy rate per item',
+    hint: 'Rounded to 2dp in the report — attribution only. The engine costs from the template schedule.',
+  },
   agent_income: { label: 'Agent income', hint: 'What the report credited. Reconciled against, never calculated from.' },
   agent_expense: { label: 'Agent expense', hint: 'What the report charged.' },
   net_revenue: {
@@ -88,6 +91,20 @@ export const TARGET_LABEL: Record<Target, { label: string; hint: string }> = {
 
 /** Without these two a row imports but cannot be computed. */
 export const REQUIRED_TARGETS: readonly Target[] = ['mid', 'fee_item_name'];
+
+/**
+ * Targets whose source column on a fee report cannot be trusted as a value.
+ *
+ * Not forbidden — warned about. `buy_rate_per_item` is attribution, not a
+ * calculation input: the engine takes the buy side from the processor's
+ * template schedule at the merchant's tier, so a wrong figure here changes no
+ * arithmetic. What it does is mislead a human comparing the two, which is
+ * exactly what happened three times before this was written down.
+ */
+export const POISONED_TARGETS: Readonly<Record<string, string>> = {
+  buy_rate_per_item:
+    'The report’s Buy Rate Per Item column is rounded to 2dp for display — it shows 0.03 where the real rate is 0.025. Import it if you want the stated figure on the row, but do not read it as the rate: the true one is Agent Expense ÷ Count, and the engine uses the template schedule regardless.',
+};
 
 /**
  * A header reduced to something comparable.
@@ -132,9 +149,26 @@ const ALIASES: Record<string, Target> = {
   qty: 'item_count',
   amount: 'amount',
   'fee amount': 'amount',
-  'buy rate': 'buy_rate_per_item',
-  'buy rate per item': 'buy_rate_per_item',
-  'cost per item': 'buy_rate_per_item',
+  /*
+   * ── `buy_rate_per_item` IS DELIBERATELY NOT ALIASED ───────────────────
+   * The fee report's "Buy Rate Per Item" column is DISPLAY-ROUNDED to two
+   * decimal places, and the handoff records that it "has produced three wrong
+   * conclusions":
+   *
+   *   you read 0.03 in the report, compare it to a template 0.025, and record
+   *   a variance that does not exist
+   *
+   * Every medium-tier merchant shows 0.03 and holds 0.025. The true rate is
+   * `Agent Expense / Count`, and the module's standing rule is that "no
+   * displayed number is a value — derive it".
+   *
+   * So nothing here proposes that column. It stays SELECTABLE, because an
+   * operator who knows what they are doing may want the stated figure on the
+   * row for reference, and `buy_rate_per_item` is not a calculation input —
+   * the engine derives the buy side from the template schedule, never from
+   * this column. But it is never suggested, and `POISONED_TARGETS` below makes
+   * the screen say why if someone picks it.
+   */
   'agent income': 'agent_income',
   income: 'agent_income',
   'agent expense': 'agent_expense',

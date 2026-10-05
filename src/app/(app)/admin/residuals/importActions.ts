@@ -51,10 +51,36 @@ type FileRead =
   | { ok: true; file: { name: string; bytes: Uint8Array } }
   | { ok: false; message: string };
 
+/**
+ * Spreadsheet only, and deliberately NOT CSV.
+ *
+ * The `accept` attribute on the input is a hint a browser may ignore and a
+ * direct POST never sees, so the rule is enforced here. The reason is
+ * arithmetic rather than tidiness: a CSV export writes the DISPLAYED text, so
+ * a merchant-rates cell holding 0.033816 exports as "3.38%" — "both a 100x
+ * scale error and silent precision loss" — and the fee report's Buy Rate Per
+ * Item column exports its rounded 0.03 rather than the true 0.025. Reading the
+ * .xlsx takes the cell value.
+ *
+ * SheetJS would parse a CSV happily, which is what makes refusing it a
+ * decision rather than a limitation.
+ */
+const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.xls'] as const;
+
 async function fileFrom(formData: FormData): Promise<FileRead> {
   const raw = formData.get('file');
   if (!(raw instanceof File) || raw.size === 0) {
     return { ok: false, message: 'Choose a fee report to upload.' };
+  }
+
+  const lower = raw.name.toLowerCase();
+  if (!ACCEPTED_EXTENSIONS.some((e) => lower.endsWith(e))) {
+    return {
+      ok: false,
+      message: lower.endsWith('.csv')
+        ? 'A CSV cannot be imported. CSV stores what the spreadsheet displayed, not what the cells held — a rate of 0.033816 becomes "3.38%" and a buy rate of 0.025 becomes 0.03. Export the sheet as .xlsx and upload that.'
+        : 'That is not a spreadsheet. Upload the fee report as .xlsx.',
+    };
   }
   if (raw.size > MAX_IMPORT_BYTES) {
     const mb = (raw.size / 1024 / 1024).toFixed(1);

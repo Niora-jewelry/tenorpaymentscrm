@@ -429,6 +429,95 @@ async function ensurePeriod(ctx: AuthContext, statementMonth: string): Promise<s
   return (data as { id: string }).id;
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Import history
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type ImportHistoryRow = {
+  id: string;
+  processor: string | null;
+  sourceType: string;
+  status: string;
+  /** Populated when the status is 'failed'. The reason, verbatim. */
+  errorMessage: string | null;
+  rowCount: number | null;
+  originalFilename: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+  processedAt: string | null;
+  statementMonth: string | null;
+};
+
+/**
+ * The last N imports, with their error messages.
+ *
+ * ── WHY THE ERROR MESSAGE IS ON THE SCREEN ───────────────────────────────
+ * Straight from the handoff's own description of this page: it "lists the last
+ * 20 imports with their `error_message`, so a failed import is visible without
+ * a DB query."
+ *
+ * That is the whole point. A failed import leaves a row in `residual_imports`
+ * with `status = 'failed'` and the reason in a column, and without this list
+ * the only evidence an operator has is that the month still looks empty —
+ * which is indistinguishable from never having tried. The commit action
+ * reports its own failure to whoever was watching, and this is for everyone
+ * after that.
+ *
+ * Soft-deleted imports are INCLUDED. A retired import is how a replaced month
+ * is recorded, and hiding it would make a re-import look like a first import.
+ */
+export async function recentImports(
+  ctx: AuthContext,
+  limit = 20,
+): Promise<ImportHistoryRow[]> {
+  assertAdmin(ctx);
+
+  const { data, error } = await supabaseAdmin()
+    .from('residual_imports')
+    .select(
+      'id, processor, source_type, status, error_message, row_count,' +
+        ' original_filename, size_bytes, created_at, processed_at, deleted_at,' +
+        ' residual_periods(statement_month)',
+    )
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error('[residuals] import history failed', error);
+    throw new Error(`The import history could not be read: ${error.message}`);
+  }
+
+  return ((data ?? []) as unknown as {
+    id: string;
+    processor: string | null;
+    source_type: string;
+    status: string;
+    error_message: string | null;
+    row_count: number | null;
+    original_filename: string | null;
+    size_bytes: number | null;
+    created_at: string;
+    processed_at: string | null;
+    deleted_at: string | null;
+    residual_periods: { statement_month: string } | null;
+  }[]).map((r) => ({
+    id: r.id,
+    processor: r.processor,
+    sourceType: r.source_type,
+    /* A retired import reads as 'replaced', which is what it is to a reader —
+       the status column still says 'completed', and that is true but not the
+       useful fact. */
+    status: r.deleted_at !== null ? 'replaced' : r.status,
+    errorMessage: r.error_message,
+    rowCount: r.row_count,
+    originalFilename: r.original_filename,
+    sizeBytes: r.size_bytes,
+    createdAt: r.created_at,
+    processedAt: r.processed_at,
+    statementMonth: r.residual_periods?.statement_month ?? null,
+  }));
+}
+
 /** The completed Excel import for this processor and period, if there is one. */
 export async function completedImportFor(
   ctx: AuthContext,

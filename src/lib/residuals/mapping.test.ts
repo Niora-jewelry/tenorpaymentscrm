@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  POISONED_TARGETS,
   TARGETS,
   NUMERIC_TARGETS,
   TARGET_LABEL,
@@ -85,6 +86,55 @@ describe('headerKey', () => {
     expect(headerKey('  Net   Revenue ')).toBe('net revenue');
     expect(headerKey('Buy Rate / Item')).toBe('buy rate item');
     expect(headerKey('MID')).toBe('mid');
+  });
+});
+
+describe('the display-rounded buy rate', () => {
+  /*
+   * -- THE TRAP THIS GUARDS -----------------------------------------------
+   * The fee report's "Buy Rate Per Item" column is rounded to 2dp for display.
+   * It shows 0.03 where the cell holds 0.025, and the handoff records that
+   * this "has produced three wrong conclusions" — you compare the 0.03 to a
+   * template 0.025 and record a variance that does not exist. The true rate is
+   * Agent Expense / Count.
+   *
+   * The column stays importable, because it is attribution and the engine
+   * costs from the template schedule regardless. What must never happen is the
+   * importer PROPOSING it, because a suggestion is taken as a recommendation.
+   */
+  it('is never suggested from any header spelling', () => {
+    for (const header of [
+      'Buy Rate',
+      'Buy Rate Per Item',
+      'buy rate per item',
+      'Cost Per Item',
+      'BUY RATE',
+    ]) {
+      const s = suggestMapping(sheet([header], []), new Map());
+      expect(s[0].suggested, header).not.toBe('buy_rate_per_item');
+    }
+  });
+
+  it('but is still selectable, and carries a warning when selected', () => {
+    expect(TARGETS).toContain('buy_rate_per_item');
+    expect(POISONED_TARGETS.buy_rate_per_item).toMatch(/2dp|rounded/i);
+    /* The warning has to name the real source of the number, or it is just a
+       scold. */
+    expect(POISONED_TARGETS.buy_rate_per_item).toMatch(/Agent Expense/i);
+  });
+
+  it('and a saved mapping for it is still honoured', () => {
+    /* An operator who mapped it deliberately last month keeps that decision —
+       the guard is against suggesting, not against choosing. */
+    const saved = new Map<string, Target>([['Buy Rate', 'buy_rate_per_item']]);
+    const s = suggestMapping(sheet(['Buy Rate'], []), saved);
+    expect(s[0].saved).toBe('buy_rate_per_item');
+  });
+
+  it('nothing else is marked poisoned', () => {
+    /* If this grows, each entry needs its own reason on screen — the list is
+       not a severity flag, it is a set of specific measured traps. */
+    expect(Object.keys(POISONED_TARGETS)).toEqual(['buy_rate_per_item']);
   });
 });
 

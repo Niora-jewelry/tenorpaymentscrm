@@ -93,13 +93,27 @@ export async function sendSmsAction(
 }
 
 function sendRefusal(
-  error: 'not_permitted' | 'no_number' | 'bad_number' | 'not_configured' | 'send_failed',
+  error:
+    | 'not_permitted'
+    | 'no_number'
+    | 'bad_number'
+    | 'not_configured'
+    | 'opted_out'
+    | 'send_failed',
   detail?: string,
 ): string {
   if (error === 'not_permitted') return 'You do not have permission to send texts.';
   if (error === 'no_number') return 'You have no phone number assigned. Ask an administrator.';
   if (error === 'bad_number') return 'That does not look like a phone number.';
   if (error === 'not_configured') return detail ?? 'Texting is not configured on this deployment.';
+  /*
+   * Said as a decision the person made, not as a system error, because that is
+   * what it is — and because the only correct response is to stop, not to
+   * retry or to find a way around it.
+   */
+  if (error === 'opted_out') {
+    return 'This number has replied STOP. They cannot be texted again until they text START.';
+  }
   /*
    * Twilio's own words, surfaced rather than swallowed. The most likely message
    * here is error 30034 — the sending number is not yet registered for A2P

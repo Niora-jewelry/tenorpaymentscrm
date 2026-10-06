@@ -148,3 +148,78 @@ export async function revokeConsent(e164: string, reason: string): Promise<numbe
   }
   return (data as number | null) ?? 0;
 }
+
+/**
+ * Has this number explicitly opted out?
+ *
+ * ── WHY THIS IS NOT `!consentStatus().consented` ─────────────────────────
+ * `consentStatus` deliberately collapses "never asked" and "opted out" into
+ * one answer, and says why: they are not usefully different to someone
+ * deciding whether a badge should be green.
+ *
+ * For deciding whether to SEND they are completely different. A person who
+ * texted us first and is waiting for a reply has no consent row at all —
+ * blocking that is breaking the product. A person who replied STOP has a
+ * revoked row, and texting them is a TCPA violation and a fast route to a
+ * suspended campaign.
+ *
+ * So this asks the narrow question: is the most recent record for this number
+ * a revocation? Nothing else blocks a send.
+ *
+ * ── IT FAILS CLOSED, AND THAT IS SAFE HERE ───────────────────────────────
+ * A lookup that errors returns `true` — treat as opted out. The reverse would
+ * mean a database timeout silently authorising a message to someone who asked
+ * not to receive one.
+ *
+ * The cost of the strict direction is bounded: Twilio enforces STOP at the
+ * carrier level too and would refuse the same message with error 21610, so
+ * this is the layer that produces a sentence a human can read rather than the
+ * only thing standing between us and a violation.
+ */
+export async function isOptedOut(e164: string): Promise<boolean> {
+  if (!e164) return false;
+
+  /*
+   * ── NOT "the newest row is revoked" ───────────────────────────────────
+   * That was the first implementation and it is subtly wrong: `created_at`
+   * defaults to `now()`, which is the TRANSACTION's start time, so a STOP and
+   * a START written close together — a retry, or someone texting STOP then
+   * START within the same second — carry the same timestamp and
+   * `order by created_at desc limit 1` picks between them arbitrarily. An
+   * opt-out check that is usually right is not a working opt-out check.
+   *
+   * The rule below needs no ordering at all:
+   *
+   *   opted out  =  a revocation exists  AND  no live consent exists
+   *
+   * Which is also the plain meaning of the words: they asked to stop, and have
+   * not since come back. A number that opted out and then texted START has a
+   * live row again, so it is reachable; the revocation stays on file because
+   * consent history is append-only.
+   */
+  const supabase = supabaseAdmin();
+
+  const [live, revoked] = await Promise.all([
+    supabase
+      .from('sms_consents')
+      .select('id', { count: 'exact', head: true })
+      .eq('e164', e164)
+      .is('revoked_at', null),
+    supabase
+      .from('sms_consents')
+      .select('id', { count: 'exact', head: true })
+      .eq('e164', e164)
+      .not('revoked_at', 'is', null),
+  ]);
+
+  if (live.error || revoked.error) {
+    console.error('[sms] opt-out lookup failed — treating as opted out', {
+      e164,
+      error: (live.error ?? revoked.error)?.message,
+    });
+    return true;
+  }
+
+  /* No record at all is NOT an opt-out — see the note above. */
+  return (revoked.count ?? 0) > 0 && (live.count ?? 0) === 0;
+}

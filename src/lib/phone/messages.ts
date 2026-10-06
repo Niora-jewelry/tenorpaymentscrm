@@ -22,6 +22,7 @@ import { canSeePhone, canUsePhone } from './access';
 import { resolveUserActiveNumber } from './numbers';
 import { resolveRecordByPhone } from './records';
 import { fileAutoContact } from './autoContact';
+import { isOptedOut } from '@/lib/sms/consent';
 import { normalizePhone } from './normalize';
 
 export type PhoneMessage = {
@@ -107,7 +108,13 @@ export type SendResult =
   | { ok: true; message: PhoneMessage }
   | {
       ok: false;
-      error: 'not_permitted' | 'no_number' | 'bad_number' | 'not_configured' | 'send_failed';
+      error:
+        | 'not_permitted'
+        | 'no_number'
+        | 'bad_number'
+        | 'not_configured'
+        | 'opted_out'
+        | 'send_failed';
       detail?: string;
     };
 
@@ -150,6 +157,26 @@ export async function sendMessage(
       error: 'not_configured',
       detail: 'NEXT_PUBLIC_APP_URL is not set — Twilio needs a public callback URL.',
     };
+  }
+
+  /*
+   * ── THE OPT-OUT GATE ──────────────────────────────────────────────────
+   * Checked BEFORE the row is inserted, so a refused message leaves no
+   * outbound record claiming it was queued.
+   *
+   * Only an explicit revocation blocks. A number with no consent record is
+   * fine to text — somebody who messaged us first and is waiting for a reply
+   * has no record, and refusing that would break the product while protecting
+   * nobody.
+   *
+   * The inbound webhook has revoked consent on STOP since the consent work
+   * landed; nothing consulted it on the way out, so the revocation was
+   * recorded and then ignored. Twilio would have refused the send itself with
+   * 21610, which is the carrier-level backstop — but as a cryptic failure
+   * after the fact rather than a sentence before it.
+   */
+  if (await isOptedOut(normalized.e164)) {
+    return { ok: false, error: 'opted_out' };
   }
 
   const supabase = await createSupabaseServerClient();

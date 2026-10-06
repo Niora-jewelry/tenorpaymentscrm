@@ -268,3 +268,40 @@ export const HISTORY_KIND_LABEL: Record<string, string> = {
   acknowledgment: 'Mismatch acknowledged',
   manual_edit: 'Edited by hand',
 };
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Showing money
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * A decimal STRING, presented as currency — without ever becoming a number.
+ *
+ * ── WHY NOT `formatCurrency(Number(v))` ──────────────────────────────────
+ * Because that is the one thing this module forbids. Every money value here
+ * arrives from SQL as text precisely so no JavaScript float ever holds a
+ * residual dollar amount, and `Number()` undoes that at the last step — the
+ * step where somebody is reading the figure and believing it.
+ *
+ * So this groups the integer part and leaves the fractional part EXACTLY as
+ * SQL produced it. `numeric(14,2)` already decided how many decimals the
+ * figure has; re-rounding it here would be a second opinion about a number
+ * that is not ours to round.
+ *
+ *   "633.78"     -> "$633.78"
+ *   "-375.32"    -> "-$375.32"
+ *   "1234567.5"  -> "$1,234,567.5"
+ *   "0.00"       -> "$0.00"
+ *
+ * Anything that is not a plain decimal is returned untouched rather than
+ * mangled — a value this cannot read is a value worth seeing verbatim.
+ */
+export function formatMoneyText(value: string | null): string | null {
+  if (value === null) return null;
+
+  const m = /^(-?)(\d+)(\.\d+)?$/.exec(value.trim());
+  if (!m) return value;
+
+  const [, sign, whole, fraction] = m;
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${sign}$${grouped}${fraction ?? ''}`;
+}

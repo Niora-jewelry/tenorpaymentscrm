@@ -24,6 +24,7 @@ import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { OutlineChip, StatusPill } from '@/proto/ui/kit';
 import type { ResidualPeriod } from '@/lib/records/adminResiduals';
+import { formatMoneyText } from '@/lib/residuals/reconciliation';
 
 function monthLabel(iso: string): string {
   return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -55,7 +56,7 @@ function Fact({
   tone?: 'warn';
 }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 px-4">
       <p className="text-[11px] uppercase tracking-[.04em] text-ink-400">{label}</p>
       <p
         className={`mt-0.5 text-[15px] font-semibold leading-tight ${
@@ -115,7 +116,14 @@ export function ResidualsHeader({
         </div>
       ) : (
         <div className="mt-3 overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
-          <div className="flex flex-wrap items-start gap-x-8 gap-y-4 px-4 py-3.5">
+          {/*
+            Dividers rather than wide gaps. Spread across a full-width card the
+            facts read as five unrelated things floating in space; separated,
+            they read as one status bar, which is what they are.
+            `divide-x` only applies between children, so it survives the facts
+            that render conditionally.
+          */}
+          <div className="flex flex-wrap items-stretch divide-x divide-line-faint px-1 py-3.5">
             <Fact
               label="Latest month"
               value={
@@ -129,7 +137,7 @@ export function ResidualsHeader({
               hint={`${latest.lineCount} line${latest.lineCount === 1 ? '' : 's'} · ${latest.mids} merchant${latest.mids === 1 ? '' : 's'}`}
             />
 
-            <div className="min-w-0">
+            <div className="min-w-0 px-4">
               <p className="text-[11px] uppercase tracking-[.04em] text-ink-400">State</p>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 <StatePill status={latest.derivedStatus} />
@@ -149,7 +157,7 @@ export function ResidualsHeader({
             {disclosable && netIncome !== null ? (
               <Fact
                 label="Net income"
-                value={<span className="tabular">{netIncome}</span>}
+                value={<span className="tabular">{formatMoneyText(netIncome)}</span>}
                 hint="After the processor's split, plus anything billed directly"
               />
             ) : (

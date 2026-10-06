@@ -39,6 +39,7 @@ import {
   HISTORY_KIND_LABEL,
   STATE_LABEL,
   STEP_LABEL,
+  formatMoneyText,
   type GridRow,
   type HistoryEntry,
   type MerchantState,
@@ -344,7 +345,7 @@ function Header({
             <>
               <p className="text-[11.5px] uppercase tracking-wide text-ink-400">Net income</p>
               <p className="text-[24px] font-semibold tabular leading-tight text-ink-900">
-                {company.netIncome}
+                {formatMoneyText(company.netIncome)}
               </p>
             </>
           ) : (
@@ -639,7 +640,9 @@ function MerchantBlock({
         <span className="ml-auto text-[13px] tabular text-ink-700">
           {/* The merchant's own total, withheld on the same rule as the
               company one. */}
-          {totals?.disclosable && totals.netIncome !== null ? totals.netIncome : '—'}
+          {totals?.disclosable && totals.netIncome !== null
+            ? formatMoneyText(totals.netIncome)
+            : '—'}
         </span>
       </button>
 
@@ -725,9 +728,15 @@ function MerchantBlock({
  * The lines
  * ──────────────────────────────────────────────────────────────────────── */
 
+/**
+ * A money cell.
+ *
+ * `formatMoneyText` groups and prefixes the string without parsing it — see
+ * its own note. A dash for null, because a withheld figure is not a zero.
+ */
 function Money({ v }: { v: string | null }) {
   if (v === null) return <span className="text-ink-300">—</span>;
-  return <span>{v}</span>;
+  return <span>{formatMoneyText(v)}</span>;
 }
 
 /**

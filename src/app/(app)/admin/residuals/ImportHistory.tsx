@@ -145,11 +145,15 @@ export function ImportHistory({ imports }: { imports: ImportHistoryRow[] }) {
         </table>
       </div>
 
+      {/* Only when there is one to explain. A legend for a state nothing on
+          screen is in is noise competing with the rows. */}
+      {imports.some((i) => i.status === 'replaced') ? (
       <p className="border-t border-line-faint px-4 py-2.5 text-[11.5px] leading-relaxed text-ink-400">
         &ldquo;Replaced&rdquo; is an import that was retired when a later file took over its month.
         Its lines are retired with it and both are recoverable &mdash; nothing here is destroyed,
         so the record of what was loaded when stays intact.
       </p>
+      ) : null}
     </Panel>
   );
 }

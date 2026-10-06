@@ -246,8 +246,14 @@ function Wizard({
           </label>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/*
+              Lime is the single primary action on a screen, so it should mean
+              "this is the thing to do now". Greyed-out lime reads as a broken
+              button; a secondary button with nothing chosen reads as waiting,
+              which is what it is.
+            */}
             <Button
-              variant="primary"
+              variant={file ? 'primary' : 'secondary'}
               icon="search"
               disabled={!file || busy}
               loading={previewing}

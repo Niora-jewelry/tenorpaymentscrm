@@ -34,6 +34,7 @@ import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { OutlineChip, StatusPill } from '@/proto/ui/kit';
 import type { RecordResidualPeriod, RecordResiduals } from '@/lib/records/recordResiduals';
+import { formatMoneyText } from '@/lib/residuals/reconciliation';
 
 function monthLabel(iso: string): string {
   return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', {
@@ -144,7 +145,7 @@ export function ResidualsPanel({ data }: { data: RecordResiduals }) {
           </p>
           {data.lifetimeDisclosable && data.lifetimeNetIncome !== null ? (
             <p className="text-[24px] font-semibold tabular leading-tight text-ink-900">
-              {data.lifetimeNetIncome}
+              {formatMoneyText(data.lifetimeNetIncome)}
             </p>
           ) : (
             <>
@@ -206,7 +207,7 @@ export function ResidualsPanel({ data }: { data: RecordResiduals }) {
                 </td>
                 <td className="border-b border-line-faint px-3.5 py-2 text-right text-[13px] tabular font-medium text-ink-900">
                   {p.disclosable && p.netIncome !== null ? (
-                    p.netIncome
+                    formatMoneyText(p.netIncome)
                   ) : (
                     <span className="text-ink-300">—</span>
                   )}

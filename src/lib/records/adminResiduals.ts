@@ -460,9 +460,42 @@ export async function buyRates(ctx: AuthContext, processor = 'MAVERICK'): Promis
 /** Which processors have a schedule at all. Only MAVERICK today. */
 export async function processors(ctx: AuthContext): Promise<string[]> {
   assertAdmin(ctx);
-  const { data } = await supabaseAdmin()
-    .from('residual_buy_rate_schedules')
-    .select('processor')
-    .is('deleted_at', null);
-  return [...new Set((data ?? []).map((r) => (r as { processor: string }).processor))].sort();
+
+  /*
+   * ── PROCESSORS, NOT VENDORS ─────────────────────────────────────────────
+   * `residual_buy_rate_schedules` holds six rows and only ONE of them is a
+   * processor:
+   *
+   *   MAVERICK      Maverick Template Buy Rates        is_residual_split true
+   *   ACCEPT_BLUE   Accept.Blue vendor rate card       false
+   *   PAYA_ACH_PPD  Paya ACH vendor rate card          false
+   *   PAYA_ACH_WEB  Paya ACH vendor rate card          false
+   *   RICHARD       Richard vendor rate card           false
+   *   TUZO          Tuzo vendor rate card              false
+   *
+   * Reading the column alone offered all six as processors, so the fee-report
+   * importer let an operator file a Maverick statement under ACCEPT_BLUE. That
+   * import would commit, and then the engine would find no formula registry
+   * for that processor and the month could never compute — a dead end reached
+   * by a dropdown that looked like a choice.
+   *
+   * `is_residual_split` is the distinction and it is DERIVED, not a flag
+   * somebody maintains: it asks whether a schedule's tiers are real risk
+   * tiers. So a second processor that pays a share of net is classified
+   * correctly the day it is seeded, without this list being touched.
+   *
+   * Request-scoped, because `residual_buy_rate_processors()` is admin-gated on
+   * auth.uid() and refuses the service role.
+   */
+  const { data, error } = await (await asCaller()).rpc('residual_buy_rate_processors');
+
+  if (error) {
+    console.error('[residuals] processor list failed', error);
+    throw new Error(`The processor list could not be read: ${error.message}`);
+  }
+
+  return ((data ?? []) as { processor: string; is_residual_split: boolean }[])
+    .filter((r) => r.is_residual_split)
+    .map((r) => r.processor)
+    .sort();
 }

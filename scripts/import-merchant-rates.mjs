@@ -56,6 +56,32 @@ const EFFECTIVE_FROM = '2026-08-01';
 const COMMIT = process.argv.includes('--commit');
 
 /**
+ * Re-state an existing version at this effective date, in place.
+ *
+ * The import RPC refuses to write over a standing version that starts on the
+ * same date with DIFFERENT values, and it is right to: migration
+ * ...idempotency_r5d1c spells out that "backdating onto a DIFFERENT value at
+ * an existing effective_from remains 23514. That must never become a silent
+ * overwrite."
+ *
+ * The word doing the work there is *silent*. This flag is the loud version,
+ * for the one case the guard cannot distinguish: a month whose rates were
+ * imported from a MISREADING of the sheet, where there is no history worth
+ * keeping because the version being replaced is hours old and was never
+ * right. It happened here — `num` collapsed `"$ -"` into blank, against
+ * §6.6, and 38 of August's line failures were the result.
+ *
+ * It goes through `residual_update_merchant_rate_row`, the same RPC the rate
+ * editor screen uses, so every change lands in `residual_audit_log` with an
+ * actor against it. It does NOT touch effective dating, and the locked-month
+ * trigger still refuses a version a computed period depends on.
+ *
+ * For a genuine rate CHANGE, this is the wrong tool: that is a new version at
+ * a new effective date, which the normal path already does.
+ */
+const FIX_IN_PLACE = process.argv.includes('--fix-in-place');
+
+/**
  * Column index on the rates sheet -> the RPC's key.
  *
  * By index, because the header spans two rows. Deliberately omitted:
@@ -128,17 +154,35 @@ const HELD_BACK = {
 };
 
 /**
- * A cell as decimal TEXT, or null.
+ * A cell as decimal TEXT, or null — under the THREE-state rule.
  *
- * The sheet writes an absent fee as the string "$ -", which is not zero — a
- * merchant with no AVS arrangement has no AVS rate, and NULL says that while
- * 0.000000 would assert a rate the engine would multiply by a count.
+ * `residuals.md` §6.6 is explicit that the sheet distinguishes three things,
+ * and that two of them look alike and mean opposite things:
+ *
+ *   a number   the rate
+ *   "$ -"      a RECORDED DECISION — we do not charge this. Stored 0.000000.
+ *   blank      an ABSENCE — no arrangement recorded. Stored NULL, fails loud.
+ *
+ * This function read `"$ -"` as NULL at first, collapsing the first two. The
+ * cost was measurable: 38 of August's line failures were fees the sheet had
+ * explicitly declined, which the engine then refused for want of a rate that
+ * had in fact been decided.
+ *
+ * The opposite shortcut is worse and is not taken — a blank stays NULL. §6.7
+ * is explicit that `monthly_fee_tapdash` is never auto-zeroed, and 18 of
+ * August's remaining failures are exactly that, correctly refused.
  */
 function num(v) {
   if (v === null || v === undefined) return null;
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : null;
-  const s = String(v).replace(/[$,\s]/g, '');
-  if (s === '' || s === '-') return null;
+
+  const trimmed = String(v).trim();
+  if (trimmed === '') return null;
+  /* Tested before the symbols are stripped, so "$ -" is caught as written. */
+  if (/^\$?\s*[-—]\s*\$?$/.test(trimmed)) return '0';
+
+  const s = trimmed.replace(/[$,\s]/g, '');
+  if (s === '') return null;
   return /^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(s) ? s : null;
 }
 
@@ -200,6 +244,8 @@ async function main() {
   const noShare = [];
   const unknownShare = [];
   const held = new Map();
+  /** Per-column counts of number / "$ -" / blank. See §6.6 and `num`. */
+  const cellStates = {};
 
   for (const cells of grid.slice(2)) {
     const mid = String(cells?.[0] ?? '').replace(/[^0-9]/g, '');
@@ -227,6 +273,15 @@ async function main() {
       if (key === 'mid') continue;
       const v = cells[Number(idx)];
       row[key] = TEXT_KEYS.has(key) ? text(v) : num(v);
+
+      /* The §6.6 tally, for the panel below. */
+      if (!TEXT_KEYS.has(key)) {
+        const t = (cellStates[key] ??= { numbers: 0, declined: 0, absent: 0 });
+        const trimmed = v === null || v === undefined ? '' : String(v).trim();
+        if (trimmed === '') t.absent += 1;
+        else if (/^\$?\s*[-—]\s*\$?$/.test(trimmed)) t.declined += 1;
+        else t.numbers += 1;
+      }
     }
     rows.push(row);
   }
@@ -244,6 +299,21 @@ async function main() {
   if (held.size) {
     console.log(`  held back, needing a decision: ${held.size}`);
     for (const [mid, why] of held) console.log(`      ${mid} — ${why}`);
+  }
+
+  /*
+   * §6.6 requires these three counts to be shown before a commit, "not a
+   * footnote", because reading "$ -" as zero is an inference. The spec records
+   * the trap too: a column counted as "populated" when a cell is a number OR
+   * "$ -" overstates real coverage badly.
+   */
+  console.log('');
+  console.log('  column                   numbers   "$ -"   blank');
+  for (const [key, t] of Object.entries(cellStates)) {
+    if (t.numbers === 0 && t.declined === 0) continue;
+    console.log(
+      `  ${key.padEnd(24)} ${String(t.numbers).padStart(7)} ${String(t.declined).padStart(7)} ${String(t.absent).padStart(7)}`,
+    );
   }
 
   const withTdFee = rows.filter((r) => r.monthly_fee_tapdash !== null).length;
@@ -268,6 +338,25 @@ async function main() {
     await db.query('COMMIT');
     return r.rows;
   };
+
+  if (FIX_IN_PLACE) {
+    /*
+     * There is no dry run for this one — the editor RPC writes per merchant
+     * and has no preview twin — so the second flag is the confirmation step
+     * that `--commit` provides everywhere else. Overwriting a standing rate
+     * version should take two deliberate words, not one.
+     */
+    if (!COMMIT) {
+      console.log(
+        '\n--fix-in-place re-states existing rate versions through the audited rate\n' +
+          'editor. It overwrites values a previous import wrote at the same effective\n' +
+          'date, so it needs --commit as well. Nothing was done.',
+      );
+      return;
+    }
+    await fixInPlace(rows, asAdmin);
+    return;
+  }
 
   /*
    * The dry run is the REAL commit inside a discarded subtransaction, so what
@@ -309,6 +398,113 @@ async function main() {
   ]);
   console.log(
     `\nRecomputed August: ${s.lines_computed} lines, ${s.merchants_computed} merchants, ` +
+      `${s.merchants_failed} skipped, stamped=${s.stamped}`,
+  );
+  if (s.failures_by_reason && Object.keys(s.failures_by_reason).length) {
+    console.log('failures by reason:', JSON.stringify(s.failures_by_reason));
+  }
+}
+
+/** Rate columns the editor RPC accepts. Anything else it raises on. */
+const EDITABLE = [
+  'vmd_auth_fee', 'pin_debit_auth_fee', 'avs_fee', 'batch_fee',
+  'vmd_transaction_fee', 'amex_volume', 'vmd_volume', 'pin_debit_volume',
+  'amex_template_volume_fee', 'gateway_provider_mav', 'gateway_monthly_mav',
+  'terminal_provider_mav', 'terminal_monthly_mav', 'monthly_fee_tapdash',
+  'monthly_fee_maverick', 'chargeback_fee',
+];
+
+/**
+ * Re-states each merchant's standing version through the rate editor.
+ *
+ * A WHOLE row every time, because the RPC documents that "absent key and JSON
+ * null both mean SQL NULL" — so a partial payload would quietly blank every
+ * column it omitted. Every editable column is sent, including the ones that
+ * are not changing.
+ */
+async function fixInPlace(rows, asAdmin) {
+  const tierByCode = new Map(
+    (await asAdmin(`select tier_key, statement_code from residual_risk_tiers
+                     where deleted_at is null and statement_code is not null`))
+      .map((t) => [String(t.statement_code), t.tier_key]),
+  );
+
+  let changed = 0;
+  let same = 0;
+  const failed = [];
+
+  for (const row of rows) {
+    const tier = tierByCode.get(String(row.risk_code));
+    if (!tier) {
+      failed.push(`${row.mid}: no tier for statement_code ${row.risk_code}`);
+      continue;
+    }
+
+    /*
+     * The row BEFORE, so the diff is observed rather than claimed.
+     *
+     * `residual_update_merchant_rate_row` returns `{mid, rate_id}` and nothing
+     * else — it has no `changed_fields`. Reading one off it reported "44
+     * already correct" on the very run that corrected forty of them, which is
+     * the kind of confident-and-wrong summary this script exists to avoid. So
+     * the comparison is made here, against the stored row.
+     */
+    const [before] = await asAdmin(
+      `select * from residual_merchant_rates
+        where mid = $1 and effective_from = $2::date and deleted_at is null`,
+      [row.mid, EFFECTIVE_FROM],
+    );
+    if (!before) {
+      failed.push(`${row.mid}: no version starting ${EFFECTIVE_FROM} to re-state`);
+      continue;
+    }
+
+    const values = {};
+    for (const k of EDITABLE) values[k] = row[k] ?? null;
+
+    /* Compared as numbers where both sides are numbers, so '0' and '0.000000'
+       are one value and not a spurious change. */
+    const differs = EDITABLE.filter((k) => {
+      const now = before[k];
+      const next = values[k];
+      if (now === null || now === undefined) return next !== null;
+      if (next === null) return true;
+      const a = Number(now);
+      const b = Number(next);
+      return Number.isFinite(a) && Number.isFinite(b) ? a !== b : String(now) !== String(next);
+    });
+
+    if (differs.length === 0) {
+      same += 1;
+      continue;
+    }
+
+    try {
+      await asAdmin(`select residual_update_merchant_rate_row($1::uuid, $2, $3::jsonb) r`, [
+        before.id,
+        tier,
+        JSON.stringify(values),
+      ]);
+      changed += 1;
+      console.log(`  ${row.mid.padEnd(14)} ${differs.length} field(s): ${differs.join(', ')}`);
+    } catch (e) {
+      failed.push(`${row.mid}: ${e.code ?? ''} ${e.message}`);
+    }
+  }
+
+  console.log(`
+Re-stated ${changed} version(s), ${same} already correct, ${failed.length} failed.`);
+  for (const f of failed) console.log(`  ${f}`);
+  if (failed.length) return;
+
+  const periods = await asAdmin(
+    `select id from residual_periods where statement_month = '2026-08-01' and deleted_at is null`,
+  );
+  if (!periods.length) return;
+  const [{ s }] = await asAdmin(`select compute_residual_period($1::uuid,'MAVERICK') s`, [periods[0].id]);
+  console.log(
+    `
+Recomputed August: ${s.lines_computed} lines, ${s.merchants_computed} merchants, ` +
       `${s.merchants_failed} skipped, stamped=${s.stamped}`,
   );
   if (s.failures_by_reason && Object.keys(s.failures_by_reason).length) {

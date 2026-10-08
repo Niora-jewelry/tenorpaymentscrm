@@ -228,12 +228,97 @@ export type RateRowError = {
   raw: string;
 };
 
+/* ────────────────────────────────────────────────────────────────────────
+ * Three cell states, not two  (residuals.md §6.6)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * What one rate cell on the pricing sheet is saying.
+ *
+ * The sheet distinguishes THREE things and the calc table needs all three kept
+ * apart, because two of them look alike and mean opposite things:
+ *
+ *   a number   the rate
+ *   "$ -"      a RECORDED DECISION — we do not charge this. Stored 0.000000.
+ *   blank      an ABSENCE — no arrangement recorded. Stored NULL, fails loud.
+ *
+ * Collapsing `"$ -"` into blank is what this type exists to prevent. Measured
+ * on August 2026: 38 of the month's line failures were fees the sheet had
+ * explicitly declined with `"$ -"` and the importer had stored as NULL, so the
+ * engine refused a charge that had in fact been decided. The opposite error is
+ * worse still — defaulting a blank to zero asserts a rate nobody set, and §6.7
+ * is explicit that `monthly_fee_tapdash` in particular is never auto-zeroed.
+ */
+export type RateCellState = 'number' | 'declined' | 'absent' | 'unreadable';
+
+export type RateCellRead = {
+  state: RateCellState;
+  /** Decimal text for the RPC, or null. `declined` carries '0'. */
+  value: string | null;
+  /** Only for `unreadable`, for the error the operator sees. */
+  raw?: string;
+};
+
+/**
+ * Every spelling of "we do not charge this" the sheet uses.
+ *
+ * `readNumeric` cannot be reused for this and is deliberately left alone: it
+ * reads the FEE REPORT, where a bare dash means no value, and it strips the
+ * currency symbol only AFTER its dash test — so `"$ -"` reaches the end as an
+ * empty string and comes back `ok: false`. Two source documents, two
+ * conventions; one shared reader would have to be wrong for one of them.
+ */
+const DECLINED = /^\$?\s*[-—]\s*\$?$/;
+
+/** Reads one cell of the pricing sheet under the §6.6 three-state rule. */
+export function readRateCell(cell: CellValue): RateCellRead {
+  if (cell === null || cell === undefined) return { state: 'absent', value: null };
+  if (typeof cell === 'boolean') return { state: 'unreadable', value: null, raw: String(cell) };
+
+  if (typeof cell === 'number') {
+    if (!Number.isFinite(cell)) return { state: 'unreadable', value: null, raw: String(cell) };
+    return { state: 'number', value: String(cell) };
+  }
+
+  const trimmed = cell.trim();
+  if (trimmed === '') return { state: 'absent', value: null };
+
+  /* Checked before any symbol stripping, so "$ -" is caught as written. */
+  if (DECLINED.test(trimmed)) return { state: 'declined', value: '0' };
+
+  const read = readNumeric(cell);
+  if (!read.ok) return { state: 'unreadable', value: null, raw: read.raw };
+  /* Non-empty, not a dash, yet numerically nothing — not a reading to keep. */
+  if (read.value === null) return { state: 'unreadable', value: null, raw: trimmed };
+  return { state: 'number', value: read.value };
+}
+
+/**
+ * Per-column tally of the three states.
+ *
+ * §6.6 requires the wizard to show these "as a prominent preview panel — not a
+ * footnote — and the operator confirms before commit", because the
+ * `"$ -"` → 0 reading is inferential and load-bearing. The spec also records
+ * the trap it is there to stop: counting a column as "populated" when a cell
+ * is a number OR `"$ -"` overstates real coverage badly —
+ * `vmd_transaction_fee` reads 20 of 33 populated and is 4 of 33 numbers.
+ */
+export type RateColumnStates = {
+  key: string;
+  header: string;
+  numbers: number;
+  declined: number;
+  absent: number;
+};
+
 export type BuiltRateRows = {
   /** Exactly what the RPC destructures. Every value a string or null. */
   rows: Record<string, string | null>[];
   errors: RateRowError[];
   /** Rows with no MID — the sheet's own totals and spacers. */
   skippedNoMid: number;
+  /** One entry per mapped numeric column, in mapping order. */
+  columnStates: RateColumnStates[];
 };
 
 /**
@@ -261,10 +346,17 @@ export function buildRateRows(
   const rows: Record<string, string | null>[] = [];
   let skippedNoMid = 0;
 
+  /* Counted only over rows that survive the MID check, so the sheet's own
+     footer cannot inflate the "absent" tally the operator is confirming. */
+  const states = new Map<string, RateColumnStates>();
+
   sheet.rows.forEach((cells, i) => {
     const sheetRow = sheet.rowNumbers[i] ?? sheet.headerRow + 1 + i;
     const row: Record<string, string | null> = {};
     for (const k of RATE_IMPORT_KEYS) row[k] = null;
+
+    /* Held until the MID check passes — see `states`. */
+    const seen: { key: string; header: string; state: RateCellState }[] = [];
 
     for (const [index, key] of mapping) {
       const cell: CellValue = cells[index] ?? null;
@@ -297,9 +389,19 @@ export function buildRateRows(
         continue;
       }
 
-      const read = readNumeric(cell);
-      if (read.ok) row[key] = read.value;
-      else errors.push({ sheetRow, header: sheet.headers[index] ?? `column ${index + 1}`, key, raw: read.raw });
+      /*
+       * A rate column, where the three states of §6.6 apply. `"$ -"` becomes
+       * '0' — the sheet declining the fee — and only a truly empty cell
+       * becomes NULL.
+       */
+      const header = sheet.headers[index] ?? `column ${index + 1}`;
+      const read = readRateCell(cell);
+      if (read.state === 'unreadable') {
+        errors.push({ sheetRow, header, key, raw: read.raw ?? '' });
+        continue;
+      }
+      row[key] = read.value;
+      seen.push({ key, header, state: read.state });
     }
 
     /*
@@ -315,10 +417,21 @@ export function buildRateRows(
     }
     row.mid = digits;
 
+    for (const { key, header, state } of seen) {
+      let tally = states.get(key);
+      if (!tally) {
+        tally = { key, header, numbers: 0, declined: 0, absent: 0 };
+        states.set(key, tally);
+      }
+      if (state === 'number') tally.numbers += 1;
+      else if (state === 'declined') tally.declined += 1;
+      else tally.absent += 1;
+    }
+
     rows.push(row);
   });
 
-  return { rows, errors, skippedNoMid };
+  return { rows, errors, skippedNoMid, columnStates: [...states.values()] };
 }
 
 /* ────────────────────────────────────────────────────────────────────────

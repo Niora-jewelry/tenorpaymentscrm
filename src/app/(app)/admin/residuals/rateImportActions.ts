@@ -30,6 +30,7 @@ import {
   buildRateRows,
   looksLikeRatesSheet,
   suggestRateMapping,
+  type RateColumnStates,
   type RateHeaderSuggestion,
   type RateRowError,
 } from '@/lib/residuals/rateImport';
@@ -167,11 +168,28 @@ export type RateCommitState =
   | { status: 'row_errors'; errors: RateRowError[]; total: number }
   /** The RPC refused. Nothing was written. Message is its bounded rejection. */
   | { status: 'rejected'; message: string; dryRun: boolean }
-  | { status: 'previewed'; outcome: Extract<RateImportOutcome, { ok: true }>['result'] }
+  | {
+      status: 'previewed';
+      outcome: Extract<RateImportOutcome, { ok: true }>['result'];
+      /**
+       * The §6.6 three-state counts, for the panel the operator confirms.
+       *
+       * Carried on the PREVIEW rather than computed in the client, because the
+       * numbers have to describe the same parse the commit will perform. A
+       * count derived separately could agree with nothing.
+       */
+      columnStates: RateColumnStates[];
+    }
   | { status: 'done'; outcome: Extract<RateImportOutcome, { ok: true }>['result'] };
 
 type Parsed =
-  | { ok: true; rows: Record<string, string | null>[]; month: string; skippedNoMid: number }
+  | {
+      ok: true;
+      rows: Record<string, string | null>[];
+      month: string;
+      skippedNoMid: number;
+      columnStates: RateColumnStates[];
+    }
   | { ok: false; state: RateCommitState };
 
 /** Everything both the dry run and the commit need, derived from the upload. */
@@ -252,7 +270,13 @@ async function parseRequest(formData: FormData): Promise<Parsed> {
     };
   }
 
-  return { ok: true, rows: built.rows, month: month.data, skippedNoMid: built.skippedNoMid };
+  return {
+    ok: true,
+    rows: built.rows,
+    month: month.data,
+    skippedNoMid: built.skippedNoMid,
+    columnStates: built.columnStates,
+  };
 }
 
 /**
@@ -274,7 +298,7 @@ export async function dryRunRateImportAction(
 
   const r = await previewRateImport(ctx, parsed.month, parsed.rows);
   if (!r.ok) return { status: 'rejected', message: r.message, dryRun: true };
-  return { status: 'previewed', outcome: r.result };
+  return { status: 'previewed', outcome: r.result, columnStates: parsed.columnStates };
 }
 
 /** The commit. Same inputs, same validation, this time kept. */

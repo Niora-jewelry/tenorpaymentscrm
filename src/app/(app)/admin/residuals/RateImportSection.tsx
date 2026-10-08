@@ -35,6 +35,7 @@ import {
   RATE_IMPORT_REQUIRED,
   RATES_SHEET_HINT,
   splitRejection,
+  type RateColumnStates,
 } from '@/lib/residuals/rateImport';
 import { Panel, PanelHead } from './ResidualsTabs';
 import {
@@ -615,10 +616,98 @@ function Outcome({ state, month }: { state: RateCommitState; month: string }) {
   }
 
   if (state.status === 'previewed') {
-    return <Summary result={state.outcome} month={month} dryRun />;
+    return (
+      <div className="space-y-3">
+        <CellStatesPanel states={state.columnStates} />
+        <Summary result={state.outcome} month={month} dryRun />
+      </div>
+    );
   }
 
   return null;
+}
+
+/**
+ * The three cell states, per column, before the operator commits.
+ *
+ * §6.6 requires this "as a prominent preview panel — not a footnote", and the
+ * reason is that one of the three readings is an inference: a cell holding
+ * `"$ -"` is stored as 0.000000, which asserts that this fee is deliberately
+ * not charged. The other two states are observations.
+ *
+ * The spec also records the trap this panel is shaped to prevent — treating a
+ * column as "populated" when a cell is a number OR `"$ -"` overstates real
+ * rate coverage badly, so the three counts are never summed into one here.
+ * Columns the sheet left entirely empty are dropped: a row of zeroes for a
+ * column nobody filled in is noise on a panel meant to be read.
+ */
+function CellStatesPanel({ states }: { states: RateColumnStates[] }) {
+  const shown = states.filter((s) => s.numbers > 0 || s.declined > 0 || s.absent > 0);
+  if (shown.length === 0) return null;
+
+  const declinedTotal = shown.reduce((n, s) => n + s.declined, 0);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-line-soft">
+      <div className="border-b border-line-soft bg-canvas px-4 py-2.5">
+        <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-900">
+          <Icon name="list" size={14} />
+          What each cell is saying
+        </p>
+        <p className="mt-1 max-w-[76ch] text-[11.5px] leading-relaxed text-ink-500">
+          The sheet distinguishes three things and they are stored differently. A number is the
+          rate. <span className="font-medium text-ink-700">&ldquo;$ -&rdquo;</span> is a decision
+          that this fee is not charged, stored as <span className="tabular">0.000000</span>. An
+          empty cell is an <span className="font-medium text-ink-700">absence</span>, stored as
+          nothing at all, and any charge needing it will be refused rather than priced at zero.
+        </p>
+      </div>
+
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="border-b border-line-faint text-ink-500">
+            <th className="px-4 py-1.5 text-left font-medium">Column</th>
+            <th className="px-3 py-1.5 text-right font-medium">Numbers</th>
+            <th className="px-3 py-1.5 text-right font-medium">&ldquo;$ -&rdquo; &rarr; 0</th>
+            <th className="px-4 py-1.5 text-right font-medium">Empty &rarr; refuse</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((s) => (
+            <tr key={s.key} className="border-b border-line-faint last:border-0">
+              <td className="px-4 py-1.5 text-ink-800">{s.header}</td>
+              <td className="px-3 py-1.5 text-right tabular text-ink-900">{s.numbers}</td>
+              <td
+                className={`px-3 py-1.5 text-right tabular ${
+                  s.declined > 0 ? 'font-medium text-[#8a5a09]' : 'text-ink-300'
+                }`}
+              >
+                {s.declined}
+              </td>
+              <td
+                className={`px-4 py-1.5 text-right tabular ${
+                  s.absent > 0 ? 'text-ink-700' : 'text-ink-300'
+                }`}
+              >
+                {s.absent}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {declinedTotal > 0 ? (
+        <p className="border-t border-line-faint px-4 py-2 text-[11.5px] leading-relaxed text-ink-600">
+          <span className="font-medium text-ink-800">
+            {declinedTotal} cell{declinedTotal === 1 ? '' : 's'} will be stored as a rate of zero
+          </span>{' '}
+          because the sheet wrote &ldquo;$ -&rdquo; there. Confirm that is what those merchants
+          were meant to say before importing &mdash; it is the one reading here that the sheet does
+          not state outright.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function Stat({ n, label, hint, tone }: { n: number; label: string; hint: string; tone?: boolean }) {

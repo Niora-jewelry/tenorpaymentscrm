@@ -25,7 +25,11 @@ async function main() {
   await client.query('BEGIN');
   try {
     const { rows: [user] } = await client.query(
-      `select id, full_name from profiles where role_id in (select id from roles where name = 'Super Admin') limit 1`,
+      `select p.id, p.full_name from profiles p
+        join roles r on r.id = p.role_id
+       where r.is_admin and p.deleted_at is null and p.status = 'active'
+       order by p.email
+       limit 1`,
     );
     const userId = user.id;
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [

@@ -59,10 +59,33 @@ suite('Module 2 record lifecycle against the live database', () => {
     await db.connect();
     await db.query('BEGIN');
 
+    /*
+     * An ACTIVE admin, picked deterministically.
+     *
+     * This read was `select id from profiles where role_id in (... 'Super
+     * Admin') limit 1` — no status filter and no ORDER BY, so which admin came
+     * back was whatever Postgres felt like returning, and it changed between
+     * two consecutive queries in the same session when measured.
+     *
+     * It started failing the day a fourth Super Admin was added: the roll
+     * sometimes landed on `test@gmail.com`, whose status is 'suspended'.
+     * `auth_is_admin()` correctly returns FALSE for a suspended admin, so the
+     * whole suite collapsed with "new row violates row-level security policy
+     * for table records" on its first insert — the policy working exactly as
+     * intended on an actor the test had not meant to choose.
+     *
+     * `status = 'active'` is the fix and `order by p.email` is the rest of it:
+     * a suite that depends on which row a database happens to hand back is
+     * one that fails for reasons unrelated to the code under test.
+     */
     const { rows: users } = await db.query(
-      `select id from profiles where role_id in (select id from roles where name = 'Super Admin') limit 1`,
+      `select p.id from profiles p
+        join roles r on r.id = p.role_id
+       where r.is_admin and p.deleted_at is null and p.status = 'active'
+       order by p.email
+       limit 1`,
     );
-    if (!users.length) throw new Error('No Super Admin profile seeded — cannot run this suite.');
+    if (!users.length) throw new Error('No active admin profile — cannot run this suite.');
     userId = users[0].id;
 
     const { rows: modules } = await db.query(`select id from modules where slug = 'leads'`);

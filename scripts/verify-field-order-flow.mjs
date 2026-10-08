@@ -29,7 +29,11 @@ async function main() {
   await client.query('BEGIN');
   try {
     const { rows: [user] } = await client.query(
-      `select id from profiles where role_id in (select id from roles where name = 'Super Admin') limit 1`,
+      `select p.id from profiles p
+        join roles r on r.id = p.role_id
+       where r.is_admin and p.deleted_at is null and p.status = 'active'
+       order by p.email
+       limit 1`,
     );
     const userId = user.id;
     await client.query(`select set_config('request.jwt.claims', $1, true)`, [
@@ -49,6 +53,19 @@ async function main() {
     const adminIds = adminFields.map((f) => f.id);
 
     // 1. No saved order yet — should read back nothing.
+    //
+    //    CLEARED FIRST, because this is a precondition rather than a
+    //    behaviour. The script used to pick an arbitrary Super Admin, so the
+    //    row it left behind on a part-failed run usually belonged to a
+    //    different actor than the next run chose; now that the actor is
+    //    deterministic, any leftover is found every time and the assertion
+    //    failed on state rather than on logic. Same reasoning as the baseline
+    //    in verify-files-flow: a script run against a live database has to
+    //    establish its starting point, not assume it.
+    await client.query(
+      `delete from user_field_order where user_id = $1 and tab_id = $2 and subtab_id is null`,
+      [userId, tab.id],
+    );
     const { rows: before } = await client.query(
       `select field_id from user_field_order where user_id = $1 and tab_id = $2 and subtab_id is null`,
       [userId, tab.id],

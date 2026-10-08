@@ -27,7 +27,11 @@ async function main() {
   await client.query('BEGIN');
   try {
     const { rows: [user] } = await client.query(
-      `select id from profiles where role_id in (select id from roles where name = 'Super Admin') limit 1`,
+      `select p.id from profiles p
+        join roles r on r.id = p.role_id
+       where r.is_admin and p.deleted_at is null and p.status = 'active'
+       order by p.email
+       limit 1`,
     );
     ok('found a super_admin profile to act as', Boolean(user));
     const userId = user.id;

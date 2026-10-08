@@ -76,6 +76,13 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [sheetName, setSheetName] = useState<string | null>(null);
   const [month, setMonth] = useState('');
+  /**
+   * Which worksheet row holds the column names.
+   *
+   * Null means "whatever the parser found". The real rates workbook needs it
+   * set, because its header spans two rows — see `ParseOptions`.
+   */
+  const [headerRow, setHeaderRow] = useState<number | null>(null);
   const [mapping, setMapping] = useState<Record<number, string | ''>>({});
 
   const [preview, runPreview, previewing] = useActionState<RatePreviewState, FormData>(
@@ -140,11 +147,14 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
 
   const busy = previewing || committing;
 
-  const read = (nextSheet?: string) => {
+  const read = (nextSheet?: string, nextHeaderRow?: number | null) => {
     if (!file) return;
     const fd = new FormData();
     fd.set('file', file);
-    if (nextSheet) fd.set('sheet', nextSheet);
+    const sheetArg = nextSheet ?? sheet?.name;
+    if (sheetArg) fd.set('sheet', sheetArg);
+    const hr = nextHeaderRow === undefined ? headerRow : nextHeaderRow;
+    if (hr !== null) fd.set('headerRow', String(hr));
     startTransition(() => runPreview(fd));
   };
 
@@ -155,6 +165,7 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
     fd.set('sheet', sheet.name);
     fd.set('month', month);
     fd.set('mapping', JSON.stringify(Object.fromEntries(chosen)));
+    if (headerRow !== null) fd.set('headerRow', String(headerRow));
     fd.set('intent', intent);
     startTransition(() => runCommit(fd));
   };
@@ -242,7 +253,10 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
                   onChange={(e) => {
                     setSheetName(e.target.value);
                     setMapping({});
-                    read(e.target.value);
+                    /* A different sheet has a different header row, so the
+                       override from the last one must not follow it. */
+                    setHeaderRow(null);
+                    read(e.target.value, null);
                   }}
                   disabled={busy}
                   className="mt-1 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] text-ink-900 outline-none focus-field"
@@ -279,6 +293,47 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
                   Every merchant in the sheet gets a version starting this month. Earlier months
                   keep the rates they already had.
                 </p>
+
+                {/*
+                  ── THE HEADER ROW, STATED AND CHANGEABLE ─────────────────
+                  The real rates workbook puts MID, Merchant Name and Processor
+                  on row 1 beside merged group labels, and the rate columns on
+                  row 2. No heuristic reads that correctly — neither row is the
+                  header on its own — so the screen says which row it used and
+                  lets it be corrected. Getting this wrong is obvious here and
+                  invisible once imported.
+                */}
+                <div className="mt-3">
+                  <label
+                    htmlFor="rate-header-row"
+                    className="block text-[12.5px] font-medium text-ink-700"
+                  >
+                    Column names are on row
+                  </label>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      id="rate-header-row"
+                      type="number"
+                      min={1}
+                      value={headerRow ?? sheet.headerRow}
+                      disabled={busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        setHeaderRow(Number.isInteger(n) && n >= 1 ? n : null);
+                      }}
+                      onBlur={() => {
+                        setMapping({});
+                        read();
+                      }}
+                      className="w-[88px] rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] tabular text-ink-900 outline-none focus-field"
+                    />
+                    <span className="text-[11.5px] text-ink-400">
+                      {headerRow === null
+                        ? 'found automatically'
+                        : 'set by you — the columns below re-read on change'}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
           </Panel>

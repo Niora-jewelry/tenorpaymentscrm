@@ -103,7 +103,29 @@ function findHeaderRow(grid: CellValue[][]): number {
  * cannot be located comes back with zero headers rather than a guess, and the
  * caller says so by name.
  */
-export function parseWorkbook(bytes: Uint8Array): ParsedWorkbook {
+/**
+ * Options for a sheet whose header the finder cannot be expected to locate.
+ *
+ * ── WHY AN OVERRIDE AND NOT A CLEVERER FINDER ───────────────────────────
+ * The real merchant-rates workbook has a TWO-ROW header: `MID`, `Merchant
+ * Name` and `Processor` are named on row 1 alongside merged group labels
+ * ("Authorization Fees", "Volume Fees"), and the rate columns are named on
+ * row 2 — whose first cell is a sentence of prose describing the tab.
+ *
+ * No heuristic reads that correctly, because neither row is the header on its
+ * own. `findHeaderRow` picks row 1, which labels the rate columns with group
+ * names and turns row 2 into a data row.
+ *
+ * Guessing harder would make the common case less predictable to fix a case
+ * the operator can see at a glance. So the operator is given the control
+ * instead: the screen says which row was used and lets them choose another.
+ */
+export type ParseOptions = {
+  /** 1-based worksheet row to treat as the header, per sheet name. */
+  headerRows?: Record<string, number>;
+};
+
+export function parseWorkbook(bytes: Uint8Array, options: ParseOptions = {}): ParsedWorkbook {
   const wb = XLSX.read(bytes, {
     type: 'array',
     // Underlying values, not display text. See the file header.
@@ -142,7 +164,17 @@ export function parseWorkbook(bytes: Uint8Array): ParsedWorkbook {
       blankrows: true,
     });
 
-    const headerIdx = findHeaderRow(grid);
+    /*
+     * An override is 1-based and clamped to the grid, so a stale value from a
+     * previous file cannot read past the end and produce an empty sheet that
+     * looks like a parse failure.
+     */
+    const override = options.headerRows?.[name];
+    const headerIdx =
+      override !== undefined && override >= 1 && override <= grid.length
+        ? override - 1
+        : findHeaderRow(grid);
+
     if (headerIdx < 0) {
       sheets.push({ name, headers: [], rows: [], rowNumbers: [], headerRow: 0 });
       continue;

@@ -108,7 +108,19 @@ export async function previewRateSheetAction(
   if (!file.ok) return { status: 'error', message: file.message };
 
   try {
-    const wb = parseWorkbook(file.file.bytes);
+    /*
+     * The real rates workbook has a two-row header, so the finder cannot get it
+     * right on its own — see `ParseOptions`. The operator picks the row and it
+     * is honoured here.
+     */
+    const wantedSheet = typeof formData.get('sheet') === 'string' ? String(formData.get('sheet')) : null;
+    const headerRowRaw = Number(formData.get('headerRow'));
+    const headerRows =
+      wantedSheet && Number.isInteger(headerRowRaw) && headerRowRaw >= 1
+        ? { [wantedSheet]: headerRowRaw }
+        : undefined;
+
+    const wb = parseWorkbook(file.file.bytes, { headerRows });
     if (wb.sheets.every((s) => s.headers.length === 0)) {
       return {
         status: 'error',
@@ -117,9 +129,8 @@ export async function previewRateSheetAction(
       };
     }
 
-    const wanted = formData.get('sheet');
     const chosen =
-      wb.sheets.find((s) => s.name === wanted) ??
+      wb.sheets.find((s) => s.name === wantedSheet) ??
       /* Default to the sheet that looks like the rates tab, not the first one —
          the workbook has several and the rates tab is rarely first. */
       wb.sheets.find((s) => looksLikeRatesSheet(s.name) && s.headers.length > 0) ??
@@ -206,7 +217,15 @@ async function parseRequest(formData: FormData): Promise<Parsed> {
   const file = await fileFrom(formData);
   if (!file.ok) return { ok: false, state: { status: 'error', message: file.message } };
 
-  const sheet = parseWorkbook(file.file.bytes).sheets.find((s) => s.name === sheetName.data);
+  const headerRowRaw = Number(formData.get('headerRow'));
+  const headerRows =
+    Number.isInteger(headerRowRaw) && headerRowRaw >= 1
+      ? { [sheetName.data]: headerRowRaw }
+      : undefined;
+
+  const sheet = parseWorkbook(file.file.bytes, { headerRows }).sheets.find(
+    (s) => s.name === sheetName.data,
+  );
   if (!sheet || sheet.headers.length === 0) {
     return { ok: false, state: { status: 'error', message: 'That sheet is no longer in the file. Read it again.' } };
   }

@@ -209,6 +209,70 @@ describe('parseWorkbook', () => {
     expect(wb.sheets[0].rows).toEqual([]);
   });
 
+  /*
+   * ── THE REAL MERCHANT-RATES WORKBOOK ──────────────────────────────────
+   * Its header spans TWO rows: MID, Merchant Name and Processor are named on
+   * row 1 beside merged group labels ("Authorization Fees", "Volume Fees"),
+   * and the rate columns are named on row 2 — whose first cell is a sentence
+   * of prose describing the tab.
+   *
+   * Neither row is the header on its own, so no heuristic reads it correctly.
+   * The finder picks row 1, which labels the rate columns with group names.
+   * That is why the override exists, and why the screen states the row it used
+   * rather than deciding silently.
+   */
+  it('picks the wrong row on a two-row header, which is why the override exists', () => {
+    const wb = parseWorkbook(
+      book([
+        ['MID', 'Merchant Name', 'Processor', 'Authorization Fees', '', 'Volume Fees'],
+        ['This tab lists the fees the merchant pays.', '', '', 'Amex Auth Fee', 'VMD Auth Fee', 'VMD Volume'],
+        ['201100230235', 'THE PURPLE POINT', 'Maverick', 0.1, 0.1, 0.0338],
+      ]),
+    );
+    /* Row 1 wins, so the rate columns carry group labels and a blank. */
+    expect(wb.sheets[0].headerRow).toBe(1);
+    expect(wb.sheets[0].headers).toContain('Authorization Fees');
+    expect(wb.sheets[0].headers).not.toContain('VMD Auth Fee');
+  });
+
+  it('and the override reads that same sheet correctly', () => {
+    const bytes = book([
+      ['MID', 'Merchant Name', 'Processor', 'Authorization Fees', '', 'Volume Fees'],
+      ['This tab lists the fees the merchant pays.', '', '', 'Amex Auth Fee', 'VMD Auth Fee', 'VMD Volume'],
+      ['201100230235', 'THE PURPLE POINT', 'Maverick', 0.1, 0.1, 0.0338],
+    ]);
+    const wb = parseWorkbook(bytes, { headerRows: { Sheet1: 2 } });
+
+    expect(wb.sheets[0].headerRow).toBe(2);
+    expect(wb.sheets[0].headers).toContain('VMD Auth Fee');
+    expect(wb.sheets[0].headers).toContain('VMD Volume');
+
+    /* One data row, at its real worksheet position. */
+    expect(wb.sheets[0].rows).toHaveLength(1);
+    expect(wb.sheets[0].rowNumbers).toEqual([3]);
+
+    /*
+     * And the rate arrives as the CELL VALUE, not the percentage it displays
+     * as. This is the whole reason the sheet must be read as .xlsx: the same
+     * cell CSV-exports as "3.38%", losing the digits beyond two decimals and
+     * scaling it by a hundred.
+     */
+    expect(wb.sheets[0].rows[0][5]).toBe(0.0338);
+  });
+
+  it('ignores an override that is off the end of the sheet', () => {
+    /* A stale value from a previous file must not produce an empty sheet that
+       reads as a parse failure. */
+    const wb = parseWorkbook(
+      book([
+        ['MID', 'Fee Item'],
+        ['550000000101', 'a'],
+      ]),
+      { headerRows: { Sheet1: 99 } },
+    );
+    expect(wb.sheets[0].headers).toEqual(['MID', 'Fee Item']);
+  });
+
   it('reads every sheet in the book', () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['MID', 'A'], ['1', 2]]), 'Fees');

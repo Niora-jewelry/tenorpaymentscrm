@@ -449,11 +449,26 @@ suite('a fee report, from .xlsx bytes to a calculated residual', () => {
     expect(dep.tb).toBe('0.20'); // 20 x 0.01
     expect(dep.na).toBe('0.72'); // 0.80 x 0.90
 
-    /* Rule #6 has no terms on either side, and "a side with no terms is
-       $0.00" — which is why the workbook's "Always $0" needs no opcode. */
+    /*
+     * ── PCI CHANGED, ON THE CLIENT'S DECISION ──────────────────────────
+     * This asserted 0.00 on both sides, which was right while rule #6 had no
+     * terms at all — "a side with no terms is $0.00".
+     *
+     * The client settled the open question in October 2026: "PCI works just
+     * like the others and you can disregard the verbiage 'merchant pays it
+     * directly'." So migration 20260819009745 cleared
+     * `billed_directly_to_merchant` and gave the rule a buy-side term reading
+     * `template.pci_fee`, which is 5.00.
+     *
+     * The August report agrees on all 41 of its PCI rows: income − 5.00 = net.
+     * The income side is still 0.00 because no merchant-rate column holds a
+     * PCI price — see the migration for why inventing one was refused.
+     */
     const pci = await line(MID.CLEAN, 'PCI Program');
     expect(pci.ti).toBe('0.00');
-    expect(pci.tb).toBe('0.00');
+    expect(pci.tb).toBe('5.00');
+    /* And the identity still holds: 0 − 5 = −5. */
+    expect(pci.nb).toBe('-5.00');
 
     /* The mirror rule: a negative net revenue is stored as a positive cost. */
     const mirror = await line(MID.MIRROR_NEG, 'Interchange');

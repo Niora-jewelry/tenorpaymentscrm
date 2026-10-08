@@ -26,6 +26,7 @@ import type {
 import { ImportHistory } from './ImportHistory';
 import { ImportSection } from './ImportSection';
 import { RateImportSection } from './RateImportSection';
+import { StatementImportSection } from './StatementImportSection';
 import { PeriodsSection } from './PeriodsSection';
 import { ReferenceSection } from './ReferenceSection';
 import { BuyRatesSection } from './BuyRatesSection';
@@ -70,6 +71,14 @@ export function ResidualsTabs({
           <ImportHistory imports={imports} />
         </div>
       ),
+    },
+    {
+      key: 'statements',
+      label: 'Statements',
+      icon: 'paperclip',
+      description:
+        'The processor’s monthly statement, one PDF per merchant. This is the only source of volume, and three fee items are charged on volume rather than on a count — without it those lines cannot be worked out at all.',
+      content: <StatementImportSection processors={processors} />,
     },
     {
       key: 'rates',

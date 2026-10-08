@@ -390,7 +390,7 @@ export async function commitImport(ctx: AuthContext, req: CommitRequest): Promis
  * is not expressible through PostgREST, and the race it would protect against
  * is two admins importing the same month in the same second.
  */
-async function ensurePeriod(ctx: AuthContext, statementMonth: string): Promise<string> {
+export async function ensurePeriod(ctx: AuthContext, statementMonth: string): Promise<string> {
   const supabase = supabaseAdmin();
 
   const { data: found } = await supabase

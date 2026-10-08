@@ -30,6 +30,7 @@ import type { AuthContext } from './permissions';
 import type {
   GridRow,
   HistoryEntry,
+  MerchantDashboardRow,
   MerchantState,
   PeriodHeader,
   Synopsis,
@@ -52,6 +53,7 @@ import type {
 export type {
   GridRow,
   HistoryEntry,
+  MerchantDashboardRow,
   MerchantState,
   PeriodHeader,
   Synopsis,
@@ -309,4 +311,73 @@ export async function periodHeader(
     processor: ctxRow?.processor ?? null,
     registryLabel,
   };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The merchant dashboard — tab 1
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One row per merchant in a period: who they are, where they stand, and what
+ * they earned if the month may yet be totalled.
+ *
+ * ── THREE READS, NOT ONE NEW QUERY ───────────────────────────────────────
+ * `residual_merchant_states` owns the rung, `residual_synopsis` owns the money
+ * and the rule about when it may be shown, and `residual_merchant_directory`
+ * owns the identity. This function joins them in memory and computes nothing.
+ *
+ * A fourth query that summed `residual_lines` itself would be quicker to write
+ * and would be a second answer to "may this month be totalled" — the question
+ * the whole suppression rule exists to answer once. The project's standing
+ * convention: the two must not be able to disagree.
+ *
+ * ── A MERCHANT WITH NO STATE ROW IS STILL A ROW ──────────────────────────
+ * `state` is nullable rather than defaulted. A merchant the state function has
+ * no opinion about is a different thing from one it has placed on a rung, and
+ * inventing 'ready' for them would read as a clean bill of health.
+ */
+export async function merchantDashboard(
+  ctx: AuthContext,
+  periodId: string,
+): Promise<MerchantDashboardRow[]> {
+  assertAdmin(ctx);
+
+  const supabase = await createSupabaseServerClient();
+
+  const [directory, states, totals] = await Promise.all([
+    supabase.rpc('residual_merchant_directory', { p_period_id: periodId }),
+    merchantStates(ctx, periodId),
+    synopsis(ctx, periodId),
+  ]);
+
+  if (directory.error) {
+    console.error('[residuals] merchant directory failed', directory.error);
+    throw new Error(`The merchant list could not be read: ${directory.error.message}`);
+  }
+
+  const stateByMid = new Map(states.map((s) => [s.mid, s]));
+  /* The company-wide row carries mid === null and is not a merchant. */
+  const totalByMid = new Map(
+    totals.filter((t) => t.mid !== null).map((t) => [t.mid as string, t]),
+  );
+
+  return ((directory.data ?? []) as Record<string, unknown>[]).map((r) => {
+    const mid = String(r.mid);
+    const t = totalByMid.get(mid);
+    return {
+      mid,
+      merchantName:
+        r.merchant_name === null || r.merchant_name === undefined
+          ? null
+          : String(r.merchant_name),
+      nameVariants: (r.name_variants as string[] | null) ?? [],
+      recordId: r.record_id === null || r.record_id === undefined ? null : String(r.record_id),
+      lineCount: Number(r.line_count ?? 0),
+      state: stateByMid.get(mid) ?? null,
+      netIncome: t?.netIncome ?? null,
+      disclosable: t?.disclosable ?? false,
+      rowsComputed: t?.rowsComputed ?? 0,
+      rowsTotal: t?.rowsTotal ?? 0,
+    };
+  });
 }

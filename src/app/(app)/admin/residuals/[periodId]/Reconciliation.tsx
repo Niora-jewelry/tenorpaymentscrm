@@ -76,12 +76,15 @@ export function Reconciliation({
   states,
   totals,
   history,
+  focusMid = null,
 }: {
   header: PeriodHeader;
   rows: GridRow[];
   states: MerchantState[];
   totals: Synopsis[];
   history: HistoryEntry[];
+  /** One merchant to start expanded, from `?mid=` on the URL. */
+  focusMid?: string | null;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -162,12 +165,19 @@ export function Reconciliation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowsByMid, stateByMid]);
 
-  /* Open the ones with work in them; leave the settled ones closed. */
+  /*
+   * Open the ones with work in them; leave the settled ones closed.
+   *
+   * A merchant arrived at from the dashboard opens too, even when settled —
+   * following a link to a merchant and finding their block collapsed reads as
+   * the link having failed.
+   */
   const [open, setOpen] = useState<Set<string>>(() => {
     const s = new Set<string>();
     for (const m of states) {
       if (m.state !== 'ready' && m.state !== 'reconciled') s.add(m.mid);
     }
+    if (focusMid) s.add(focusMid);
     return s;
   });
 

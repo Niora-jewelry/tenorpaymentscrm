@@ -27,7 +27,9 @@ import { ImportHistory } from './ImportHistory';
 import { ImportSection } from './ImportSection';
 import { RateImportSection } from './RateImportSection';
 import { StatementImportSection } from './StatementImportSection';
+import { MerchantsSection } from './MerchantsSection';
 import type { VolumeMappingRow } from '@/lib/residuals/volumes';
+import type { MerchantDashboardRow } from '@/lib/residuals/reconciliation';
 import { PeriodsSection } from './PeriodsSection';
 import { ReferenceSection } from './ReferenceSection';
 import { BuyRatesSection } from './BuyRatesSection';
@@ -52,6 +54,9 @@ export function ResidualsTabs({
   processors,
   imports,
   volumeMappings,
+  merchants,
+  latestPeriodId,
+  latestStatementMonth,
 }: {
   periods: ResidualPeriod[];
   reference: ReferenceSummary;
@@ -60,8 +65,26 @@ export function ResidualsTabs({
   processors: string[];
   imports: ImportHistoryRow[];
   volumeMappings: VolumeMappingRow[];
+  merchants: MerchantDashboardRow[];
+  latestPeriodId: string | null;
+  latestStatementMonth: string | null;
 }) {
   const sections: Section[] = [
+    {
+      key: 'merchants',
+      label: 'Merchants',
+      icon: 'users',
+      count: merchants.length,
+      description:
+        'Where every merchant in the newest month stands, and the next thing to do about each one. The ones needing a decision are listed first.',
+      content: (
+        <MerchantsSection
+          rows={merchants}
+          periodId={latestPeriodId}
+          statementMonth={latestStatementMonth}
+        />
+      ),
+    },
     {
       key: 'import',
       label: 'Import',

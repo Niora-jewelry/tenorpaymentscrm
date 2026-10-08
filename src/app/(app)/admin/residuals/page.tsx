@@ -33,7 +33,7 @@ import {
   processors,
 } from '@/lib/records/adminResiduals';
 import { recentImports } from '@/lib/records/residualImport';
-import { synopsis } from '@/lib/records/residualGrid';
+import { merchantDashboard, synopsis } from '@/lib/records/residualGrid';
 import { volumeMappingCoverage } from '@/lib/records/residualVolumes';
 import { ResidualsHeader } from './ResidualsHeader';
 import { ResidualsTabs } from './ResidualsTabs';
@@ -91,6 +91,21 @@ export default async function AdminResidualsPage() {
    * import path depends on. A period in an odd state must not cost an admin
    * the ability to load a statement.
    */
+  /*
+   * Tab 1. Allowed to fail for the same reason the synopsis is: it is a view
+   * over three reads that already have their own screens, and a period in an
+   * odd state must not cost an admin the rest of the module.
+   */
+  const merchants = await (async () => {
+    if (!latest) return [];
+    try {
+      return await merchantDashboard(ctx, latest.id);
+    } catch (e) {
+      console.error('[residuals] merchant dashboard failed', e);
+      return [];
+    }
+  })();
+
   const volumeMappings = await (async () => {
     if (!latest) return [];
     try {
@@ -119,6 +134,9 @@ export default async function AdminResidualsPage() {
         processors={procs}
         imports={imports}
         volumeMappings={volumeMappings}
+        merchants={merchants}
+        latestPeriodId={latest?.id ?? null}
+        latestStatementMonth={latest?.statementMonth ?? null}
       />
     </div>
   );

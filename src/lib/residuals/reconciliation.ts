@@ -210,6 +210,44 @@ export type Synopsis = {
 };
 
 /* ────────────────────────────────────────────────────────────────────────
+ * The merchant dashboard
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One merchant's standing in a month — tab 1 of the module.
+ *
+ * ── COMPOSED, NOT COMPUTED ───────────────────────────────────────────────
+ * Every field here already had an owner. The rung and its reason come from
+ * `residual_merchant_states`, the money from `residual_synopsis`, and the
+ * identity from `residual_merchant_directory`. Nothing on this screen is
+ * worked out a second time.
+ *
+ * That matters most for `netIncome`, which is NULL unless the whole month
+ * carries a calculation version. §12 of the spec calls the reasoning the
+ * sharpest argument in the module: a partial month's figure has the wrong
+ * SIGN, not merely the wrong magnitude, because the costs compute and the
+ * volume-driven income does not. A dashboard that summed what it had would
+ * show every merchant at a loss and be believed.
+ */
+export type MerchantDashboardRow = {
+  mid: string;
+  merchantName: string | null;
+  /** Every distinct name when the MID carries more than one. Usually empty. */
+  nameVariants: string[];
+  /** The CRM record this MID is linked to, if the link has been made. */
+  recordId: string | null;
+  lineCount: number;
+  /** From `residual_merchant_states`. Null when the period has no state row. */
+  state: MerchantState | null;
+  /** Money as text, or null when the month may not be totalled. Never 0. */
+  netIncome: string | null;
+  /** False means no total exists for this month yet, for anyone. */
+  disclosable: boolean;
+  rowsComputed: number;
+  rowsTotal: number;
+};
+
+/* ────────────────────────────────────────────────────────────────────────
  * The period
  * ──────────────────────────────────────────────────────────────────────── */
 

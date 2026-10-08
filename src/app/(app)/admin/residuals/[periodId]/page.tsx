@@ -41,13 +41,22 @@ import { Reconciliation } from './Reconciliation';
 
 export default async function PeriodPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ periodId: string }>;
+  /*
+   * `?mid=` focuses one merchant, which is how the Merchants dashboard links
+   * here. It only decides which block starts open — never which rows are
+   * fetched — so a stale or wrong MID shows the month as it always was rather
+   * than an empty screen.
+   */
+  searchParams?: Promise<{ mid?: string }>;
 }) {
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
   const { periodId } = await params;
+  const focusMid = ((await searchParams)?.mid ?? '').replace(/[^0-9]/g, '') || null;
 
   /* A malformed id would reach PostgREST as a bad uuid and raise 22P02; a
      404 is the honest answer to a URL that is not a period. */
@@ -78,6 +87,7 @@ export default async function PeriodPage({
         rows={rows}
         states={states}
         totals={totals}
+        focusMid={focusMid}
         history={history}
       />
     </div>

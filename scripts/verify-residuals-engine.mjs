@@ -164,12 +164,25 @@ try {
   check('                   total buy     (20 x 0.01)', dep?.tb, '0.20');
   check('                   after split   (0.80 x 0.90)', dep?.na, '0.72');
 
-  /* Rule #6 has no terms on either side. "A side with no terms is $0.00" -
-     that one rule removes an entire opcode, because the workbook's "Always $0"
-     needs no representation when absence already means it. */
+  /*
+   * PCI is a COSTED item, and was not always.
+   *
+   * Rule #6 used to have no terms on either side, and this script asserted
+   * 0.00 on both — "a side with no terms is $0.00", which is still true of
+   * rules that have none. Migration 745 settled the question the handoff
+   * called the largest open mismatch group, on the client's own words:
+   *
+   *   "This is correct. PCI works just like the others and you can disregard
+   *    the verbiage 'merchant pays it directly'."
+   *
+   * So rule #6 gained a buy-side term reading `template.pci_fee`, and the
+   * August report agrees with it — all 41 PCI rows satisfy income − buy ≡ net
+   * with the buy side at the template's 5.00. The income side is untouched and
+   * is still 0.00 for a merchant who is not separately charged.
+   */
   const pci = await line(MID.CLEAN, 'PCI Program');
-  check('PCI Program: a rule with no terms is 0.00', pci?.ti, '0.00');
-  check('             and stays 0.00 on the buy side', pci?.tb, '0.00');
+  check('PCI Program: no income term, so 0.00 on the income side', pci?.ti, '0.00');
+  check('             costed at the template rate on the buy side', pci?.tb, '5.00');
 
   // ── 2. the mirror sign ──────────────────────────────────────────────────
   console.log('\n2 — the mirror rules, stored as -net_revenue:');

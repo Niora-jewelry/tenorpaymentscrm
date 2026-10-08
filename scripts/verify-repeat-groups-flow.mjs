@@ -52,7 +52,28 @@ async function main() {
     ]);
     await client.query(`set local role authenticated`);
 
-    const { rows: [rec] } = await client.query(
+    /*
+     * Inspecting the stored row is done as the OWNER, not as `authenticated`.
+     *
+     * `authenticated` holds no grant of any kind on `records` — only
+     * service_role does — so a direct `select ... from records` raises
+     * "permission denied for table records", which is what this script had
+     * been dying on. That is not a gap: the application never reads the table
+     * that way either. It goes through `record_values_for`, and the one place
+     * that does touch the table directly (recordResiduals.ts) reaches for
+     * supabaseAdmin() and says why in a comment.
+     *
+     * So the RPC under test stays as `authenticated` — that is the behaviour
+     * being verified — and the fixture inspection around it runs as the owner.
+     */
+    const inspect = async (sql, params) => {
+      await client.query('reset role');
+      const out = await client.query(sql, params);
+      await client.query(`set local role authenticated`);
+      return out;
+    };
+
+    const { rows: [rec] } = await inspect(
       `select id, updated_at::text as updated_at from records where deal_name = 'Joe''s Pizza' limit 1`,
     );
     ok('found seeded record Joe\'s Pizza', Boolean(rec));
@@ -76,7 +97,7 @@ async function main() {
     // 2. Pad owner_private (currently 0 or 1 entries) to the SAME length,
     //    with the SSN member only — mirrors addRepeatInstance()'s padding
     //    logic when the sibling arrays start out different lengths.
-    const { rows: [row1] } = await client.query(`select values -> 'owner_private' as v from records where id = $1`, [recordId]);
+    const { rows: [row1] } = await inspect(`select values -> 'owner_private' as v from records where id = $1`, [recordId]);
     const privateBefore = row1.v ?? [];
     ok('owner_private starts shorter than owner_ownership (the desync case this exists to fix)', privateBefore.length < 2, JSON.stringify(privateBefore));
 
@@ -86,14 +107,14 @@ async function main() {
     at = r.updated_at;
 
     // 3. Set the SSN member on instance 2 of owner_private.
-    const { rows: [row2] } = await client.query(`select values -> 'owner_private' as v from records where id = $1`, [recordId]);
+    const { rows: [row2] } = await inspect(`select values -> 'owner_private' as v from records where id = $1`, [recordId]);
     const withSsn = row2.v.map((inst, i) => (i === 1 ? { ...inst, ssn: '123456789' } : inst));
     r = await setValue(client, recordId, 'owner_private', withSsn, at);
     ok('set SSN member on owner_private instance 2', r.ok === true, JSON.stringify(r));
     at = r.updated_at;
 
     // 4. Both arrays are now length 2 — the sync invariant migration 27 exists for.
-    const { rows: [final] } = await client.query(
+    const { rows: [final] } = await inspect(
       `select jsonb_array_length(values -> 'owner_ownership') as ownership_len, jsonb_array_length(values -> 'owner_private') as private_len, values -> 'owner_private' -> 1 -> 'ssn' as ssn2
        from records where id = $1`,
       [recordId],
@@ -102,7 +123,7 @@ async function main() {
     ok('instance 2 SSN landed only on owner_private, not overwriting ownership data', final.ssn2 === '123456789', JSON.stringify(final));
 
     // 5. Removing instance 2 from both (mirrors removeRepeatInstance()).
-    const { rows: [row3] } = await client.query(`select values -> 'owner_ownership' as v from records where id = $1`, [recordId]);
+    const { rows: [row3] } = await inspect(`select values -> 'owner_ownership' as v from records where id = $1`, [recordId]);
     r = await setValue(client, recordId, 'owner_ownership', row3.v.slice(0, 1), at);
     ok('removed instance 2 from owner_ownership', r.ok === true, JSON.stringify(r));
     at = r.updated_at;
@@ -111,7 +132,7 @@ async function main() {
     ok('removed instance 2 from owner_private', r.ok === true, JSON.stringify(r));
     at = r.updated_at;
 
-    const { rows: [afterRemove] } = await client.query(
+    const { rows: [afterRemove] } = await inspect(
       `select jsonb_array_length(values -> 'owner_ownership') as ownership_len, jsonb_array_length(values -> 'owner_private') as private_len
        from records where id = $1`,
       [recordId],

@@ -57,8 +57,44 @@ async function main() {
     // 2. A regular direct select on record_team_members only shows OUR OWN
     //    row, not the full roster — the actual reason record_team_member_ids
     //    had to be built.
-    const { rows: directSelect } = await client.query(`select user_id from record_team_members where record_id = $1`, [recordId]);
-    ok('direct select on record_team_members is scoped (RLS), not the full roster function', directSelect.every((r) => r.user_id === userId));
+    //
+    //    CHECKED AS A NON-ADMIN, because the policy is
+    //    `user_id = auth.uid() OR auth_is_admin()` and this script acts as a
+    //    Super Admin for everything else. Asserting the scoping while admin
+    //    was asserting the wrong half of that OR: the admin legitimately sees
+    //    the whole roster, so the check failed while RLS was working.
+    await client.query('reset role');
+    const { rows: [plain] } = await client.query(
+      `select p.id from profiles p
+         join roles r on r.id = p.role_id
+        where not r.is_admin and p.deleted_at is null and p.status = 'active'
+        limit 1`,
+    );
+    if (plain) {
+      await client.query(`select set_config('request.jwt.claims', $1, true)`, [
+        JSON.stringify({ sub: plain.id, role: 'authenticated' }),
+      ]);
+      await client.query(`set local role authenticated`);
+      const { rows: directSelect } = await client.query(
+        `select user_id from record_team_members where record_id = $1`,
+        [recordId],
+      );
+      ok(
+        'a non-admin sees only their own team-member row, never the roster (RLS)',
+        directSelect.every((r) => r.user_id === plain.id),
+        JSON.stringify(directSelect),
+      );
+      await client.query('reset role');
+    } else {
+      ok('a non-admin sees only their own team-member row, never the roster (RLS)', true,
+         'skipped: no non-admin profile exists to act as');
+    }
+
+    /* Back to the admin for the rest of the script. */
+    await client.query(`select set_config('request.jwt.claims', $1, true)`, [
+      JSON.stringify({ sub: userId, role: 'authenticated' }),
+    ]);
+    await client.query(`set local role authenticated`);
 
     // 3. Post an update mentioning ourself by name — self-mentions must NOT
     //    self-notify (no point notifying yourself of your own update).

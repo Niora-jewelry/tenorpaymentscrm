@@ -73,6 +73,21 @@ async function main() {
 
     // 3. record_file_upload on the first application row.
     const targetRow = appRows[0];
+    /*
+     * The row's starting contents, because this script runs against a live
+     * database and that row is not empty — Joe's Pizza already carries
+     * Owner-ID.pdf. Asserting absolute counts made all three file assertions
+     * fail on real data while the behaviour under test was perfectly correct.
+     *
+     * So every count below is a DELTA from this baseline. That is the property
+     * worth having anyway: it holds whatever anyone has uploaded before.
+     */
+    const { rows: filesBefore } = await client.query(
+      `select id from files where file_row_id = $1 and deleted_at is null`,
+      [targetRow.id],
+    );
+    const baseline = filesBefore.length;
+
     const path = `${recordId}/application/${targetRow.id}/${Date.now()}-test.pdf`;
     const { rows: [uploadResult] } = await client.query(
       `select record_file_upload($1, $2, $3, $4) as file_id`,
@@ -85,7 +100,12 @@ async function main() {
       `select id, name, size_bytes, version from files where file_row_id = $1 and deleted_at is null`,
       [targetRow.id],
     );
-    ok('file row now has 1 file, version 1', filesAfterUpload.length === 1 && filesAfterUpload[0].version === 1, JSON.stringify(filesAfterUpload));
+    const uploaded = filesAfterUpload.find((f) => f.id === fileId);
+    ok(
+      'the upload added exactly one file, at version 1',
+      filesAfterUpload.length === baseline + 1 && uploaded?.version === 1,
+      JSON.stringify({ baseline, now: filesAfterUpload.length, uploaded }),
+    );
 
     // 4. Upload a second file to the same row — version should bump if same
     //    name, or just be a second entry with version 1 if a different name
@@ -100,7 +120,11 @@ async function main() {
       `select id, name from files where file_row_id = $1 and deleted_at is null`,
       [targetRow.id],
     );
-    ok('file row now has 2 distinct files', filesAfterSecond.length === 2, JSON.stringify(filesAfterSecond));
+    ok(
+      'a second, differently-named upload is a distinct file rather than a replacement',
+      filesAfterSecond.length === baseline + 2,
+      JSON.stringify({ baseline, now: filesAfterSecond.length, files: filesAfterSecond }),
+    );
 
     // 5. Activity log entry got written for the upload.
     const { rows: activity } = await client.query(
@@ -120,7 +144,11 @@ async function main() {
       `select id from files where file_row_id = $1 and deleted_at is null`,
       [targetRow.id],
     );
-    ok('the other file on the row is untouched', filesStillThere.length === 1, JSON.stringify(filesStillThere));
+    ok(
+      'deleting one file leaves every other file on the row alone',
+      filesStillThere.length === baseline + 1 && !filesStillThere.some((f) => f.id === fileId),
+      JSON.stringify({ baseline, now: filesStillThere.length, files: filesStillThere }),
+    );
 
     // 7. A non-admin, non-team-member user should NOT be able to see this
     //    record's file rows at all (RLS check) — reuse a different profile if

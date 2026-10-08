@@ -49,11 +49,31 @@ async function main() {
     );
     const recordId = rec.id;
 
+    /*
+     * `notes.scope_id` holds the tab's UUID, not its key.
+     *
+     * This script passed the literal string 'updates' and had been failing on
+     * it: note_scope_tab_key('tab', 'updates') resolves no tab, so
+     * record_tab_grant() is asked about a tab that does not exist, does not
+     * come back 'edit', and notes_insert refuses the row with 42501 — which is
+     * the policy working. The row really is malformed.
+     *
+     * Measured both ways against Joe's Pizza as a super_admin: the literal
+     * 'updates' is refused and the tab's UUID inserts. So the lookup is the
+     * fix, not a change to the policy.
+     */
+    const { rows: [updatesTab] } = await client.query(
+      `select id from tabs where key = 'updates' limit 1`,
+    );
+    ok('found the Updates tab to scope the note to', Boolean(updatesTab));
+    const updatesTabId = updatesTab.id;
+
     // 1. A raw UPDATE against notes is now flatly impossible (the actual
     //    vulnerability: this used to succeed for ANY teammate).
     const { rows: [note] } = await client.query(
-      `insert into notes (record_id, scope_kind, scope_id, author_id, body) values ($1, 'tab', 'updates', $2, 'original') returning id`,
-      [recordId, userId],
+      `insert into notes (record_id, scope_kind, scope_id, author_id, body)
+       values ($1, 'tab', $3, $2, 'original') returning id`,
+      [recordId, userId, updatesTabId],
     );
     let rawUpdateBlocked = false;
     await client.query('savepoint before_raw_update');

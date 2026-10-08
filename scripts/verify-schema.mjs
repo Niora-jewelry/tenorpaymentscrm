@@ -12,6 +12,7 @@
  *   SUPABASE_DB_URL="postgresql://..." node scripts/verify-schema.mjs
  */
 import pg from 'pg';
+import { readdir, readFile } from 'node:fs/promises';
 
 const url = process.env.SUPABASE_DB_URL;
 if (!url) {
@@ -199,8 +200,47 @@ async function main() {
   check('super_admin role seeded', roles.some((r) => r.slug === 'super_admin' && r.is_admin));
   check('placeholder role seeded', roles.some((r) => r.slug === 'member' && !r.is_admin));
 
-  const { rows: users } = await client.query(`select count(*)::int as n from profiles`);
-  check('NO user seeded (no default credential exists)', users[0].n === 0, `${users[0].n} profiles`);
+  /*
+   * No default credential is SHIPPED.
+   *
+   * This asked the database for `count(*) from profiles === 0`, which tested
+   * the right property only while nobody had ever signed up. It now reports
+   * nine profiles — all real people who arrived by invite — and failed on
+   * them, so the security claim it exists to defend had stopped being checked
+   * at all.
+   *
+   * The claim is about the MIGRATIONS, not about today's row count: nothing we
+   * ship may create a login. That is a static property of the files, so it is
+   * read from the files and holds no matter how many people have since joined.
+   */
+  const migrationDir = new URL('../supabase/migrations/', import.meta.url);
+  const migrationFiles = (await readdir(migrationDir)).filter((f) => f.endsWith('.sql'));
+  const credentialSeeds = [];
+  for (const file of migrationFiles) {
+    const sql = await readFile(new URL(file, migrationDir), 'utf8');
+    /*
+     * Comments go first — several migrations discuss these tables — and then
+     * every dollar-quoted FUNCTION BODY.
+     *
+     * The distinction is the whole test. Three migrations do contain
+     * `insert into profiles`, and all three are inside `accept_invite`, which
+     * creates a profile for a user who presented a valid pending invite. That
+     * is the signup path, not a shipped credential: the id comes from the
+     * caller and the row cannot exist until a real person accepts. What would
+     * be a credential is an insert that runs when the migration itself runs,
+     * so only statements left at the top level are flagged.
+     */
+    const bare = sql
+      .replace(/--[^\n]*/g, '')
+      .replace(/\$([A-Za-z_]*)\$[\s\S]*?\$\1\$/g, ' /* function body */ ');
+    if (/insert\s+into\s+(public\.)?profiles\b/i.test(bare)) credentialSeeds.push(`${file} → profiles`);
+    if (/insert\s+into\s+auth\.users\b/i.test(bare)) credentialSeeds.push(`${file} → auth.users`);
+  }
+  check(
+    'no migration seeds a user, so no default credential is shipped',
+    credentialSeeds.length === 0,
+    credentialSeeds.join(', ') || `${migrationFiles.length} migrations checked`,
+  );
 
   /* ---------------------------------------------------------------------
    * Module 2 — Records List and the field engine
@@ -348,18 +388,52 @@ async function main() {
   check('Deal Name unique index exists', dealNameIdx.length === 1);
 
   console.log('\nModule 2 — seed');
-  const seedCounts = {
-    modules: 6, tabs: 13, subtabs: 19, pipelines: 4, pipeline_steps: 21,
-    statement_periods: 102,
+  /*
+   * AT LEAST the seeded rows, not exactly them.
+   *
+   * Adding a tab, a subtab or a field is a product feature — the Admin Panel
+   * does it, and the spec's premise is that "adding a seventh module is
+   * configuration". So an equality check here fails the moment anyone uses the
+   * application as intended, which is what had happened: 18 tabs, 21 subtabs
+   * and 134 fields against the seed's 13/19/129, every extra one legitimately
+   * added through the UI.
+   *
+   * The claim worth testing is that the seed landed and nothing has removed
+   * it. A count that has grown is evidence of use; one that has SHRUNK means
+   * something deleted seeded configuration, and that still fails.
+   *
+   * The two fixed sets stay exact, because neither is user-extensible:
+   * `modules` is six by the specification, and `statement_periods` is the
+   * prebuilt July 2024 – December 2032 grid, which §3.6 says is append-only
+   * and never user-created.
+   */
+  const seedAtLeast = {
+    tabs: 13, subtabs: 19, pipelines: 4, pipeline_steps: 21,
   };
-  for (const [table, expected] of Object.entries(seedCounts)) {
+  for (const [table, expected] of Object.entries(seedAtLeast)) {
     const { rows } = await client.query(`select count(*)::int as n from ${table}`);
-    check(`${table} seeded with ${expected} rows`, rows[0].n === expected, `${rows[0].n} found`);
+    check(
+      `${table} still carries its ${expected} seeded rows`,
+      rows[0].n >= expected,
+      `${rows[0].n} found`,
+    );
   }
+
+  const seedExact = { modules: 6, statement_periods: 102 };
+  for (const [table, expected] of Object.entries(seedExact)) {
+    const { rows } = await client.query(`select count(*)::int as n from ${table}`);
+    check(
+      `${table} seeded with exactly ${expected} rows`,
+      rows[0].n === expected,
+      `${rows[0].n} found`,
+    );
+  }
+
   // Fields: 138 prototype entries, 3 repeat groups collapsed into 4 rows
-  // (owner splits across Private/Ownership) — see generate-seed-sql.ts.
+  // (owner splits across Private/Ownership) — see generate-seed-sql.ts. Admins
+  // add fields, so this is a floor for the same reason as the tables above.
   const { rows: fieldCount } = await client.query('select count(*)::int as n from fields');
-  check('fields seeded with 129 rows', fieldCount[0].n === 129, `${fieldCount[0].n} found`);
+  check('fields still carry their 129 seeded rows', fieldCount[0].n >= 129, `${fieldCount[0].n} found`);
 
   console.log(
     failures === 0

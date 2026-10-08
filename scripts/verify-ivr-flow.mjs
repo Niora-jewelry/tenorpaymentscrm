@@ -59,6 +59,34 @@ const wellFormed = (xml) =>
 
 const CALLER = { From: '+15551234567', To: '+17327241779', CallSid: 'CAtest0000000000' };
 
+/*
+ * This script talks to a RUNNING server, unlike every other verify-* script,
+ * which talks to the database. The IVR is route handlers and a signature
+ * check, so there is nothing to exercise without one.
+ *
+ * Without this probe the absence of a server surfaced as an unhandled
+ * ECONNREFUSED and a stack trace, which reads like a broken script rather than
+ * a missing prerequisite — and it is the reason this was sitting in the
+ * "erroring" column. Start the app with `npm run dev -- -p 3210`, or pass a
+ * base URL as the first argument.
+ */
+try {
+  await fetch(`${BASE}/api/twilio/ivr/entry`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: '',
+  });
+} catch {
+  console.log(
+    `\nSKIPPED — nothing is listening on ${BASE}.\n\n` +
+      '  This one needs the app running, because the IVR lives in route\n' +
+      '  handlers rather than in the database:\n\n' +
+      '      npm run dev -- -p 3210\n' +
+      `      node --env-file=.env scripts/verify-ivr-flow.mjs [baseUrl]\n`,
+  );
+  process.exit(0);
+}
+
 console.log(`\nsigned walk-through against ${BASE}\n`);
 
 // ── the signature check itself ──────────────────────────────────────────────

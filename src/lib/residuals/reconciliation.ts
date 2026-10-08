@@ -61,7 +61,10 @@ export type Verdicts = Partial<Record<'1' | '2' | '3', Verdict>>;
 export const STEP_LABEL: Record<1 | 2 | 3, { short: string; long: string }> = {
   1: {
     short: 'Volume',
-    long: 'The statement’s Amount against the sum of the volume buckets the fee item is assessed on.',
+    long:
+      'The statement’s Amount against the sum of the volume buckets the fee item is assessed on — ' +
+      'some of them net of refunds, and some counting only when another fee item is absent. ' +
+      'The Statements tab lists the rule for each one.',
   },
   2: {
     short: 'Buy rate',

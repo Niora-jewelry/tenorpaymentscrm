@@ -114,4 +114,45 @@ export type VolumeMappingRow = {
   lineCount: number;
   isMapped: boolean;
   buckets: string[] | null;
+  /**
+   * 'gross', 'net', or 'mixed' when one fee item's buckets disagree.
+   *
+   * Measured on August 2026 (migration 747): BIN Sponsorship is assessed net
+   * of refunds while Cash Discount and Interchange are assessed gross on the
+   * very same statements. So the basis belongs to the fee item, and showing it
+   * is what makes a step-1 difference readable.
+   */
+  basis: string | null;
+  /** One entry per bucket, in bucket order. */
+  bucketDetail: VolumeBucketDetail[];
 };
+
+/** How one bucket counts towards a fee item. */
+export type VolumeBucketDetail = {
+  bucket: string;
+  basis: string;
+  /** 'always', or conditional on a sibling fee item being absent/present. */
+  appliesWhen: string;
+  sibling: string | null;
+};
+
+/** The four buckets, by column name, for display. */
+export const BUCKET_LABEL: Record<string, string> = {
+  amex_volume: 'Amex',
+  vmd_volume: 'Visa / Mastercard / Discover',
+  debit_volume: 'PIN debit',
+  ebt_volume: 'EBT',
+};
+
+/** One bucket's rule, as a sentence an operator can act on. */
+export function bucketRule(d: VolumeBucketDetail): string {
+  const where = BUCKET_LABEL[d.bucket] ?? d.bucket;
+  const basis = d.basis === 'net' ? 'net of refunds' : 'gross';
+  if (d.appliesWhen === 'sibling_absent' && d.sibling) {
+    return `${where}, ${basis} — only when there is no ${d.sibling} line`;
+  }
+  if (d.appliesWhen === 'sibling_present' && d.sibling) {
+    return `${where}, ${basis} — only when there is a ${d.sibling} line`;
+  }
+  return `${where}, ${basis}`;
+}

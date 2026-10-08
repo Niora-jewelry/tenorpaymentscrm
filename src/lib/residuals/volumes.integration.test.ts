@@ -125,7 +125,13 @@ suite('volume figures', () => {
 
     /* One count-based item, and one assessed on volume. */
     await line('Authorization Fee IP/SSL', 100, 8, 8);
-    await line('BIN Sponsorship Fees', 0, 5, 250_000);
+    /*
+      * 280,000 and not 250,000: this fixture carries no Cash Discount line, and
+      * migration 747 measured that BIN picks up Amex exactly when that line is
+      * absent. So the stated Amount a real statement would print here is
+      * vmd + debit + amex = 200,000 + 50,000 + 30,000.
+      */
+    await line('BIN Sponsorship Fees', 0, 5, 280_000);
 
     await compute();
   });
@@ -139,11 +145,21 @@ suite('volume figures', () => {
   it('the volume-assessed item knows which buckets it wants', async () => {
     const row = await gridFor('BIN Sponsorship Fees');
     /*
-     * The mapping is reference data, not a guess. BIN is assessed on VMD plus
-     * debit and Amex is deliberately not in it — which is the reason a total
+     * The mapping is reference data, not a guess — which is the reason a total
      * typed into the wrong bucket is not a small error.
+     *
+     * Amex is in this list CONDITIONALLY: BIN is assessed on VMD plus debit
+     * always, and on Amex as well when the merchant has no Cash Discount line,
+     * which accounts for Amex itself. Measured on August 2026, migration 747.
+     * This surface lists every bucket a fee item can draw on; whether a
+     * particular merchant's comparison uses it is decided per merchant, and
+     * `step1.integration.test.ts` covers both branches.
      */
-    expect(row?.volume_buckets?.sort()).toEqual(['debit_volume', 'vmd_volume']);
+    expect(row?.volume_buckets?.sort()).toEqual([
+      'amex_volume',
+      'debit_volume',
+      'vmd_volume',
+    ]);
   });
 
   /*
@@ -192,8 +208,8 @@ suite('volume figures', () => {
         JSON.stringify({
           vmd_volume: '250000.00',
           vmd_item_count: '4000',
-          /* debit left out entirely: BIN needs VMD + debit, and one of the two
-             being unknown is not the same as it being zero. */
+          /* debit left out entirely: BIN draws on VMD and debit, and one of
+             them being unknown is not the same as it being zero. */
         }),
       ],
     );
@@ -254,13 +270,19 @@ suite('volume figures', () => {
 
     /*
      * And step 1 can now be made. It compares the line's stated Amount against
-     * the SUM of its mapped buckets — 200,000 + 50,000 = 250,000, which is
-     * what the fixture's Amount says, so it matches.
+     * the sum of the buckets this fee item draws on for THIS merchant:
+     * 200,000 + 50,000 + 30,000 of Amex, because there is no Cash Discount
+     * line to account for the Amex instead. That is what the fixture's Amount
+     * says, so it matches.
+     *
+     * Hand-entered volumes carry no credits, so gross and net are the same
+     * figure here and BIN's net basis subtracts nothing. A statement-imported
+     * row is where the two differ.
      */
     const grid = await gridFor('BIN Sponsorship Fees');
     expect(grid?.verdicts['1']).toBeDefined();
     expect(grid?.verdicts['1'].verdict).toBe('match');
-    expect(Number(grid?.verdicts['1'].right)).toBeCloseTo(250_000, 2);
+    expect(Number(grid?.verdicts['1'].right)).toBeCloseTo(280_000, 2);
   });
 
   /* ── what cannot be typed in ──────────────────────────────────────── */

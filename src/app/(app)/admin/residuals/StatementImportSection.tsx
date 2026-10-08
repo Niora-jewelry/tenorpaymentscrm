@@ -32,6 +32,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, OutlineChip } from '@/proto/ui/kit';
 import type { StatementOutcome, StatementRead } from '@/lib/records/residualStatements';
+import { bucketRule, type VolumeMappingRow } from '@/lib/residuals/volumes';
 import { Panel, PanelHead } from './ResidualsTabs';
 import {
   commitStatementsAction,
@@ -67,9 +68,87 @@ function money(text: string | null): string {
   return `${neg ? '-' : ''}${grouped}${frac === undefined ? '' : `.${frac}`}`;
 }
 
-export function StatementImportSection({ processors }: { processors: string[] }) {
+export function StatementImportSection({
+  processors,
+  volumeMappings,
+}: {
+  processors: string[];
+  volumeMappings: VolumeMappingRow[];
+}) {
   const [round, setRound] = useState(0);
-  return <Inner key={round} processors={processors} onReset={() => setRound((n) => n + 1)} />;
+  return (
+    <div className="space-y-4">
+      <Inner key={round} processors={processors} onReset={() => setRound((n) => n + 1)} />
+      <AssessedOn mappings={volumeMappings} />
+    </div>
+  );
+}
+
+/**
+ * What each fee item's volume is actually compared against.
+ *
+ * `residual_volume_mapping_coverage` has existed since R6a with a test and no
+ * caller — this is the screen it was written for. It matters more now than it
+ * did then: migration 747 made the mapping conditional and gave it a basis,
+ * so "the sum of the buckets" is no longer a sentence an operator can check in
+ * their head.
+ *
+ * Only the mapped fee items are listed. The unmapped ones are the larger half
+ * of any period and are not a defect — a count-based fee has no volume to
+ * compare — and the function's own comment makes the point: "a signal that
+ * fires on 15 of 20 fee items every period is not a signal."
+ */
+function AssessedOn({ mappings }: { mappings: VolumeMappingRow[] }) {
+  const mapped = mappings.filter((m) => m.isMapped && m.bucketDetail.length > 0);
+  if (mapped.length === 0) return null;
+
+  return (
+    <Panel>
+      <PanelHead>
+        <h3 className="text-[13.5px] font-semibold text-ink-900">
+          What each fee item is assessed on
+        </h3>
+        <span className="text-[12px] text-ink-500">
+          {mapped.length} of {mappings.length} fee items
+        </span>
+      </PanelHead>
+
+      <div className="p-4">
+        <p className="max-w-[80ch] text-[12.5px] leading-relaxed text-ink-600">
+          When a statement is imported, each of these fee items has its stated amount checked
+          against the volume it is charged on. The rules are not the same for all of them, which
+          is why they are written out rather than summarised &mdash; two fee items on one statement
+          can be assessed on different buckets and on a different basis.
+        </p>
+
+        <ul className="mt-3 space-y-2">
+          {mapped.map((m) => (
+            <li key={m.feeItemName} className="rounded-xl border border-line-soft px-3.5 py-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-[12.5px] font-medium text-ink-900">{m.feeItemName}</span>
+                <span className="text-[11.5px] text-ink-400">
+                  {m.lineCount} line{m.lineCount === 1 ? '' : 's'} this month
+                </span>
+              </div>
+              <ul className="mt-1 space-y-0.5">
+                {m.bucketDetail.map((d) => (
+                  <li key={d.bucket} className="text-[11.5px] leading-relaxed text-ink-600">
+                    <span className="text-ink-300">&bull;</span>{' '}
+                    {bucketRule(d)}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+
+        <p className="mt-3 max-w-[80ch] text-[11.5px] leading-relaxed text-ink-400">
+          The remaining fee items are charged per transaction rather than on volume, so there is no
+          volume figure to check them against. That is not a gap.
+        </p>
+      </div>
+    </Panel>
+  );
 }
 
 function Inner({ processors, onReset }: { processors: string[]; onReset: () => void }) {

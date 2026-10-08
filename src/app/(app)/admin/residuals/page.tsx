@@ -34,6 +34,7 @@ import {
 } from '@/lib/records/adminResiduals';
 import { recentImports } from '@/lib/records/residualImport';
 import { synopsis } from '@/lib/records/residualGrid';
+import { volumeMappingCoverage } from '@/lib/records/residualVolumes';
 import { ResidualsHeader } from './ResidualsHeader';
 import { ResidualsTabs } from './ResidualsTabs';
 
@@ -82,6 +83,24 @@ export default async function AdminResidualsPage() {
     }
   })();
 
+  /*
+   * Which volumes each fee item is assessed on, for the Statements tab.
+   *
+   * Allowed to fail for the same reason the synopsis is: it is reference
+   * information that makes a step-1 difference readable, not something the
+   * import path depends on. A period in an odd state must not cost an admin
+   * the ability to load a statement.
+   */
+  const volumeMappings = await (async () => {
+    if (!latest) return [];
+    try {
+      return await volumeMappingCoverage(ctx, latest.id);
+    } catch (e) {
+      console.error('[residuals] volume mapping coverage failed', e);
+      return [];
+    }
+  })();
+
   return (
     <div className="p-6">
       <ResidualsHeader
@@ -99,6 +118,7 @@ export default async function AdminResidualsPage() {
         worklist={worklist}
         processors={procs}
         imports={imports}
+        volumeMappings={volumeMappings}
       />
     </div>
   );

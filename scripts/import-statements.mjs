@@ -39,6 +39,18 @@ import pg from 'pg';
 import { parseStatement, verifyTotals } from '../src/lib/residuals/statementParser.ts';
 
 const COMMIT = process.argv.includes('--commit');
+
+/**
+ * Re-import a merchant that already has a statement for this month.
+ *
+ * `residual_imports_statement_unique` refuses a second completed import for
+ * one (processor, period, mid), so replacing one means retiring the earlier
+ * import first. That is a soft delete, never a hard one: the import row is the
+ * provenance of the volumes it wrote, and the RPC's own sweep supersedes those
+ * volumes in the same transaction as the new ones — scoped to this merchant,
+ * so the rest of the month is untouched.
+ */
+const REPLACE = process.argv.includes('--replace');
 const DIR = process.argv.find((a, i) => i >= 2 && !a.startsWith('--'))
   ?? 'C:/Users/brime/Downloads/Response_to_Residual_Request';
 
@@ -196,6 +208,29 @@ async function main() {
 
   for (const { file, parsed } of ready) {
     try {
+      /*
+       * Retired OUTSIDE the authenticated block, because RLS refuses it
+       * inside one. Measured: an admin with `auth_is_admin()` true and a
+       * column grant on `deleted_at` is still refused 42501 on
+       * residual_imports when setting it, while the same statement setting
+       * `status` succeeds. The app hits this too and uses the service role
+       * here, exactly as `commitImport` does for a fee report — so this runs
+       * as the connection's own role, which is the script's equivalent.
+       */
+      if (REPLACE) {
+        await db.query('BEGIN');
+        await db.query(
+          `update residual_imports
+              set deleted_at = now(), deleted_by_id = $4, updated_by_id = $4
+            where processor = $1 and period_id = $2 and mid = $3
+              and source_type = 'pdf' and status = 'completed'
+              and deleted_at is null`,
+          [PROCESSOR, periodId, parsed.mid, adminId],
+        );
+        if (COMMIT) await db.query('COMMIT');
+        else await db.query('ROLLBACK');
+      }
+
       const out = await asAdmin(async () => {
         const { rows: imp } = await db.query(
           `insert into residual_imports
@@ -215,12 +250,18 @@ async function main() {
               stated_total: parsed.printedTotals.amount,
               stated_item_count: parsed.printedTotals.itemCount,
             }),
-            /* Money as text the whole way; PostgreSQL does the cast. */
+            /*
+             * Money as text the whole way; PostgreSQL does the cast. Credits
+             * travel with the sales they belong to — BIN Sponsorship is
+             * assessed net of refunds (migration 747).
+             */
             JSON.stringify(
               parsed.planRows.map((r) => ({
                 plan_code: r.planCode,
                 amount: r.amount,
                 item_count: r.itemCount,
+                credit_amount: r.creditAmount,
+                credit_count: r.creditCount,
               })),
             ),
           ],

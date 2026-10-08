@@ -28,7 +28,7 @@ import type { AuthContext } from './permissions';
 import { VOLUME_KEYS } from '@/lib/residuals/volumes';
 import type { VolumeMappingRow, VolumeRow } from '@/lib/residuals/volumes';
 
-export type { VolumeMappingRow, VolumeRow } from '@/lib/residuals/volumes';
+export type { VolumeBucketDetail, VolumeMappingRow, VolumeRow } from '@/lib/residuals/volumes';
 
 function assertAdmin(ctx: AuthContext): void {
   if (!ctx.isAdmin) throw new Error('Admin only');
@@ -105,6 +105,13 @@ export async function volumeMappingCoverage(
     lineCount: Number(r.line_count ?? 0),
     isMapped: r.is_mapped === true,
     buckets: (r.buckets as string[] | null) ?? null,
+    basis: r.basis === null || r.basis === undefined ? null : String(r.basis),
+    bucketDetail: ((r.bucket_detail as Record<string, unknown>[] | null) ?? []).map((d) => ({
+      bucket: String(d.bucket),
+      basis: String(d.basis),
+      appliesWhen: String(d.applies_when),
+      sibling: d.sibling === null || d.sibling === undefined ? null : String(d.sibling),
+    })),
   }));
 }
 

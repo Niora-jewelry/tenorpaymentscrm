@@ -331,11 +331,20 @@ export async function commitStatements(
         stated_total: read.statedTotal,
         stated_item_count: read.statedItemCount,
       },
-      /* Money as text the whole way; PostgreSQL does the cast. */
+      /*
+       * Money as text the whole way; PostgreSQL does the cast.
+       *
+       * The credits travel with the sales they belong to, per plan code, so
+       * the rollup can filter both with the same expression. BIN Sponsorship
+       * is assessed net of refunds — measured, see migration 747 — and this is
+       * where the figure it needs comes from.
+       */
       p_plan_rows: parsed.planRows.map((r) => ({
         plan_code: r.planCode,
         amount: r.amount,
         item_count: r.itemCount,
+        credit_amount: r.creditAmount,
+        credit_count: r.creditCount,
       })),
     });
 

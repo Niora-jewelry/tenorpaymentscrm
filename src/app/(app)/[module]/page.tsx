@@ -13,7 +13,8 @@ import { Suspense } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
-import { HeaderValue } from '@/proto/ui/value';
+import { HeaderFacts } from './HeaderFacts';
+import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { authorize, moduleGrant, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
@@ -689,6 +690,11 @@ async function RecordDrawer({
       return {
         id: f.id,
         label: f.label,
+        /* Already capped by module → tab → subtab → field, and never
+           'hidden' — those were filtered out above. The strip is editable
+           now, so the chain has to reach it rather than stopping at
+           "should this be on screen at all". */
+        grant: (grantByKey[f.key] ?? 'view') === 'edit' ? ('edit' as const) : ('view' as const),
         field: adaptFieldForDashboard(config, f),
         // Same trust boundary every other read from JSONB crosses: the union
         // describes what a well-formed value looks like once its own renderer
@@ -865,31 +871,23 @@ async function RecordDrawer({
             same height, so rows stay aligned and nothing jitters as records
             change.
           */}
-          {headerFacts.length ? (
-            <dl className="mt-4 grid gap-x-6 gap-y-3.5 border-t border-line-soft pt-3.5 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]">
-              {headerFacts.map((fact) => (
-                <div key={fact.id} className="min-w-0">
-                  {/* `min-w-0` on every cell is mandatory: without it `truncate`
-                      silently does nothing inside a grid track and one long
-                      value blows its whole column out. */}
-                  <dt className="block truncate text-[11px] leading-none text-ink-400" title={fact.label}>
-                    {fact.label}
-                  </dt>
-                  <dd className="mt-1.5 flex min-h-[22px] min-w-0 items-center truncate text-[13.5px] font-medium text-ink-900">
-                    {fact.empty ? (
-                      /* Lighter than its own label, so it reads as "nothing
-                         here" and does not attract the eye. The label still
-                         shows: "this module tracks MCC code and this record has
-                         not got one" is information. */
-                      <span className="text-ink-300">&mdash;</span>
-                    ) : (
-                      <HeaderValue field={fact.field} value={fact.value} moduleSlug={moduleSlug} />
-                    )}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
+          {/*
+            Editable in place now — see `HeaderFacts`. These are the most-read
+            values on the record and were the only ones that forced you to go
+            and find a tab in order to change them. It writes through
+            `setValueAction`, the same path the field grid and the dashboard
+            cell use, so the permission chain, the compare-and-swap and the
+            activity entry are not reimplemented here.
+          */}
+          <HeaderFacts
+            moduleSlug={moduleSlug}
+            recordId={record.id}
+            updatedAt={record.updatedAt}
+            facts={headerFacts}
+            viewerId={ctx.userId}
+            viewerIsAdmin={ctx.isAdmin}
+            visibilityFieldKey={VISIBILITY_FIELD_KEY}
+          />
         </div>
         <div className="flex items-center gap-3">
           {grant === 'edit' && memberships.length > 0 ? (

@@ -806,9 +806,47 @@ export function DataTable({
     columns.reduce((sum, c) => sum + (c.width ?? 160), 0) +
     (extraColumn?.width ?? 0);
 
+  /**
+   * The overlay bar is as wide as the grid REALLY is, measured.
+   *
+   * ⚠️ THIS USED `totalWidth`, AND THAT IS WHY THE BAR STOPPED SHORT.
+   *
+   * `totalWidth` is a sum of DECLARED widths — `c.width ?? 160` per column
+   * plus two constants. The rendered grid is wider than that sum: cells carry
+   * horizontal padding and borders, and a column whose content will not fit
+   * in its declared width is stretched by the layout. So the bar's track was
+   * consistently shorter than the grid's `scrollWidth`, and dragging it to
+   * its own end left the grid several columns short of its end — the last
+   * column could not be reached at all, which is exactly what it looked like.
+   *
+   * Measuring removes the guess. `scrollWidth` is the number the browser
+   * actually scrolls to, so the two cannot disagree by construction, and it
+   * keeps working when a column is resized, added, filtered away, or when
+   * content changes the layout — none of which `totalWidth` could see.
+   *
+   * The observer watches the grid's CHILD as well as the grid: resizing the
+   * viewport changes the grid's own box, but changing the columns changes
+   * only the content inside it.
+   */
   useLayoutEffect(() => {
-    if (barInnerRef.current) barInnerRef.current.style.width = `${totalWidth}px`;
-  }, [totalWidth]);
+    const grid = gridRef.current;
+    const inner = barInnerRef.current;
+    if (!grid || !inner) return;
+
+    const sync = () => {
+      /* Fall back to the declared sum only if measurement is unavailable,
+         which keeps a server-rendered first paint sane. */
+      inner.style.width = `${grid.scrollWidth || totalWidth}px`;
+    };
+    sync();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(grid);
+    const content = grid.firstElementChild;
+    if (content) observer.observe(content);
+    return () => observer.disconnect();
+  }, [totalWidth, columns.length, pageRows.length]);
 
   const onGridScroll = useCallback(() => {
     const grid = gridRef.current;

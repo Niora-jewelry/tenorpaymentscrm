@@ -19,7 +19,7 @@
  * behind it, and the module picker in its non-navigating mode. An admin who
  * has used the Users screen already knows this one.
  */
-import { useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { GrantMatrix, type GrantWriter } from '../GrantMatrix';
@@ -73,14 +73,27 @@ export function InvitePermissionsStep({
     });
   };
 
-  // Refetched whenever the module changes, because the matrix IS per module —
-  // the values shown and the values written have to agree, and the server is
-  // the only thing that knows how a scope resolves in a given module.
-  useEffect(() => {
+  /*
+   * Refetched whenever the module changes, because the matrix IS per module —
+   * the values shown and the values written have to agree, and the server is
+   * the only thing that knows how a scope resolves in a given module.
+   *
+   * Also refetched after every successful write. On a page a write calls
+   * `revalidatePath` and fresh props arrive on their own; inside this dialog
+   * there is no navigation to revalidate, so without this the screen ran on
+   * its optimistic overlay alone and never heard back from the database. The
+   * overlay stays up until the fresh matrix agrees with it, so this converges
+   * quietly rather than flashing.
+   */
+  const reload = useCallback(() => {
     startLoading(async () => {
       setMatrix(await inviteMatrixAction(inviteId, moduleId));
     });
   }, [inviteId, moduleId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
 
   /*
    * Every write is confirmed out loud. The matrix draws the new value
@@ -93,6 +106,9 @@ export function InvitePermissionsStep({
 
   const announce = (result: GrantResult, what: string): GrantResult => {
     setSaved(result.ok ? what : result.message);
+    /* Only on success: a refusal leaves the database as it was, so there is
+       nothing new to read, and refetching would only discard the message. */
+    if (result.ok) reload();
     return result;
   };
 

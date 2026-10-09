@@ -9,8 +9,14 @@
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
-import { Button, CompletenessBadge, SectionLabel } from '@/proto/ui/kit';
-import { uploadFileAction, deleteFileAction, addOtherFileRowAction, getFileUrlAction } from './actions';
+import { Button, CompletenessBadge, SectionLabel, Spinner } from '@/proto/ui/kit';
+import {
+  uploadFileAction,
+  deleteFileAction,
+  addFileRowAction,
+  getFileUrlAction,
+  getFileDownloadUrlAction,
+} from './actions';
 import type { FileRow, FileEntry } from '@/lib/records/files';
 
 export function FilesPanel({
@@ -65,11 +71,21 @@ export function FilesPanel({
         )}
       </div>
 
-      {kind === 'other' && editable ? (
+      {/*
+        BOTH sections take a new row now. This was `kind === 'other'`, so the
+        Application section was fixed at the five rows the system seeds and the
+        client had no way to add the sixth they asked for.
+
+        The seeded rows stay locked — they are the structure other people read
+        — and a row added here is an ordinary unlocked one that happens to sit
+        in the same list. See `addFileRow`.
+      */}
+      {editable ? (
         addingRow ? (
           <AddRowForm
             moduleSlug={moduleSlug}
             recordId={recordId}
+            kind={kind}
             onDone={() => setAddingRow(false)}
           />
         ) : (
@@ -90,10 +106,12 @@ export function FilesPanel({
 function AddRowForm({
   moduleSlug,
   recordId,
+  kind,
   onDone,
 }: {
   moduleSlug: string;
   recordId: string;
+  kind: 'application' | 'other';
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -105,16 +123,17 @@ function AddRowForm({
     if (!name.trim()) return;
     const formData = new FormData();
     formData.set('name', name.trim());
+    formData.set('kind', kind);
     startTransition(async () => {
       /*
-       * `addOtherFileRowAction` returns void and throws on refusal
+       * `addFileRowAction` returns void and throws on refusal
        * (`requireTabEdit`). Unguarded, the throw skipped both `router.refresh`
        * and `onDone`, so the form stayed open with the typed name still in it
        * and nothing said why — which looks like the Add button not working.
        */
       try {
         setError(null);
-        await addOtherFileRowAction(moduleSlug, recordId, formData);
+        await addFileRowAction(moduleSlug, recordId, formData);
         router.refresh();
         onDone();
       } catch {
@@ -169,6 +188,10 @@ function FileRowView({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  /* Its own flag, not `pending`: that one is also true while a DELETE runs,
+     and labelling a delete "Uploading…" is worse than labelling it nothing. */
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   /**
@@ -179,17 +202,35 @@ function FileRowView({
    * browser blocks it. The blank tab is opened synchronously on the click and
    * then pointed at the URL once it arrives — and closed again if the request
    * fails, rather than being left as a stranded about:blank.
+   *
+   * ⚠️ NO FEATURES STRING, AND THAT IS THE WHOLE BUG THIS FIXES.
+   *
+   * This read `window.open('', '_blank', 'noopener,noreferrer')`. Passing
+   * `noopener` in the FEATURES argument makes `window.open` return **null by
+   * specification** — the opener link is what the handle is, so asking for no
+   * opener is asking for no handle. The return value was therefore null on
+   * every click, in every browser, and the code read that as "the popup was
+   * blocked".
+   *
+   * So the tab opened and the message said it had been blocked, which is why
+   * allowing pop-ups changed nothing: nothing was ever blocking them.
+   *
+   * The opener is still severed, just on the handle instead of through the
+   * features string — and `Cross-Origin-Opener-Policy: same-origin` in
+   * `next.config.ts` already severs it at the browser level for good measure.
    */
   const openFile = async (fileId: string) => {
     setError(null);
     setOpening(fileId);
-    const tab = window.open('', '_blank', 'noopener,noreferrer');
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     try {
       const url = await getFileUrlAction(fileId);
       if (tab) tab.location.assign(url);
-      // A blocked popup is the only way `tab` is null. Navigating this tab
-      // instead would throw away whatever the user has half-typed in the
-      // drawer, so it says what happened rather than deciding for them.
+      // Now a genuine popup block is the only way `tab` is null, so the
+      // message is finally true when it appears. Navigating this tab instead
+      // would throw away whatever the user has half-typed in the drawer, so
+      // it says what happened rather than deciding for them.
       else setError('Your browser blocked the new tab. Allow pop-ups for this site to open files.');
     } catch {
       tab?.close();
@@ -199,16 +240,52 @@ function FileRowView({
     }
   };
 
+  /**
+   * Save the file, as itself.
+   *
+   * No tab and no popup: the signed URL carries `Content-Disposition:
+   * attachment` with the file's original name, so assigning it to a hidden
+   * anchor downloads without navigating away from the drawer. Nothing here
+   * can be popup-blocked, which is the point — opening was the fragile path
+   * and saving is the one people actually asked for.
+   */
+  const downloadFile = async (fileId: string) => {
+    setError(null);
+    setSaving(fileId);
+    try {
+      const url = await getFileDownloadUrlAction(fileId);
+      const a = document.createElement('a');
+      a.href = url;
+      /* The header names the file; this only has to not fight it. */
+      a.download = '';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      setError('Could not download that file. It may have been removed.');
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const upload = (file: File | undefined) => {
     if (!file) return;
     setError(null);
+    setUploading(true);
     const formData = new FormData();
     formData.set('file', file);
     startTransition(async () => {
-      const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
-      if (!result.ok) setError(result.message ?? 'Upload failed.');
-      else router.refresh();
-      if (inputRef.current) inputRef.current.value = '';
+      try {
+        const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
+        if (!result.ok) setError(result.message ?? 'Upload failed.');
+        else router.refresh();
+      } finally {
+        /* In a finally so a thrown action cannot leave the control spinning
+           for the rest of the session with no way back. */
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = '';
+      }
     });
   };
 
@@ -274,6 +351,28 @@ function FileRowView({
                   v{file.version}
                 </span>
               ) : null}
+              {/*
+                Download is available to anyone who can SEE the file, not only
+                to an editor — reading a document is not an edit, and the
+                grant underneath is the Files (or Cases) tab's View. It sits
+                outside the `editable` branch below for that reason.
+              */}
+              <button
+                type="button"
+                title={`Download ${file.name}`}
+                aria-label={`Download ${file.name}`}
+                disabled={saving === file.id}
+                onClick={() => downloadFile(file.id)}
+                className="shrink-0 rounded text-ink-400 transition-colors hover:text-brand-700 disabled:opacity-60"
+              >
+                {saving === file.id ? (
+                  <span className="inline-block text-[11px] leading-none">
+                    <Spinner />
+                  </span>
+                ) : (
+                  <Icon name="download" size={11} />
+                )}
+              </button>
               {editable ? (
                 <button
                   type="button"
@@ -288,16 +387,41 @@ function FileRowView({
             </span>
           ))}
           {editable && files.length < 5 ? (
+            /*
+              An upload is a round trip through a Server Action with the bytes
+              in the body, so it is the slowest thing on this tab by a wide
+              margin — and it showed nothing at all while it ran. The control
+              simply sat there, so the natural thing to do was click it again.
+              `pending` was already tracked and nothing rendered it.
+            */
             <label
-              title={`${files.length} of 5 files`}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-dashed border-line px-1.5 py-[3px] text-[11.5px] font-semibold text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-50"
+              title={uploading ? 'Uploading…' : `${files.length} of 5 files`}
+              aria-busy={uploading}
+              className={`inline-flex items-center gap-1 rounded-md border border-dashed px-1.5 py-[3px] text-[11.5px] font-semibold transition-colors ${
+                uploading
+                  ? 'cursor-progress border-brand-600 bg-brand-50 text-brand-700'
+                  : 'cursor-pointer border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+              }`}
             >
-              <Icon name="plus" size={10} />
-              {files.length}/5
+              {uploading ? (
+                <>
+                  <span className="inline-block text-[10px] leading-none">
+                    <Spinner />
+                  </span>
+                  Uploading…
+                </>
+              ) : (
+                <>
+                  <Icon name="plus" size={10} />
+                  {files.length}/5
+                </>
+              )}
               <input
                 ref={inputRef}
                 type="file"
                 className="hidden"
+                /* Disabled while one is in flight, so a second pick cannot
+                   race the first and leave the row showing the wrong count. */
                 disabled={pending}
                 onChange={(e) => upload(e.target.files?.[0])}
               />

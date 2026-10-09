@@ -20,10 +20,13 @@ const MAX_FILES_PER_ROW = 5;
  * something a user adds or removes. */
 const APPLICATION_ROWS = ['Owner ID', 'Bank statements', 'Processing statements', 'Corp docs', 'Voided check'] as const;
 
+/** Which section of the Files tab a row belongs to. */
+export type FileRowKind = 'application' | 'other';
+
 export type FileRow = {
   id: string;
   recordId: string;
-  kind: 'application' | 'other';
+  kind: FileRowKind;
   name: string;
   locked: boolean;
   note: string | null;
@@ -163,12 +166,37 @@ export async function ensureApplicationRows(_ctx: AuthContext, recordId: string)
   if (error) throw error;
 }
 
-export async function addOtherFileRow(ctx: AuthContext, recordId: string, name: string): Promise<FileRow> {
+/**
+ * Adds a file row to either section.
+ *
+ * ── WHY `kind` IS A PARAMETER NOW ────────────────────────────────────────
+ * This was `addOtherFileRow` with `kind: 'other'` written into the insert, so
+ * the Application section could only ever hold the five rows
+ * `ensureApplicationRows` seeds. The client asked for another row there, and
+ * there was no way to add one.
+ *
+ * ── `locked` IS NOT THE SAME CLAIM AS `kind` ─────────────────────────────
+ * The seeded Application rows are locked because they ARE the system
+ * structure — a fixed checklist whose names other people rely on. A row
+ * somebody adds afterwards is an ordinary row that happens to live in the
+ * Application section, so it is unlocked: it did not come from the structure
+ * and nothing is keyed to its name.
+ *
+ * Writing `locked: true` here instead would have been the easy way to make a
+ * new row look like its neighbours, and it would have quietly made a
+ * user's own typo permanent.
+ */
+export async function addFileRow(
+  ctx: AuthContext,
+  recordId: string,
+  name: string,
+  kind: FileRowKind = 'other',
+): Promise<FileRow> {
   await requireTabEdit(ctx, recordId, 'files');
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('file_rows')
-    .insert({ record_id: recordId, kind: 'other', name, locked: false })
+    .insert({ record_id: recordId, kind, name, locked: false })
     .select('*')
     .single();
   if (error) throw error;
@@ -259,13 +287,28 @@ export async function deleteFile(ctx: AuthContext, fileId: string): Promise<void
  * A case attachment is an ordinary `files` row, but it is governed by the
  * Cases tab — the same distinction `uploadFile` above draws. The row's own
  * `kind` is what decides, not the caller.
+ *
+ * ── VIEW AND DOWNLOAD ARE THE SAME GRANT, NOT THE SAME URL ────────────────
+ * `download` asks Storage to sign the URL with a `Content-Disposition:
+ * attachment` carrying the file's ORIGINAL name. Without it a click either
+ * renders the file in the tab (a PDF) or navigates to it (a .docx), and in
+ * both cases what lands on disk is the storage path's opaque name — a
+ * timestamp and a slug — rather than "Owner-ID.pdf".
+ *
+ * The name comes from the row, never from the caller: it is what the
+ * `Content-Disposition` header will say, and a caller-supplied value there is
+ * a header-injection sink.
  */
-export async function signedUrlFor(ctx: AuthContext, fileId: string): Promise<string> {
+export async function signedUrlFor(
+  ctx: AuthContext,
+  fileId: string,
+  opts: { download?: boolean } = {},
+): Promise<string> {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase
     .from('files')
-    .select('storage_path, file_rows!inner(record_id, kind)')
+    .select('storage_path, name, file_rows!inner(record_id, kind)')
     .eq('id', fileId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -273,14 +316,16 @@ export async function signedUrlFor(ctx: AuthContext, fileId: string): Promise<st
 
   // A row this viewer cannot see comes back empty, so "does not exist" and
   // "not yours" give the same answer and neither is distinguishable.
-  const row = data as { storage_path: string; file_rows: { record_id: string; kind: string } } | null;
+  const row = data as
+    | { storage_path: string; name: string; file_rows: { record_id: string; kind: string } }
+    | null;
   if (!row) throw new Error('Not found');
 
   await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
 
   const { data: signed, error: signError } = await supabase.storage
     .from('records')
-    .createSignedUrl(row.storage_path, 60);
+    .createSignedUrl(row.storage_path, 60, opts.download ? { download: row.name } : undefined);
   if (signError) throw signError;
   return signed.signedUrl;
 }

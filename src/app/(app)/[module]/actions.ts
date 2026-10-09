@@ -22,7 +22,7 @@ import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { addEntry, updateEntry, deleteEntry } from '@/lib/records/customEntries';
 import { createCase, addReply, setCaseState, setCaseSolution } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
-import { uploadFile, deleteFile, addOtherFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
+import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
 import { addLogin, setPassword, revealPassword } from '@/lib/records/logins';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
@@ -753,10 +753,14 @@ export async function deleteFileAction(moduleSlug: string, fileId: string): Prom
   revalidatePath(`/${moduleSlug}`);
 }
 
-export async function addOtherFileRowAction(moduleSlug: string, recordId: string, formData: FormData): Promise<void> {
+export async function addFileRowAction(moduleSlug: string, recordId: string, formData: FormData): Promise<void> {
   const ctx = await authorize();
   const name = String(formData.get('name') ?? '').trim();
-  if (name) await addOtherFileRow(ctx, recordId, name);
+  /* Anything that is not the Application section is the Other one — the union
+     has two members, and defaulting keeps an unexpected value out of the
+     insert rather than passing it through to the CHECK constraint. */
+  const kind = formData.get('kind') === 'application' ? 'application' : 'other';
+  if (name) await addFileRow(ctx, recordId, name, kind);
   revalidatePath(`/${moduleSlug}`);
 }
 
@@ -776,6 +780,20 @@ export async function ensureApplicationRowsAction(recordId: string): Promise<voi
 export async function getFileUrlAction(fileId: string): Promise<string> {
   const ctx = await authorize();
   return signedUrlFor(ctx, fileId);
+}
+
+/**
+ * The same file, signed to SAVE rather than to open.
+ *
+ * A separate action rather than a flag on the one above because the two are
+ * reached differently in the browser: opening needs a tab held open across
+ * the await, and saving needs no tab at all. Keeping them apart is what lets
+ * the download path avoid the popup machinery entirely — and popups were the
+ * reason files could not be opened in the first place.
+ */
+export async function getFileDownloadUrlAction(fileId: string): Promise<string> {
+  const ctx = await authorize();
+  return signedUrlFor(ctx, fileId, { download: true });
 }
 
 /* -----------------------------------------------------------------------

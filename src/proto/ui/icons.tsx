@@ -36,6 +36,7 @@ export type IconName =
   | 'search'
   | 'filter'
   | 'upload'
+  | 'download'
   | 'send'
   | 'reply'
   | 'rotate-ccw'
@@ -206,6 +207,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="m17 8-5-5-5 5M12 3v12" />
+    </>
+  ),
+  /* The same tray, arrow reversed — a file coming down out of the app. */
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5M12 15V3" />
     </>
   ),
   send: <path d="M22 2 15 22l-4-9-9-4Z" />,

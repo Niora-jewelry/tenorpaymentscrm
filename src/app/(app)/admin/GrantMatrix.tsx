@@ -42,7 +42,7 @@
  * inside one person's screen would silently change everyone else attached to
  * it, on a page whose entire framing is "this person".
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
@@ -391,8 +391,25 @@ export type GrantWriter = {
   clear: (scopeKind: GrantScope, scopeId: string) => Promise<GrantResult>;
 };
 
-type RowKey = `${GrantScope}:${string}`;
-const rowKey = (row: ScopeRow): RowKey => `${row.kind}:${row.id}`;
+/**
+ * A row's identity, INCLUDING the module it is being set for.
+ *
+ * ⚠️ THIS WAS `${kind}:${id}` AND THAT IS THE STALE-PERMISSION BUG.
+ *
+ * A grant is stored per (scope, module) — `user_grants` is keyed on
+ * `(user_id, scope_kind, scope_id, module_id)`. The optimistic-edit map below
+ * was keyed without the module, so one field had ONE key across all six.
+ *
+ * Set a field to Hidden in Leads, switch to Deals, and the overlay for
+ * `field:<id>` was still in the map and still applied — so the Deals row
+ * showed Hidden although the database said nothing of the kind. It cleared
+ * only on a full page load, because that is the one thing that discards this
+ * component's state. Reported exactly that way: "it shows blocked in the
+ * other module until I refresh the whole page."
+ */
+type RowKey = `${GrantScope}:${string}@${string}`;
+const rowKeyIn = (moduleScopeId: string | null, row: ScopeRow): RowKey =>
+  `${row.kind}:${row.id}@${moduleScopeId ?? 'all'}`;
 
 export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: GrantWriter }) {
   const [search, setSearch] = useState('');
@@ -413,6 +430,34 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
   const [busyKey, setBusyKey] = useState<RowKey | null>(null);
   const [errors, setErrors] = useState<Map<RowKey, string>>(new Map());
   const [, startTransition] = useTransition();
+
+  /** This matrix's rows, keyed for the module it is actually describing. */
+  const rowKey = useCallback(
+    (row: ScopeRow) => rowKeyIn(matrix.moduleScopeId, row),
+    [matrix.moduleScopeId],
+  );
+
+  /*
+   * Switching module discards the overlay, rather than letting it age out.
+   *
+   * Keying by module (above) is already enough to stop one module's edit
+   * painting onto another's row. This is the second half: when the subject
+   * changes the pending state belongs to a view nobody is looking at any
+   * more, and an in-flight `busyKey` or a per-row error from the previous
+   * module would otherwise sit on the new screen with no row to explain it.
+   *
+   * Done during render against a snapshot rather than in an effect, which is
+   * the idiom this codebase already uses for derived-from-props state (see
+   * `DrawerTabs`) — an effect would paint the stale overlay for one frame
+   * first, which is the exact flicker being removed.
+   */
+  const [scopeSnapshot, setScopeSnapshot] = useState(matrix.moduleScopeId);
+  if (scopeSnapshot !== matrix.moduleScopeId) {
+    setScopeSnapshot(matrix.moduleScopeId);
+    if (edits.size > 0) setEdits(new Map());
+    if (errors.size > 0) setErrors(new Map());
+    if (busyKey !== null) setBusyKey(null);
+  }
 
   const subject = matrix.subject;
   const showOverride = subject.kind === 'user';
@@ -442,7 +487,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       );
       return { ...row, templateGrant, userGrant, resolved, effective, lock };
     };
-  }, [edits, writer, matrix.subjectIsAdmin]);
+  }, [edits, writer, matrix.subjectIsAdmin, rowKey]);
 
   const onEdit = (row: ScopeRow, column: 'template' | 'user', next: Grant | null) => {
     if (!writer || writer.column !== column) return;
@@ -529,7 +574,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         .map((t) => ({ ...t, tabMatches: matches(t.tab) }))
         .filter((t) => t.tabMatches || t.groups.length > 0),
     };
-  }, [matrix.modules, matrix.tabs, needle, onlySet, edits, withEdits]);
+  }, [matrix.modules, matrix.tabs, needle, onlySet, edits, withEdits, rowKey]);
 
   /**
    * The header chips, recounted over the whole tree with pending edits applied

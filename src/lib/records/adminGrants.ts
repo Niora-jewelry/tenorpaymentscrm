@@ -197,6 +197,17 @@ export type OrphanGrant = {
 
 export type GrantMatrix = {
   subject: MatrixSubject;
+  /**
+   * Which module this matrix describes, or null for "All modules".
+   *
+   * Carried so the BROWSER can tell two matrices apart. A grant is stored per
+   * (scope, module), and the screen lets you switch modules without
+   * remounting — on the page through a `?module=` navigation, in the invite
+   * dialog through a refetch. Without this the client had no way to know the
+   * subject under its feet had changed, so its optimistic edits from one
+   * module were still being painted onto the next one's rows.
+   */
+  moduleScopeId: string | null;
   /** The SUBJECT's admin status, lifted out of `subject` so the client can pass
    * it to `resolveScope` without narrowing the union first. False for a
    * template, which describes a role rather than a person. */
@@ -312,6 +323,7 @@ async function buildMatrix(
   templateGrants: Map<GrantKey, Grant>,
   userGrants: Map<GrantKey, Grant>,
   isAdmin: boolean,
+  moduleScopeId: string | null,
 ): Promise<GrantMatrix> {
   const config = await loadConfig();
 
@@ -420,6 +432,7 @@ async function buildMatrix(
   return {
     subject,
     subjectIsAdmin: isAdmin,
+    moduleScopeId,
     modules,
     tabs,
     counts: {
@@ -472,6 +485,7 @@ export async function templateGrantMatrix(
     templateGrants,
     new Map(),
     false,
+    moduleId,
   );
 }
 
@@ -547,6 +561,7 @@ export async function userGrantMatrix(
     templateGrants,
     userGrants,
     roleRes.data?.is_admin ?? false,
+    moduleId,
   );
 }
 
@@ -853,6 +868,7 @@ export async function inviteGrantMatrix(
     templateGrants,
     inviteGrants,
     roleRes.data?.is_admin ?? false,
+    moduleId,
   );
 }
 

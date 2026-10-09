@@ -191,12 +191,28 @@ export function HeaderFacts({
               <dt className="block truncate text-[11px] leading-none text-ink-400" title={fact.label}>
                 {fact.label}
               </dt>
+              {/*
+                ⚠️ `min-w-0` ON THE CHILD, NOT JUST ON THE CELL.
+                
+                A flex item will not shrink below its own content width unless
+                it is told to, and `min-w-0` here only applied to the <dd>. Its
+                child — the team-member picker, which lays its chips out in a
+                flex row of its own — kept its intrinsic width and ran straight
+                out of a 168px grid track into the next column. Reported as
+                Relationship manager overlapping MID, and it would have done it
+                to any long value, not just that one.
+                
+                `overflow-hidden` is the backstop for a control that cannot
+                wrap at all; the picker itself wraps once it is given a width
+                to wrap inside.
+              */}
               <dd
-                className={`mt-1.5 flex min-h-[22px] min-w-0 items-center text-[13.5px] font-medium text-ink-900 ${
+                className={`mt-1.5 flex min-h-[22px] min-w-0 items-center overflow-hidden text-[13.5px] font-medium text-ink-900 ${
                   savingId === fact.id ? 'opacity-60' : ''
                 }`}
               >
                 {fact.grant === 'edit' ? (
+                  <span className="w-full min-w-0">
                   <FieldRenderer
                     field={fact.field}
                     value={value}
@@ -207,6 +223,7 @@ export function HeaderFacts({
                     viewerIsAdmin={viewerIsAdmin}
                     onChange={(next) => void commit(fact, next)}
                   />
+                  </span>
                 ) : empty ? (
                   /* Lighter than its own label, so it reads as "nothing here"
                      and does not attract the eye. The label still shows:

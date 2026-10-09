@@ -659,12 +659,31 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       </p>
 
       {subject.kind === 'user' && subject.isAdmin ? (
-        <p className="flex items-start gap-2 rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-[12.5px] leading-relaxed text-ink-600">
-          <Icon name="info" size={14} className="mt-[2px] shrink-0 text-ink-400" />
+        /*
+         * ── STICKY, AND LOUD, BECAUSE IT GOVERNS EVERY ROW BELOW IT ────────
+         * This was a quiet grey note at the top of a long scrolling list. Set
+         * a tab to View, scroll to it, and the Result says Edit — with the one
+         * sentence that explains why now several screens above, and the only
+         * in-context cue a padlock you have to hover.
+         *
+         * It was reported exactly that way: "I chose View and the result shows
+         * Edit." Nothing was wrong — an admin resolves to Edit everywhere by
+         * design — but the screen made it look wrong, which for a permission
+         * screen is nearly as bad.
+         *
+         * So it sticks to the top of the scroll area and carries the same
+         * amber as the other rule that changes how the whole grid reads. One
+         * fact, visible wherever you are in the list.
+         */
+        <p className="sticky top-0 z-20 flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09] shadow-[0_2px_8px_-4px_rgba(8,32,47,.25)]">
+          <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
           <span>
-            <strong className="font-semibold text-ink-800">{subject.label} is an admin</strong>, so every
-            row resolves to Edit whatever is set here. These settings are saved and will apply if the
-            account stops being an admin.
+            <strong className="font-semibold">
+              {subject.label} is an admin, so everything below resolves to Edit
+            </strong>{' '}
+            — including any row you set to Hidden or View. Admins are exempt from the permission
+            rules by design. These settings are still saved and take effect the moment the account
+            stops being an admin.
           </span>
         </p>
       ) : null}

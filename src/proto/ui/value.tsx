@@ -998,35 +998,47 @@ function TeamMemberControl({
           chip is the hit area.
         */}
         {addable.length ? (
-          <span
-            className={`relative inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
+          /*
+            ⚠️ A VISIBLE SELECT WITH A REAL WIDTH, NOT ONE HIDDEN OVER A CHIP.
+            
+            This was briefly an `absolute inset-0 opacity-0` select laid over a
+            chip-shaped span, which looked right and broke the menu: a native
+            dropdown is laid out against its SELECT's box, so anchoring it to a
+            ~150px chip truncated every option — "Integration Test — itest-
+            invited-1788…" — on the one control where telling two people apart
+            is the entire job. Picking the wrong row here shows the record to
+            the wrong person.
+            
+            So the chip look is dropped in favour of a select that is actually
+            the width of its own menu. It still sits inline with the people
+            rather than as a full-width block on its own line, which was the
+            original complaint; `min-w` is what keeps the options readable,
+            and the native control keeps its keyboard and screen-reader
+            behaviour.
+          */
+          <select
+            aria-label="Add a team member"
+            value=""
+            onChange={(e) => {
+              add(e.currentTarget.value);
+              e.currentTarget.value = '';
+            }}
+            className={`min-w-[190px] max-w-full cursor-pointer rounded-full border border-dashed bg-white px-2 py-[3px] text-[12.5px] font-medium outline-none transition-colors focus-field ${
               grantsVisibility
-                ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
-                : 'border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+                ? 'border-warn/60 text-warn hover:border-warn'
+                : 'border-line text-brand-700 hover:border-brand-600'
             }`}
           >
-            <Icon name="plus" size={11} strokeWidth={2.4} />
-            Add team member
-            <select
-              aria-label="Add a team member"
-              value=""
-              onChange={(e) => {
-                add(e.currentTarget.value);
-                e.currentTarget.value = '';
-              }}
-              className="absolute inset-0 cursor-pointer opacity-0"
-            >
-              <option value="">Add team member…</option>
-              {addable.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {/* The email is what makes two people with the same (or no)
-                      display name distinguishable — picking the wrong one here
-                      grants the wrong person sight of the record. */}
-                  {p.email && p.email !== p.name ? `${p.name} — ${p.email}` : p.name}
-                </option>
-              ))}
-            </select>
-          </span>
+            <option value="">+ Add team member…</option>
+            {addable.map((p) => (
+              <option key={p.id} value={p.id}>
+                {/* The email is what makes two people with the same (or no)
+                    display name distinguishable — picking the wrong one here
+                    grants the wrong person sight of the record. */}
+                {p.email && p.email !== p.name ? `${p.name} — ${p.email}` : p.name}
+              </option>
+            ))}
+          </select>
         ) : (
           <span className="text-[11px] text-ink-400">Everyone available is already assigned.</span>
         )}

@@ -556,6 +556,11 @@ async function RecordDrawer({
     shows('residuals') ? residualsForRecord(ctx, record.id) : Promise.resolve(null),
   ]);
 
+  /* Both kinds still read: "Other files" was folded into Application by
+     migration 750 and its rows migrated, so `otherRows` is empty on a current
+     database — it is still unioned here so `filesByRow` covers any straggler
+     an older deployment left behind, rather than rendering a row with its
+     files missing. */
   const fileRows: FileRow[] = [...applicationRows, ...otherRows];
   // One `.in()` query for every row's files, not one query per row. There are
   // never fewer than the 5 locked Application rows, so the old per-row map was
@@ -979,7 +984,6 @@ async function RecordDrawer({
         updates={updates}
         teamRoster={teamRoster}
         applicationRows={applicationRows}
-        otherRows={otherRows}
         filesByRow={filesByRow}
         logins={logins}
         statementPeriods={statementPeriods}

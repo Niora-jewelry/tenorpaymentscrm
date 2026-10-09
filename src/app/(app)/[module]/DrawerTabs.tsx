@@ -86,7 +86,6 @@ export function DrawerTabs({
   updates,
   teamRoster,
   applicationRows,
-  otherRows,
   filesByRow,
   logins,
   statementPeriods,
@@ -121,7 +120,6 @@ export function DrawerTabs({
   updates: Update[];
   teamRoster: TeamRosterEntry[];
   applicationRows: FileRow[];
-  otherRows: FileRow[];
   filesByRow: Record<string, FileEntry[]>;
   logins: LoginRow[];
   statementPeriods: StatementPeriod[];
@@ -288,7 +286,14 @@ export function DrawerTabs({
         </div>
       ) : null}
 
-      {activeTab.subtabs.length ? (
+      {/*
+        A chooser is only worth drawing where there is a choice. The Files tab
+        is down to one subtab since "Other files" was folded into Application
+        (migration 750), and a strip holding a single chip is a control that
+        can only tell you where you already are — it reads as though something
+        is missing beside it.
+      */}
+      {activeTab.subtabs.length > 1 ? (
         <div className="flex gap-1 overflow-x-auto border-b border-line-soft bg-canvas/50 px-1 py-1.5">
           {activeTab.subtabs.map((s) => {
             const active = s.id === activeSubtabId;
@@ -399,8 +404,10 @@ export function DrawerTabs({
           <FilesPanel
             moduleSlug={moduleSlug}
             recordId={recordId}
-            kind={activeSubtab?.key === 'other' ? 'other' : 'application'}
-            rows={activeSubtab?.key === 'other' ? otherRows : applicationRows}
+            /* One list since migration 750 — "Other files" was folded in and
+               its rows migrated, so there is no second branch to take. */
+            kind="application"
+            rows={applicationRows}
             filesByRow={filesByRow}
             editable={activeTab.editable}
           />

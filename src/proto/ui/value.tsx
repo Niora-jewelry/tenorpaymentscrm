@@ -947,7 +947,14 @@ function TeamMemberControl({
             >
               <PersonAvatar person={p} size={18} />
               <span className="max-w-[160px] truncate font-medium">{p.name}</span>
-              {p.suspended ? <span className="text-[11px]">paused</span> : null}
+              {p.suspended ? (
+                /* A badge, not a bare word. Sitting as plain text beside the
+                   name it read like part of the name — "test@gmail.com
+                   paused" — which is exactly how it was reported. */
+                <span className="rounded-full bg-[#f7e0af]/70 px-1.5 py-px text-[10px] font-semibold uppercase tracking-[.04em]">
+                  paused
+                </span>
+              ) : null}
               {isSelf ? <span className="text-[11px] text-ink-400">you</span> : null}
               <button
                 type="button"
@@ -975,31 +982,55 @@ function TeamMemberControl({
             {grantsVisibility ? 'Nobody but an admin can see this record' : 'Nobody assigned'}
           </span>
         ) : null}
-      </div>
 
-      {addable.length ? (
-        <select
-          aria-label="Add a team member"
-          value=""
-          onChange={(e) => {
-            add(e.currentTarget.value);
-            e.currentTarget.value = '';
-          }}
-          className="w-full rounded-md border border-line bg-white px-2 py-1 text-[12.5px] text-ink-500 outline-none transition-colors focus-field"
-        >
-          <option value="">Add team member…</option>
-          {addable.map((p) => (
-            <option key={p.id} value={p.id}>
-              {/* The email is what makes two people with the same (or no)
-                  display name distinguishable — picking the wrong one here
-                  grants the wrong person sight of the record. */}
-              {p.email && p.email !== p.name ? `${p.name} — ${p.email}` : p.name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <p className="text-[11px] text-ink-400">Everyone available is already assigned.</p>
-      )}
+        {/*
+          ── THE ADD CONTROL BELONGS ON THE SAME ROW AS THE PEOPLE ─────────
+          It was a full-width `<select>` on its own line underneath, which
+          made one small act — add a person — look like a form, and pushed
+          the chips and the thing that adds to them into two separate
+          blocks. Inline, chip-shaped and dashed, it reads as the next
+          empty slot in the same list, which is the same affordance the
+          file row uses for "add a file".
+
+          Still a native select: it keeps the keyboard and screen-reader
+          behaviour for free, and the list can be long. The chip look is the
+          wrapper's; the select sits transparently on top of it so the whole
+          chip is the hit area.
+        */}
+        {addable.length ? (
+          <span
+            className={`relative inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
+              grantsVisibility
+                ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
+                : 'border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+            }`}
+          >
+            <Icon name="plus" size={11} strokeWidth={2.4} />
+            Add team member
+            <select
+              aria-label="Add a team member"
+              value=""
+              onChange={(e) => {
+                add(e.currentTarget.value);
+                e.currentTarget.value = '';
+              }}
+              className="absolute inset-0 cursor-pointer opacity-0"
+            >
+              <option value="">Add team member…</option>
+              {addable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {/* The email is what makes two people with the same (or no)
+                      display name distinguishable — picking the wrong one here
+                      grants the wrong person sight of the record. */}
+                  {p.email && p.email !== p.name ? `${p.name} — ${p.email}` : p.name}
+                </option>
+              ))}
+            </select>
+          </span>
+        ) : (
+          <span className="text-[11px] text-ink-400">Everyone available is already assigned.</span>
+        )}
+      </div>
     </div>
   );
 }

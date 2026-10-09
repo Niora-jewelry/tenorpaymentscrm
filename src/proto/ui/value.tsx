@@ -9,6 +9,7 @@
  * rather than a change everywhere.
  */
 import { useEffect, useRef, useState } from 'react';
+import { MenuSurface } from './MenuSurface';
 import type { Field, FieldType, FieldValue, GridRow, PercentSplit, AddressValue } from '../schema';
 import { choicesFor, choiceKey, choiceLabel } from '../fields';
 import { formatCurrency, formatDate, formatDateTime, MONTH_NAMES } from './tokens';
@@ -877,6 +878,11 @@ function TeamMemberControl({
   // already on the list, and there is nothing to offer.
   const addable = people.filter((p) => !chosen.has(p.id) && !p.suspended);
 
+  /* The add menu. A ref for the trigger because `MenuSurface` positions
+     against it rather than living inside it — see the comment at the call. */
+  const addRef = useRef<HTMLButtonElement>(null);
+  const [adding, setAdding] = useState(false);
+
   const remove = (id: string) => onChange(ids.filter((x) => x !== id));
   const add = (id: string) => {
     if (!id || chosen.has(id)) return;
@@ -999,46 +1005,78 @@ function TeamMemberControl({
         */}
         {addable.length ? (
           /*
-            ⚠️ A VISIBLE SELECT WITH A REAL WIDTH, NOT ONE HIDDEN OVER A CHIP.
-            
-            This was briefly an `absolute inset-0 opacity-0` select laid over a
-            chip-shaped span, which looked right and broke the menu: a native
-            dropdown is laid out against its SELECT's box, so anchoring it to a
-            ~150px chip truncated every option — "Integration Test — itest-
-            invited-1788…" — on the one control where telling two people apart
-            is the entire job. Picking the wrong row here shows the record to
-            the wrong person.
-            
-            So the chip look is dropped in favour of a select that is actually
-            the width of its own menu. It still sits inline with the people
-            rather than as a full-width block on its own line, which was the
-            original complaint; `min-w` is what keeps the options readable,
-            and the native control keeps its keyboard and screen-reader
-            behaviour.
+            ── A PORTALLED MENU, AFTER TWO WRONG ANSWERS ────────────────────
+            This control has to work in three containers of very different
+            widths: a drawer field (wide), a 168px header-strip track, and a
+            dashboard table cell. A native <select> cannot:
+
+              · laid over a chip at `opacity-0`, its dropdown sized itself to
+                the ~150px chip and truncated every name — and telling two
+                people apart is this control's entire job, because picking
+                wrong shows the record to the wrong person;
+              · given a real `min-w` instead, the control itself then
+                overflowed the header track and the table cell, pushing into
+                the next column and the row below.
+
+            Both were reported, and they are the same problem from two
+            directions: a menu laid out INSIDE the cell is bounded by the
+            cell. `MenuSurface` portals to the body and positions against the
+            trigger, so the trigger can stay chip-sized while the list is as
+            wide as the names need — and no ancestor's overflow can clip it.
           */
-          <select
-            aria-label="Add a team member"
-            value=""
-            onChange={(e) => {
-              add(e.currentTarget.value);
-              e.currentTarget.value = '';
-            }}
-            className={`min-w-[190px] max-w-full cursor-pointer rounded-full border border-dashed bg-white px-2 py-[3px] text-[12.5px] font-medium outline-none transition-colors focus-field ${
-              grantsVisibility
-                ? 'border-warn/60 text-warn hover:border-warn'
-                : 'border-line text-brand-700 hover:border-brand-600'
-            }`}
-          >
-            <option value="">+ Add team member…</option>
-            {addable.map((p) => (
-              <option key={p.id} value={p.id}>
-                {/* The email is what makes two people with the same (or no)
-                    display name distinguishable — picking the wrong one here
-                    grants the wrong person sight of the record. */}
-                {p.email && p.email !== p.name ? `${p.name} — ${p.email}` : p.name}
-              </option>
-            ))}
-          </select>
+          <>
+            <button
+              ref={addRef}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={adding}
+              onClick={() => setAdding((v) => !v)}
+              className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
+                grantsVisibility
+                  ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
+                  : 'border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+              }`}
+            >
+              <Icon name="plus" size={11} strokeWidth={2.4} />
+              Add team member
+            </button>
+            <MenuSurface
+              open={adding}
+              onClose={() => setAdding(false)}
+              anchorRef={addRef}
+              align="left"
+              width={300}
+              label="Add a team member"
+            >
+              <div className="max-h-[260px] overflow-y-auto py-1">
+                {addable.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      add(p.id);
+                      setAdding(false);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-canvas"
+                  >
+                    {/* Known by construction — `addable` is built from the
+                        roster, so it can never hold an unresolved id. */}
+                    <PersonAvatar person={{ ...p, unknown: false }} size={18} />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium text-ink-900">{p.name}</span>
+                      {/* The email is what makes two people with the same (or
+                          no) display name distinguishable. It gets its own
+                          line here rather than being truncated onto the end
+                          of the name, which is what the old menu did. */}
+                      {p.email && p.email !== p.name ? (
+                        <span className="block truncate text-[11px] text-ink-400">{p.email}</span>
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </MenuSurface>
+          </>
         ) : (
           <span className="text-[11px] text-ink-400">Everyone available is already assigned.</span>
         )}

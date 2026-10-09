@@ -473,3 +473,39 @@ export async function addStatementYearAction(year: number): Promise<PresetFormSt
   revalidateStatementPeriods();
   return { ok: true };
 }
+
+/**
+ * Drop the configuration cache, by hand.
+ *
+ * ── WHY A BUTTON EXISTS FOR SOMETHING EVERY WRITE DOES AUTOMATICALLY ─────
+ * `adminConfigCache.ts` says the quiet part already: `loadConfig()` is cached
+ * across requests with no TTL, and "a config write that doesn't invalidate
+ * the tag returns success, leaves the database perfectly correct, and never
+ * appears in a single module's dashboard or drawer."
+ *
+ * Every action on this screen calls `revalidateConfig()`, so the cache is
+ * correct for anything an admin does here. The gap is the OTHER writer:
+ * configuration that arrives in a MIGRATION. Several already do — the seed
+ * creates every module, tab and field, and later migrations have added
+ * columns and changed subtab membership. SQL cannot call into Next, so those
+ * changes land in the database and stay invisible until something else
+ * happens to invalidate the tag.
+ *
+ * That is not hypothetical. Two migrations removed the "Other files" subtab
+ * and added the pipeline column; both were correct in the database and
+ * neither appeared, because nothing had dropped the cache. Diagnosing it took
+ * longer than writing either migration.
+ *
+ * So: one admin-only control that calls the same invalidator every other
+ * action here calls. No new cache concept, no TTL that would re-read config
+ * on a schedule nobody asked for.
+ */
+export async function reloadConfigCacheAction(): Promise<PresetFormState> {
+  const ctx = await authorize();
+  /* Reads nothing and writes nothing — but it changes what every user of the
+     app sees next, so it is admin-gated like the writes beside it. */
+  if (!ctx.isAdmin) return { ok: false, message: 'Admin only.' };
+
+  revalidateConfig();
+  return { ok: true };
+}

@@ -36,6 +36,7 @@ import { ChoicesSection } from './ChoicesSection';
 import { PipelinesSection } from './PipelinesSection';
 import { StatementsSection } from './StatementsSection';
 import { PresetsTabs, type PresetSection } from './PresetsTabs';
+import { ReloadConfigButton } from './ReloadConfigButton';
 
 export default async function AdminPresetsPage() {
   const ctx = await authorize();
@@ -149,11 +150,16 @@ export default async function AdminPresetsPage() {
 
   return (
     <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-xl font-semibold text-ink-900">Presets</h1>
-        <p className="text-[13px] text-ink-500">
-          Tabs, subtabs and fields — one shared definition, ordered and selected per module.
-        </p>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-ink-900">Presets</h1>
+          <p className="text-[13px] text-ink-500">
+            Tabs, subtabs and fields — one shared definition, ordered and selected per module.
+          </p>
+        </div>
+        {/* For configuration that arrived in a migration rather than through
+            this screen — see `ReloadConfigButton`. */}
+        <ReloadConfigButton />
       </div>
 
       {/* `Suspense` because `PresetsTabs` reads the query string via

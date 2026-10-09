@@ -144,9 +144,49 @@ export function RealPipelineBar({
       ) : null}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon name="route" size={13} className="text-ink-400" />
-        <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-500">
-          {pipeline.label}
-        </span>
+        {/*
+          ── MOVING A RECORD BETWEEN PIPELINES ────────────────────────────
+          The bar could move a record along its pipeline and take it off one
+          entirely, but never move it to a DIFFERENT one — so changing
+          pipeline meant Remove, then find the right button, then re-assign,
+          losing the record's place in between.
+
+          `set_pipeline_step` already supported it the whole time: it upserts
+          `on conflict (record_id, module_id) do update set pipeline_id =
+          excluded.pipeline_id`. Only the UI never asked. So this is a
+          control, not a new capability, and the module scoping is unchanged —
+          the RPC still refuses a pipeline that does not belong to this
+          module, which is what keeps a record off the Lead pipeline inside
+          Deals.
+
+          Rendered as a select only when there is somewhere to go; with one
+          pipeline it stays the plain label it was.
+        */}
+        {assignable.length > 1 ? (
+          <label className="inline-flex items-center">
+            <span className="sr-only">Pipeline for this record in this module</span>
+            <select
+              value={pipeline.id}
+              disabled={pending}
+              title="Move this record to another pipeline — it starts at that pipeline's first step"
+              onChange={(e) => {
+                const next = assignable.find((p) => p.id === e.target.value);
+                if (next && next.id !== pipeline.id) setStep(next.id, next.steps[0]!.id);
+              }}
+              className="cursor-pointer rounded border border-transparent bg-transparent py-0 pl-0 pr-4 text-[11px] font-semibold uppercase tracking-[.06em] text-ink-500 outline-none transition-colors hover:text-ink-900 focus-field disabled:cursor-wait disabled:opacity-60"
+            >
+              {assignable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-500">
+            {pipeline.label}
+          </span>
+        )}
 
         <span aria-hidden className="text-line">·</span>
 

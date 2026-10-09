@@ -576,19 +576,84 @@ export function RecordsTable({
       ) : null}
 
       {confirmBulk === 'delete' ? (
-        <Dialog
-          title={`Delete ${selected.size} records?`}
-          tone="danger"
-          confirmLabel="Delete to Recycle Bin"
-          confirmIcon="trash"
-          onClose={() => setConfirmBulk(null)}
-          onConfirm={runBulkDelete}
-        >
-          <p>
-            Only <strong>archived</strong> records can be deleted. Any selected record still displayed
-            in a module is refused and reported back to you.
-          </p>
-        </Dialog>
+        /*
+         * ── WHY THIS DIALOG COUNTS BEFORE IT ASKS ──────────────────────────
+         * Delete only ever applies to an ARCHIVED record — `delete_record`
+         * refuses anything still in a module with "Archive this record before
+         * deleting it". That rule is right and is not what changed here.
+         *
+         * What changed is when you find out. Every record in the database is
+         * currently in at least one module, so every attempt was refused, and
+         * the refusal only arrived AFTER confirming a red "Delete" button —
+         * which is indistinguishable from the button being broken, and is
+         * exactly how it was reported.
+         *
+         * The rows already carry their memberships (`membershipsForMany` is
+         * loaded for the list anyway), so the count is free: say it up front,
+         * refuse to arm the button when nothing in the selection can go, and
+         * point at Archive, which is the step that was missing.
+         */
+        (() => {
+          const chosen = localRows.filter((r) => selected.has(r.id));
+          const stillShown = chosen.filter((r) => (r.memberships?.length ?? 0) > 0);
+          const deletable = chosen.length - stillShown.length;
+
+          return (
+            <Dialog
+              title={
+                deletable === 0
+                  ? 'Archive these records first'
+                  : `Delete ${deletable} record${deletable === 1 ? '' : 's'}?`
+              }
+              tone="danger"
+              confirmLabel={deletable === 0 ? undefined : 'Delete to Recycle Bin'}
+              confirmIcon="trash"
+              onClose={() => setConfirmBulk(null)}
+              onConfirm={deletable === 0 ? undefined : runBulkDelete}
+            >
+              {deletable === 0 ? (
+                <>
+                  <p>
+                    {stillShown.length === 1
+                      ? 'That record is still displayed in a module, so it cannot be deleted yet.'
+                      : `All ${stillShown.length} selected records are still displayed in a module, so none of them can be deleted yet.`}
+                  </p>
+                  <p className="mt-2">
+                    Deleting is only ever available on an <strong>archived</strong> record — one that
+                    has been removed from every display module and is left stored here. Archive them
+                    first, then delete.
+                  </p>
+                  <p className="mt-3">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="archive"
+                      onClick={() => setConfirmBulk('archive')}
+                    >
+                      Archive {stillShown.length} instead
+                    </Button>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {deletable === 1 ? 'This record is' : `These ${deletable} records are`} archived and
+                    will go to the Recycle Bin.
+                  </p>
+                  {stillShown.length > 0 ? (
+                    <p className="mt-2 text-ink-400">
+                      {stillShown.length === 1
+                        ? 'One other selected record is'
+                        : `${stillShown.length} other selected records are`}{' '}
+                      still displayed in a module and will be skipped — archive{' '}
+                      {stillShown.length === 1 ? 'it' : 'them'} first.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </Dialog>
+          );
+        })()
       ) : null}
 
       {confirmBulk === 'restore' ? (

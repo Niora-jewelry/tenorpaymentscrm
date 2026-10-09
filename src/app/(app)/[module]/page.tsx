@@ -884,6 +884,25 @@ async function RecordDrawer({
             recordId={record.id}
             updatedAt={record.updatedAt}
             facts={headerFacts}
+            /*
+              Where the record stands on its pipeline, beside the other
+              header facts — the client asked for it "near Current Status".
+              It was only on the pipeline bar, which sits two blocks further
+              down past the module chips.
+              
+              Passed separately rather than pushed into `headerFacts`,
+              because it is NOT a field: a pipeline assignment lives in
+              `record_pipelines` at (record, module), not in `record.values`.
+              Dressing it as a field would have given it a grant it does not
+              have and a save path it cannot use. It is read-only here; the
+              bar below owns moving a record, where the whole step track is
+              visible to move it along.
+            */
+            pipeline={(() => {
+              const p = modulePipelines.find((x) => x.id === pipelineAssign?.pipelineId);
+              const step = p?.steps.find((st) => st.id === pipelineAssign?.stepId);
+              return p && step ? { pipelineLabel: p.label, stepLabel: step.label, swatch: step.swatch } : null;
+            })()}
             viewerId={ctx.userId}
             viewerIsAdmin={ctx.isAdmin}
             visibilityFieldKey={VISIBILITY_FIELD_KEY}

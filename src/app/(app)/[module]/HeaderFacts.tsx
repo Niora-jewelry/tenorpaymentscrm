@@ -38,8 +38,9 @@
  */
 import { useState } from 'react';
 import { FieldRenderer, HeaderValue } from '@/proto/ui/value';
-import type { Field as ProtoField, FieldValue } from '@/proto/schema';
+import type { Field as ProtoField, FieldValue, Swatch } from '@/proto/schema';
 import { setValueAction } from './actions';
+import { SWATCHES } from '@/proto/ui/tokens';
 
 export type HeaderFact = {
   id: string;
@@ -56,6 +57,7 @@ export function HeaderFacts({
   recordId,
   updatedAt,
   facts,
+  pipeline,
   viewerId,
   viewerIsAdmin,
   visibilityFieldKey,
@@ -65,6 +67,17 @@ export function HeaderFacts({
   /** The record's compare-and-swap token as the server last rendered it. */
   updatedAt: string;
   facts: HeaderFact[];
+  /**
+   * Where the record stands on this module's pipeline, or null.
+   *
+   * Not a field, and deliberately not dressed as one — a pipeline assignment
+   * lives at (record, module) in `record_pipelines`, not in `record.values`,
+   * so it has no field grant and no `setValueAction` path to save through.
+   * It is shown here because it answers the same kind of question as the
+   * facts beside it, and changed on the pipeline bar below, where the whole
+   * step track is visible to move along.
+   */
+  pipeline?: { pipelineLabel: string; stepLabel: string; swatch: Swatch } | null;
   viewerId: string;
   viewerIsAdmin: boolean;
   /**
@@ -129,7 +142,7 @@ export function HeaderFacts({
     }
   };
 
-  if (facts.length === 0) return null;
+  if (facts.length === 0 && !pipeline) return null;
 
   return (
     <>
@@ -145,6 +158,23 @@ export function HeaderFacts({
         change.
       */}
       <dl className="mt-4 grid gap-x-6 gap-y-3.5 border-t border-line-soft pt-3.5 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]">
+        {pipeline ? (
+          <div className="min-w-0">
+            <dt className="block truncate text-[11px] leading-none text-ink-400" title={pipeline.pipelineLabel}>
+              {pipeline.pipelineLabel}
+            </dt>
+            <dd className="mt-1.5 flex min-h-[22px] min-w-0 items-center gap-1.5 truncate text-[13.5px] font-medium">
+              <span
+                aria-hidden
+                className="size-[6px] shrink-0 rounded-full"
+                style={{ background: SWATCHES[pipeline.swatch].dot }}
+              />
+              <span className="truncate" style={{ color: SWATCHES[pipeline.swatch].text }}>
+                {pipeline.stepLabel}
+              </span>
+            </dd>
+          </div>
+        ) : null}
         {facts.map((fact) => {
           const value = fact.id in values ? values[fact.id] : fact.value;
           const empty =

@@ -442,9 +442,9 @@ export async function sendInviteNotification(
 }
 
 /**
- * Cancel a pending invite.
+ * Cancel an invite that has not been used.
  *
- * Scoped to `status = 'pending'` in the WHERE clause, so an already-accepted
+ * Scoped to `pending` or `expired` in the WHERE clause, so an already-ACCEPTED
  * invite can never be flipped to revoked: that row is the audit record of how
  * a real account came to exist, and rewriting it would make the trail lie.
  * Revoking takes effect immediately — `find_pending_invite` only ever returns

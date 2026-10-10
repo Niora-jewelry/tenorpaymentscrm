@@ -96,8 +96,9 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
         <div>
           <h2 className="text-[14px] font-semibold text-ink-900">Invites</h2>
           <p className="mt-0.5 text-[12.5px] text-ink-500">
-            An invite is permission to complete signup. The person goes to the sign-up page and
-            requests their own code; nothing is emailed from here.
+            An invite is permission to complete signup, and an email telling the person to use
+            it goes out when you finish the invite dialog &mdash; Resend sends it again. It does
+            not carry a code: they go to the sign-up page and request their own.
           </p>
         </div>
         {settled.length ? (

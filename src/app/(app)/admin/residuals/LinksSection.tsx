@@ -24,7 +24,7 @@
  */
 import { useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
+import { Button, OutlineChip, Spinner, StatusPill } from '@/proto/ui/kit';
 import type { LinkWorklistRow } from '@/lib/records/adminResiduals';
 import { Empty, Panel, PanelHead } from './ResidualsTabs';
 import { linkMidAction, sweepLinksAction } from './actions';
@@ -56,13 +56,30 @@ export function LinksSection({ worklist }: { worklist: LinkWorklistRow[] }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /*
+   * WHICH button was pressed, not merely THAT one was.
+   *
+   * `pending` is one flag for the whole section, so it disabled every
+   * candidate chip on every row at once — a row can offer two or three
+   * candidates and the list can be long. All of them going half-transparent
+   * together says a click landed somewhere and nothing about where, and the
+   * one piece of information the operator needs here is which record their
+   * MID is being attached to. Attaching the wrong one is the mistake this
+   * screen exists to prevent.
+   */
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const link = (mid: string, recordId: string) => {
     setError(null);
+    setBusyKey(`${mid}:${recordId}`);
     startTransition(async () => {
-      const r = await linkMidAction(mid, recordId);
-      if (r.ok) setNotice(`${mid} linked. ${r.message ?? ''}`.trim());
-      else setError(r.message ?? 'That could not be linked.');
+      try {
+        const r = await linkMidAction(mid, recordId);
+        if (r.ok) setNotice(`${mid} linked. ${r.message ?? ''}`.trim());
+        else setError(r.message ?? 'That could not be linked.');
+      } finally {
+        setBusyKey(null);
+      }
     });
   };
 
@@ -131,19 +148,35 @@ export function LinksSection({ worklist }: { worklist: LinkWorklistRow[] }) {
             {row.candidates.length > 0 ? (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[11.5px] text-ink-400">Link to:</span>
-                {row.candidates.map((c) => (
-                  <button
-                    key={c.recordId}
-                    type="button"
-                    disabled={pending}
-                    onClick={() => link(row.mid, c.recordId)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-50 px-2.5 py-1 text-[12px] font-medium text-brand-700 transition-colors hover:border-brand-600/30 hover:bg-brand-100 disabled:opacity-50"
-                  >
-                    <Icon name="link" size={11} />
-                    {c.dealName ?? c.mid}
-                    <span className="tabular text-brand-700/60">{c.mid}</span>
-                  </button>
-                ))}
+                {row.candidates.map((c) => {
+                  const busy = busyKey === `${row.mid}:${c.recordId}`;
+                  return (
+                    <button
+                      key={c.recordId}
+                      type="button"
+                      disabled={pending}
+                      aria-busy={busy}
+                      onClick={() => link(row.mid, c.recordId)}
+                      /* The pressed one keeps full contrast and swaps its link
+                         icon for a spinner; the rest dim as the disabled
+                         siblings they are. */
+                      className={`inline-flex items-center gap-1.5 rounded-full border border-brand-600/15 bg-brand-50 px-2.5 py-1 text-[12px] font-medium text-brand-700 transition-colors hover:border-brand-600/30 hover:bg-brand-100 ${
+                        busy ? 'border-brand-600/40 bg-brand-100' : 'disabled:opacity-50'
+                      }`}
+                    >
+                      {busy ? (
+                        <span aria-hidden className="inline-block text-[11px] leading-none">
+                          <Spinner />
+                        </span>
+                      ) : (
+                        <Icon name="link" size={11} />
+                      )}
+                      {c.dealName ?? c.mid}
+                      <span className="tabular text-brand-700/60">{c.mid}</span>
+                      {busy ? <span className="sr-only">Linking</span> : null}
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="mt-1.5 text-[11.5px] text-ink-400">

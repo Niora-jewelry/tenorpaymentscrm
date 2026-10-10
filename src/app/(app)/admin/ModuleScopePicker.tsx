@@ -25,7 +25,8 @@
  * to rebuild it. So this is navigation, and the URL carries the state: an
  * admin can link someone straight to "Sales Rep, in Deals".
  */
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
+import { Spinner } from '@/proto/ui/kit';
 
 export type ModuleOption = { id: string; label: string };
 
@@ -92,7 +93,7 @@ export function ModuleScopePicker({
               scroll={false}
               className={className}
             >
-              {o.label}
+              <PendingLabel label={o.label} />
             </Link>
           );
         })}
@@ -112,5 +113,39 @@ export function ModuleScopePicker({
         )}
       </p>
     </div>
+  );
+}
+
+/**
+ * The chip's label, with a spinner while its own navigation is in flight.
+ *
+ * ── WHY THIS IS NOT COSMETIC ─────────────────────────────────────────────
+ * Switching module here is a NAVIGATION, and the server rebuilds the whole
+ * matrix for it: every module, tab, subtab and field resolved against the
+ * template and the person. On a real account that is a hundred and twenty-odd
+ * field rows, and it is the slowest thing on the screen by a wide margin.
+ *
+ * Until this, clicking a module did nothing visible for the whole of that
+ * round trip — the old module stayed highlighted, the old values stayed on
+ * screen, and the natural reading is that the click missed. Clicking again
+ * only starts it over.
+ *
+ * `useLinkStatus` has to be read from INSIDE the `<Link>`: it reports the
+ * pending state of the nearest enclosing one, so a hook called in the parent
+ * would describe no navigation at all and always return false. That is also
+ * why this is its own component rather than a few lines in the map above.
+ */
+function PendingLabel({ label }: { label: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {label}
+      {pending ? (
+        <span aria-hidden className="inline-block text-[11px] leading-none">
+          <Spinner />
+        </span>
+      ) : null}
+      {pending ? <span className="sr-only">Loading</span> : null}
+    </span>
   );
 }

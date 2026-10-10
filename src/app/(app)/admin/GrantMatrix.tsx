@@ -44,7 +44,7 @@
  */
 import { useCallback, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { OutlineChip } from '@/proto/ui/kit';
+import { OutlineChip, Spinner } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { PlaceholderNotice } from './PlaceholderNotice';
 // Types only from the data layer — it is `server-only`, and importing a VALUE
@@ -313,12 +313,31 @@ function ScopeLine({
         </span>
 
         <span className="flex w-[92px] shrink-0 items-center justify-end gap-1">
-          <GrantCell grant={row.effective} />
-          {lockNote ? (
-            <span className="inline-flex items-center text-ink-300" title={lockNote}>
-              <Icon name="lock" size={11} />
+          {/*
+            A save in flight says "Saving", not just "this row went grey".
+            The toggle dims and disables while `busy`, which tells you the
+            click registered and nothing about whether it reached the
+            database — on a permission row that is the only part worth
+            knowing, and a failure arrives as a message against the row a
+            moment later.
+          */}
+          {busy ? (
+            <span role="status" className="flex items-center gap-1 text-[11.5px] text-ink-400">
+              <span aria-hidden className="inline-block text-[11px] leading-none">
+                <Spinner />
+              </span>
+              Saving
             </span>
-          ) : null}
+          ) : (
+            <>
+              <GrantCell grant={row.effective} />
+              {lockNote ? (
+                <span className="inline-flex items-center text-ink-300" title={lockNote}>
+                  <Icon name="lock" size={11} />
+                </span>
+              ) : null}
+            </>
+          )}
         </span>
       </div>
 

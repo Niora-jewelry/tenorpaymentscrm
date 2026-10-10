@@ -20,7 +20,7 @@
  * has used the Users screen already knows this one.
  */
 import { useCallback, useEffect, useState, useTransition } from 'react';
-import { Button } from '@/proto/ui/kit';
+import { Button, Spinner } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { GrantMatrix, type GrantWriter } from '../GrantMatrix';
 import type { GrantResult } from '@/lib/records/adminGrants';
@@ -198,12 +198,57 @@ export function InvitePermissionsStep({
       ) : null}
 
       {matrix ? (
-        <div className="max-h-[52vh] overflow-y-auto pr-1">
-          <GrantMatrix matrix={matrix} writer={writer} />
+        /*
+          ── A REFETCH HAS TO SAY SO, BECAUSE THE OLD MATRIX IS STILL HERE ──
+          Switching module refetches, and until that lands `matrix` still
+          holds the PREVIOUS module's values. Rendered plainly, those read as
+          the new module's — the screen looks settled and is showing the wrong
+          thing, which on a permission screen is the worst kind of wrong.
+
+          So while a refetch is in flight the grid is dimmed, made
+          non-interactive, and overlaid with a label naming what is being
+          loaded. Dimming alone would not be enough: it has to be unclickable,
+          or a click lands on a row belonging to the module you just left.
+
+          The first load still gets the plain message below — there is nothing
+          to dim yet.
+        */
+        <div className="relative">
+          <div
+            className={`max-h-[52vh] overflow-y-auto pr-1 transition-opacity ${
+              loading ? 'pointer-events-none opacity-40' : ''
+            }`}
+            aria-busy={loading}
+          >
+            <GrantMatrix matrix={matrix} writer={writer} />
+          </div>
+          {loading ? (
+            <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-10">
+              <span
+                role="status"
+                className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-700 shadow-[0_4px_16px_-6px_rgba(8,32,47,.3)]"
+              >
+                <span aria-hidden className="inline-block text-[12px] leading-none">
+                  <Spinner />
+                </span>
+                Loading permissions for{' '}
+                {moduleId ? (modules.find((m) => m.id === moduleId)?.label ?? 'this module') : 'all modules'}…
+              </span>
+            </div>
+          ) : null}
         </div>
       ) : (
-        <p className="py-8 text-center text-[13px] text-ink-400">
-          {loading ? 'Loading permissions…' : 'Those permissions could not be loaded.'}
+        <p className="flex items-center justify-center gap-2 py-8 text-center text-[13px] text-ink-400">
+          {loading ? (
+            <>
+              <span aria-hidden className="inline-block text-[13px] leading-none">
+                <Spinner />
+              </span>
+              Loading permissions…
+            </>
+          ) : (
+            'Those permissions could not be loaded.'
+          )}
         </p>
       )}
 

@@ -181,13 +181,31 @@ export function Reconciliation({
     return s;
   });
 
-  const run = (fn: () => Promise<{ ok: boolean; message: string }>) => {
+  /*
+   * WHICH operation `pending` refers to.
+   *
+   * One transition serves sign-off, reopen and every acknowledgment on the
+   * month, so `pending` alone cannot say what is running — and putting a
+   * spinner on a button because *something* is in flight would spin the
+   * sign-off button while an acknowledgment three merchants down was saving.
+   * Signing a month off is the heaviest and most consequential thing on this
+   * screen (it freezes the calculations), so it is the one that most needs to
+   * show that it started.
+   */
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const run = (label: string, fn: () => Promise<{ ok: boolean; message: string }>) => {
     setError(null);
     setNotice(null);
+    setBusy(label);
     startTransition(async () => {
-      const r = await fn();
-      if (r.ok) setNotice(r.message);
-      else setError(r.message);
+      try {
+        const r = await fn();
+        if (r.ok) setNotice(r.message);
+        else setError(r.message);
+      } finally {
+        setBusy(null);
+      }
     });
   };
 
@@ -197,8 +215,9 @@ export function Reconciliation({
         header={header}
         company={company}
         pending={pending}
-        onSignOff={(note) => run(() => signOffPeriodAction(header.id, note))}
-        onReopen={(reason) => run(() => reopenPeriodAction(header.id, reason))}
+        busy={busy}
+        onSignOff={(note) => run('sign-off', () => signOffPeriodAction(header.id, note))}
+        onReopen={(reason) => run('reopen', () => reopenPeriodAction(header.id, reason))}
       />
 
       {notice ? (
@@ -261,10 +280,12 @@ export function Reconciliation({
                 setError(m);
               }}
               onAcknowledge={(scope, scopeId, step, reason) =>
-                run(() => acknowledgeVerdictAction(header.id, scope, scopeId, step, reason))
+                run('acknowledge', () =>
+                  acknowledgeVerdictAction(header.id, scope, scopeId, step, reason),
+                )
               }
               onWithdraw={(ackId, reason) =>
-                run(() => withdrawAcknowledgmentAction(header.id, ackId, reason))
+                run('withdraw', () => withdrawAcknowledgmentAction(header.id, ackId, reason))
               }
             />
           ))}
@@ -292,12 +313,15 @@ function Header({
   header,
   company,
   pending,
+  busy,
   onSignOff,
   onReopen,
 }: {
   header: PeriodHeader;
   company: Synopsis | null;
   pending: boolean;
+  /** Which operation `pending` is about — see `run` above. */
+  busy: string | null;
   onSignOff: (note: string) => void;
   onReopen: (reason: string) => void;
 }) {
@@ -417,6 +441,8 @@ function Header({
                   variant="danger"
                   icon="rotate-ccw"
                   disabled={pending || reason.trim().length < 3}
+                  loading={pending && busy === 'reopen'}
+                  loadingLabel="Reopening…"
                   onClick={() => onReopen(reason)}
                 >
                   Reopen the month
@@ -445,6 +471,8 @@ function Header({
                 variant="primary"
                 icon="check"
                 disabled={pending || !header.signable}
+                loading={pending && busy === 'sign-off'}
+                loadingLabel="Signing off…"
                 onClick={() => onSignOff(note)}
               >
                 Sign the month off
@@ -1053,6 +1081,8 @@ function ReasonPrompt({
           size="sm"
           variant="danger"
           disabled={pending || reason.trim().length < 3}
+          loading={pending}
+          loadingLabel="Saving…"
           onClick={onConfirm}
         >
           {confirmLabel}

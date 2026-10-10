@@ -625,7 +625,17 @@ function Blocked({
           soft-deleted, so the history of what was loaded when stays intact.
         </p>
         <div className="mt-2.5">
-          <Button size="sm" variant="danger" icon="rotate-ccw" disabled={busy} onClick={onReplace}>
+          {/* `send(true)` — a real commit, and the slowest one here, since it
+             supersedes the existing import before writing the new rows. */}
+          <Button
+            size="sm"
+            variant="danger"
+            icon="rotate-ccw"
+            disabled={busy}
+            loading={busy}
+            loadingLabel="Replacing…"
+            onClick={onReplace}
+          >
             Replace the previous import
           </Button>
         </div>

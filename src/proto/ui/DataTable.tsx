@@ -571,86 +571,93 @@ type DataTableProps = {
 };
 
 /**
- * One dashboard cell holding a pipeline step, changed in place.
+ * One dashboard cell whose value is picked from a short, closed list.
  *
- * Opened on a single click, unlike `EditableCell`, which needs a pencil or a
- * double-click. The two differ because the risk does: a value cell holds
- * free text a stray click could overwrite, while this one offers a short,
- * closed list and shows the current step as the ticked row, so an accidental
- * open costs one Escape. Moving a deal along its pipeline is also the single
- * most repeated edit on this screen, and the client asked for it by name.
+ * Used by the two columns people change most from the dashboard: the pipeline
+ * step and Current Status. They write through completely different paths —
+ * the step through the pipeline's own writer, a status through the ordinary
+ * value path — so the WRITER is a prop and everything else is shared. Two
+ * copies of this would be two chances for the two columns to start behaving
+ * differently for no reason anyone chose.
+ *
+ * ── OPENED ON A SINGLE CLICK, UNLIKE `EditableCell` ──────────────────────
+ * `EditableCell` needs a pencil or a double-click because it holds free text
+ * a stray click could overwrite. This offers a closed list with the current
+ * value already ticked, so an accidental open costs one Escape. These are
+ * also the most repeated edits on the screen, and the client asked for both
+ * by name.
  *
  * ⚠️ EVERY HANDLER STOPS PROPAGATION, for the reason `EditableCell` gives:
  * this sits inside the `<tr>` that opens the drawer, so without it a click on
- * a step would also open the record on the way past.
+ * an option would also open the record on the way past.
  */
-function PipelineStepCell({
-  row,
+function PillMenu({
   field,
+  value,
   moduleSlug,
-  pipelineId,
-  steps,
-  onCommit,
+  options,
+  title,
+  onPick,
 }: {
-  row: RecordRow;
   field: Field;
+  value: FieldValue;
   moduleSlug: string;
-  pipelineId: string;
-  steps: { id: string; label: string; swatch: Swatch }[];
-  onCommit: (
-    recordId: string,
-    pipelineId: string,
-    stepId: string,
-  ) => Promise<{ ok: boolean; message?: string }>;
+  /** In the order they should be offered. `key` is what gets stored. */
+  options: { key: string; label: string; swatch?: Swatch }[];
+  /** What the trigger says it does, e.g. "Change the pipeline step". */
+  title: string;
+  onPick: (key: string) => Promise<{ ok: boolean; message?: string }>;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const current = row.values[field.id];
-  const currentId = typeof current === 'string' ? current : null;
+  const currentKey = typeof value === 'string' ? value : null;
 
-  const choose = async (stepId: string) => {
+  const choose = async (key: string) => {
     setOpen(false);
-    if (stepId === currentId) return;
+    if (key === currentKey) return;
     setBusy(true);
     setError(null);
-    const result = await onCommit(row.id, pipelineId, stepId);
+    const result = await onPick(key);
     setBusy(false);
-    if (!result.ok) setError(result.message ?? 'Could not move that.');
+    if (!result.ok) setError(result.message ?? 'Could not save that.');
   };
 
   return (
-    <span className="flex min-w-0 items-center gap-1">
+    <span className="flex min-w-0 flex-1 items-center gap-1">
       <button
         ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={busy}
-        title={error ?? 'Change the pipeline step'}
+        title={error ?? title}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`group/pipe flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-canvas ${
+        onDoubleClick={(e) => e.stopPropagation()}
+        className={`group/pill flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-canvas ${
           error ? 'ring-1 ring-bad/40' : ''
         }`}
       >
         <span className="min-w-0 truncate">
-          <CellValue field={field} value={current} moduleSlug={moduleSlug} />
+          <CellValue field={field} value={value} moduleSlug={moduleSlug} />
         </span>
         {busy ? (
           <span aria-hidden className="inline-block shrink-0 text-[10px] leading-none">
             <Spinner />
           </span>
+        ) : error ? (
+          <Icon name="alert-triangle" size={11} className="shrink-0 text-bad" />
         ) : (
           /* Visible on hover and on keyboard focus, so the column does not
              carry a chevron on every row of every page. */
           <span
             aria-hidden
-            className="shrink-0 text-ink-300 opacity-0 transition-opacity group-hover/pipe:opacity-100 group-focus-visible/pipe:opacity-100"
+            className="shrink-0 text-ink-300 opacity-0 transition-opacity group-hover/pill:opacity-100 group-focus-visible/pill:opacity-100"
           >
             <Icon name="chevron-down" size={11} />
           </span>
@@ -663,20 +670,20 @@ function PipelineStepCell({
         anchorRef={triggerRef}
         align="left"
         width={240}
-        label={`${field.label} — choose a step`}
+        label={title}
       >
         <div onClick={(e) => e.stopPropagation()}>
-          {steps.map((st) => {
-            const on = st.id === currentId;
+          {options.map((o) => {
+            const on = o.key === currentKey;
             return (
               <button
-                key={st.id}
+                key={o.key}
                 type="button"
                 role="menuitemradio"
                 aria-checked={on}
                 onClick={(e) => {
                   e.stopPropagation();
-                  void choose(st.id);
+                  void choose(o.key);
                 }}
                 className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-canvas ${
                   on ? 'bg-canvas' : ''
@@ -685,7 +692,7 @@ function PipelineStepCell({
                 <span className="w-3.5 shrink-0 text-brand-700">
                   {on ? <Icon name="check" size={12} strokeWidth={3} /> : null}
                 </span>
-                <StatusPill label={st.label} swatch={st.swatch} />
+                <StatusPill label={o.label} swatch={o.swatch} />
               </button>
             );
           })}
@@ -750,6 +757,108 @@ function EditableCell({
     );
   }
 
+  /**
+   * Commit, shared by the three shapes below. Identical in each; written once
+   * so a change to the optimistic bargain cannot reach only two of them.
+   */
+  const commit = (next: FieldValue) => {
+    setError(null);
+    // Unchanged value, no round trip. Re-opening a cell and tabbing straight
+    // out is the commonest way to touch one by accident.
+    if (JSON.stringify(next ?? null) === JSON.stringify(value ?? null)) {
+      return Promise.resolve({ ok: true } as { ok: boolean; message?: string });
+    }
+    setState('saving');
+    return onCommit(row.id, field, next).then((result) => {
+      if (result.ok) {
+        setState('saved');
+        window.setTimeout(() => setState('idle'), 900);
+      } else {
+        setState('idle');
+        setError(result.message ?? 'Could not save.');
+      }
+      return result;
+    });
+  };
+
+  /*
+   * ── A STATUS IS PICKED, NOT TYPED ───────────────────────────────────────
+   * It was a pencil, then a <select> opened inside the cell. A status is a
+   * short closed list and the single most changed column on the screen after
+   * the pipeline step, so it gets the same one-click pill menu the step got,
+   * which is what the client asked for — "add same dropdown as deal status
+   * dropdown in current status dropdown".
+   *
+   * Only when there ARE options: a status field whose choices an admin has
+   * not configured yet would otherwise open an empty menu, and the pencil at
+   * least lets someone see the raw value.
+   */
+  const statusOptions =
+    field.type === 'status'
+      ? choicesFor(field, moduleSlug).map((c) => ({
+          key: choiceKey(c),
+          /* `Choice.value` IS the display label; `key` is what is stored.
+             See `choiceKey` on why the two are deliberately separate. */
+          label: c.value,
+          swatch: c.swatch,
+        }))
+      : [];
+
+  if (statusOptions.length) {
+    return (
+      <span className="flex min-w-0 flex-1 items-center gap-1">
+        <span className={`flex min-w-0 flex-1 ${state === 'saving' ? 'opacity-45' : ''}`}>
+          <PillMenu
+            field={field}
+            value={value}
+            moduleSlug={moduleSlug}
+            options={statusOptions}
+            title={`Change ${field.label}`}
+            onPick={(key) => commit(key)}
+          />
+        </span>
+        <StateSlot state={state} error={error} onRetry={() => setError(null)} />
+      </span>
+    );
+  }
+
+  /*
+   * ── TEAM MEMBERS NEVER EXPAND IN PLACE ──────────────────────────────────
+   * `FieldRenderer`'s team control wraps its chips onto as many rows as the
+   * team needs. That is right in a drawer and impossible in a 40px cell: with
+   * three people assigned, opening the editor pushed three stacked chips and
+   * the add control out of the row and over the records underneath. Reported
+   * with a screenshot of exactly that.
+   *
+   * `compact` renders the same control as one avatar stack that opens its
+   * panel, and the panel is a checklist of the whole roster — so adding,
+   * removing and seeing who is on all still work, in a cell that cannot
+   * change height. There is no `editing` state here at all: the panel IS the
+   * editor, so a pencil would just be a second click before the same thing.
+   */
+  if (field.type === 'team_member') {
+    return (
+      <span
+        className="flex min-w-0 flex-1 items-center gap-1"
+        onClick={stop}
+        onDoubleClick={stop}
+        onKeyDown={stop}
+      >
+        <span className={`flex min-w-0 flex-1 ${state === 'saving' ? 'opacity-45' : ''}`}>
+          <FieldRenderer
+            field={field}
+            value={value}
+            grant="edit"
+            moduleSlug={moduleSlug}
+            compact
+            onChange={(next) => void commit(next)}
+          />
+        </span>
+        <StateSlot state={state} error={error} onRetry={() => setError(null)} />
+      </span>
+    );
+  }
+
   if (editing) {
     return (
       <span
@@ -778,20 +887,7 @@ function EditableCell({
           onCancel={() => setEditing(false)}
           onChange={(next) => {
             setEditing(false);
-            setError(null);
-            // Unchanged value, no round trip. Re-opening a cell and tabbing
-            // straight out is the commonest way to touch one by accident.
-            if (JSON.stringify(next ?? null) === JSON.stringify(value ?? null)) return;
-            setState('saving');
-            void onCommit(row.id, field, next).then((result) => {
-              if (result.ok) {
-                setState('saved');
-                window.setTimeout(() => setState('idle'), 900);
-              } else {
-                setState('idle');
-                setError(result.message ?? 'Could not save.');
-              }
-            });
+            void commit(next);
           }}
         />
       </span>
@@ -812,32 +908,15 @@ function EditableCell({
         <CellValue field={field} value={value} moduleSlug={moduleSlug} />
       </span>
 
-      {/*
-        One slot, three states, fixed width — so a row does not reflow as a
-        value saves. Saving and saved are transient; an error persists until the
-        cell is opened again, because a failed write is the one outcome the user
-        has to be able to come back to.
-      */}
-      {state === 'saving' ? (
-        <Spinner className="shrink-0" />
-      ) : state === 'saved' ? (
-        <Icon name="check" size={12} strokeWidth={2.6} className="shrink-0 animate-settle text-ok" />
-      ) : error ? (
-        <button
-          type="button"
-          title={`${error} — click to try again`}
-          aria-label={`${error}. Try again`}
-          onClick={(e) => {
-            stop(e);
-            setError(null);
-            setEditing(true);
-          }}
-          onDoubleClick={stop}
-          className="grid size-5 shrink-0 place-items-center rounded text-bad transition-colors hover:bg-white"
-        >
-          <Icon name="alert-triangle" size={12} />
-        </button>
-      ) : (
+      <StateSlot
+        state={state}
+        error={error}
+        onRetry={() => {
+          setError(null);
+          setEditing(true);
+        }}
+      />
+      {state === 'idle' && !error ? (
         <button
           type="button"
           aria-label={`Edit ${field.label}`}
@@ -852,11 +931,53 @@ function EditableCell({
         >
           <Icon name="pencil" size={11} />
         </button>
-      )}
+      ) : null}
     </span>
   );
 }
 
+/**
+ * One slot, three states, fixed width — so a row does not reflow as a value
+ * saves. Saving and saved are transient; an error persists until the cell is
+ * touched again, because a failed write is the one outcome the user has to be
+ * able to come back to.
+ *
+ * Shared by all three cell shapes. It used to be written inline in the only
+ * one that existed; a second and third copy would be three places to keep the
+ * same three states looking the same.
+ */
+function StateSlot({
+  state,
+  error,
+  onRetry,
+}: {
+  state: 'idle' | 'saving' | 'saved';
+  error: string | null;
+  onRetry: () => void;
+}) {
+  if (state === 'saving') return <Spinner className="shrink-0" />;
+  if (state === 'saved') {
+    return <Icon name="check" size={12} strokeWidth={2.6} className="shrink-0 animate-settle text-ok" />;
+  }
+  if (error) {
+    return (
+      <button
+        type="button"
+        title={`${error} — click to try again`}
+        aria-label={`${error}. Try again`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRetry();
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+        className="grid size-5 shrink-0 place-items-center rounded text-bad transition-colors hover:bg-white"
+      >
+        <Icon name="alert-triangle" size={12} />
+      </button>
+    );
+  }
+  return null;
+}
 
 export function DataTable({
   moduleSlug,
@@ -1397,13 +1518,17 @@ export function DataTable({
                           } ${readOnly ? 'text-ink-400' : 'text-ink-700'}`}
                         >
                           {stepEditable ? (
-                            <PipelineStepCell
-                              row={r}
+                            <PillMenu
                               field={col}
+                              value={r.values[col.id]}
                               moduleSlug={moduleSlug}
-                              pipelineId={pipe!.pipelineId}
-                              steps={pipe!.steps}
-                              onCommit={onPipelineStep!}
+                              options={pipe!.steps.map((st) => ({
+                                key: st.id,
+                                label: st.label,
+                                swatch: st.swatch,
+                              }))}
+                              title="Change the pipeline step"
+                              onPick={(stepId) => onPipelineStep!(r.id, pipe!.pipelineId, stepId)}
                             />
                           ) : cellEditable ? (
                             <EditableCell

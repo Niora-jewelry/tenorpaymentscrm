@@ -350,6 +350,7 @@ export function FieldRenderer({
   viewerId,
   viewerIsAdmin,
   autoEdit,
+  compact,
   onCancel,
   onChange,
 }: {
@@ -378,6 +379,9 @@ export function FieldRenderer({
   /** An admin sees every record regardless of the team, so the warning above
    * does not apply to them and is not shown. */
   viewerIsAdmin?: boolean;
+  /** `team_member` only — see the prop of the same name on its control. Set
+   *  by a dashboard cell, which cannot give the control room to wrap. */
+  compact?: boolean;
   /**
    * Open straight into the editor, already focused.
    *
@@ -518,6 +522,7 @@ export function FieldRenderer({
       <TeamMemberControl
         ids={asTeamMembers(value)}
         readOnly={readOnly}
+        compact={compact}
         // Three fields share this type and only one of them grants anything —
         // see `grantsVisibility` on the control. The caller decides, because
         // this component is also the prototype's, which has no such concept.
@@ -852,6 +857,7 @@ export function FieldRenderer({
 function TeamMemberControl({
   ids,
   readOnly,
+  compact,
   grantsVisibility,
   viewerId,
   viewerIsAdmin,
@@ -859,6 +865,24 @@ function TeamMemberControl({
 }: {
   ids: string[];
   readOnly: boolean;
+  /**
+   * Render as ONE line that never grows: an avatar stack that opens the
+   * panel, and no chips.
+   *
+   * ── THE BUG THIS EXISTS FOR ──────────────────────────────────────────
+   * A dashboard cell is 40px tall and a fixed width. The full control wraps
+   * its chips onto as many rows as it needs, which is right in a drawer and
+   * impossible in a cell: with three people assigned, opening the editor
+   * pushed three stacked chips plus the trigger out of the row and straight
+   * over the records underneath it. Reported with a screenshot of exactly
+   * that.
+   *
+   * Nothing is lost by collapsing it, because everything the chips offered
+   * now lives in the panel: the panel is a checklist of the whole roster
+   * with the assigned people ticked, so adding, removing and seeing who is
+   * on are all there. The chips were the only part that needed the height.
+   */
+  compact?: boolean;
   /** See `FieldRenderer`'s prop of the same name. False for the two
    * `team_member` fields that are informational — everything below that talks
    * about who can SEE the record is suppressed rather than reworded, because
@@ -922,9 +946,15 @@ function TeamMemberControl({
   }
 
   return (
-    <div className="space-y-1.5 py-1">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {selected.map((p) => {
+    <div className={compact ? 'flex min-w-0 items-center' : 'space-y-1.5 py-1'}>
+      <div
+        className={
+          compact
+            ? 'flex min-w-0 items-center gap-1'
+            : 'flex flex-wrap items-center gap-1.5'
+        }
+      >
+        {(compact ? [] : selected).map((p) => {
           const isSelf = Boolean(viewerId) && p.id === viewerId;
           // Only worth confirming where it actually costs something: this
           // field grants the visibility, and an admin keeps it regardless.
@@ -1010,7 +1040,7 @@ function TeamMemberControl({
           );
         })}
 
-        {selected.length === 0 ? (
+        {selected.length === 0 && !compact ? (
           <span
             className={`inline-flex items-center gap-1 rounded border border-dashed px-1.5 py-px text-[12.5px] ${
               grantsVisibility ? 'border-warn/50 text-warn' : 'border-line text-ink-400'
@@ -1074,14 +1104,48 @@ function TeamMemberControl({
                 setQuery('');
                 setAdding((v) => !v);
               }}
-              className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
-                grantsVisibility
-                  ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
-                  : 'border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
-              }`}
+              className={
+                compact
+                  ? 'group/team flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-canvas'
+                  : `inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
+                      grantsVisibility
+                        ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
+                        : 'border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+                    }`
+              }
             >
-              <Icon name="plus" size={11} strokeWidth={2.4} />
-              {selected.length ? 'Edit team' : 'Add team member'}
+              {compact ? (
+                <>
+                  {selected.length ? (
+                    /* Overlapped, and capped at three. The cell is a fixed
+                       width; a stack that grows with the team is the same
+                       overflow in a quieter form. */
+                    <span className="flex shrink-0 -space-x-1.5">
+                      {selected.slice(0, 3).map((pp) => (
+                        <PersonAvatar key={pp.id} person={pp} size={18} />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className={`truncate text-[12.5px] ${grantsVisibility ? 'text-warn' : 'text-ink-400'}`}>
+                      {grantsVisibility ? 'Only admins can see this' : 'Nobody assigned'}
+                    </span>
+                  )}
+                  {selected.length > 3 ? (
+                    <span className="shrink-0 text-[11.5px] text-ink-400">+{selected.length - 3}</span>
+                  ) : null}
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-ink-300 opacity-0 transition-opacity group-hover/team:opacity-100 group-focus-visible/team:opacity-100"
+                  >
+                    <Icon name="chevron-down" size={11} />
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Icon name="plus" size={11} strokeWidth={2.4} />
+                  {selected.length ? 'Edit team' : 'Add team member'}
+                </>
+              )}
             </button>
             <MenuSurface
               open={adding}

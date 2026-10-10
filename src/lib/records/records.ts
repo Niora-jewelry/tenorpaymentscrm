@@ -205,28 +205,51 @@ export async function listRecords(
   const targetModule = config.modules.find((m) => m.id === moduleId);
   const isRecordsList = targetModule?.slug === 'records';
 
-  // Records List shows every non-deleted record regardless of membership —
-  // including fully archived ones (zero display memberships), since it is
-  // their only remaining home. An unconditional `!inner` join here would
-  // silently drop those rows (an inner join only returns records that have
-  // AT LEAST ONE `record_modules` row), so the join is applied only when
-  // actually filtering to one display module.
-  //
-  // supabase-js infers a query's row shape by parsing the literal string
-  // passed to `.select()` at the type level; a runtime-conditional string
-  // (this ternary) isn't a literal it can parse and its generated types
-  // surface that as a `ParserError` rather than a row type. The actual
-  // shape returned is read explicitly by `mapRow` below regardless, so the
-  // cast just opts this one query out of that compile-time inference.
-  const selectList = isRecordsList
-    ? RECORD_COLUMNS
-    : `${RECORD_COLUMNS}, record_modules!inner(module_id)`;
+  /*
+   * ⚠️ `records_filterable`, NOT `records`, and the difference is the filters.
+   *
+   * `records.values` is not selectable by a signed-in user (migration 75, and
+   * see RECORD_COLUMNS above). A filter is applied as `values->>key`, and
+   * PostgreSQL requires SELECT privilege on every column named in a WHERE
+   * clause — not merely on the ones returned. So filtering this table by any
+   * field value was refused outright with
+   *
+   *     42501 permission denied for table records
+   *
+   * and the page fell to its error boundary. That was true of essentially
+   * every filter in the app; it surfaced when the pipeline step became a
+   * dashboard column, because the funnel on it saves a filter in one click.
+   *
+   * The view (migration …9752) returns the same rows the SELECT policy on
+   * `records` allows, with `values` stripped of this viewer's hidden keys by
+   * the same expression `record_values_for()` uses — so it discloses nothing
+   * new, and a filter on a field the viewer may not see matches nothing
+   * rather than reporting whether a value is present.
+   *
+   * `values` is still absent from the select list below. The view makes the
+   * column FILTERABLE; it does not put it back on the wire.
+   */
+
+  /*
+   * Records List shows every non-deleted record regardless of membership —
+   * including fully archived ones (zero display memberships), since it is
+   * their only remaining home. So the module test is applied only when
+   * actually filtering to one display module, exactly as the `!inner` join it
+   * replaces was conditional.
+   *
+   * `module_ids` is the view's array of the record's display modules, and
+   * `contains` is a plain `cs` containment test — no embedded resource, so
+   * nothing depends on PostgREST inferring a relationship through a view.
+   *
+   * The cast stays: the view is not in the generated database types, and
+   * `mapRow` below reads the shape explicitly in any case.
+   */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query = supabase.from('records').select(selectList, { count: 'exact' }) as any;
+  let query = supabase.from('records_filterable').select(RECORD_COLUMNS, { count: 'exact' }) as any;
   query = query.is('deleted_at', null);
 
   if (!isRecordsList) {
-    query = query.eq('record_modules.module_id', moduleId);
+    query = query.contains('module_ids', [moduleId]);
   }
 
   // Layer 3 of "admin default → user override → permission filter" happens

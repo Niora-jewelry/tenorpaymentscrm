@@ -235,7 +235,19 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                             Resend
                           </Button>
                         ) : null}
-                        {i.status === 'pending' ? (
+                        {/*
+                          Offered on anything still actionable, which is the
+                          same test the list itself uses. It was `pending`
+                          only, so an invite that lapsed could be renewed and
+                          never cancelled — and "they are not joining after
+                          all" is at least as common a reason to be looking at
+                          an expired invite as "give them more time".
+
+                          Not offered on accepted or revoked: one has been
+                          spent, the other is already cancelled. Those rows
+                          are history, and the server refuses both regardless.
+                        */}
+                        {actionable(i) ? (
                           <Button
                             size="sm"
                             variant="ghost"

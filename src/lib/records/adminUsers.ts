@@ -457,15 +457,34 @@ export async function revokeInvite(
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
 
+  /*
+   * ⚠️ IT MUST ACCEPT AN ALREADY-EXPIRED INVITE — the same bug `renewInvite`
+   * below records fixing, from the other direction.
+   *
+   * This matched `status = 'pending'` only. The expiry sweep relabels an
+   * invite `expired`, so the moment it lapsed the only thing an admin could
+   * do with it was RENEW it — cancelling, which is what you want for someone
+   * who is not joining after all, became impossible exactly when it became
+   * the likely answer. Eleven invites were sitting in that state.
+   *
+   * `accepted` and `revoked` are still refused, and for real reasons rather
+   * than symmetry: an accepted invite has already been spent and its grants
+   * copied into `user_grants`, so "cancelling" it would describe nothing that
+   * happens — the account exists and is removed from the Users table, not
+   * from here. A revoked one is already cancelled.
+   */
   const { data, error } = await supabase
     .from('invites')
     .update({ status: 'revoked' })
     .eq('id', inviteId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'expired'])
     .select('id');
   if (error) return { ok: false, message: error.message };
   if (!data?.length) {
-    return { ok: false, message: 'That invite is no longer pending, so there is nothing to cancel.' };
+    return {
+      ok: false,
+      message: 'That invite has already been used or cancelled, so there is nothing to cancel.',
+    };
   }
   return { ok: true };
 }

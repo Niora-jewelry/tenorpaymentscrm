@@ -874,20 +874,37 @@ function TeamMemberControl({
 
   const selected = ids.map((id) => resolvePerson(id, byId));
   const chosen = new Set(ids);
-  // A suspended account is never offered. An unknown id is not either — it is
-  // already on the list, and there is nothing to offer.
-  const addable = people.filter((p) => !chosen.has(p.id) && !p.suspended);
 
-  /* The add menu. A ref for the trigger because `MenuSurface` positions
+  /* The picker. A ref for the trigger because `MenuSurface` positions
      against it rather than living inside it — see the comment at the call. */
   const addRef = useRef<HTMLButtonElement>(null);
   const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState('');
 
   const remove = (id: string) => onChange(ids.filter((x) => x !== id));
   const add = (id: string) => {
     if (!id || chosen.has(id)) return;
     onChange([...ids, id]);
   };
+
+  /*
+   * ── THE WHOLE ROSTER, NOT ONLY THE UNASSIGNED ───────────────────────────
+   * The menu used to list `addable` and close after one pick, so assigning
+   * three people meant opening it three times, and the only way to take
+   * somebody off was to find their chip. The panel is a multi-select now, so
+   * it has to show who is already on as well — a checklist that omits the
+   * ticked rows is not a checklist.
+   *
+   * A suspended account is still never offered; an unknown id is not either,
+   * since it is already on the list and there is nothing to offer.
+   */
+  const roster = people.filter((p) => !p.suspended);
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? roster.filter(
+        (p) => p.name.toLowerCase().includes(q) || (p.email ?? '').toLowerCase().includes(q),
+      )
+    : roster;
 
   if (readOnly) {
     return selected.length ? (
@@ -943,16 +960,30 @@ function TeamMemberControl({
           }
 
           return (
+            /*
+               ⚠️ `min-w-0 max-w-full` ON THE CHIP, AND THE NAME SHRINKS.
+               The name had a fixed `max-w-[160px]`, which is wider than the
+               168px header-strip track once the avatar, the gap and the
+               remove button are added. The chip therefore overflowed and was
+               cut off by the cell — reported as the assigned people being
+               unreadable and their remove buttons missing, with three chips
+               stacked and each sliced down the right-hand edge.
+               A fixed cap cannot be right in three containers of different
+               widths. Shrinking to whatever is available can: the avatar and
+               the remove button hold their size, and the name takes the rest
+               and truncates. */
             <span
               key={p.id}
-              className={`inline-flex items-center gap-1.5 rounded-full border py-[3px] pl-[3px] pr-1.5 text-[12.5px] ${
+              className={`inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border py-[3px] pl-[3px] pr-1.5 text-[12.5px] ${
                 p.unknown || p.suspended
                   ? 'border-[#f7e0af] bg-[#fdf1d8] text-[#8a5a09]'
                   : 'border-line bg-white text-ink-700'
               }`}
             >
-              <PersonAvatar person={p} size={18} />
-              <span className="max-w-[160px] truncate font-medium">{p.name}</span>
+              <span className="shrink-0">
+                <PersonAvatar person={p} size={18} />
+              </span>
+              <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
               {p.suspended ? (
                 /* A badge, not a bare word. Sitting as plain text beside the
                    name it read like part of the name — "test@gmail.com
@@ -971,7 +1002,7 @@ function TeamMemberControl({
                     : `Remove ${p.name}`
                 }
                 onClick={() => (needsConfirm ? setConfirmingSelf(true) : remove(p.id))}
-                className="ml-0.5 grid size-4 place-items-center rounded-full text-ink-400 transition-colors hover:bg-canvas hover:text-bad"
+                className="ml-0.5 grid size-4 shrink-0 place-items-center rounded-full text-ink-400 transition-colors hover:bg-canvas hover:text-bad"
               >
                 <Icon name="x" size={10} strokeWidth={2.5} />
               </button>
@@ -1003,18 +1034,18 @@ function TeamMemberControl({
           wrapper's; the select sits transparently on top of it so the whole
           chip is the hit area.
         */}
-        {addable.length ? (
+        {roster.length ? (
           /*
-            ── A PORTALLED MENU, AFTER TWO WRONG ANSWERS ────────────────────
+            -- A MULTI-SELECT PANEL, AFTER THREE WRONG ANSWERS --------------
             This control has to work in three containers of very different
             widths: a drawer field (wide), a 168px header-strip track, and a
-            dashboard table cell. A native <select> cannot:
+            dashboard table cell. A native <select> could not:
 
-              · laid over a chip at `opacity-0`, its dropdown sized itself to
-                the ~150px chip and truncated every name — and telling two
+              - laid over a chip at `opacity-0`, its dropdown sized itself to
+                the ~150px chip and truncated every name, and telling two
                 people apart is this control's entire job, because picking
                 wrong shows the record to the wrong person;
-              · given a real `min-w` instead, the control itself then
+              - given a real `min-w` instead, the control itself then
                 overflowed the header track and the table cell, pushing into
                 the next column and the row below.
 
@@ -1022,7 +1053,16 @@ function TeamMemberControl({
             directions: a menu laid out INSIDE the cell is bounded by the
             cell. `MenuSurface` portals to the body and positions against the
             trigger, so the trigger can stay chip-sized while the list is as
-            wide as the names need — and no ancestor's overflow can clip it.
+            wide as the names need, and no ancestor's overflow can clip it.
+
+            The third report was about the panel that fixed those: it listed
+            only unassigned people and CLOSED after each pick, so putting two
+            people on a record meant opening it twice, and with two already
+            assigned the row of chips plus the trigger no longer fit. So it is
+            a checklist now. It stays open, every tick is saved as it is made,
+            and people already on the record are shown ticked rather than
+            hidden, which is also the only place the full roster and the
+            current team are visible at the same time.
           */
           <>
             <button
@@ -1030,7 +1070,10 @@ function TeamMemberControl({
               type="button"
               aria-haspopup="menu"
               aria-expanded={adding}
-              onClick={() => setAdding((v) => !v)}
+              onClick={() => {
+                setQuery('');
+                setAdding((v) => !v);
+              }}
               className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
                 grantsVisibility
                   ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
@@ -1038,47 +1081,128 @@ function TeamMemberControl({
               }`}
             >
               <Icon name="plus" size={11} strokeWidth={2.4} />
-              Add team member
+              {selected.length ? 'Edit team' : 'Add team member'}
             </button>
             <MenuSurface
               open={adding}
               onClose={() => setAdding(false)}
               anchorRef={addRef}
               align="left"
-              width={300}
-              label="Add a team member"
+              width={320}
+              label="Choose team members"
             >
-              <div className="max-h-[260px] overflow-y-auto py-1">
-                {addable.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      add(p.id);
-                      setAdding(false);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] transition-colors hover:bg-canvas"
-                  >
-                    {/* Known by construction — `addable` is built from the
-                        roster, so it can never hold an unresolved id. */}
-                    <PersonAvatar person={{ ...p, unknown: false }} size={18} />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium text-ink-900">{p.name}</span>
-                      {/* The email is what makes two people with the same (or
-                          no) display name distinguishable. It gets its own
-                          line here rather than being truncated onto the end
-                          of the name, which is what the old menu did. */}
-                      {p.email && p.email !== p.name ? (
-                        <span className="block truncate text-[11px] text-ink-400">{p.email}</span>
-                      ) : null}
-                    </span>
-                  </button>
-                ))}
+              {/* Search earns its place once the roster passes a handful:
+                  picking the wrong person here is what hands a record to
+                  someone who should not have it, so finding the right one
+                  must not depend on scrolling carefully. */}
+              {roster.length > 6 ? (
+                <div className="px-1.5 pb-1 pt-0.5">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search people..."
+                    aria-label="Search people"
+                    className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12.5px] text-ink-900 outline-none focus-field"
+                  />
+                </div>
+              ) : null}
+
+              <div className="max-h-[300px] overflow-y-auto py-0.5">
+                {shown.map((p) => {
+                  const on = chosen.has(p.id);
+                  const isSelf = Boolean(viewerId) && p.id === viewerId;
+                  /* Same rule as the chip: only worth confirming where it
+                     actually costs something, which is where this field
+                     grants the visibility and the viewer is not an admin. */
+                  const needsConfirm = on && isSelf && !viewerIsAdmin && Boolean(grantsVisibility);
+
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="menuitemcheckbox"
+                      aria-checked={on}
+                      onClick={() => {
+                        /* Taking yourself off is the one change that can lose
+                           you the record, so it is handed back to the chip's
+                           existing confirm rather than happening on one click
+                           inside a list you are halfway through reading. */
+                        if (needsConfirm) {
+                          setConfirmingSelf(true);
+                          setAdding(false);
+                          return;
+                        }
+                        if (on) remove(p.id);
+                        else add(p.id);
+                      }}
+                      title={
+                        needsConfirm
+                          ? 'Remove yourself - this record stops being visible to you'
+                          : undefined
+                      }
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-canvas"
+                    >
+                      {/* A drawn box rather than a real checkbox: the row is
+                          the hit area, and a nested input would take the
+                          click and need its own keyboard handling. The button
+                          carries `menuitemcheckbox`, so the state is
+                          announced either way. */}
+                      <span
+                        aria-hidden
+                        className={`grid size-[15px] shrink-0 place-items-center rounded border transition-colors ${
+                          on ? 'border-brand-600 bg-brand-600 text-white' : 'border-line bg-white'
+                        }`}
+                      >
+                        {on ? <Icon name="check" size={10} strokeWidth={3} /> : null}
+                      </span>
+                      {/* Known by construction - `roster` is built from the
+                          people list, so it can never hold an unresolved id. */}
+                      <span className="shrink-0">
+                        <PersonAvatar person={{ ...p, unknown: false }} size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-ink-900">
+                          {p.name}
+                          {isSelf ? (
+                            <span className="ml-1 text-[11px] font-normal text-ink-400">you</span>
+                          ) : null}
+                        </span>
+                        {/* The email is what makes two people with the same
+                            (or no) display name distinguishable. It gets its
+                            own line rather than being truncated onto the end
+                            of the name, which is what the old menu did. */}
+                        {p.email && p.email !== p.name ? (
+                          <span className="block truncate text-[11px] text-ink-400">{p.email}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+
+                {shown.length === 0 ? (
+                  <p className="px-2.5 py-3 text-center text-[12px] text-ink-400">
+                    Nobody matches that search.
+                  </p>
+                ) : null}
+              </div>
+
+              {/* States what the panel has already done. Every tick saved as
+                  it was made, so there is deliberately nothing here that
+                  commits, and Done only closes. */}
+              <div className="flex items-center justify-between gap-2 border-t border-line-faint px-2.5 py-1.5 text-[11.5px] text-ink-400">
+                <span>{selected.length === 0 ? 'Nobody assigned' : `${selected.length} assigned`}</span>
+                <button
+                  type="button"
+                  onClick={() => setAdding(false)}
+                  className="rounded px-1.5 py-0.5 font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+                >
+                  Done
+                </button>
               </div>
             </MenuSurface>
           </>
         ) : (
-          <span className="text-[11px] text-ink-400">Everyone available is already assigned.</span>
+          <span className="text-[11px] text-ink-400">No active accounts to assign.</span>
         )}
       </div>
     </div>

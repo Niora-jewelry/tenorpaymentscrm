@@ -29,19 +29,20 @@
  * server render actually arrives, so the optimistic view never permanently
  * drifts from the database.
  */
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { DataTable, BulkBar, SkipReportPanel, type SkipReport as ProtoSkipReport } from '@/proto/ui/DataTable';
 import { Dialog, Button, NumberInput, SpecNote } from '@/proto/ui/kit';
 import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from '@/proto/ui/people';
 import { Icon } from '@/proto/ui/icons';
-import type { Field, RecordRow, Filter, FieldValue } from '@/proto/schema';
+import type { Field, RecordRow, Filter, FieldValue, Swatch } from '@/proto/schema';
 import { PipelineFilter, type PipelineFilterOption } from './PipelineFilter';
 import { choicesFor, choiceKey } from '@/proto/fields';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import {
   reorderColumnsAction, resetColumnOrderAction, setFiltersAction, clearFiltersAction,
   setValueAction,
+  setPipelineStepAction,
   bulkEditAction, bulkArchiveAction, bulkRemoveFromModuleAction, bulkDeleteAction, bulkRestoreToModuleAction,
 } from './actions';
 
@@ -433,6 +434,80 @@ export function RecordsTable({
     }
   };
 
+  /**
+   * Move one record to one pipeline step, straight from the table.
+   *
+   * ── IT DOES NOT GO THROUGH `commitCell`, AND MUST NOT ────────────────────
+   * The pipeline's synced Status field is a column like any other to look at
+   * and nothing like one to write. Its value is a projection of
+   * `record_pipelines`; the field is marked read-only; `assertWritable` and
+   * the database both refuse a direct write to it. That is deliberate — a
+   * projection with two writers drifts, and nothing would report it.
+   *
+   * So this calls the pipeline's own writer, which is the same action the
+   * drawer's step bar uses. The rule that protects the field is untouched;
+   * what changed is that the table can now reach the one writer that was
+   * always allowed to move a record along.
+   *
+   * Optimistic for the same reason `commitCell` is, with one difference: the
+   * step is not a `values` write, so there is no compare-and-swap token to
+   * adopt back. `set_pipeline_step` is an upsert keyed on (record, module) —
+   * last write wins, exactly as it does from the drawer.
+   */
+  const commitPipelineStep = async (
+    recordId: string,
+    pipelineId: string,
+    stepId: string,
+  ): Promise<{ ok: boolean; message?: string }> => {
+    /* The column this pipeline feeds, so the optimistic paint lands on the
+       right cell. A pipeline with no synced field has no column to paint. */
+    const key = pipelines.find((p) => p.id === pipelineId)?.statusFieldKey;
+    const before = localRows.find((r) => r.id === recordId);
+    /* Kept as a one-key patch rather than a value: a step the record did not
+       have is an ABSENT key, and writing `undefined` back would leave the
+       key present and holding nothing, which reads differently everywhere
+       downstream (see `present` in the filter list). */
+    const restore = (row: RecordRow): RecordRow => {
+      const values = { ...row.values };
+      if (!key) return row;
+      if (before && key in before.values) values[key] = before.values[key];
+      else delete values[key];
+      return { ...row, values };
+    };
+
+    if (key) {
+      setLocalRows((rows) =>
+        rows.map((r) => (r.id === recordId ? { ...r, values: { ...r.values, [key]: stepId } } : r)),
+      );
+    }
+
+    try {
+      await setPipelineStepAction(moduleSlug, recordId, moduleId, pipelineId, stepId);
+      return { ok: true };
+    } catch {
+      if (key) {
+        setLocalRows((rows) => rows.map((r) => (r.id === recordId ? restore(r) : r)));
+      }
+      return { ok: false, message: 'Could not move that. Nothing was changed.' };
+    }
+  };
+
+  /*
+   * Which columns hold a pipeline step, keyed by the field key the table
+   * renders them under. Built from the pipelines this module already passes
+   * in for the toolbar filter, so the step picker and the step filter can
+   * never disagree about what the steps are — and no module is named here
+   * (CLAUDE.md rule 1).
+   */
+  const pipelineColumns = useMemo(() => {
+    const out: Record<
+      string,
+      { pipelineId: string; steps: { id: string; label: string; swatch: Swatch }[] }
+    > = {};
+    for (const p of pipelines) out[p.statusFieldKey] = { pipelineId: p.id, steps: p.steps };
+    return out;
+  }, [pipelines]);
+
   /** One place that saves a filter change, shared by the pipeline control and
    * DataTable's own column filters, so both reset to page 1 the same way. */
   const commitFilters = (f: Record<string, Filter>) => {
@@ -477,6 +552,13 @@ export function RecordsTable({
         selected={selected}
         onSelectedChange={setSelected}
         grantFor={grantFor}
+        pipelineColumns={
+          /* Withheld outright without module Edit. That is the step picker's
+             only permission gate, because the synced Status field's own grant
+             is always View — see the note beside `stepEditable`. */
+          canEdit ? pipelineColumns : undefined
+        }
+        onPipelineStep={commitPipelineStep}
         hasCustomColumnOrder={hasCustomColumnOrder}
         onReorderColumns={(ids) => {
           // Reorder the actual `Field` objects synchronously — header label,

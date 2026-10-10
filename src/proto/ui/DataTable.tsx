@@ -40,9 +40,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { Field, FieldValue, Filter, RecordRow } from '../schema';
+import type { Field, FieldValue, Filter, RecordRow, Swatch } from '../schema';
 import { choicesFor, choiceLabel, choiceKey } from '../fields';
 import { CellValue, FieldRenderer, isNumeric } from './value';
+import { MenuSurface } from './MenuSurface';
 import {
   BarAction,
   BarCount,
@@ -535,7 +536,164 @@ type DataTableProps = {
     field: Field,
     value: FieldValue,
   ) => Promise<{ ok: boolean; message?: string }>;
+  /**
+   * The columns whose value is a PIPELINE STEP, keyed by the field's key.
+   *
+   * ── WHY THESE CANNOT GO THROUGH `onCellEdit` ────────────────────────────
+   * A pipeline's synced Status field looks like any other status column and
+   * is not one. Its value is a projection of `record_pipelines`, it is marked
+   * read-only, and both `assertWritable` and the database refuse a direct
+   * write to it — deliberately, because a projection with two writers drifts.
+   * So the column was excluded from cell editing altogether and the step could
+   * only be changed by opening the record and using the pipeline bar.
+   *
+   * It is editable from the table now, through the pipeline's OWN writer
+   * (`set_pipeline_step`) rather than by relaxing the rule that protects it.
+   * That is why this is a separate prop and a separate handler: the thing
+   * being written is genuinely different, and saying so here is what stops
+   * someone later "simplifying" it into the value path.
+   *
+   * Keyed by field key and supplied by the caller, so no module is named in
+   * code (CLAUDE.md rule 1) — a seventh module with a pipeline needs nothing
+   * here.
+   */
+  pipelineColumns?: Record<
+    string,
+    { pipelineId: string; steps: { id: string; label: string; swatch: Swatch }[] }
+  >;
+  /** Move one record to one step. Resolves `{ ok: false, message }` on a
+   *  refusal, and the cell rolls back. Omitted = the column stays read-only. */
+  onPipelineStep?: (
+    recordId: string,
+    pipelineId: string,
+    stepId: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
 };
+
+/**
+ * One dashboard cell holding a pipeline step, changed in place.
+ *
+ * Opened on a single click, unlike `EditableCell`, which needs a pencil or a
+ * double-click. The two differ because the risk does: a value cell holds
+ * free text a stray click could overwrite, while this one offers a short,
+ * closed list and shows the current step as the ticked row, so an accidental
+ * open costs one Escape. Moving a deal along its pipeline is also the single
+ * most repeated edit on this screen, and the client asked for it by name.
+ *
+ * ⚠️ EVERY HANDLER STOPS PROPAGATION, for the reason `EditableCell` gives:
+ * this sits inside the `<tr>` that opens the drawer, so without it a click on
+ * a step would also open the record on the way past.
+ */
+function PipelineStepCell({
+  row,
+  field,
+  moduleSlug,
+  pipelineId,
+  steps,
+  onCommit,
+}: {
+  row: RecordRow;
+  field: Field;
+  moduleSlug: string;
+  pipelineId: string;
+  steps: { id: string; label: string; swatch: Swatch }[];
+  onCommit: (
+    recordId: string,
+    pipelineId: string,
+    stepId: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const current = row.values[field.id];
+  const currentId = typeof current === 'string' ? current : null;
+
+  const choose = async (stepId: string) => {
+    setOpen(false);
+    if (stepId === currentId) return;
+    setBusy(true);
+    setError(null);
+    const result = await onCommit(row.id, pipelineId, stepId);
+    setBusy(false);
+    if (!result.ok) setError(result.message ?? 'Could not move that.');
+  };
+
+  return (
+    <span className="flex min-w-0 items-center gap-1">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        title={error ?? 'Change the pipeline step'}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className={`group/pipe flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-canvas ${
+          error ? 'ring-1 ring-bad/40' : ''
+        }`}
+      >
+        <span className="min-w-0 truncate">
+          <CellValue field={field} value={current} moduleSlug={moduleSlug} />
+        </span>
+        {busy ? (
+          <span aria-hidden className="inline-block shrink-0 text-[10px] leading-none">
+            <Spinner />
+          </span>
+        ) : (
+          /* Visible on hover and on keyboard focus, so the column does not
+             carry a chevron on every row of every page. */
+          <span
+            aria-hidden
+            className="shrink-0 text-ink-300 opacity-0 transition-opacity group-hover/pipe:opacity-100 group-focus-visible/pipe:opacity-100"
+          >
+            <Icon name="chevron-down" size={11} />
+          </span>
+        )}
+      </button>
+
+      <MenuSurface
+        open={open}
+        onClose={() => setOpen(false)}
+        anchorRef={triggerRef}
+        align="left"
+        width={240}
+        label={`${field.label} — choose a step`}
+      >
+        <div onClick={(e) => e.stopPropagation()}>
+          {steps.map((st) => {
+            const on = st.id === currentId;
+            return (
+              <button
+                key={st.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={on}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void choose(st.id);
+                }}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-canvas ${
+                  on ? 'bg-canvas' : ''
+                }`}
+              >
+                <span className="w-3.5 shrink-0 text-brand-700">
+                  {on ? <Icon name="check" size={12} strokeWidth={3} /> : null}
+                </span>
+                <StatusPill label={st.label} swatch={st.swatch} />
+              </button>
+            );
+          })}
+        </div>
+      </MenuSurface>
+    </span>
+  );
+}
 
 /**
  * One dashboard cell that can be edited in place.
@@ -720,6 +878,8 @@ export function DataTable({
   onSetFilters,
   onClearFilters,
   onCellEdit,
+  pipelineColumns,
+  onPipelineStep,
 }: DataTableProps) {
 
   const [page, setPage] = useState(0);
@@ -1194,6 +1354,37 @@ export function DataTable({
                         && !col.readOnly
                         && col.id !== 'deal_name',
                     );
+                    /*
+                     * A pipeline-backed Status column is editable on its own
+                     * terms: `cellEditable` is false for it (the field is
+                     * read-only, and rightly so), but the STEP can still be
+                     * changed through the pipeline's own writer. See
+                     * `pipelineColumns` on the props above for why that is a
+                     * separate path and not a relaxation of this one.
+                     */
+                    const pipe = pipelineColumns?.[col.id];
+                    /*
+                     * ⚠️ `readOnly` IS DELIBERATELY NOT PART OF THIS TEST.
+                     *
+                     * It is `grantFor(col) === 'view'`, and for this column it
+                     * is ALWAYS true: `grantRules.ts` caps a read-only field's
+                     * grant to View (`if (caps.readOnly) return g === 'edit' ?
+                     * 'view' : g`), and the pipeline's synced Status field is
+                     * read-only for everyone including admins. Including it
+                     * here means the picker never appears for anybody, which
+                     * is exactly what the first version of this did.
+                     *
+                     * The field grant is the wrong question regardless. It
+                     * governs writing the FIELD, which nobody may do. What is
+                     * being written is the pipeline assignment, and the
+                     * permission for that is the module's — which the caller
+                     * applies by withholding `pipelineColumns` entirely. That
+                     * matches the drawer's pipeline bar, which carries no
+                     * field gate either, and the real boundary is unchanged
+                     * in both cases: `set_pipeline_step` and RLS.
+                     */
+                    const stepEditable = Boolean(pipe && onPipelineStep && r.updatedAt);
+
                     return (
                       <td
                         key={col.id}
@@ -1205,7 +1396,16 @@ export function DataTable({
                             isNumeric(col.type) ? 'justify-end' : ''
                           } ${readOnly ? 'text-ink-400' : 'text-ink-700'}`}
                         >
-                          {cellEditable ? (
+                          {stepEditable ? (
+                            <PipelineStepCell
+                              row={r}
+                              field={col}
+                              moduleSlug={moduleSlug}
+                              pipelineId={pipe!.pipelineId}
+                              steps={pipe!.steps}
+                              onCommit={onPipelineStep!}
+                            />
+                          ) : cellEditable ? (
                             <EditableCell
                               row={r}
                               field={col}

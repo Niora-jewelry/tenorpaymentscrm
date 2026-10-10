@@ -21,9 +21,11 @@
  * the same frame `getBoundingClientRect()` reports the trigger in — so the two
  * agree by construction rather than by arithmetic.
  *
- * The consequence is that the panel does not travel with a scrolling parent,
- * so it closes on scroll instead. A menu that follows its row halfway down the
- * page and then detaches is worse than one that shuts.
+ * A `fixed` panel does not travel with a scrolling parent on its own, so it is
+ * RE-PLACED on every scroll — see `onScroll` below. It used to close instead,
+ * which was reported: the drawer scrolls under your cursor as you reach for an
+ * option and the menu vanishes. Re-placing is strictly better, as long as the
+ * panel stops following an anchor that has itself scrolled out of sight.
  *
  * ── IT FLIPS AND CLAMPS ──────────────────────────────────────────────────
  * Near the bottom of the window it opens upward; near the right edge it slides
@@ -132,14 +134,47 @@ export function MenuSurface({
         onClose();
       }
     };
-    /* Capture, so a scroll inside any container reaches this. */
-    const onScroll = () => onClose();
+    /*
+     * ── SCROLL FOLLOWS THE ANCHOR; IT DOES NOT CLOSE THE MENU ────────────
+     * This closed the panel outright, which is what made the picker in the
+     * record drawer unusable: the drawer is a scroll container, the list of
+     * people is taller than the space under the trigger, and the smallest
+     * wheel movement while reading the list dismissed it.
+     *
+     * `place()` already derives everything from `getBoundingClientRect()`,
+     * which is viewport-relative — the same frame a `fixed` panel is laid out
+     * in. So re-running it on scroll is all that following the anchor takes;
+     * there is no offset arithmetic to get wrong.
+     *
+     * One case still has to close: the anchor scrolling out of view. A panel
+     * clamped to the viewport edge while its trigger is gone floats over
+     * unrelated content with nothing to explain it, which is the complaint
+     * the old `onClose()` was avoiding. So the panel follows while any part of
+     * the trigger is on screen and shuts once none of it is.
+     *
+     * Throttled to one placement per frame: a capture-phase scroll listener on
+     * `window` fires for every nested scroller, and a wheel gesture produces
+     * far more events than frames.
+     */
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const a = anchorRef.current?.getBoundingClientRect();
+        if (!a) return;
+        const offScreen = a.bottom <= 0 || a.top >= window.innerHeight;
+        if (offScreen) onClose();
+        else place();
+      });
+    };
 
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', place);
     return () => {
+      if (frame) cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('scroll', onScroll, true);

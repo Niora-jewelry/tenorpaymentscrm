@@ -37,7 +37,29 @@ const check = (name, pass, detail = '') => {
 };
 
 /* ── sign in as the client ───────────────────────────────────────────── */
-const [u] = await q(`select id,email from profiles where email='izzy@tapdash.co'`);
+/**
+ * ⚠️ THIS SCRIPT SIGNS IN, SO IT MUST NEVER POINT AT A REAL PERSON.
+ *
+ * It used to use `izzy@tapdash.co` — the client's own account — and it did
+ * not merely sign in as him: it called `auth.admin.updateUserById` to SET HIS
+ * PASSWORD on every run, so each run locked him out of the account he had
+ * been given. It also wrote every action into the activity log under his
+ * name, which made his own audit trail untrue and, when a membership change
+ * had to be explained, impossible to attribute.
+ *
+ * It uses a seeded test account now, and refuses to start against anything
+ * that is not obviously one. The check is deliberately crude and in the way:
+ * an address ending `.test` cannot be delivered to (RFC 2606 reserves it), so
+ * it cannot belong to a person.
+ */
+const PROBE_EMAIL = 'admin@tapdash.test';
+if (!/@([a-z0-9-]+\.)*test$/i.test(PROBE_EMAIL)) {
+  console.log(`Refusing to run: ${PROBE_EMAIL} is not a .test account, and this script resets the password of whoever it signs in as.`);
+  process.exit(1);
+}
+
+const [u] = await q(`select id,email from profiles where email=$1`, [PROBE_EMAIL]);
+/* Safe only because of the `.test` guard above. */
 await svc.auth.admin.updateUserById(u.id, { password: PASSWORD });
 await db.query(`update profiles set last_seen_at=now() where id=$1`, [u.id]);
 const anon = createClient(SUPA, ANON, { auth: { persistSession: false } });

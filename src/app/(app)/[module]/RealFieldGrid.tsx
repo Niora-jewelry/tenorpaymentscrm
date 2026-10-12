@@ -53,13 +53,46 @@ import type { Note } from '@/lib/records/notes';
 
 type Grant = 'hidden' | 'view' | 'edit';
 
-const NARROW_FIELD_TYPES = new Set<ProtoField['type']>([
-  'checkbox', 'date', 'percentage', 'currency', 'number', 'identifier', 'status', 'dropdown',
+/**
+ * How many columns a field occupies.
+ *
+ * ── WHY THIS IS A GRID AND NOT A WRAP ────────────────────────────────────
+ * This was `flex flex-wrap` with each cell at `flex: 1 1 <190px|250px|100%>`.
+ * Flex grows every cell on a line to fill it, and each line is laid out
+ * independently — so the number of cells per line, and therefore every
+ * column edge, changed from one row to the next. Nothing lined up with
+ * anything above or below it, which is what the client was looking at when
+ * he said the rows and columns were not properly presented.
+ *
+ * A grid with one repeating track fixes that by construction: every cell
+ * starts on a column boundary shared by every other row.
+ *
+ * ── AND WHY AN ADDRESS NO LONGER TAKES A WHOLE ROW ───────────────────────
+ * `wide` used to mean 100%, so Merchant address sat alone on a line with
+ * two-thirds of it empty — "why need whole row for it?". Width is a spectrum,
+ * not a flag:
+ *
+ *   * a repeat group and the One Time Charges grid ARE tables of their own,
+ *     with column headers and a row per entry. They need the full width and
+ *     anything else would squash their columns;
+ *   * an address, a long text, a percent split and a month picker need more
+ *     than one column and nowhere near all of them. Two tracks is roughly
+ *     460px, which fits street / city / state / zip on one line with room to
+ *     spare, and leaves the rest of the row for other fields;
+ *   * everything else is one.
+ *
+ * Keyed by TYPE, not by field, so a new address field added in Presets gets
+ * the same treatment with no change here.
+ */
+const FULL_WIDTH_TYPES = new Set<ProtoField['type']>(['repeat_group', 'grid']);
+const DOUBLE_WIDTH_TYPES = new Set<ProtoField['type']>([
+  'address', 'long_text', 'percent_split', 'months',
 ]);
 
-function basisFor(field: ProtoField): string {
-  if (field.wide) return '100%';
-  return NARROW_FIELD_TYPES.has(field.type) ? '190px' : '250px';
+function spanFor(field: ProtoField): string {
+  if (FULL_WIDTH_TYPES.has(field.type)) return '1 / -1';
+  if (DOUBLE_WIDTH_TYPES.has(field.type) || field.wide) return 'span 2';
+  return 'span 1';
 }
 
 /** A repeat group's stored value should always be an array of instances —
@@ -97,12 +130,13 @@ type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes'
  * collide with the label row's own trailing notes-toggle button. */
 function SortableFieldCell({
   id,
-  basis,
+  span,
   requiredEmpty,
   children,
 }: {
   id: string;
-  basis: string;
+  /** A `grid-column` value — see `spanFor`. */
+  span: string;
   requiredEmpty?: boolean;
   children: (handle: DragHandleProps) => ReactNode;
 }) {
@@ -112,8 +146,9 @@ function SortableFieldCell({
     <div
       ref={setNodeRef}
       style={{
-        flex: `1 1 ${basis}`,
-        minWidth: basis,
+        /* The track itself carries the minimum width (see the container), so
+           the cell only has to say how many tracks it wants. */
+        gridColumn: span,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
@@ -638,7 +673,23 @@ export function RealFieldGrid({
             onDragEnd={handleFieldDragEnd}
           >
             <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-              <div className="flex flex-wrap items-stretch">
+              {/*
+                ⚠️ `auto-fill`, NOT `auto-fit`.
+
+                `auto-fit` collapses the empty tracks and stretches the
+                remaining cells to fill the row, which on a tab holding three
+                fields produces three enormous cells and reintroduces exactly
+                the raggedness this replaced. `auto-fill` keeps the track
+                count stable, so a short tab's fields stay the same size as a
+                long one's and every tab in the drawer lines up with every
+                other.
+
+                230px is the narrowest a cell can be before a label like
+                "LAST MERCHANT RESPONSE" starts truncating in the middle of a
+                word; below ~460px of container the grid falls to one column
+                and everything simply stacks.
+              */}
+              <div className="grid items-stretch [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
                 {fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
@@ -647,7 +698,7 @@ export function RealFieldGrid({
                     v == null || v === '' || (Array.isArray(v) && !v.length) ||
                     (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} basis={basisFor(f)} requiredEmpty={f.required && fieldEmpty}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={f.required && fieldEmpty}>
                       {(handle) => (
                       <>
                       <div className="flex min-h-[18px] items-center gap-1.5">
@@ -818,7 +869,10 @@ export function RealFieldGrid({
                       ) : null}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-stretch">
+                  {/* A repeat instance's members (Name / Email / Phone) get the
+                      same treatment as the outer grid, on their own track so
+                      the three line up down every instance in the group. */}
+                  <div className="grid items-stretch [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
                     {group.schema.map((member) => {
                       const memberField: ProtoField = {
                         id: member.key, label: member.label, type: member.type,
@@ -827,7 +881,7 @@ export function RealFieldGrid({
                       return (
                         <div
                           key={`${index}-${member.key}`}
-                          style={{ flex: `1 1 ${basisFor(memberField)}`, minWidth: basisFor(memberField) }}
+                          style={{ gridColumn: spanFor(memberField) }}
                           className="border-b border-r border-line-soft bg-white px-3 py-2 last:border-r-0"
                         >
                           <div className="flex min-h-[18px] items-center gap-1.5">

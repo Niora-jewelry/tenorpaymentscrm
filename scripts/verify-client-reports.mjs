@@ -379,6 +379,117 @@ const dealsHtml = await page.content();
 check('10. pipeline step is clickable in the table', dealsHtml.includes('Change the pipeline step'), '');
 check('11. Current Status is a dropdown too', dealsHtml.includes('Change Current Status'), '');
 
+/* ── 14. A SAVED FILTER ON A FIELD VALUE STILL LOADS THE PAGE ─────────── */
+/*
+ * This is the bug that took the Leads page down entirely ("This page didn't
+ * load", reference ...@E394), and nothing here covered it: the filter lives
+ * in `user_filters` PER USER, and the account this script signs in as has
+ * none, so the filtering path was never executed.
+ *
+ * `records.values` is not selectable by a signed-in user, and PostgreSQL
+ * requires SELECT privilege on every column named in a WHERE clause — so a
+ * filter on any field value was refused outright until the `records_filterable`
+ * view. A page that renders with no filter proves nothing about that.
+ *
+ * The filter is written for the probe account, exercised, and removed.
+ */
+{
+  const [leadsMod] = await q(`select id from modules where slug='leads'`);
+  const [pipeField] = await q(
+    `select f.key from pipelines p
+       join fields f on f.id = p.status_field_id
+      where p.module_id = $1 limit 1`, [leadsMod.id]);
+
+  if (!pipeField) {
+    check('14. a saved filter still loads the page', false, 'no pipeline status field on leads');
+  } else {
+    const filter = JSON.stringify([{ kind: 'present', fieldId: pipeField.key }]);
+    await db.query(
+      `insert into user_filters (user_id, module_id, filters, updated_at)
+       values ($1,$2,$3::jsonb, now())
+       on conflict (user_id, module_id) do update set filters = excluded.filters`,
+      [u.id, leadsMod.id, filter]);
+
+    const before500 = serverErrors.length;
+    await page.goto(`${BASE}/leads`, { waitUntil: 'networkidle', timeout: 120000 });
+    await page.waitForTimeout(2500);
+    const body = await page.locator('body').innerText();
+    const crashed = /didn.t load|Something went wrong/i.test(body);
+    check('14. a saved filter on a field value still loads the page',
+      !crashed && serverErrors.length === before500,
+      crashed ? 'error boundary rendered' : 'no crash, no 500');
+
+    /* And it must actually FILTER, not be silently dropped — the older bug in
+       the same code path, where the query came back unfiltered and the table
+       narrowed only the page it had already been given. */
+    const shownNow = (body.match(/Page 1 of \d+\s*·?\s*/i) ? null : null);
+    const [onPipeline] = await q(
+      `select count(*)::int n from records r
+         join record_modules rm on rm.record_id = r.id
+        where rm.module_id = $1 and r.deleted_at is null
+          and r.values ? $2`, [leadsMod.id, pipeField.key]);
+    const [allLeads] = await q(
+      `select count(*)::int n from records r
+         join record_modules rm on rm.record_id = r.id
+        where rm.module_id = $1 and r.deleted_at is null`, [leadsMod.id]);
+    check('14b. the filter is applied by the database',
+      onPipeline.n < allLeads.n,
+      `${onPipeline.n} of ${allLeads.n} leads are on a pipeline — a filter that matched everything would prove nothing`);
+
+    await db.query(`delete from user_filters where user_id=$1 and module_id=$2`, [u.id, leadsMod.id]);
+    void shownNow;
+  }
+}
+
+/* ── 15. AN EXPIRED INVITE CAN BE CANCELLED ───────────────────────────── */
+/*
+ * `revokeInvite` matched `status = 'pending'` only, so a lapsed invite could
+ * be renewed and never cancelled. Checked on the real screen, because the
+ * button's visibility was the other half of that fix.
+ *
+ * ⚠️ IT SEEDS ITS OWN EXPIRED INVITE.
+ *
+ * The first version of this check looked for an existing one and reported
+ * "no expired invite to check" as a PASS. There happened to be none — eleven
+ * had been cleared on the live site, using this very feature — so the check
+ * was green while proving nothing. A test that passes when it could not run
+ * is worse than one that fails, because it is counted.
+ *
+ * Seeding makes it deterministic and leaves nothing behind: the row is
+ * created `expired`, looked at, and deleted, and the address is a `.test`
+ * one that cannot belong to a person.
+ */
+{
+  const probeEmail = `zz-expired-probe-${Date.now()}@tapdash.test`;
+  const [role] = await q(`select id from roles order by is_admin, name limit 1`);
+  await db.query(
+    `insert into invites (email, invited_by, role_id, status, expires_at)
+     values ($1, $2, $3, 'expired', now() - interval '7 days')`,
+    [probeEmail, u.id, role.id]);
+
+  try {
+    await page.goto(`${BASE}/admin/users`, { waitUntil: 'networkidle', timeout: 120000 });
+    await page.waitForTimeout(3000);
+
+    const row = page.locator('tr').filter({ hasText: probeEmail }).first();
+    const onScreen = (await row.count()) > 0;
+    check('15a. an expired invite is listed as actionable', onScreen,
+      onScreen ? probeEmail : 'the seeded invite did not appear on the Users screen');
+
+    if (onScreen) {
+      const rowText = await row.innerText();
+      const hasCancel = (await row.locator('button').filter({ hasText: /^\s*Cancel/ }).count()) > 0;
+      const hasRenew = (await row.locator('button').filter({ hasText: /^\s*Renew/ }).count()) > 0;
+      check('15. an expired invite offers Cancel, not only Renew', hasCancel,
+        `Cancel=${hasCancel} Renew=${hasRenew} — row reads "${rowText.replace(/\n+/g, ' ').slice(0, 60)}"`);
+    } else {
+      check('15. an expired invite offers Cancel, not only Renew', false, 'row not found');
+    }
+  } finally {
+    await db.query(`delete from invites where email = $1`, [probeEmail]);
+  }
+}
+
 check('12. no 500s or page errors anywhere', serverErrors.length === 0, serverErrors.slice(0, 3).join(' | '));
 
 /* ── restore what the probe touched ──────────────────────────────────── */

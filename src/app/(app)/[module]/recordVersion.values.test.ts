@@ -10,9 +10,21 @@
  * syncing with header field" — and nothing corrected it, because
  * `setValueAction` skips revalidation deliberately.
  *
- * These are plain unit tests on the store rather than a rendering test,
- * because the store is the whole mechanism: both components do nothing more
- * than publish into it and subscribe to it.
+ * ⚠️ WHAT THESE TESTS DO NOT PROVE, AND DID NOT.
+ *
+ * They exercise the store in isolation, and they passed in full while the
+ * feature was completely broken: `HeaderFacts` keyed it by the field's UUID
+ * while `RealFieldGrid` keyed it by the field's KEY, so the two surfaces read
+ * and wrote different entries and never saw each other. A unit test of a
+ * key-value store naturally uses one key consistently, so nothing here could
+ * ever have noticed.
+ *
+ * Keep them — they pin the one subtlety the store turns on, which is the
+ * difference between "never set" and "set to empty". But the thing the client
+ * actually reported is covered by `scripts/verify-client-reports.mjs`, check
+ * `5b`, which changes Pricing Model in the grid and asserts on the HEADER
+ * STRIP. If this file is ever green and the feature is broken again, that is
+ * the check to look at.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import {

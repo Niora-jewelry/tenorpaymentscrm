@@ -503,20 +503,45 @@ function HandlingNote({
   const [error, setError] = useState<string | null>(null);
   const [saving, startSaving] = useTransition();
 
+  /*
+   * ⚠️ WHAT WE JUST SAVED, UNTIL THE SERVER SAYS SO ITSELF.
+   *
+   * `note` is a server prop, and `revalidatePath` does not repaint this
+   * component synchronously — the action resolves, `editing` goes false, and
+   * for a moment the component renders from a prop that still says there is
+   * no note. Without this the text the user had just typed VANISHED on save
+   * and the empty "add a note" button came back, which reads as the save
+   * having failed. It had not: the row was already in the database. Caught by
+   * `scripts/verify-client-reports.mjs`, which asserts on both the database
+   * and the screen rather than trusting one of them.
+   *
+   * `null` means "we have not saved anything this session, use the server's
+   * copy". An empty STRING means "we saved a removal", which must win over a
+   * server prop that still carries the old text — the same
+   * absent-versus-empty distinction the shared value store makes.
+   */
+  const [saved, setSaved] = useState<string | null>(null);
+
   /* The server's copy wins whenever a fresh render arrives, so a save made
-     somewhere else is not masked by a stale draft. Compared during render
-     against a snapshot, the idiom used elsewhere in this drawer. */
+     somewhere else is not masked by a stale draft, and our own optimistic
+     copy is retired once the real one carries the same news. Compared during
+     render against a snapshot, the idiom used elsewhere in this drawer. */
   const [snapshot, setSnapshot] = useState(note?.body ?? '');
   if ((note?.body ?? '') !== snapshot) {
     setSnapshot(note?.body ?? '');
+    setSaved(null);
     if (!editing) setDraft(note?.body ?? '');
   }
 
-  const save = (body: string) => {
+  /** What is actually on screen: our own save if we made one, else the server's. */
+  const body = saved !== null ? saved : (note?.body ?? '');
+
+  const save = (next: string) => {
     setError(null);
     startSaving(async () => {
-      const result = await setCaseHandlingNoteAction(moduleSlug, recordId, body);
+      const result = await setCaseHandlingNoteAction(moduleSlug, recordId, next);
       if (result.ok) {
+        setSaved(next.trim());
         setEditing(false);
       } else {
         setError(result.message ?? 'Could not save that note.');
@@ -569,7 +594,7 @@ function HandlingNote({
           {/* Clearing is the same action with an empty body, which deletes
               the row — see `setCaseHandlingNote`. Offered only when there is
               something to clear. */}
-          {note ? (
+          {body ? (
             <button
               type="button"
               disabled={saving}
@@ -587,7 +612,7 @@ function HandlingNote({
     );
   }
 
-  if (!note) {
+  if (!body) {
     if (!editable) return null;
     return (
       <button
@@ -620,9 +645,13 @@ function HandlingNote({
           survive — a numbered list of steps is the obvious thing to put here
           and it would otherwise collapse into one paragraph. */}
       <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-800">
-        {note.body}
+        {body}
       </p>
-      {note.updatedBy ? (
+      {/* The byline comes from the server row, so it is shown only while that
+          row is what is on screen. After our own save it is deliberately
+          absent for the moment before the server render lands, rather than
+          attributing the new text to whoever wrote the old. */}
+      {saved === null && note?.updatedBy ? (
         <p className="mt-1.5 text-[11.5px] text-ink-400">
           Last set by {authorNames[note.updatedBy] ?? 'someone'} &middot; {relative(note.updatedAt, new Date())}
         </p>

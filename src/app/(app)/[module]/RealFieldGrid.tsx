@@ -16,7 +16,7 @@
  * PLAN §13.3/§13.4's "value retained, red ring, inline reason" and "loser is
  * told, both values shown."
  */
-import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -222,6 +222,37 @@ export function RealFieldGrid({
   // fail with a phantom "someone else changed this". The full account is in
   // that file's header.
   seedRecordVersion(recordId, initialUpdatedAt);
+
+  /*
+   * ── THE OTHER HALF OF "NOT SYNCING WITH HEADER FIELD" ───────────────────
+   * This grid already PUBLISHES its edits so the header strip above can
+   * follow them. It did not subscribe, so the reverse never worked: editing
+   * Pricing Model (or Current Status, or MID, or MCC code — they are all
+   * configured into both places) in the HEADER left this grid showing the old
+   * value until a full page render, which `setValueAction` deliberately does
+   * not trigger.
+   *
+   * Half a fix is the worse kind here, because which direction a person
+   * happens to edit in is arbitrary — the same field disagreeing with itself
+   * looks like lost data either way round.
+   *
+   * A published value always wins over the server prop. That is safe in both
+   * directions: this grid publishes its own edits too, so for a field IT
+   * changed the published value is simply its own, and for a field the header
+   * changed it is the newer one. Only this page ever writes to the store.
+   */
+  const subscribeValues = useCallback(
+    (onChange: () => void) => subscribeToValues(recordId, onChange),
+    [recordId],
+  );
+  const valuesRevision = useCallback(() => valuesSnapshot(recordId), [recordId]);
+  useSyncExternalStore(subscribeValues, valuesRevision, valuesRevision);
+
+  /** What a field should show: anything this page has set, else the server's. */
+  const shownValue = (key: string): unknown => {
+    const published = publishedValue(recordId, key);
+    return published.has ? published.value : values[key];
+  };
 
   /*
    * Send anything still buffered when this grid goes away.
@@ -611,7 +642,7 @@ export function RealFieldGrid({
                 {fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
-                  const v = values[f.id];
+                  const v = shownValue(f.id);
                   const fieldEmpty =
                     v == null || v === '' || (Array.isArray(v) && !v.length) ||
                     (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
@@ -666,7 +697,7 @@ export function RealFieldGrid({
 
                       <FieldRenderer
                         field={f}
-                        value={values[f.id] as FieldValue}
+                        value={shownValue(f.id) as FieldValue}
                         grant={grant === 'edit' ? 'edit' : 'view'}
                         moduleSlug={moduleSlug}
                         // Only the `team_member` control reads these three.

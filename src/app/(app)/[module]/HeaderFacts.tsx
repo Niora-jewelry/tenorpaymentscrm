@@ -164,7 +164,7 @@ export function HeaderFacts({
     setSavingId(fact.id);
     setValues((v) => ({ ...v, [fact.id]: next }));
     /* And tell the field grid below, which renders this same field. */
-    publishValue(recordId, fact.id, next);
+    publishValue(recordId, fact.field.id, next);
 
     /* Same encoding the drawer and the dashboard use: objects and arrays as
        JSON, everything else as a string, and null as "" meaning clear it. */
@@ -204,14 +204,14 @@ export function HeaderFacts({
 
       if (!result.ok) {
         setValues((v) => ({ ...v, [fact.id]: previous }));
-        publishValue(recordId, fact.id, previous);
+        publishValue(recordId, fact.field.id, previous);
         setError(result.message ?? 'Could not save that.');
         return;
       }
       commitToken(recordId, result.updatedAt);
     } catch {
       setValues((v) => ({ ...v, [fact.id]: previous }));
-      publishValue(recordId, fact.id, previous);
+      publishValue(recordId, fact.field.id, previous);
       setError('Could not save. Nothing was changed.');
     } finally {
       setSavingId(null);
@@ -255,7 +255,23 @@ export function HeaderFacts({
           /* Our own in-flight edit wins, then anything the field grid (or
              any other surface) published for this record, then the value the
              server rendered. */
-          const shared = publishedValue(recordId, fact.id);
+          /*
+             ⚠️ KEYED BY `fact.field.id`, THE FIELD KEY — NOT `fact.id`.
+
+             `fact.id` is the field's database UUID; `fact.field.id` is its
+             KEY, which is what the adapter uses as the identity everywhere
+             the client works (`adapter.ts`: "the prototype's own identity").
+             The field grid publishes under the key, and `setValueAction` on
+             line 178 is already called with the key.
+
+             This read, and the three publishes above, used the UUID. So the
+             two surfaces wrote to and read from different entries of the same
+             store and never saw each other — the sync was wired, connected to
+             nothing, and passed its own unit test because that test used one
+             key consistently. It took changing Pricing Model in the header and
+             watching the grid keep the old value to find it.
+           */
+          const shared = publishedValue(recordId, fact.field.id);
           const value = fact.id in values
             ? values[fact.id]
             : shared.has

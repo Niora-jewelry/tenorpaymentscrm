@@ -219,6 +219,7 @@ check('1b. contact stored as an array, not text', dbContacts.t === 'array', `jso
 check('1c. the contact he typed is visible', /Yitzchok Cohen/i.test(contactTxt), 'Yitzchok Cohen');
 
 let contactsToTrimTo = null;
+let pricingToRestore = null;
 /* ── 1d. ADDING a contact must not re-corrupt it ─────────────────────── */
 /* The original damage happened on WRITE, so checking the repaired data is
    not enough — the path that broke it has to be driven again. */
@@ -266,6 +267,59 @@ const h = await header();
 const pm = (h.match(/Pricing Model \| ([^|]*)/) || [, '(absent)'])[1].trim();
 const [dbPm] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
 check('5. Pricing Model shows in the header', pm.length > 0 && pm !== '—', `header "${pm}", db "${dbPm.pm}"`);
+
+/* ── 5b. ...AND IT FOLLOWS AN EDIT MADE IN THE GRID, WITH NO RELOAD ───── */
+/*
+ * This is what the client actually reported. Check 5 only proves the header
+ * DISPLAYS the stored value — it would pass with the two surfaces completely
+ * disconnected, which is exactly what they were: the header keyed the shared
+ * store by the field's UUID while the grid keyed it by the field's KEY, so
+ * neither ever saw the other. The unit test passed throughout, because it
+ * used one key consistently.
+ *
+ * Both controls are click-to-edit: the cell holds a button showing the value,
+ * and a <select> appears once it is clicked.
+ */
+{
+  const [pmBefore] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
+  const label = (k) => (k === 'dp' ? 'DP' : k === 'ic' ? 'IC+' : k === 'fr' ? 'FR' : '');
+
+  const tagged = await page.evaluate((cur) => {
+    const all = Array.prototype.slice.call(document.querySelectorAll('*'));
+    const labs = all.filter((e) => e.children.length === 0 && /^\s*Pricing Model\s*$/i.test(e.textContent || ''));
+    if (labs.length < 2) return false;                 // [0] header strip, [last] grid card
+    let n = labs[labs.length - 1];
+    for (let k = 0; k < 7 && n.parentElement; k += 1) {
+      n = n.parentElement;
+      const btns = Array.prototype.slice.call(n.querySelectorAll('button'));
+      const val = btns.find((b) => (b.textContent || '').trim() === cur);
+      if (val) { val.setAttribute('data-probe', 'grid-pm'); return true; }
+    }
+    return false;
+  }, label(pmBefore.pm));
+
+  if (!tagged) {
+    check('5b. a grid edit reaches the header strip', false, 'could not find the grid Pricing Model control');
+  } else {
+    await page.locator('[data-probe="grid-pm"]').click();
+    await page.waitForTimeout(1200);
+    const sel = page.locator('select').filter({ has: page.locator('option', { hasText: 'IC+' }) }).first();
+    const opts = (await sel.locator('option').allInnerTexts()).map((x) => x.trim()).filter(Boolean);
+    const target = opts.find((o) => o !== '—' && o !== label(pmBefore.pm));
+    await sel.selectOption({ label: target });
+    await page.waitForTimeout(4500);
+
+    const h = (await page.locator('dl').first().innerText()).replace(/\n+/g, ' | ');
+    const headerNow = (h.match(/Pricing Model \| ([^|]*)/) || [, '(absent)'])[1].trim();
+    const [pmAfter] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
+
+    check('5b. a grid edit reaches the header strip', headerNow === target,
+      `grid set ${target}, header shows ${headerNow}, db ${pmAfter.pm}`);
+
+    /* Put it back through the UI so the record keeps a consistent token. */
+    pricingToRestore = pmBefore.pm;
+  }
+}
 
 /* ── 6. Deal name: drawer, dashboard and database agree ──────────────── */
 const [nameRow] = await q(
@@ -335,6 +389,9 @@ if (contactsToTrimTo !== null) {
                    from jsonb_array_elements(values->'contact') with ordinality t(e, i)
                   where i <= $2), '[]'::jsonb))
       where id = $1`, [rec.id, contactsToTrimTo]);
+}
+if (pricingToRestore !== null) {
+  await db.query(`update records set values = jsonb_set(values,'{pricing_model}', to_jsonb($2::text)) where id=$1`, [rec.id, pricingToRestore]);
 }
 await db.query(`update records set values = values - 'mid' - 'mcc_code' where id=$1`, [rec.id]);
 await db.query(`delete from case_handling_notes where record_id=$1`, [rec.id]);

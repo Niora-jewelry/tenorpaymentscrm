@@ -30,7 +30,7 @@ export function DrawerShell({ moduleSlug, children }: { moduleSlug: string; chil
 
   return (
     <div className="fixed inset-0 z-[70]">
-      <div className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[1px]" onClick={close} />
+      <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={close} />
       <div
         role="dialog"
         aria-modal="true"

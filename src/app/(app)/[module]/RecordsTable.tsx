@@ -767,7 +767,7 @@ function RestoreDialog({
   const [moduleId, setModuleId] = useState(displayModules[0]?.id ?? '');
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
       <div className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink-900">
           <Icon name="rotate-ccw" size={16} className="text-ink-400" />
@@ -869,7 +869,7 @@ function BulkEditDialog({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
       <div className="relative w-full max-w-[480px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink-900">
           <Icon name="pencil" size={16} className="text-ink-400" />

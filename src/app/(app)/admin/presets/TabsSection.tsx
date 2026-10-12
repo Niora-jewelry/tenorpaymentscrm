@@ -41,7 +41,7 @@ export function TabsSection({ tabs, modules }: { tabs: AdminTabRow[]; modules: M
 
       {open ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-          <div className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={() => setOpen(false)} />
           <div
             role="dialog"
             aria-modal="true"
@@ -338,7 +338,7 @@ function ModuleAssignmentEditor({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"

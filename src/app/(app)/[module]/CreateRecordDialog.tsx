@@ -120,7 +120,7 @@ export function CreateRecordDialog({
               they did not appear to ask for. The dialog stays put until the
               action settles. Same reason Escape is ignored while pending. */}
           <div
-            className="absolute inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]"
+            className="absolute inset-0 animate-fade-in bg-brand-950/35"
             onClick={() => { if (!isPending) setOpen(false); }}
           />
           <div

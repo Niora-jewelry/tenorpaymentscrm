@@ -283,7 +283,7 @@ function Dialog({
 }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4">
-      <div className="fixed inset-0 animate-fade-in bg-brand-950/35 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"

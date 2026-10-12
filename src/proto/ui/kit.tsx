@@ -572,7 +572,7 @@ export function Dialog({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div
-        className={`absolute inset-0 bg-brand-950/35 backdrop-blur-[2px] ${anim(state, 'animate-fade-in', 'animate-fade-out')}`}
+        className={`absolute inset-0 bg-brand-950/35 ${anim(state, 'animate-fade-in', 'animate-fade-out')}`}
         onClick={dismiss}
       />
       <div

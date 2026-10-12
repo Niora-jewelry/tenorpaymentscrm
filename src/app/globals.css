@@ -102,6 +102,27 @@
   to   { opacity: 0; transform: translateY(-2px) scale(.99) }
 }
 
+/* ── NO `backdrop-filter` ON A FULL-SCREEN SCRIM ─────────────────────────
+   The modal overlays used `backdrop-blur-[2px]`. It looks nice and it costs
+   the compositor a blur of EVERYTHING behind it — which on these screens is a
+   records table of fifty rows — on the first frame, before the dialog can
+   animate at all. The client reported the New record dialog as "hanging".
+
+   Measured on a production build, clicking New record on Tickets:
+
+                        with blur   without
+     animation starts     255ms      113ms
+     fully painted        405ms      208ms
+     long tasks              4          1
+
+   So the scrim is a plain translucent colour now. It still separates the
+   dialog from the page, which is its whole job; the blur was decoration
+   charged at roughly double the open time.
+
+   Small surfaces keep theirs — the saving pill and the floating bar blur a
+   few hundred pixels, not the viewport, and do not sit on the critical path
+   of opening anything. */
+
 /* Dialogs settle in from slightly small — never bounce; this is a CRM. */
 @keyframes dialog-in {
   from { opacity: 0; transform: translateY(8px) scale(.97) }

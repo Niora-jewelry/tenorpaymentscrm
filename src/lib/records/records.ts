@@ -694,6 +694,34 @@ function assertWritable(field: { label: string; readOnly: boolean }): void {
  * what the CURRENT value is and who set it — "Sarah changed this a moment
  * ago" needs both, not a bare conflict flag.
  */
+/**
+ * A refusal the DATABASE raised, turned into a sentence.
+ *
+ * Deal Name is a column with a unique index and a NOT NULL, so renaming a
+ * record onto a name another one already holds, or clearing it, is caught
+ * there rather than by a check in front of it — which is the right place for
+ * it: the index is the only thing that can decide without a race.
+ *
+ * The call sites previously did `if (error) throw error`, so both of those
+ * ordinary user mistakes became an uncaught 500 and the drawer reported
+ * "Could not reach the server" at somebody who had simply typed a name twice.
+ * `setValue` already has a `refused` result for exactly this.
+ *
+ * Anything else still throws: an unexpected database error is not something
+ * to paper over with a friendly sentence.
+ */
+function refusalFor(error: { code?: string; message?: string }): string | null {
+  // 23505 unique_violation — only the Deal Name index can produce one here.
+  if (error.code === '23505') {
+    return 'Another record already uses that Deal Name.';
+  }
+  // 23514 check_violation — raised by name with its own message.
+  if (error.code === '23514' && error.message?.includes('Deal Name')) {
+    return error.message;
+  }
+  return null;
+}
+
 export async function setValue(
   ctx: AuthContext,
   recordId: string,
@@ -729,7 +757,11 @@ export async function setValue(
       p_summary: `${field.label} changed`,
     })
     .single();
-  if (error) throw error;
+  if (error) {
+    const refused = refusalFor(error);
+    if (refused) return { ok: false, refused };
+    throw error;
+  }
 
   const row = data as {
     ok: boolean; updated_at: string; current_value: unknown; changed_by: string | null; changed_at: string | null;
@@ -842,7 +874,11 @@ export async function setValues(
       p_summaries: summaries,
     })
     .single();
-  if (error) throw error;
+  if (error) {
+    const refused = refusalFor(error);
+    if (refused) return { ok: false, refused };
+    throw error;
+  }
 
   const row = data as {
     ok: boolean; updated_at: string; current_values: Record<string, unknown> | null;

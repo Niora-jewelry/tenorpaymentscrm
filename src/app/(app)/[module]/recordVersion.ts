@@ -160,6 +160,9 @@ export function enqueueWrite<T>(recordId: string, fallbackToken: string, task: (
 export function __resetRecordVersionsForTest(): void {
   versions.clear();
   buffers.clear();
+  liveValues.clear();
+  valueListeners.clear();
+  revisionByRecord.clear();
 }
 
 /* ==========================================================================
@@ -268,4 +271,103 @@ export function flushPendingEdits(
   const batch = Array.from(b.edits.values());
   b.edits.clear();
   void enqueueWrite(recordId, fallbackToken, () => flush(batch));
+}
+
+/* ==========================================================================
+ * The values a record is CURRENTLY showing
+ * ========================================================================== */
+
+/**
+ * One record's field values as this page has them right now, shared by every
+ * surface that renders them.
+ *
+ * ── THE BUG THIS EXISTS FOR ──────────────────────────────────────────────
+ * The client: "pricing model not syncing with header field".
+ *
+ * A field can appear twice in one drawer — once in the field grid and again
+ * in the header strip above it (Pricing Model, Current Status, MID, MCC code
+ * and the rest are all configured into both). Each kept its own React state,
+ * so editing one left the other showing the old value.
+ *
+ * Nothing corrected it either, because `setValueAction` deliberately skips
+ * `revalidatePath` — a ~1.9s cost on the most frequent interaction in the
+ * app. So the stale copy stayed stale until a navigation or a reload, and
+ * the record looked as though it disagreed with itself.
+ *
+ * This is the same shape of problem, and the same answer, as the token store
+ * above it: the thing being shared is per-RECORD, not per-component, so it
+ * lives outside the components. A save publishes here; every surface
+ * subscribes and re-reads.
+ *
+ * Deliberately NOT a React context. The header strip and the field grid are
+ * rendered by a server component with other server-rendered content between
+ * them, so there is no client component that wraps both to hang a provider
+ * from. A module-level store with `useSyncExternalStore` needs no common
+ * ancestor and survives a tab remount, exactly as the token store does.
+ */
+const liveValues = new Map<string, Map<string, unknown>>();
+const valueListeners = new Map<string, Set<() => void>>();
+
+/** Announce a value this page has just set, optimistically or confirmed. */
+export function publishValue(recordId: string, fieldKey: string, value: unknown): void {
+  let m = liveValues.get(recordId);
+  if (!m) {
+    m = new Map();
+    liveValues.set(recordId, m);
+  }
+  m.set(fieldKey, value);
+  bumpRevision(recordId);
+  for (const fn of valueListeners.get(recordId) ?? []) fn();
+}
+
+/**
+ * What this page last set for a field, if anything.
+ *
+ * Returns a wrapper rather than the bare value so that "set to empty" can be
+ * told apart from "never set" — clearing a field is a real edit and must win
+ * over the server's older non-empty value.
+ */
+export function publishedValue(recordId: string, fieldKey: string): { has: boolean; value: unknown } {
+  const m = liveValues.get(recordId);
+  if (!m || !m.has(fieldKey)) return { has: false, value: undefined };
+  return { has: true, value: m.get(fieldKey) };
+}
+
+/** Drop this page's overlay for a record, e.g. once a fresh server render has
+ *  arrived carrying everything it knew. */
+export function clearPublishedValues(recordId: string): void {
+  if (!liveValues.delete(recordId)) return;
+  bumpRevision(recordId);
+  for (const fn of valueListeners.get(recordId) ?? []) fn();
+}
+
+/** `useSyncExternalStore`'s subscribe half. */
+export function subscribeToValues(recordId: string, onChange: () => void): () => void {
+  let set = valueListeners.get(recordId);
+  if (!set) {
+    set = new Set();
+    valueListeners.set(recordId, set);
+  }
+  set.add(onChange);
+  return () => {
+    set.delete(onChange);
+    if (set.size === 0) valueListeners.delete(recordId);
+  };
+}
+
+/** A counter that changes whenever anything about this record's values does.
+ *  `useSyncExternalStore` needs a snapshot that is `Object.is`-stable between
+ *  changes; the Map itself is mutated in place and so would never compare
+ *  unequal. */
+let valueRevision = 0;
+const revisionByRecord = new Map<string, number>();
+
+export function valuesSnapshot(recordId: string): number {
+  return revisionByRecord.get(recordId) ?? 0;
+}
+
+/* Bump the revision from inside the two mutators above. Declared after them
+   for readability; hoisting makes the call sites legal. */
+function bumpRevision(recordId: string): void {
+  revisionByRecord.set(recordId, ++valueRevision);
 }

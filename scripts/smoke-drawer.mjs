@@ -18,7 +18,7 @@
  *
  * Run it against a dev server:
  *   npm run dev -- -p 3215
- *   node --env-file=.env scripts/smoke-drawer.mjs
+ *   node --env-file=.env scripts/smoke-drawer.mjs [http://localhost:PORT]
  *
  * It writes to the database and clears up after itself.
  */
@@ -26,7 +26,8 @@ import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 import pg from 'pg';
 const SUPA=process.env.NEXT_PUBLIC_SUPABASE_URL, ANON=process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const PASSWORD='ZzProbe-2026!page', BASE='http://localhost:3215';
+const PASSWORD='ZzProbe-2026!page';
+const BASE = process.argv[2] || 'http://localhost:3215';
 const svc=createClient(SUPA,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{autoRefreshToken:false,persistSession:false}});
 const db=new pg.Client({connectionString:process.env.SUPABASE_DB_URL,ssl:{rejectUnauthorized:false}});
 await db.connect();

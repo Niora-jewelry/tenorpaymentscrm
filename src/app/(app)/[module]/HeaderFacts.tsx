@@ -54,12 +54,13 @@
  * it is filtered server-side, because absent is not the same as disabled
  * (CLAUDE.md §3).
  */
-import { useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 import { FieldRenderer, HeaderValue } from '@/proto/ui/value';
 import type { Field as ProtoField, FieldValue, Swatch } from '@/proto/schema';
 import { setValueAction } from './actions';
 import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
+  publishValue, publishedValue, subscribeToValues, valuesSnapshot,
 } from './recordVersion';
 import { SWATCHES } from '@/proto/ui/tokens';
 
@@ -127,6 +128,25 @@ export function HeaderFacts({
   seedRecordVersion(recordId, updatedAt);
 
   /*
+   * ── THE SAME FIELD IS OFTEN ON SCREEN TWICE ─────────────────────────────
+   * Pricing Model, Current Status, MID, MCC code and the rest are configured
+   * into BOTH this strip and the field grid below it. Each used to hold its
+   * own copy, so editing one left the other showing the old value — reported
+   * as "pricing model not syncing with header field" — and nothing corrected
+   * it, because `setValueAction` skips revalidation on purpose.
+   *
+   * Subscribing to the shared store makes the strip re-read whenever any
+   * surface on this page writes a value for this record. The grid does the
+   * same in the other direction.
+   */
+  const subscribe = useCallback(
+    (onChange: () => void) => subscribeToValues(recordId, onChange),
+    [recordId],
+  );
+  const snapshot = useCallback(() => valuesSnapshot(recordId), [recordId]);
+  useSyncExternalStore(subscribe, snapshot, snapshot);
+
+  /*
    * The overlay is dropped when a fresh server render arrives, because those
    * props already carry whatever we painted and keeping it would pin stale
    * values on screen. Compared during render against a snapshot, which is
@@ -143,6 +163,8 @@ export function HeaderFacts({
     setError(null);
     setSavingId(fact.id);
     setValues((v) => ({ ...v, [fact.id]: next }));
+    /* And tell the field grid below, which renders this same field. */
+    publishValue(recordId, fact.id, next);
 
     /* Same encoding the drawer and the dashboard use: objects and arrays as
        JSON, everything else as a string, and null as "" meaning clear it. */
@@ -182,12 +204,14 @@ export function HeaderFacts({
 
       if (!result.ok) {
         setValues((v) => ({ ...v, [fact.id]: previous }));
+        publishValue(recordId, fact.id, previous);
         setError(result.message ?? 'Could not save that.');
         return;
       }
       commitToken(recordId, result.updatedAt);
     } catch {
       setValues((v) => ({ ...v, [fact.id]: previous }));
+      publishValue(recordId, fact.id, previous);
       setError('Could not save. Nothing was changed.');
     } finally {
       setSavingId(null);
@@ -228,7 +252,15 @@ export function HeaderFacts({
           </div>
         ) : null}
         {facts.map((fact) => {
-          const value = fact.id in values ? values[fact.id] : fact.value;
+          /* Our own in-flight edit wins, then anything the field grid (or
+             any other surface) published for this record, then the value the
+             server rendered. */
+          const shared = publishedValue(recordId, fact.id);
+          const value = fact.id in values
+            ? values[fact.id]
+            : shared.has
+              ? (shared.value as FieldValue)
+              : fact.value;
           const empty =
             value == null
             || value === ''

@@ -202,3 +202,72 @@ export async function adminEditCase(
   });
   if (error) throw error;
 }
+
+/* -------------------------------------------------------------------------- */
+/* The handling note — one standing instruction per record                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * "How to deal with this merchant's tickets", shown above the Cases list.
+ *
+ * The client asked for it in those terms: a place to write the method of
+ * dealing with tickets "so anyone dealing with the ticket knows how to deal
+ * with it". One per RECORD, not per case — it is what you want read BEFORE a
+ * case is opened, which is why it is not a reply on any thread.
+ *
+ * No permission check is written here and none is missing. `case_handling_notes`
+ * carries RLS copied predicate-for-predicate from `cases` (migration …9757),
+ * so the request-scoped client cannot read a note on a record whose Cases tab
+ * it cannot see, nor write one without Edit on that tab. Adding a second check
+ * in this layer would be a second rule to keep in step with the first.
+ */
+export type CaseHandlingNote = { body: string; updatedBy: string | null; updatedAt: string } | null;
+
+export async function caseHandlingNote(_ctx: AuthContext, recordId: string): Promise<CaseHandlingNote> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('case_handling_notes')
+    .select('body, updated_by, updated_at')
+    .eq('record_id', recordId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return {
+    body: data.body as string,
+    updatedBy: (data.updated_by as string | null) ?? null,
+    updatedAt: data.updated_at as string,
+  };
+}
+
+/**
+ * Save it, or clear it.
+ *
+ * An empty body DELETES the row rather than storing a blank one: "there is no
+ * standing instruction for this merchant" and "the instruction is an empty
+ * string" are the same fact, and keeping a row for it would put a stale
+ * author and timestamp under a note that says nothing.
+ */
+export async function setCaseHandlingNote(
+  ctx: AuthContext,
+  recordId: string,
+  body: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  await requireTabEdit(ctx, recordId, 'cases');
+  const supabase = await createSupabaseServerClient();
+  const trimmed = body.trim();
+
+  if (!trimmed) {
+    const { error } = await supabase.from('case_handling_notes').delete().eq('record_id', recordId);
+    if (error) return { ok: false, message: error.message };
+    return { ok: true };
+  }
+
+  const { error } = await supabase
+    .from('case_handling_notes')
+    .upsert(
+      { record_id: recordId, body: trimmed, updated_by: ctx.userId, updated_at: new Date().toISOString() },
+      { onConflict: 'record_id' },
+    );
+  if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}

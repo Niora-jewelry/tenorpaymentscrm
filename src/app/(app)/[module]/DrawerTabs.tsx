@@ -23,7 +23,7 @@ import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
 import { ResidualsPanel } from './ResidualsPanel';
 import type { CustomEntry } from '@/lib/records/customEntries';
-import type { CaseThread, CaseReply } from '@/lib/records/cases';
+import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
 import type { FileRow, FileEntry } from '@/lib/records/files';
@@ -80,6 +80,7 @@ export function DrawerTabs({
   updatedAt,
   entries,
   cases,
+  caseHandlingNote,
   repliesByCase,
   managersByCase,
   attachmentsByCase,
@@ -113,6 +114,9 @@ export function DrawerTabs({
   updatedAt: string;
   entries: CustomEntry[];
   cases: CaseThread[];
+  /** The record's standing "how to handle tickets here" instruction, shown
+   *  at the top of Cases. Null when nobody has written one. */
+  caseHandlingNote: CaseHandlingNote;
   repliesByCase: Record<string, CaseReply[]>;
   managersByCase: Record<string, string[]>;
   /** Files on each case's Issue, Solution and replies — Modules §3.7. */
@@ -380,6 +384,7 @@ export function DrawerTabs({
           <CasesPanel
             moduleSlug={moduleSlug}
             recordId={recordId}
+            handlingNote={caseHandlingNote}
             cases={cases}
             repliesByCase={repliesByCase}
             managersByCase={managersByCase}

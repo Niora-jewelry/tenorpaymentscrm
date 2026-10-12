@@ -13,8 +13,8 @@ import { Icon } from '@/proto/ui/icons';
 import { Button, CaseStatePill, EmptyState, SectionLabel, SpecNote } from '@/proto/ui/kit';
 import { relative } from '@/proto/ui/tokens';
 import { UserAvatar } from './UserAvatar';
-import { createCaseAction, addCaseReplyAction, setCaseStateAction, setCaseSolutionAction, type ActionState } from './actions';
-import type { CaseThread, CaseReply } from '@/lib/records/cases';
+import { createCaseAction, addCaseReplyAction, setCaseStateAction, setCaseSolutionAction, setCaseHandlingNoteAction, type ActionState } from './actions';
+import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import { CaseAttachments } from './CaseAttachments';
 
@@ -31,6 +31,7 @@ export function CasesPanel({
   viewerId,
   isAdmin,
   editable,
+  handlingNote,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -48,6 +49,8 @@ export function CasesPanel({
    * matching refusals live in `lib/records/cases.ts`; this only stops an
    * honest click from reaching one. */
   editable: boolean;
+  /** The record's standing "how to handle tickets here" instruction, or null. */
+  handlingNote: CaseHandlingNote;
 }) {
   const [state, action, creatingPending] = useActionState(
     createCaseAction.bind(null, moduleSlug, recordId),
@@ -76,6 +79,27 @@ export function CasesPanel({
 
   return (
     <div className="space-y-4">
+      {/*
+        ── HOW TO DEAL WITH THIS MERCHANT'S TICKETS ────────────────────────
+        Asked for by the client in these words: "an input at the top where we
+        can input a method of dealing with tickets so anyone dealing with the
+        ticket knows how to deal with it".
+
+        FIRST in the tab, above even the spec note, because its whole purpose
+        is to be read BEFORE a case is opened or answered. Anywhere lower and
+        the person it is written for has already started.
+
+        One per record, not per case, and it is not a thread — there is
+        nothing to reply to. See `case_handling_notes`.
+      */}
+      <HandlingNote
+        moduleSlug={moduleSlug}
+        recordId={recordId}
+        note={handlingNote}
+        editable={editable}
+        authorNames={authorNames}
+      />
+
       <SpecNote>
         Case numbers come from a <strong>single global sequence starting at #10000</strong> spanning
         the whole CRM, so a number identifies exactly one case anywhere. Numbers are never reused,
@@ -443,5 +467,166 @@ function CaseCard({
         </>
       ) : null}
     </li>
+  );
+}
+
+
+/**
+ * The standing instruction, read-only until you click Edit.
+ *
+ * ── WHY IT IS NOT ALWAYS A TEXTAREA ─────────────────────────────────────
+ * This is read far more often than it is written — once per person per
+ * ticket, against roughly never. A box permanently in edit mode reads as
+ * something you are being asked to fill in, which is wrong for a note that
+ * is usually already correct, and it invites an accidental keystroke into a
+ * paragraph several people rely on.
+ *
+ * When empty it collapses to one quiet line rather than an empty card. A
+ * record with no special handling is the normal case, and a blank panel at
+ * the top of every Cases tab would be noise on all of them.
+ */
+function HandlingNote({
+  moduleSlug,
+  recordId,
+  note,
+  editable,
+  authorNames,
+}: {
+  moduleSlug: string;
+  recordId: string;
+  note: CaseHandlingNote;
+  editable: boolean;
+  authorNames: Record<string, string>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note?.body ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  /* The server's copy wins whenever a fresh render arrives, so a save made
+     somewhere else is not masked by a stale draft. Compared during render
+     against a snapshot, the idiom used elsewhere in this drawer. */
+  const [snapshot, setSnapshot] = useState(note?.body ?? '');
+  if ((note?.body ?? '') !== snapshot) {
+    setSnapshot(note?.body ?? '');
+    if (!editing) setDraft(note?.body ?? '');
+  }
+
+  const save = (body: string) => {
+    setError(null);
+    startSaving(async () => {
+      const result = await setCaseHandlingNoteAction(moduleSlug, recordId, body);
+      if (result.ok) {
+        setEditing(false);
+      } else {
+        setError(result.message ?? 'Could not save that note.');
+      }
+    });
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-xl border border-brand-600/30 bg-brand-50/40 p-3">
+        <SectionLabel>How to deal with this merchant&rsquo;s tickets</SectionLabel>
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={4}
+          maxLength={4000}
+          placeholder="e.g. Always call Yitzchok before replying — he answers on the mobile, not the office line."
+          className="mt-2 w-full resize-y rounded-md border border-line bg-white px-3 py-2 text-[13.5px] leading-relaxed outline-none transition-colors focus-field"
+        />
+        {error ? (
+          <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-[12px] text-danger">
+            <Icon name="alert-triangle" size={12} />
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="primary"
+            icon="check"
+            loading={saving}
+            loadingLabel="Saving…"
+            onClick={() => save(draft)}
+          >
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={saving}
+            onClick={() => {
+              setDraft(note?.body ?? '');
+              setError(null);
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </Button>
+          {/* Clearing is the same action with an empty body, which deletes
+              the row — see `setCaseHandlingNote`. Offered only when there is
+              something to clear. */}
+          {note ? (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => {
+                setDraft('');
+                save('');
+              }}
+              className="ml-auto text-[12px] text-ink-400 underline underline-offset-2 transition-colors hover:text-danger"
+            >
+              Remove the note
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (!note) {
+    if (!editable) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="flex w-full items-center gap-1.5 rounded-xl border border-dashed border-line px-3 py-2 text-left text-[12.5px] text-ink-400 transition-colors hover:border-brand-600/40 hover:bg-brand-50/40 hover:text-brand-700"
+      >
+        <Icon name="plus" size={12} strokeWidth={2.4} />
+        Add how this merchant&rsquo;s tickets should be handled
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-brand-600/20 bg-brand-50/50 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <SectionLabel>How to deal with this merchant&rsquo;s tickets</SectionLabel>
+        {editable ? (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-brand-700 transition-colors hover:bg-brand-100"
+          >
+            <Icon name="pencil" size={11} />
+            Edit
+          </button>
+        ) : null}
+      </div>
+      {/* `whitespace-pre-wrap` so the line breaks whoever wrote this intended
+          survive — a numbered list of steps is the obvious thing to put here
+          and it would otherwise collapse into one paragraph. */}
+      <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-800">
+        {note.body}
+      </p>
+      {note.updatedBy ? (
+        <p className="mt-1.5 text-[11.5px] text-ink-400">
+          Last set by {authorNames[note.updatedBy] ?? 'someone'} &middot; {relative(note.updatedAt, new Date())}
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -44,6 +44,7 @@ import {
 } from './actions';
 import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
+  publishValue, publishedValue, subscribeToValues, valuesSnapshot,
   queueEdit, flushPendingEdits, type PendingEdit,
 } from './recordVersion';
 import type { RepeatGroupDef } from './DrawerTabs';
@@ -375,6 +376,10 @@ export function RealFieldGrid({
     // instead of resetting the cell to the value the page was rendered with.
     markEdited(fieldId);
     setValues((v) => ({ ...v, [fieldId]: next }));
+    /* Tell the header strip, which renders several of these same fields
+       above this grid and would otherwise keep showing the old value until
+       the next full page render. See `publishValue`. */
+    publishValue(recordId, fieldId, next);
     setConflicts((c) => {
       if (!(fieldId in c)) return c;
       const rest = { ...c };

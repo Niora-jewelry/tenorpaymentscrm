@@ -25,7 +25,7 @@ import { listRecords, getRecord } from '@/lib/records/records';
 import { membershipsFor, membershipsForMany } from '@/lib/records/memberships';
 import { pipelineAssignment } from '@/lib/records/pipelines';
 import { entriesFor } from '@/lib/records/customEntries';
-import { casesFor, repliesForCases, managersForCases } from '@/lib/records/cases';
+import { casesFor, repliesForCases, managersForCases, caseHandlingNote } from '@/lib/records/cases';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
@@ -486,13 +486,17 @@ async function RecordDrawer({
   };
 
   const [
-    memberships, entries, cases, updates, pipelineAssign,
+    memberships, entries, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, phoneCalls, smsMessages, residuals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('freeform') ? entriesFor(ctx, record.id) : [],
     shows('cases') ? casesFor(ctx, record.id) : [],
+    /* Fetched alongside the cases and skipped with them: a tab the viewer
+       cannot see should not cost a query, and RLS would refuse this one
+       anyway (its policies are the Cases tab's, exactly). */
+    shows('cases') ? caseHandlingNote(ctx, record.id) : null,
     shows('updates') ? updatesFor(ctx, record.id) : [],
     pipelineAssignment(ctx, record.id, moduleId),
     // `ensureApplicationRows` must finish before the Application rows are read
@@ -978,6 +982,7 @@ async function RecordDrawer({
         updatedAt={record.updatedAt}
         entries={entries}
         cases={cases}
+        caseHandlingNote={caseNote}
         repliesByCase={repliesByCase}
         managersByCase={managersByCase}
         attachmentsByCase={attachmentsByCase}

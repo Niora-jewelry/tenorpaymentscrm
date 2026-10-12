@@ -24,7 +24,7 @@ import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { addEntry, updateEntry, deleteEntry } from '@/lib/records/customEntries';
-import { createCase, addReply, setCaseState, setCaseSolution } from '@/lib/records/cases';
+import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
@@ -867,4 +867,34 @@ export async function removeRepeatInstanceAction(
   const result = await removeRepeatInstance(ctx, recordId, siblings, record.values, record.updatedAt, index);
   revalidatePath(`/${moduleSlug}`);
   return result;
+}
+
+/**
+ * The standing instruction above the Cases list — "how to deal with this
+ * merchant's tickets". Empty clears it; see `setCaseHandlingNote`.
+ *
+ * Revalidates, unlike the field writes: this is one deliberate save on a
+ * paragraph of prose, not the per-keystroke path whose revalidation cost
+ * `setValueAction` exists to avoid.
+ */
+export async function setCaseHandlingNoteAction(
+  moduleSlug: string,
+  recordId: string,
+  body: string,
+): Promise<ActionState> {
+  const ctx = await authorize();
+  /* Parsed at the boundary like every other action (CLAUDE.md §6). The cap
+     matches the table's own check constraint, so the refusal is a sentence
+     here rather than a constraint violation two layers down. */
+  const trimmed = String(body ?? '');
+  if (trimmed.length > 4000) return { ok: false, message: 'That note is too long.' };
+
+  try {
+    const result = await setCaseHandlingNote(ctx, recordId, trimmed);
+    if (!result.ok) return { ok: false, message: result.message };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not save that note.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
 }

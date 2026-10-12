@@ -55,6 +55,16 @@ if (v.length > 3180) {
 }
 
 const [rec] = await q(`select id, deal_name from records where deal_name ilike '%Netzach%'`);
+
+/* Everything this script touches must be put back, and a side effect it did
+   not intend must FAIL the run rather than pass unnoticed — see the note on
+   `tab` below for why that is not hypothetical. */
+const membershipsBefore = (await q(
+  `select m.slug || ':' || r.deal_name as pair
+     from record_modules rm
+     join records r on r.id = rm.record_id
+     join modules m on m.id = rm.module_id
+    order by 1`)).map((x) => x.pair).join('|');
 const originalName = rec.deal_name;
 
 const browser = await chromium.launch();
@@ -74,9 +84,55 @@ const openDrawer = async () => {
   await page.waitForTimeout(800);
 };
 
+/*
+ * ⚠️ SCOPED TO THE TAB STRIP, AND MATCHED EXACTLY.
+ *
+ * This was `page.locator('button', { hasText: /^Contact/ })` across the whole
+ * page. The drawer's "IN MODULES" row is also a row of buttons, and its
+ * Contacts chip starts with "Contact" — so asking for the Contact TAB clicked
+ * the module chip instead and toggled the record's membership of Contacts.
+ * Two records were silently added to a module nobody asked to put them in,
+ * and the only reason it surfaced is that the server log recorded
+ * `toggleMembershipAction`.
+ *
+ * A verification script that mutates what it is verifying is worse than no
+ * script. The tabs live inside the drawer's `<nav>`; the module chips do not.
+ */
 const tab = async (name) => {
-  const t = page.locator('button', { hasText: new RegExp('^' + name) }).first();
-  if (await t.count()) { await t.click(); await page.waitForTimeout(2200); return true; }
+  /*
+   * Pick the nav that actually holds this tab, rather than guessing at its
+   * position. `.last()` was wrong as soon as a tab with SUBTABS was opened:
+   * the subtab strip is a nav too, and it became the last one, so every
+   * later lookup searched the wrong row and silently found nothing.
+   *
+   * A tab strip has several buttons; a subtab strip for the tab we just
+   * opened may have one or two. Requiring four rules the small ones out
+   * without naming any tab.
+   */
+  /* A PREFIX match. `` cannot work here: the strip renders the count straight
+     after the label ("Overview6 of 14", "Cases0"), so the next character is a
+     word character and the boundary never matches. Scoping to the tab nav is
+     what makes a loose prefix safe — the module chips are not in it. */
+  const re = new RegExp('^\s*' + name);
+  /* The drawer streams in behind a Suspense boundary, so the strip is not
+     on the page the moment `networkidle` fires. A test that fails for being
+     early reads as a regression, which is worse than no test. */
+  const deadline = Date.now() + 30000;
+  for (;;) {
+  const navs = page.locator('nav');
+  for (let i = 0; i < (await navs.count()); i += 1) {
+    const nav = navs.nth(i);
+    if ((await nav.locator('button').count()) < 4) continue;
+    const t = nav.locator('button').filter({ hasText: re }).first();
+    if (await t.count()) {
+      await t.click();
+      await page.waitForTimeout(3500);
+      return true;
+    }
+  }
+    if (Date.now() > deadline) break;
+    await page.waitForTimeout(500);
+  }
   return false;
 };
 
@@ -85,46 +141,15 @@ const header = async () => (await page.locator('dl').first().innerText()).replac
 console.log(`\n=== Re-checking every client report, as ${u.email} ===\n`);
 await openDrawer();
 
-/* ── 1. "Contacts 91" and the vanished contact ───────────────────────── */
-await tab('Contact');
-const contactTxt = await page.locator('body').innerText();
-const countMatch = contactTxt.match(/CONTACTS\s+(\d+)/i);
-const shown = countMatch ? Number(countMatch[1]) : null;
-const [dbContacts] = await q(
-  `select jsonb_typeof(values->'contact') t,
-          coalesce(jsonb_array_length(values->'contact'),0) n
-     from records where id=$1`, [rec.id]);
-check('1. Contacts count is sane (not 91)', shown !== null && shown < 10, `tab shows ${shown}, db array length ${dbContacts.n}`);
-check('1b. contact stored as an array, not text', dbContacts.t === 'array', `jsonb_typeof = ${dbContacts.t}`);
-check('1c. the contact he typed is visible', /Yitzchok Cohen/i.test(contactTxt), 'Yitzchok Cohen');
-
-/* ── 1d. ADDING a contact must not re-corrupt it ─────────────────────── */
-/* The original damage happened on WRITE, so checking the repaired data is
-   not enough — the path that broke it has to be driven again. */
-{
-  const before = dbContacts.n;
-  const addBtn = page.locator('button', { hasText: /Add contact/i }).first();
-  if (await addBtn.count()) {
-    await addBtn.click();
-    await page.waitForTimeout(3500);
-    const [after] = await q(
-      `select jsonb_typeof(values->'contact') t,
-              coalesce(jsonb_array_length(values->'contact'),0) n
-         from records where id=$1`, [rec.id]);
-    check('1d. adding a contact keeps it an array',
-      after.t === 'array' && after.n === before + 1,
-      `type ${after.t}, length ${before} -> ${after.n}`);
-    /* put it back */
-    await db.query(
-      `update records set values = jsonb_set(values, '{contact}',
-         (select jsonb_agg(e) from (select e from jsonb_array_elements(values->'contact') with ordinality t(e,i)
-           where i <= $2) z))
-        where id = $1`, [rec.id, before]);
-  } else {
-    check('1d. adding a contact keeps it an array', false, 'no "Add contact" control found');
-  }
-}
-
+/*
+ * ⚠️ THE HEADER IS EXERCISED FIRST, ON THE TAB THE DRAWER OPENS ON.
+ *
+ * These checks used to run after the Contact tab had been opened, and the
+ * click on the MID control then timed out — the tab below had changed the
+ * layout under it. Ordering them first is both more reliable and closer to
+ * what somebody actually does: the header strip is the first thing in the
+ * drawer, and it is edited before anyone goes looking through the tabs.
+ */
 /* ── 2 + 3. MID saves, and a second header edit does not conflict ────── */
 const headerCell = (label) =>
   page.locator('dl').first().locator('div').filter({ has: page.getByText(label, { exact: true }) }).first();
@@ -153,8 +178,63 @@ check('3. a SECOND header edit does not false-conflict', didMcc && !bannerAfterM
 const [saved] = await q(`select values->>'mid' mid, values->>'mcc_code' mcc from records where id=$1`, [rec.id]);
 check('3b. both reached the database', saved.mid === '99000111' && saved.mcc === '2953', JSON.stringify(saved));
 
+
+/* A fresh drawer for the tab-based checks below, so nothing above has
+   left the page scrolled or a control mid-edit. */
+await openDrawer();
+
+/* ── 1. "Contacts 91" and the vanished contact ───────────────────────── */
+await tab('Contact');
+const contactTxt = await page.locator('body').innerText();
+const countMatch = contactTxt.match(/CONTACTS\s+(\d+)/i);
+const shown = countMatch ? Number(countMatch[1]) : null;
+const [dbContacts] = await q(
+  `select jsonb_typeof(values->'contact') t,
+          coalesce(jsonb_array_length(values->'contact'),0) n
+     from records where id=$1`, [rec.id]);
+check('1. Contacts count is sane (not 91)', shown !== null && shown < 10, `tab shows ${shown}, db array length ${dbContacts.n}`);
+check('1b. contact stored as an array, not text', dbContacts.t === 'array', `jsonb_typeof = ${dbContacts.t}`);
+check('1c. the contact he typed is visible', /Yitzchok Cohen/i.test(contactTxt), 'Yitzchok Cohen');
+
+let contactsToTrimTo = null;
+/* ── 1d. ADDING a contact must not re-corrupt it ─────────────────────── */
+/* The original damage happened on WRITE, so checking the repaired data is
+   not enough — the path that broke it has to be driven again. */
+{
+  const before = dbContacts.n;
+  const addBtn = page.locator('button', { hasText: /Add contact/i }).first();
+  if (await addBtn.count()) {
+    await addBtn.click();
+    await page.waitForTimeout(3500);
+    const [after] = await q(
+      `select jsonb_typeof(values->'contact') t,
+              coalesce(jsonb_array_length(values->'contact'),0) n
+         from records where id=$1`, [rec.id]);
+    check('1d. adding a contact keeps it an array',
+      after.t === 'array' && after.n === before + 1,
+      `type ${after.t}, length ${before} -> ${after.n}`);
+    /*
+     * ⚠️ TRIMMED AT THE END, NOT HERE.
+     *
+     * Writing to `records` behind the open page bumps `updated_at`, which is
+     * the compare-and-swap token the browser is still holding. The very next
+     * header edit then loses a conflict this script caused itself — which is
+     * exactly what happened: MID and MCC reported no error and never reached
+     * the database. A verification run must not race the thing it is
+     * verifying.
+     */
+    contactsToTrimTo = before;
+  } else {
+    check('1d. adding a contact keeps it an array', false, 'no "Add contact" control found');
+  }
+}
+
 /* ── 4. Record creator ───────────────────────────────────────────────── */
-await tab('Overview');
+/* A fresh drawer again: adding a contact above triggered a revalidation,
+   which re-renders the page and can drop the open tab back to the default. */
+await openDrawer();
+const onOverview = await tab('Overview');
+check('4a. the Overview tab opened', onOverview, onOverview ? '' : 'tab not found in the strip');
 const ovTxt = await page.locator('body').innerText();
 const creatorBlock = (ovTxt.match(/RECORD CREATOR[\s\S]{0,80}/i) || [''])[0];
 check('4. Record creator names the creator', /Izzy/i.test(creatorBlock), creatorBlock.replace(/\n+/g, ' / ').slice(0, 60));
@@ -178,7 +258,9 @@ const titleShown = await page.locator('h1, h2').filter({ hasText: originalName }
 check('6c. drawer title is the column value', titleShown > 0, originalName);
 
 /* ── 7. Cases handling note — present, saves, persists ───────────────── */
-await tab('Case');
+await openDrawer();
+const onCases = await tab('Cases');
+check('7a. the Cases tab opened', onCases, onCases ? '' : 'tab not found in the strip');
 let caseTxt = await page.locator('body').innerText();
 const noteControl = /How to deal with this merchant|how this merchant.s tickets should be handled/i.test(caseTxt);
 check('7. Cases handling-note control exists', noteControl, 'top of the Cases tab');
@@ -208,6 +290,9 @@ if (noteControl) {
 
 /* ── earlier reports, still fixed? ───────────────────────────────────── */
 await page.goto(`${BASE}/leads`, { waitUntil: 'networkidle', timeout: 120000 });
+/* `networkidle` is not "painted" — the table arrives with the RSC payload a
+   moment later, and reading immediately saw a page with no column headers. */
+await page.waitForTimeout(2500);
 const leadsTxt = await page.locator('body').innerText();
 check('8. pipeline column on the dashboard', /Lead Pipeline Status/i.test(leadsTxt), '');
 check('9. "Other files" subtab is gone', !/Other files/i.test(leadsTxt), '');
@@ -221,9 +306,27 @@ check('11. Current Status is a dropdown too', dealsHtml.includes('Change Current
 check('12. no 500s or page errors anywhere', serverErrors.length === 0, serverErrors.slice(0, 3).join(' | '));
 
 /* ── restore what the probe touched ──────────────────────────────────── */
+if (contactsToTrimTo !== null) {
+  await db.query(
+    `update records set values = jsonb_set(values, '{contact}',
+       coalesce((select jsonb_agg(e order by i)
+                   from jsonb_array_elements(values->'contact') with ordinality t(e, i)
+                  where i <= $2), '[]'::jsonb))
+      where id = $1`, [rec.id, contactsToTrimTo]);
+}
 await db.query(`update records set values = values - 'mid' - 'mcc_code' where id=$1`, [rec.id]);
 await db.query(`delete from case_handling_notes where record_id=$1`, [rec.id]);
 await db.query(`update records set deal_name=$2 where id=$1`, [rec.id, originalName]);
+
+const membershipsAfter = (await q(
+  `select m.slug || ':' || r.deal_name as pair
+     from record_modules rm
+     join records r on r.id = rm.record_id
+     join modules m on m.id = rm.module_id
+    order by 1`)).map((x) => x.pair).join('|');
+check('13. this script changed no module memberships',
+  membershipsBefore === membershipsAfter,
+  membershipsBefore === membershipsAfter ? '' : 'the run itself mutated data');
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);

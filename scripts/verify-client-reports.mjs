@@ -490,6 +490,37 @@ check('11. Current Status is a dropdown too', dealsHtml.includes('Change Current
   }
 }
 
+/* ── 16. AN ADMIN ROW MUST NOT CLAIM A TEMPLATE APPLIES ───────────────── */
+/*
+ * A Super Admin bypasses every module, tab, subtab and field permission, so a
+ * template or personal override attached to them is not in force. The Users
+ * table rendered "Template: P2 (edited)" on exactly such a row, which is the
+ * same confusion the client already reported from the other side — he set a
+ * field to View while inviting and saw Edit in the result.
+ *
+ * Still on the Users screen from check 15.
+ */
+{
+  const admins = await q(
+    `select p.email,
+            (select count(*)::int from user_grants g where g.user_id = p.id) overrides,
+            (select count(*)::int from user_templates ut where ut.user_id = p.id) templates
+       from profiles p join roles r on r.id = p.role_id
+      where r.is_admin and p.deleted_at is null`);
+  const shouldWarn = admins.filter((a) => a.overrides > 0 || a.templates > 0);
+
+  let wrong = [];
+  for (const a of shouldWarn) {
+    const row = page.locator('tr').filter({ hasText: a.email }).first();
+    if (!(await row.count())) continue;
+    const txt = (await row.innerText()).replace(/\s+/g, ' ');
+    if (/Template:/i.test(txt) || /Custom/.test(txt)) wrong.push(a.email);
+  }
+  check('16. no admin row claims a template or override applies',
+    wrong.length === 0,
+    wrong.length ? wrong.join(', ') : `${shouldWarn.length} admin row(s) checked`);
+}
+
 check('12. no 500s or page errors anywhere', serverErrors.length === 0, serverErrors.slice(0, 3).join(' | '));
 
 /* ── restore what the probe touched ──────────────────────────────────── */

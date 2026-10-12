@@ -61,6 +61,44 @@ function templateBadge(u: AdminUserRow) {
       </span>
     </OutlineChip>
   );
+  /*
+   * ⚠️ A TEMPLATE DOES NOT LIMIT AN ADMIN, SO DO NOT SAY THAT IT DOES.
+   *
+   * A Super Admin bypasses the permission chain entirely — `moduleGrant` and
+   * friends short-circuit on `ctx.isAdmin`, and `auth_is_admin()` does the
+   * same in RLS — so whatever template or overrides are attached to them
+   * describe nothing that is currently in force.
+   *
+   * Rendering "Template: P2 (edited)" on a Super Admin row is therefore a
+   * claim about their access that is not true, and it is the SAME confusion
+   * the client already reported once from the other direction: he set a field
+   * to View while inviting, saw Edit in the result, and asked why. The answer
+   * both times is "because they are an admin". `GrantMatrix` says so in a
+   * banner; this row said the opposite.
+   *
+   * The assignment is NOT hidden — it is real, it is editable from the menu on
+   * this row, and it takes effect the moment the role changes. So the chip
+   * names it in its tooltip and states plainly that it is not applied.
+   *
+   * Only when there is something to misread: an admin with no template and no
+   * overrides already reads "Default", which claims nothing.
+   */
+  if (u.isAdmin && (u.templateLabel || hasOverrides)) {
+    const assigned = u.templateLabel
+      ? `Template: ${u.templateLabel}${hasOverrides ? ' (edited)' : ''}`
+      : `${u.overrideCount} personal override${u.overrideCount === 1 ? '' : 's'}`;
+    return (
+      <OutlineChip tone="warn">
+        <span
+          title={`${assigned} — not in force. A Super Admin bypasses every module, tab, subtab and field permission, so this neither grants nor restricts anything today. It would apply if their role were changed to a non-admin one.`}
+          className="block max-w-[200px] truncate"
+        >
+          Not applied &mdash; admin
+        </span>
+      </OutlineChip>
+    );
+  }
+
   if (u.templateLabel && hasOverrides) return chip('brand', `Template: ${u.templateLabel} (edited)`);
   if (u.templateLabel) return chip('brand', `Template: ${u.templateLabel}`);
   if (hasOverrides) return chip('warn', 'Custom');

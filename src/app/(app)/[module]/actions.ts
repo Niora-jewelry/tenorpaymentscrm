@@ -11,7 +11,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { authorize, fieldGrant } from '@/lib/records/permissions';
-import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, type Field, type FieldType } from '@/lib/records/config';
+import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, type Field } from '@/lib/records/config';
+// Plain values, deliberately NOT declared in this file — see the header of
+// `fieldValueCodec.ts`: a 'use server' module may export only async
+// functions, and breaking that rule 500s every action on the page.
+import { decodeFieldValue } from './fieldValueCodec';
 import { createRecordSchema } from '@/lib/records/recordSchemas';
 import { firstIssueMessage } from '@/lib/records/adminSchemas';
 import { createRecord, setValue, setValues, getRecord, deleteRecord, restoreRecord, bulkSetValue, describeDuplicate, type SkipReport, type ValueChange } from '@/lib/records/records';
@@ -108,55 +112,6 @@ export async function createRecordAction(moduleSlug: string, _prev: ActionState,
  * stale submission is rejected rather than silently overwriting a change
  * made in between (SCHEMA-DECISIONS §5, MODULE-2-PLAN §13.4).
  */
-/** Field types whose value is a JSON object/array, not a scalar —
- * `RealFieldGrid.tsx`'s `handleChange` runs `JSON.stringify` on these before
- * putting them in the FormData (a plain string is all a `<form>` field can
- * carry), so this is that encoding's exact inverse. Getting this wrong
- * doesn't error — a `jsonb` column accepts a JSON STRING scalar just as
- * happily as a JSON object — so a skipped `JSON.parse` here silently stores
- * `"{\"city\":\"Austin\",...}"` (the object, once more JSON-encoded as text)
- * instead of a real nested object, and every future read sees a string where
- * it expects a record. */
-const JSON_VALUED_FIELD_TYPES = new Set<FieldType>([
-  'percent_split', 'grid', 'address', 'multi_select', 'months',
-  // `team_member` was missing from this set for as long as the set has
-  // existed, and it was the one entry where the omission was not merely a
-  // storage bug: a `["uuid","uuid"]` array arriving as a JSON STRING is what
-  // `sync_record_team_members()` then tries to iterate as an array, so the
-  // whole write dies inside the trigger that maintains record visibility.
-  // Nothing ever hit it because nothing could edit the field.
-  'team_member',
-]);
-
-/** The single-checkbox equivalent of the same problem: `handleChange` sends
- * the boolean through `String(next)`, so `false` arrives here as the
- * non-empty string `"false"` — parsed back to a real boolean, not left as
- * text, or an unchecked box would silently read back as checked forever
- * (`Boolean("false")` is `true`). */
-/**
- * Returns a RESULT rather than the value, because `JSON.parse` throws.
- *
- * An unparseable string reaching here used to take the whole Server Action
- * down with an uncaught `SyntaxError` — a 500 and Next's generic error screen,
- * for what is simply a bad argument. The happy path cannot produce one (the
- * client stringifies these types itself), which is exactly why it went
- * unnoticed: every way to hit it is a client bug, a half-sent request or a
- * hand-made call, and all three deserve a refusal sentence instead of a crash.
- */
-function decodeFieldValue(
-  field: Field,
-  raw: string,
-): { ok: true; value: unknown } | { ok: false } {
-  if (field.type === 'checkbox') return { ok: true, value: raw === 'true' };
-  if (JSON_VALUED_FIELD_TYPES.has(field.type)) {
-    try {
-      return { ok: true, value: JSON.parse(raw) };
-    } catch {
-      return { ok: false };
-    }
-  }
-  return { ok: true, value: raw };
-}
 
 export async function setValueAction(
   moduleSlug: string,

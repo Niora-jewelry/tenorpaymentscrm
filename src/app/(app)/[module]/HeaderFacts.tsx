@@ -18,13 +18,31 @@
  * server path for "the same edit, from a different screen" is a second place
  * for those to drift. There is no new action here and no new rule.
  *
- * ── THE TOKEN IS WHY THIS CAN BE OPTIMISTIC ──────────────────────────────
- * The value paints before the round trip, and the record's `updatedAt`
- * advances to whatever the server returns, so a second edit carries a fresh
- * compare-and-swap token rather than the one this component already spent.
- * Without adopting it back, editing two header fields in a row would have the
- * second one lose to the first — the bug `recordVersion.ts` exists to prevent
- * for the field grid.
+ * ── THE TOKEN LIVES IN `recordVersion.ts`, NOT IN THIS COMPONENT ─────────
+ * ⚠️ This held its own `useState` token, and that was a real bug a client
+ * hit within minutes of being given the CRM.
+ *
+ * `set_record_value` compares and swaps on `records.updated_at` — ONE token
+ * for the whole record, not one per field or per component. The field grid
+ * keeps that token in a module-level store precisely so a remount cannot lose
+ * it, and because `setValueAction` deliberately skips `revalidatePath` (a
+ * ~1.9s cost on the most frequent interaction in the app) no fresh server
+ * render ever corrects a stale one.
+ *
+ * A private token here therefore went stale the instant ANY other edit landed
+ * on the record — one field typed in the grid below, and the next header edit
+ * arrived with a token the row no longer had. The client saw
+ *
+ *     "Someone else changed this a moment ago — current value: (empty)"
+ *
+ * on a record nobody else had ever opened, and his MCC code was not saved.
+ * Two independent token holders on one record cannot be made to agree; there
+ * has to be one, so this now reads and writes the same store the grid does,
+ * through the same queue.
+ *
+ * The queue matters as much as the token: it makes writes to one record
+ * strictly sequential, so editing two header facts briskly cannot have both
+ * capture the same token and the second lose.
  *
  * A refusal rolls the value back. Nothing stays on screen that the database
  * did not accept.
@@ -40,6 +58,9 @@ import { useState } from 'react';
 import { FieldRenderer, HeaderValue } from '@/proto/ui/value';
 import type { Field as ProtoField, FieldValue, Swatch } from '@/proto/schema';
 import { setValueAction } from './actions';
+import {
+  seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
+} from './recordVersion';
 import { SWATCHES } from '@/proto/ui/tokens';
 
 export type HeaderFact = {
@@ -91,23 +112,29 @@ export function HeaderFacts({
 }) {
   /* Local overlay so an edit paints immediately, keyed by field id. */
   const [values, setValues] = useState<Record<string, FieldValue>>({});
-  const [token, setToken] = useState(updatedAt);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   /*
-   * The server's token wins whenever a fresh render arrives — a revalidation
-   * from anywhere else on the page would otherwise leave this component
-   * holding a token it spent, and the next header edit would be refused as a
-   * conflict it did not cause. Compared during render against a snapshot,
-   * which is this codebase's idiom for state derived from props.
+   * Register what the server just rendered. `seedRecordVersion` only ever
+   * moves the token FORWARD, so calling it on every render is safe and is
+   * how a real navigation, refresh, or somebody else's edit gets picked up —
+   * while a token this page has already advanced past is left alone.
+   *
+   * The same call is made by the field grid. That is the point: one store,
+   * one token, whichever of them rendered last.
+   */
+  seedRecordVersion(recordId, updatedAt);
+
+  /*
+   * The overlay is dropped when a fresh server render arrives, because those
+   * props already carry whatever we painted and keeping it would pin stale
+   * values on screen. Compared during render against a snapshot, which is
+   * this codebase's idiom for state derived from props.
    */
   const [tokenSnapshot, setTokenSnapshot] = useState(updatedAt);
   if (tokenSnapshot !== updatedAt) {
     setTokenSnapshot(updatedAt);
-    setToken(updatedAt);
-    /* The fresh props already carry whatever we painted, so the overlay has
-       nothing left to say and would only pin stale values on screen. */
     setValues({});
   }
 
@@ -117,23 +144,48 @@ export function HeaderFacts({
     setSavingId(fact.id);
     setValues((v) => ({ ...v, [fact.id]: next }));
 
-    const formData = new FormData();
     /* Same encoding the drawer and the dashboard use: objects and arrays as
        JSON, everything else as a string, and null as "" meaning clear it. */
-    formData.set(
-      'value',
-      next == null ? '' : typeof next === 'object' ? JSON.stringify(next) : String(next),
-    );
-    formData.set('expectedUpdatedAt', token);
+    const encoded =
+      next == null ? '' : typeof next === 'object' ? JSON.stringify(next) : String(next);
+
+    const send = async (withToken: string) => {
+      const formData = new FormData();
+      formData.set('value', encoded);
+      formData.set('expectedUpdatedAt', withToken);
+      return setValueAction(moduleSlug, recordId, fact.field.id, formData);
+    };
 
     try {
-      const result = await setValueAction(moduleSlug, recordId, fact.field.id, formData);
+      /*
+       * Queued, and the token is read at the moment the write actually
+       * STARTS rather than when it was scheduled — otherwise two header
+       * edits made in quick succession both capture the pre-edit token and
+       * the second loses a conflict it caused itself.
+       */
+      const result = await enqueueWrite(recordId, updatedAt, async () => {
+        const first = await send(currentToken(recordId, updatedAt));
+        /*
+         * A conflict against a token WE produced is bookkeeping, not a real
+         * disagreement: nobody else touched the record, this component was
+         * simply behind. Retried once against the row's current token. A
+         * conflict against a token we have never seen is a genuine outside
+         * edit and is reported, which is what §13.4 requires.
+         */
+        const lost = !first.ok ? first.conflict?.currentUpdatedAt : undefined;
+        if (lost && isOwnToken(recordId, lost)) {
+          commitToken(recordId, lost);
+          return send(lost);
+        }
+        return first;
+      });
+
       if (!result.ok) {
         setValues((v) => ({ ...v, [fact.id]: previous }));
         setError(result.message ?? 'Could not save that.');
         return;
       }
-      setToken(result.updatedAt);
+      commitToken(recordId, result.updatedAt);
     } catch {
       setValues((v) => ({ ...v, [fact.id]: previous }));
       setError('Could not save. Nothing was changed.');

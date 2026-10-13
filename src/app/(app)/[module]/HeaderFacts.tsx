@@ -287,7 +287,19 @@ export function HeaderFacts({
             /* `min-w-0` on every cell is mandatory: without it `truncate`
                silently does nothing inside a grid track and one long value
                blows its whole column out. */
-            <div key={fact.id} className="min-w-0">
+            <div
+              key={fact.id}
+              className="min-w-0"
+              /*
+                A team-member list takes two tracks, as it does in the field
+                grid below. In one 168px track its chips stacked vertically —
+                three people plus "Edit team" made the first row of the strip
+                three times taller than the rest and pushed MID, MCC code and
+                the affiliate name onto a second row with empty columns beside
+                them. With two tracks the chips sit side by side.
+              */
+              style={fact.field.type === 'team_member' ? { gridColumn: 'span 2' } : undefined}
+            >
               <dt className="block truncate text-[11px] leading-none text-ink-400" title={fact.label}>
                 {fact.label}
               </dt>

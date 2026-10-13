@@ -53,14 +53,40 @@ import type { Note } from '@/lib/records/notes';
 
 type Grant = 'hidden' | 'view' | 'edit';
 
-const NARROW_FIELD_TYPES = new Set<ProtoField['type']>([
-  'checkbox', 'date', 'percentage', 'currency', 'number', 'identifier', 'status', 'dropdown',
+/**
+ * How many grid columns a field occupies.
+ *
+ * The drawer used `flex-wrap`, which lays every row out independently, so
+ * column edges moved from row to row and nothing lined up. It is a grid with
+ * one repeating track now, and a field asks for a number of tracks:
+ *
+ *   * repeat groups and the One Time Charges grid are tables in their own
+ *     right, with column headers — the full row;
+ *   * an address, long text, percent split, month picker, and a team-member
+ *     list take two tracks. Two for the team list matters: in one track its
+ *     chips stacked vertically and made the whole row three times taller,
+ *     leaving every field beside it floating in empty space;
+ *   * everything else takes one.
+ *
+ * Keyed by TYPE, so a field added in Presets is placed correctly with no
+ * change here.
+ */
+const FULL_WIDTH_TYPES = new Set<ProtoField['type']>(['repeat_group', 'grid']);
+const DOUBLE_WIDTH_TYPES = new Set<ProtoField['type']>([
+  'address', 'long_text', 'percent_split', 'months', 'team_member',
 ]);
 
-function basisFor(field: ProtoField): string {
-  if (field.wide) return '100%';
-  return NARROW_FIELD_TYPES.has(field.type) ? '190px' : '250px';
+function spanFor(field: ProtoField): string {
+  if (FULL_WIDTH_TYPES.has(field.type)) return '1 / -1';
+  if (DOUBLE_WIDTH_TYPES.has(field.type) || field.wide) return 'span 2';
+  return 'span 1';
 }
+
+/** One shared track for every field grid in the drawer, so tabs line up with
+ *  each other as well as within themselves. `auto-fill` rather than
+ *  `auto-fit`: `auto-fit` stretches a short tab's few fields across the whole
+ *  width and brings the unevenness straight back. */
+const GRID_TRACKS = 'grid items-stretch [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]';
 
 /** A repeat group's stored value should always be an array of instances —
  * but a value written before the `setValueAction` JSON round-trip fix
@@ -97,12 +123,13 @@ type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes'
  * collide with the label row's own trailing notes-toggle button. */
 function SortableFieldCell({
   id,
-  basis,
+  span,
   requiredEmpty,
   children,
 }: {
   id: string;
-  basis: string;
+  /** A `grid-column` value — see `spanFor`. */
+  span: string;
   requiredEmpty?: boolean;
   children: (handle: DragHandleProps) => ReactNode;
 }) {
@@ -112,8 +139,7 @@ function SortableFieldCell({
     <div
       ref={setNodeRef}
       style={{
-        flex: `1 1 ${basis}`,
-        minWidth: basis,
+        gridColumn: span,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
@@ -131,7 +157,7 @@ function SortableFieldCell({
        *
        * A required-but-empty cell keeps its warning stripe on the LEFT edge.
        */
-      className={`group/cell relative h-full border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/30 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/60 ${
+      className={`group/cell relative border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/30 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/60 ${
         requiredEmpty ? 'bg-warn-bg/45 shadow-[inset_2px_0_0_var(--color-warn)]' : 'bg-white'
       } ${isDragging ? 'z-10 opacity-40' : ''}`}
     >
@@ -638,7 +664,7 @@ export function RealFieldGrid({
             onDragEnd={handleFieldDragEnd}
           >
             <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-              <div className="flex flex-wrap items-stretch">
+              <div className={GRID_TRACKS}>
                 {fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
@@ -647,7 +673,7 @@ export function RealFieldGrid({
                     v == null || v === '' || (Array.isArray(v) && !v.length) ||
                     (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} basis={basisFor(f)} requiredEmpty={f.required && fieldEmpty}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={f.required && fieldEmpty}>
                       {(handle) => (
                       <>
                       <div className="flex min-h-[18px] items-center gap-1.5">
@@ -711,7 +737,11 @@ export function RealFieldGrid({
                         onChange={(v) => handleChange(f.id, v)}
                       />
 
-                      {f.hint ? <p className="pt-0.5 text-[11px] leading-snug text-ink-400">{f.hint}</p> : null}
+                      {f.hint ? (
+                        <p title={f.hint} className="line-clamp-2 pt-0.5 text-[11px] leading-snug text-ink-400">
+                          {f.hint}
+                        </p>
+                      ) : null}
                       {conflicts[f.id] ? (
                         <p className="mt-0.5 rounded border border-bad/25 bg-bad-bg px-1.5 py-1 text-[11px] text-bad">
                           {conflicts[f.id]}
@@ -818,7 +848,7 @@ export function RealFieldGrid({
                       ) : null}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-stretch">
+                  <div className={GRID_TRACKS}>
                     {group.schema.map((member) => {
                       const memberField: ProtoField = {
                         id: member.key, label: member.label, type: member.type,
@@ -827,7 +857,7 @@ export function RealFieldGrid({
                       return (
                         <div
                           key={`${index}-${member.key}`}
-                          style={{ flex: `1 1 ${basisFor(memberField)}`, minWidth: basisFor(memberField) }}
+                          style={{ gridColumn: spanFor(memberField) }}
                           className="border-b border-r border-line-soft bg-white px-3 py-2 last:border-r-0"
                         >
                           <div className="flex min-h-[18px] items-center gap-1.5">

@@ -545,6 +545,48 @@ export function FieldRenderer({
   const livePickerEmpty = !readOnly && empty && LIVE_PICKER_TYPES.has(field.type);
 
   /* --- read-only presentation ------------------------------------------- */
+
+  /*
+   * ⚠️ A MASKED VALUE MUST NOT SIT INSIDE THE CLICK-TO-EDIT BUTTON.
+   *
+   * It did. `Masked` carries its own Reveal <button>, and it was rendered as
+   * the label of the display <button> below — a button inside a button. That
+   * is invalid HTML (React reports it as a hydration error: "<button> cannot
+   * contain a nested <button>"), and it was also a real behavioural bug: a
+   * click on Reveal bubbled to the outer button and opened the editor, so
+   * revealing an SSN to read it threw the field into edit mode with the value
+   * selected.
+   *
+   * So a sensitive field that has a value gets a plain container: the masked
+   * value with its Reveal, and a separate, explicit Edit control beside it.
+   * Tabbing still reaches the field — the Edit control carries the same
+   * focus-to-open behaviour the display button does.
+   */
+  if ((readOnly || (!editing && !livePickerEmpty)) && field.sensitive && !empty) {
+    return (
+      <div
+        className={`flex w-full items-center justify-between gap-2 rounded-md px-1 py-1 text-[13.5px] leading-snug ${
+          readOnly ? 'text-ink-400' : 'text-ink-900'
+        } ${saved ? 'animate-saved' : ''}`}
+      >
+        <Masked value={String(value)} label={field.label} />
+        {readOnly ? null : (
+          <button
+            ref={displayRef}
+            type="button"
+            onClick={() => setEditing(true)}
+            onFocus={openOnFocus}
+            aria-label={`Edit ${field.label}`}
+            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[12px] font-medium text-ink-500 transition-colors hover:bg-brand-50 hover:text-brand-700"
+          >
+            <Icon name="pencil" size={11} />
+            Edit
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (readOnly || (!editing && !livePickerEmpty)) {
     return (
       <button

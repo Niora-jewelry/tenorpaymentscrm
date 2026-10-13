@@ -88,6 +88,23 @@ function spanFor(field: ProtoField): string {
  *  width and brings the unevenness straight back. */
 const GRID_TRACKS = 'grid items-stretch [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]';
 
+/**
+ * Tucks a grid's outer cell borders under the card that contains it.
+ *
+ * Every cell draws its own bottom and right border. That is right between
+ * cells and wrong at the edges: a short last row drew a bottom line that
+ * stopped partway across (under Owner 1's Email and Percentage it ended at
+ * column two), and every rightmost cell drew a second line against the card's
+ * own border.
+ *
+ * Shifting the grid one pixel past the card's bottom and right edge puts
+ * those outer lines exactly under the card border, where `overflow-hidden`
+ * clips them — so the card's single full-width edge closes the box. Only ever
+ * used inside an `overflow-hidden` parent; without one this would spill a
+ * pixel.
+ */
+const GRID_EDGE = '-mb-px -mr-px';
+
 /** A repeat group's stored value should always be an array of instances —
  * but a value written before the `setValueAction` JSON round-trip fix
  * (earlier this session: object/array-shaped values were being saved as
@@ -664,7 +681,7 @@ export function RealFieldGrid({
             onDragEnd={handleFieldDragEnd}
           >
             <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-              <div className={GRID_TRACKS}>
+              <div className={`${GRID_TRACKS} ${GRID_EDGE}`}>
                 {fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
@@ -826,7 +843,7 @@ export function RealFieldGrid({
                  * are not remounted while merely typing, because `count` only
                  * moves when the shape does.
                  */
-                <div key={`${group.key}-${count}-${index}`} className="border-b border-line-soft last:border-0">
+                <div key={`${group.key}-${count}-${index}`} className="overflow-hidden border-b border-line-soft last:border-0">
                   <div className="flex items-center gap-2 bg-canvas/70 px-3 py-1">
                     <span className="grid size-4 place-items-center rounded-full bg-brand-950 text-[10px] font-bold text-accent tabular">
                       {index + 1}
@@ -848,7 +865,7 @@ export function RealFieldGrid({
                       ) : null}
                     </span>
                   </div>
-                  <div className={GRID_TRACKS}>
+                  <div className={`${GRID_TRACKS} ${GRID_EDGE}`}>
                     {group.schema.map((member) => {
                       const memberField: ProtoField = {
                         id: member.key, label: member.label, type: member.type,

@@ -5,7 +5,9 @@
  * except typing the URL. Server Component: the module list and admin status
  * are real, fetched once per request, same as every other real page here.
  */
+import { Suspense } from 'react';
 import { authorize, moduleGrant } from '@/lib/records/permissions';
+import { PostHogProvider, PostHogPageviews } from './PostHogProvider';
 import { loadConfig } from '@/lib/records/config';
 import { moduleRecordCounts, deletedRecordCount } from '@/lib/records/records';
 import { getSessionUser } from '@/lib/auth/session';
@@ -60,6 +62,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PeopleProvider people={people}>
+      {/*
+        Session replay and analytics. Renders nothing, and does nothing at all
+        unless NEXT_PUBLIC_POSTHOG_KEY is set — see the note in the component
+        about what an UNMASKED recording of these screens contains.
+
+        Inside the authed layout on purpose: the sign-in and reset pages are
+        outside it, so a password typed there is never in a recording.
+      */}
+      <PostHogProvider
+        userId={ctx.userId}
+        email={user?.email ?? ''}
+        isAdmin={ctx.isAdmin}
+      />
+      {/* `useSearchParams` needs a Suspense boundary, and keeping it here
+          stops it opting the whole shell into client rendering. */}
+      <Suspense fallback={null}>
+        <PostHogPageviews />
+      </Suspense>
     {/*
       The phone Device is built here, app-wide, because a lazily-created one
       cannot RECEIVE calls — to ring when a merchant calls back it has to exist

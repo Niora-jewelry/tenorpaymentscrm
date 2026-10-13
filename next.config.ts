@@ -53,16 +53,42 @@ const securityHeaders = [
  *
  * Ships REPORT-ONLY first. Flip `CSP_ENFORCE=true` once a deploy has run clean,
  * so a missed directive breaks a report rather than the app.
+ *
+ * Exported only so `next.config.test.ts` can assert the PostHog hosts — Next
+ * itself reads nothing but the default export below.
  */
-function contentSecurityPolicy(): string {
+export function contentSecurityPolicy(): string {
   const supabaseOrigin = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const supabaseWs = supabaseOrigin.replace(/^https:/, 'wss:');
+
+  /*
+   * PostHog needs TWO origins, and missing the second is the trap.
+   *
+   *   * the API host, for `/e/` and the session-recording payloads
+   *     (connect-src), and
+   *   * the ASSETS host, because `posthog.init` fetches the recorder itself as
+   *     a separate script at runtime (script-src). The main bundle loads fine
+   *     without it, `posthog.capture` works, and only replay is missing — so
+   *     the symptom is "analytics work but there are no recordings", which
+   *     reads like a PostHog project setting rather than our own header.
+   *
+   * us.i.posthog.com → us-assets.i.posthog.com, eu.i.posthog.com likewise.
+   * Both are empty strings when no key is configured, and `.trim()` plus the
+   * filter below keeps the directive clean in that case.
+   */
+  const posthogOrigin = process.env.NEXT_PUBLIC_POSTHOG_KEY
+    ? (process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com')
+    : '';
+  const posthogAssets = posthogOrigin.replace(/^https:\/\/(\w+)\.i\./, 'https://$1-assets.i.');
+  // A Set, because a self-hosted or reverse-proxied host does not match the
+  // pattern above and would otherwise be listed twice.
+  const posthog = [...new Set([posthogOrigin, posthogAssets].filter(Boolean))].join(' ');
 
   return [
     "default-src 'self'",
     // Next.js requires 'unsafe-inline' for its bootstrap in dev; tighten to a
     // nonce once the app shell settles.
-    `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'unsafe-inline' ${posthog}${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}`.trim(),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -85,7 +111,7 @@ function contentSecurityPolicy(): string {
      * (chunderw-vpc-gll-us1, -ie1, -au1 …) and pinning one would break the
      * moment the account's edge changed.
      */
-    `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://*.twilio.com wss://*.twilio.com`.trim(),
+    `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://*.twilio.com wss://*.twilio.com ${posthog}`.trim(),
     /*
      * Call recordings are played from short-lived Supabase Storage URLs. Without
      * an explicit media-src this falls back to default-src 'self' and every
@@ -93,6 +119,13 @@ function contentSecurityPolicy(): string {
      * above, just quieter, because it only shows up once a recording exists.
      */
     `media-src 'self' blob: ${supabaseOrigin}`.trim(),
+    /*
+     * Session replay compresses its payloads in a Web Worker it creates from a
+     * blob. Without this it falls back to default-src 'self', the worker is
+     * blocked, and recordings stop uploading while everything else keeps
+     * working — so only add it when recording is actually on.
+     */
+    ...(posthog ? ["worker-src 'self' blob:"] : []),
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -23,6 +23,7 @@ import { Icon } from '@/proto/ui/icons';
 import { Button, EmptyState, SpecNote, Spinner, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
+import { ConsentBadge } from '../phone/ConsentBadge';
 import type { PhoneCall } from '@/lib/phone/calls';
 import { TelephonyDelete } from '../TelephonyDelete';
 import type { PhoneMessage } from '@/lib/phone/messages';
@@ -303,6 +304,26 @@ export function SmsThread({
           <label htmlFor="sms-body" className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-400">
             Text {formatPhoneDisplay(toE164)}
           </label>
+
+          {/*
+            ── CONSENT, WHERE THE TEXT IS ACTUALLY WRITTEN ──────────────────
+            This badge already existed, but only on the standalone /phone
+            page. Almost nobody composes a text there: a text is written from
+            the record, which is this box — so the one warning that matters
+            was shown in the one place it was least likely to be read, and
+            `sms_consents` has stood at zero rows since the table was created.
+            Carrier approval rests on being able to show WHEN each person
+            agreed, so a prompt nobody passes is the same as no prompt.
+
+            It warns and does not block, deliberately: a rep looking at signed
+            paperwork the CRM has not caught up with should not be stopped,
+            because the fastest way past a block is to record a consent that
+            never happened — fiction in the one record that exists to be
+            evidence. See ConsentBadge for the full reasoning.
+          */}
+          <div className="mt-2">
+            <ConsentBadge e164={toE164} />
+          </div>
           <textarea
             id="sms-body"
             value={body}

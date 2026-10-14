@@ -11,6 +11,16 @@
  * This is deliberately a policy about how TapDash handles the data it holds,
  * not a template covering cookies and analytics it does not have. A policy
  * making claims about practices that do not exist is worse than a short one.
+ *
+ * ── THAT RULE CUTS BOTH WAYS, WHICH IS WHY SESSION RECORDING IS HERE ─────
+ * The same principle forbids leaving a real practice out. Session replay of
+ * the staff CRM began on 14 October 2026, and a replay of a staff screen
+ * contains the merchant's own information — so it is this policy's business,
+ * not only an internal matter. Omitting it would have made the policy untrue
+ * in the one direction nobody audits for.
+ *
+ * It is written as a section about the CRM rather than about cookies, because
+ * that is what it is: no part of the public website is recorded.
  */
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -36,7 +46,7 @@ export default function PrivacyPolicyPage() {
   return (
     <article>
       <h1 className="text-[26px] font-semibold tracking-tight text-ink-900">Privacy Policy</h1>
-      <p className="mt-1.5 text-[13px] text-ink-400">Last updated 29 September 2026</p>
+      <p className="mt-1.5 text-[13px] text-ink-400">Last updated 14 October 2026</p>
 
       <P>
         This policy explains what information TapDash Payments collects, what we do with it, and
@@ -100,8 +110,9 @@ export default function PrivacyPolicyPage() {
       <H>Who we share it with</H>
       <P>
         We share information with service providers who act on our behalf — for example a messaging
-        provider to deliver our texts, or a payment processor to provide your services. They may use
-        it only to perform that work for us, never for their own purposes. As stated above, mobile
+        provider to deliver our texts, a payment processor to provide your services, or the
+        analytics provider described under <em>Our internal systems</em> below. They may use it only
+        to perform that work for us, never for their own purposes. As stated above, mobile
         information and consent are never shared for marketing.
       </P>
       <P>
@@ -113,6 +124,20 @@ export default function PrivacyPolicyPage() {
       <P>
         Calls to and from TapDash Payments may be recorded for quality and training purposes. Where
         a call is recorded, you are told at the start of the call.
+      </P>
+
+      <H>Our internal systems</H>
+      <P>
+        Our staff use an internal system to manage accounts and enquiries. Activity in that system
+        is recorded on screen — a replay of what a member of staff saw and did — so that we can
+        investigate a problem or a mistake without asking you to reproduce it. Those recordings can
+        therefore include information about your account that was on the screen at the time.
+      </P>
+      <P>
+        The recordings are held by our analytics provider on our behalf, are available only to
+        administrators, and are used only to support and improve the service. They are not used for
+        advertising, are not sold, and are not shared for marketing. Our public website is not
+        recorded.
       </P>
 
       <H>How long we keep it</H>

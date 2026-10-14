@@ -14,6 +14,7 @@ import { loginAction, type FormState } from '../actions';
 import { AuthLayout, Field, Button, Alert } from '../ui';
 import { safeRedirectPath, DEFAULT_REDIRECT } from '@/lib/security/redirect';
 import { env } from '@/lib/env';
+import { sessionRecordingConfigured } from '@/lib/sessionRecording';
 
 const initial: FormState = { ok: false };
 
@@ -99,6 +100,34 @@ function LoginForm({ demoHint }: { demoHint: string | null }) {
 
         <Button>Sign in</Button>
       </form>
+
+      {/*
+        ── THE MONITORING NOTICE ───────────────────────────────────────────
+        Staff are recorded on screen once they are signed in, so they are told
+        before they sign in, in the one place every single one of them passes
+        through. Not a dismissible toast and not buried in a settings page:
+        a notice people can click away or never open is not notice.
+
+        Rendered ONLY when recording is actually configured. A deployment with
+        no PostHog key says nothing, because a standing claim that staff are
+        monitored when they are not is its own kind of untrue — the same
+        defect the Integrations screen was built to stop repeating.
+
+        ⚠ Several states require written notice of electronic monitoring of
+        employees, New York among them, and that obligation is on the
+        EMPLOYER — it is satisfied at hiring and by conspicuous posting, not
+        by a line on a web page. This line supports that; it does not replace
+        it. See docs/SESSION-RECORDING.md.
+      */}
+      {sessionRecordingConfigured && (
+        <p className="mt-5 border-t border-line pt-4 text-center text-[12px] leading-[1.6] text-ink-400">
+          Activity in TapDash is recorded on screen for support and troubleshooting, including what
+          is shown on a record.{' '}
+          <Link href="/legal/sms-privacy" className="underline underline-offset-2 hover:text-ink-700">
+            Privacy Notice
+          </Link>
+        </p>
+      )}
     </AuthLayout>
   );
 }

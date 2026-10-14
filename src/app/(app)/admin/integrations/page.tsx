@@ -29,6 +29,7 @@ import { redirect } from 'next/navigation';
 import { authorize } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
 import { phoneConfigured } from '@/lib/env.server';
+import { sessionRecordingConfigured } from '@/lib/sessionRecording';
 import { PlaceholderNotice } from '../PlaceholderNotice';
 
 type State = 'live' | 'needs-config' | 'read-only' | 'coming-soon' | 'unspecified';
@@ -54,7 +55,7 @@ const STATE_CLASS: Record<State, string> = {
 
 type Provider = { name: string; what: string; where: string; state: State; note?: string };
 
-function providers(twilioReady: boolean): Provider[] {
+function providers(twilioReady: boolean, recordingOn: boolean): Provider[] {
   /*
    * Read from configuration rather than written down. The previous version of
    * this screen was a hand-maintained list, which is exactly how it came to
@@ -105,6 +106,20 @@ function providers(twilioReady: boolean): Provider[] {
       state: 'coming-soon',
     },
     {
+      /*
+       * Listed here because an admin asking "what leaves this system" must be
+       * able to find it. It is not a Communication channel, which is why its
+       * `where` says so rather than naming a tab.
+       */
+      name: 'Session recording (PostHog)',
+      what: 'A replay of what staff did on screen, for support and troubleshooting',
+      where: 'Not a tab — it runs on every signed-in page',
+      state: recordingOn ? 'live' : 'needs-config',
+      note: recordingOn
+        ? 'Recording is UNMASKED: a replay shows what was on the screen, including a revealed SSN, EIN, bank account or routing number, and any processor password revealed on the Logins tab. Anyone with access to the PostHog project can watch it, so keep that list as short as the admin list here. Staff are told on the sign-in page, and the Privacy Notice describes it.'
+        : 'No PostHog key is set on this deployment, so nothing is recorded and nothing is sent.',
+    },
+    {
       name: 'DocuSign',
       what: 'Gets its own tab once the client specifies one',
       where: 'No home yet',
@@ -117,7 +132,7 @@ export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
-  const list = providers(phoneConfigured);
+  const list = providers(phoneConfigured, sessionRecordingConfigured);
   const twilioLive = phoneConfigured;
 
   return (

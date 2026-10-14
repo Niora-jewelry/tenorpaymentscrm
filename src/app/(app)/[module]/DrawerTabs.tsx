@@ -7,7 +7,7 @@
  * is active (no data fetching here — everything for every tab is already on
  * the page, so switching tabs is instant, no loading state needed).
  */
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { CountPill, CompletenessBadge } from '@/proto/ui/kit';
 import type { Field as ProtoField } from '@/proto/schema';
@@ -43,12 +43,21 @@ type Grant = 'hidden' | 'view' | 'edit';
  * the SHARED instance count across every sibling location (migration 27),
  * computed server-side so both locations always agree on how many instances
  * exist even though each only shows its own slice of the data. */
+import { textableNumbers } from '@/lib/phone/textableNumbers';
+
 export type RepeatGroupDef = {
   id: string;
   key: string;
   label: string;
   max: number;
-  schema: { key: string; label: string; type: ProtoField['type']; sensitive?: boolean }[];
+  schema: {
+    key: string;
+    label: string;
+    type: ProtoField['type'];
+    sensitive?: boolean;
+    /** Inbound texts match against this sub-field — see textableNumbers.ts. */
+    sync?: boolean;
+  }[];
   values: Record<string, unknown>[];
   count: number;
 };
@@ -177,6 +186,27 @@ export function DrawerTabs({
    * that path was always correct and still is.
    */
   const [liveValues, setLiveValues] = useState(values);
+
+  /*
+   * The numbers this record can be texted on, gathered from EVERY tab rather
+   * than the one that happens to be open: the phone lives on Contact and the
+   * text box lives on Communication, so a per-tab scan would always come back
+   * empty. `liveValues` rather than `values`, so a number typed into the
+   * Contact tab is textable without a reload.
+   */
+  const recordPhones = useMemo(
+    () =>
+      textableNumbers(
+        tabs.flatMap((t) =>
+          Object.keys(t.fieldsBySubtab).map((subtabKey) => ({
+            fields: t.fieldsBySubtab[subtabKey] ?? [],
+            groups: t.repeatGroupsBySubtab[subtabKey] ?? [],
+          })),
+        ),
+        liveValues,
+      ),
+    [tabs, liveValues],
+  );
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(0);
   /* How many field writes have landed successfully in this drawer session.
@@ -450,6 +480,7 @@ export function DrawerTabs({
             moduleSlug={moduleSlug}
             calls={phoneCalls}
             smsMessages={smsMessages}
+            recordPhones={recordPhones}
           />
         ) : (
           <p className="flex items-center gap-2 text-[13px] text-ink-400">

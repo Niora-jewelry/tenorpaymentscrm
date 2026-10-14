@@ -23,6 +23,7 @@ import { Icon } from '@/proto/ui/icons';
 import { Button, EmptyState, SpecNote, Spinner, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
+import type { TextableNumber } from '@/lib/phone/textableNumbers';
 import { ConsentBadge } from '../phone/ConsentBadge';
 import type { PhoneCall } from '@/lib/phone/calls';
 import { TelephonyDelete } from '../TelephonyDelete';
@@ -243,22 +244,35 @@ export function SmsThread({
   moduleSlug,
   messages,
   toE164,
+  recordPhones,
 }: {
   moduleSlug: string;
   messages: PhoneMessage[];
   /** The number to reply to — the most recent counterpart on this record. */
   toE164: string | null;
+  /** Numbers on the record itself, for a merchant who has never written. */
+  recordPhones: TextableNumber[];
 }) {
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  /*
+   * ── A REPLY DECIDES ITS OWN DESTINATION; A FIRST MESSAGE DOES NOT ───────
+   * A reply goes back to the number that was actually used, even where the
+   * record lists three others. Only when there is no thread at all does the
+   * record's own number come into it — the merchant who has never texted or
+   * called, and who could not be reached from this box before.
+   */
+  const [chosen, setChosen] = useState<string | null>(null);
+  const target = toE164 ?? chosen ?? recordPhones[0]?.e164 ?? null;
+
   const send = () => {
     const trimmed = body.trim();
-    if (!trimmed || !toE164) return;
+    if (!trimmed || !target) return;
     startTransition(async () => {
       setError(null);
-      const result = await sendSmsAction(toE164, trimmed, `/${moduleSlug}`);
+      const result = await sendSmsAction(target, trimmed, `/${moduleSlug}`);
       if (result.ok) setBody('');
       else setError(result.message);
     });
@@ -299,11 +313,31 @@ export function SmsThread({
         </ul>
       ) : null}
 
-      {toE164 ? (
+      {target ? (
         <div className="rounded-xl border border-line bg-white p-3">
           <label htmlFor="sms-body" className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-400">
-            Text {formatPhoneDisplay(toE164)}
+            Text {formatPhoneDisplay(target)}
           </label>
+
+          {/*
+            Which person, when the record names more than one. Picking the
+            first silently would trade "cannot text this merchant" for
+            "texted their business to the wrong contact", which is worse.
+          */}
+          {!toE164 && recordPhones.length > 1 ? (
+            <select
+              aria-label="Who to text"
+              value={target}
+              onChange={(e) => setChosen(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-line bg-white px-2 py-1.5 text-[13px] text-ink-900 focus-field"
+            >
+              {recordPhones.map((n) => (
+                <option key={n.e164} value={n.e164}>
+                  {n.who} · {formatPhoneDisplay(n.e164)} ({n.source})
+                </option>
+              ))}
+            </select>
+          ) : null}
 
           {/*
             ── CONSENT, WHERE THE TEXT IS ACTUALLY WRITTEN ──────────────────
@@ -322,7 +356,11 @@ export function SmsThread({
             evidence. See ConsentBadge for the full reasoning.
           */}
           <div className="mt-2">
-            <ConsentBadge e164={toE164} />
+            {/* `target`, not `toE164`: on a record with no thread yet the
+                reply target is null, and passing it here would hide the
+                consent warning at exactly the moment it matters most — the
+                first message sent to someone who never wrote first. */}
+            <ConsentBadge e164={target} />
           </div>
           <textarea
             id="sms-body"
@@ -351,8 +389,19 @@ export function SmsThread({
         </div>
       ) : (
         <SpecNote>
-          No phone number on this record yet. Add one to a contact or an owner — and switch{' '}
-          <strong>sync</strong> on for that field — and texts will thread here.
+          {/*
+            ⚠ THIS USED TO OPEN "No phone number on this record yet".
+            On a record carrying an Affiliate main phone and a Fax number —
+            both visible two tabs away — that is untrue, and it sent people
+            looking for a number they had already entered. The reason those
+            two cannot be texted is that neither is sync-enabled, so a reply
+            would arrive attached to no record at all. Worth saying, and a
+            different sentence from "there is no number".
+          */}
+          No number on this record can be texted. A text can only go to a phone field with{' '}
+          <strong>sync</strong> switched on — a contact&rsquo;s or an owner&rsquo;s — because that
+          is what an incoming reply is matched against. Fax and Affiliate main phone are not
+          sync-enabled, so a reply to either would arrive attached to nothing.
         </SpecNote>
       )}
     </div>

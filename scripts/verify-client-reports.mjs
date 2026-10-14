@@ -216,7 +216,26 @@ const [dbContacts] = await q(
      from records where id=$1`, [rec.id]);
 check('1. Contacts count is sane (not 91)', shown !== null && shown < 10, `tab shows ${shown}, db array length ${dbContacts.n}`);
 check('1b. contact stored as an array, not text', dbContacts.t === 'array', `jsonb_typeof = ${dbContacts.t}`);
-check('1c. the contact he typed is visible', /Yitzchok Cohen/i.test(contactTxt), 'Yitzchok Cohen');
+/*
+ * ⚠ ASKS THE DATABASE WHO THE CONTACT IS, RATHER THAN NAMING HIM.
+ *
+ * This read `/Yitzchok Cohen/` — the name Izzy had typed when he reported
+ * that a contact he entered did not appear. It passed for weeks and then
+ * failed, not because anything regressed but because the record was edited
+ * on the live site and the contact is now someone else. A check that fails
+ * when real people do their jobs teaches everyone to ignore it, and it cost
+ * an investigation to find that nothing was wrong.
+ *
+ * What the report was actually about is unchanged: whatever the database
+ * holds as the first contact has to be on the screen.
+ */
+const [dbFirstContact] = await q(
+  `select values->'contact'->0->>'name' as name from records where id=$1`, [rec.id]);
+check(
+  '1c. the contact in the database is the one on the screen',
+  Boolean(dbFirstContact?.name) && contactTxt.includes(dbFirstContact.name),
+  dbFirstContact?.name ?? 'no contact stored on the record',
+);
 
 let contactsToTrimTo = null;
 let pricingToRestore = null;

@@ -30,6 +30,7 @@ import { formatDateTime } from '@/proto/ui/tokens';
 import type { Message, MessageChannel } from '@/lib/records/messages';
 import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
+import type { TextableNumber } from '@/lib/phone/textableNumbers';
 import { PhonePanel, RecordingsPanel, SmsThread } from './PhonePanels';
 
 function channelMeta(channel: MessageChannel) {
@@ -55,6 +56,7 @@ export function CommunicationPanel({
   moduleSlug,
   calls,
   smsMessages,
+  recordPhones,
 }: {
   subtabId: string;
   comingSoon: boolean;
@@ -63,6 +65,8 @@ export function CommunicationPanel({
   moduleSlug: string;
   calls: PhoneCall[];
   smsMessages: PhoneMessage[];
+  /** Numbers on this record a text may be sent to — see textableNumbers.ts. */
+  recordPhones: TextableNumber[];
 }) {
   const [now] = useState(() => Date.now());
   const channel: MessageChannel = subtabId === 'text' ? 'text' : subtabId === 'instantly' ? 'instantly' : 'email';
@@ -150,6 +154,7 @@ export function CommunicationPanel({
           moduleSlug={moduleSlug}
           messages={smsMessages}
           toE164={replyTarget(smsMessages, calls)}
+          recordPhones={recordPhones}
         />
       ) : null}
     </div>
@@ -260,6 +265,16 @@ function LastMessageReceived({
  * without a picker on the overwhelmingly common case — one merchant, one
  * number. Null when the record has no telephony history at all, and the
  * composer then explains what to do instead of rendering a dead box.
+ */
+/**
+ * Who a reply goes to — the other end of the most recent exchange.
+ *
+ * Returns null when there has been no exchange at all, and that is NOT the
+ * same as "this record cannot be texted": a merchant who never wrote first
+ * still has a number on the record. `recordPhones` carries those and
+ * SmsThread falls back to them. The two are kept apart deliberately — a
+ * REPLY must go back to the number actually used, even where the record
+ * lists three others.
  */
 function replyTarget(messages: PhoneMessage[], calls: PhoneCall[]): string | null {
   const lastMessage = messages[messages.length - 1];

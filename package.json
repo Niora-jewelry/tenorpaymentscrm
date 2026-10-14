@@ -18,6 +18,7 @@
         "verify:schema": "node scripts/verify-schema.mjs",
         "verify:posthog": "node --env-file=.env scripts/verify-posthog.mjs",
         "verify:consent": "node --env-file=.env scripts/verify-sms-consent.mjs",
+        "verify:newtext": "node --env-file=.env scripts/verify-new-text.mjs",
         "test:integration": "vitest run --dir src --testTimeout 60000 flow.integration",
         "invite": "node scripts/invite.mjs",
         "create-user": "node --env-file=.env scripts/create-user.mjs",

@@ -25,7 +25,7 @@
  *
  * `identifier` is ours, not theirs: MID, MCC, EIN, SSN, account and routing
  * numbers are all typed "Number" on the sheet, which cannot hold a leading zero
- * (MCC 0742 becomes 742) and cannot enforce MID's "must be 8 or 9 digits".
+ * (MCC 0742 becomes 742) and cannot enforce MCC's "four digits".
  * They are digit strings, not quantities, so they get a type that says so.
  */
 export type FieldType =
@@ -260,7 +260,8 @@ export type Field = {
   repeatGroup?: { key: string; max: number };
   /** The spreadsheet's own annotation, shown under the field. */
   hint?: string;
-  /** Digit-count rule for `identifier` — MID is "8 or 9 digits". */
+  /** Digit-count rule for `identifier` — MCC is four, routing and SSN nine.
+   *  Absent means any length (MID, since the client asked for that). */
   digits?: number[];
   /** Spans the full drawer width instead of sitting in the 2–3 column grid. */
   wide?: boolean;

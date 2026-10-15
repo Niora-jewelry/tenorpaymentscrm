@@ -774,8 +774,9 @@ export function FieldRenderer({
       /*
        * Text, not number. The sheet types MID, MCC, EIN, SSN, account and
        * routing as "Number", which silently drops a leading zero (MCC 0742
-       * becomes 742) and cannot express "must be 8 or 9 digits". Digits only,
-       * length checked against the field's own rule.
+       * becomes 742) and cannot express "four digits". Digits only, length
+       * checked against the field's own rule — and a field with no rule (MID)
+       * takes any length.
        */
       const rule = field.digits;
       return (

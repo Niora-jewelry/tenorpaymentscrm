@@ -19,7 +19,7 @@
  *
  * Identifier types are ours, not the sheet's. The sheet types MID, MCC, EIN,
  * SSN, account and routing as `Number`; a numeric column cannot hold a leading
- * zero (MCC 0742 becomes 742) nor enforce MID's "must be 8 or 9 digits". They
+ * zero (MCC 0742 becomes 742) nor enforce MCC's "four digits". They
  * are digit strings. Narrowing text to numeric later is possible; recovering a
  * dropped leading zero is not.
  */
@@ -78,8 +78,9 @@ export const FIELDS: Field[] = [
     width: 230,
   }),
   f('mid', 'MID', 'identifier', 'overview', {
-    digits: [8, 9],
-    hint: 'Must be either 8 or 9 digits.',
+    // No digit count: the client asked for the 8-or-9 rule to go (migration
+    // …9760). Digits only still applies — that is the identifier type itself.
+    hint: 'Digits only. Length varies by processor.',
     headerIn: ALL_MODULES,
     columnIn: ['records', 'deals', 'contacts', 'tickets', 'residuals'],
     columnOrder: 30,

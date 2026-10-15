@@ -16,6 +16,7 @@ import {
   updateFieldSchema,
   setModuleFieldListSchema,
   setFieldChoicesSchema,
+  removeFieldChoiceSchema,
   moduleOverrideSchema,
   createPipelineSchema,
   renamePipelineSchema,
@@ -471,5 +472,30 @@ describe('firstIssueMessage', () => {
     const parsed = createTabSchema.safeParse({ key: 'compliance', label: '', moduleIds: [] });
     expect(parsed.success).toBe(false);
     if (!parsed.success) expect(firstIssueMessage(parsed.error)).toBe('Label is required.');
+  });
+});
+
+describe('removeFieldChoiceSchema', () => {
+  it('accepts a key in the global scope and in a module scope', () => {
+    expect(removeFieldChoiceSchema.safeParse({ fieldId: UUID, moduleId: null, key: 'working' }).success).toBe(true);
+    expect(removeFieldChoiceSchema.safeParse({ fieldId: UUID, moduleId: UUID_2, key: 'working' }).success).toBe(true);
+  });
+
+  it('refuses an empty key — "remove nothing" must not reach the database', () => {
+    const parsed = removeFieldChoiceSchema.safeParse({ fieldId: UUID, moduleId: null, key: '   ' });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('refuses a field id that is not a uuid', () => {
+    expect(removeFieldChoiceSchema.safeParse({ fieldId: 'current_status', moduleId: null, key: 'a' }).success).toBe(false);
+  });
+
+  it('requires moduleId to be stated — undefined is not the same as the global scope', () => {
+    /*
+     * null means "the shared list". A missing value silently defaulting to it
+     * would turn "remove from Leads" into "remove from every module" the day a
+     * caller forgot the argument.
+     */
+    expect(removeFieldChoiceSchema.safeParse({ fieldId: UUID, key: 'a' }).success).toBe(false);
   });
 });

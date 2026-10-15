@@ -395,8 +395,19 @@ export const setFieldChoicesSchema = z.object({
  * current. */
 export const moduleOverrideSchema = z.object({ fieldId: uuid, moduleId: uuid });
 
+/**
+ * Removing one option from one scope. The key, not the label: two options can
+ * share a label after a rename, and only the key says which one a record holds.
+ */
+export const removeFieldChoiceSchema = z.object({
+  fieldId: uuid,
+  moduleId: uuid.nullable(),
+  key: z.string().trim().min(1, 'Which option?').max(60, 'Choice key must be 60 characters or fewer.'),
+});
+
 export type SetFieldChoicesInput = z.infer<typeof setFieldChoicesSchema>;
 export type ModuleOverrideInput = z.infer<typeof moduleOverrideSchema>;
+export type RemoveFieldChoiceInput = z.infer<typeof removeFieldChoiceSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Pipelines & steps — sub-step 5                                             */

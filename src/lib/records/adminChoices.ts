@@ -20,13 +20,16 @@
  * happens implicitly the first time an admin adds a row in a module's tab. The
  * copy has to be the default, not a thing the admin is trusted to remember.
  *
- * ── WHAT CANNOT BE DONE HERE, DELIBERATELY ───────────────────────────────
- *   - **No delete.** `records.values` holds a choice's KEY; removing a choice
- *     records still hold leaves them resolving to nothing, which reads as a
- *     rendering bug rather than as the data loss it is. Add / rename / reorder
- *     / re-swatch only, this pass — `remaining-plan.md` § Phase 3, and the same
- *     posture Phase 4 takes for pipeline steps. The writer (migration 36) has
- *     no DELETE in it, so this is structural, not a UI omission.
+ * ── REMOVING: ONLY AN OPTION NOBODY HOLDS ────────────────────────────────
+ *   - `records.values` holds a choice's KEY, so removing one that records
+ *     still hold leaves them resolving to nothing — which reads as a rendering
+ *     bug rather than as the data loss it is. `set_field_choices` (migration
+ *     36) still has no DELETE in it. Removal is its own function,
+ *     `remove_field_choice` (migration …9761), which refuses an option any
+ *     record in that scope holds and reports how many — so the admin is told
+ *     what is in the way rather than shown a save that did nothing. It also
+ *     refuses a pipeline's status options and the last option in a list; that
+ *     migration carries the reasoning for both.
  *   - **No editing a `key` after creation.** Renaming is free precisely
  *     because the key never moves: `value` is the display label, and changing
  *     it touches zero record rows. Changing the key would orphan every record
@@ -37,7 +40,13 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
 import { loadConfig, type FieldType, type Choice } from './config';
 import { assertAdmin, slugifyKey } from './adminConfig';
-import { CHOICE_FIELD_TYPES, SWATCHES, type SetFieldChoicesInput, type ModuleOverrideInput } from './adminSchemas';
+import {
+  CHOICE_FIELD_TYPES,
+  SWATCHES,
+  type SetFieldChoicesInput,
+  type ModuleOverrideInput,
+  type RemoveFieldChoiceInput,
+} from './adminSchemas';
 
 const isChoiceType = (t: FieldType) => (CHOICE_FIELD_TYPES as readonly FieldType[]).includes(t);
 
@@ -196,7 +205,7 @@ export async function setFieldChoices(ctx: AuthContext, input: SetFieldChoicesIn
     // watched a save "succeed" and change nothing. Saying so is better than a
     // silent no-op — and it is also the honest answer to "how do I remove an
     // option", which is not something this pass does.
-    return { ok: false, message: 'Add at least one option before saving. Options cannot be removed in this build.' };
+    return { ok: false, message: 'Add at least one option before saving. To take one away, use its Remove button.' };
   }
 
   const supabase = supabaseAdmin();
@@ -248,4 +257,53 @@ export async function createModuleOverride(ctx: AuthContext, input: ModuleOverri
     moduleId: input.moduleId,
     choices: global.map((c) => ({ key: c.key, value: c.value, swatch: asSwatch(c.swatch) })),
   });
+}
+
+/**
+ * What a removal hands back. `inUse` is set when records hold the option —
+ * not an error in the usual sense, so it is a field the screen can act on
+ * rather than a sentence it has to parse.
+ */
+export type RemoveChoiceResult = { ok: true } | { ok: false; message: string; inUse?: number };
+
+/**
+ * Removes one option from one scope, if no record that shows that scope holds
+ * it. Every rule is in `remove_field_choice` — in the database, where direct
+ * SQL meets it too — and this turns its answer into a sentence.
+ */
+export async function removeFieldChoice(ctx: AuthContext, input: RemoveFieldChoiceInput): Promise<RemoveChoiceResult> {
+  assertAdmin(ctx);
+
+  const config = await loadConfig();
+  const field = config.fields.find((f) => f.id === input.fieldId);
+  if (!field) return { ok: false, message: 'That field no longer exists.' };
+  const choice = config.choices.find(
+    (c) => c.fieldId === input.fieldId && c.moduleId === input.moduleId && c.key === input.key,
+  );
+  const label = choice?.value ?? input.key;
+
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.rpc('remove_field_choice', {
+    p_field_id: input.fieldId,
+    p_module_id: input.moduleId,
+    p_key: input.key,
+  });
+  // The function's own refusals (pipeline field, last option, gone) are
+  // written as sentences an admin can act on, so they pass through as-is.
+  if (error) return { ok: false, message: error.message };
+
+  const inUse = typeof data === 'number' ? data : 0;
+  if (inUse > 0) {
+    const scope = input.moduleId
+      ? (config.modules.find((m) => m.id === input.moduleId)?.label ?? 'this module')
+      : 'any module';
+    return {
+      ok: false,
+      inUse,
+      message:
+        `${inUse} ${inUse === 1 ? 'record' : 'records'} in ${scope} ${inUse === 1 ? 'is' : 'are'} set to “${label}”. ` +
+        'Move them to another option first, then remove it — removing it now would leave them showing nothing.',
+    };
+  }
+  return { ok: true };
 }

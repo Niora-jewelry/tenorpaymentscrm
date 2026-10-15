@@ -19,9 +19,11 @@
  *      locked, next to its label — an admin who can see that the label is the
  *      only editable half does not have to be told renaming is safe. New rows
  *      show "key assigned on save".
- *   3. **Nothing can be removed.** Records store the key, so a removed option
- *      leaves them resolving to nothing. There is no delete control, and the
- *      writer has no DELETE either.
+ *   3. **Only an option nobody holds can be removed.** Records store the key,
+ *      so removing one they hold leaves them resolving to nothing. The Remove
+ *      button asks the database (`remove_field_choice`), which refuses and says
+ *      how many records are in the way. A row added and never saved is just
+ *      dropped from the draft — it exists nowhere else.
  */
 
 import { useMemo, useState, useTransition } from 'react';
@@ -44,7 +46,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Button, OutlineChip, StatusPill } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { SWATCHES, SWATCHED_FIELD_TYPES } from '@/lib/records/adminSchemas';
-import { setFieldChoicesAction, createModuleOverrideAction } from './actions';
+import { setFieldChoicesAction, createModuleOverrideAction, removeFieldChoiceAction } from './actions';
 import type { ChoiceFieldRow } from '@/lib/records/adminChoices';
 import type { ModuleOption } from '@/lib/records/adminPresets';
 import type { Swatch } from '@/proto/schema';
@@ -96,6 +98,17 @@ export function ChoicesSection({ fields, modules }: { fields: ChoiceFieldRow[]; 
     const id = scopeId(fieldId, scope);
     setDrafts((prev) => ({ ...prev, [id]: rows }));
     setSaved((prev) => ({ ...prev, [id]: rows }));
+  };
+
+  /** After a removal the option is gone from BOTH sides, and nothing else
+   * moves: any other unsaved edit in this scope stays a draft, still unsaved.
+   * Dropping the whole draft would throw away work the admin had not asked to
+   * lose; adopting the server's list would do the same. */
+  const dropKey = (key: string) => {
+    if (!field) return;
+    const id = scopeId(fieldId, scope);
+    setDrafts((prev) => ({ ...prev, [id]: (prev[id] ?? fromProps(field, scope)).filter((r) => r.key !== key) }));
+    setSaved((prev) => ({ ...prev, [id]: (prev[id] ?? fromProps(field, scope)).filter((r) => r.key !== key) }));
   };
 
   const dirtyFor = (f: ChoiceFieldRow, s: Scope) => !sameRows(rowsFor(f, s), savedFor(f, s));
@@ -179,6 +192,7 @@ export function ChoicesSection({ fields, modules }: { fields: ChoiceFieldRow[]; 
                 onChange={setRows}
                 onReset={() => setRows(savedFor(field, scope))}
                 onSaved={adoptSaved}
+                onRemoved={dropKey}
               />
             </>
           ) : null}
@@ -232,6 +246,7 @@ function ScopeEditor({
   onChange,
   onReset,
   onSaved,
+  onRemoved,
 }: {
   field: ChoiceFieldRow;
   scope: Scope;
@@ -243,10 +258,41 @@ function ScopeEditor({
   onChange: (next: Row[]) => void;
   onReset: () => void;
   onSaved: (rows: Row[]) => void;
+  onRemoved: (key: string) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [pending, startTransition] = useTransition();
+  /** The stored option whose Remove was clicked once — the second click, on
+   *  the confirm that replaces it, is the one that acts. */
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [removedLabel, setRemovedLabel] = useState<string | null>(null);
+
+  /** How many options are actually stored. A list needs at least one, and the
+   *  database refuses the last; the button says so before anyone tries. */
+  const savedCount = rows.filter((r) => r.key).length;
+
+  const removeAt = (i: number) => {
+    const r = rows[i]!;
+    // Never saved: it exists only in this draft, so dropping it is the whole job.
+    if (!r.key) {
+      onChange(rows.filter((_, n) => n !== i));
+      return;
+    }
+    setError(null);
+    setJustSaved(false);
+    setRemovedLabel(null);
+    startTransition(async () => {
+      const result = await removeFieldChoiceAction(field.id, scope, r.key);
+      setConfirming(null);
+      if (result.ok) {
+        onRemoved(r.key);
+        setRemovedLabel(r.value || r.key);
+      } else {
+        setError(result.message);
+      }
+    });
+  };
 
   const swatched = SWATCHED_FIELD_TYPES.includes(field.type);
   const sensors = useSensors(
@@ -367,6 +413,12 @@ function ScopeEditor({
           {error}
         </p>
       ) : null}
+      {removedLabel ? (
+        <p className="flex items-center gap-1.5 border-b border-line-faint px-3 py-2 text-[12.5px] text-ok">
+          <Icon name="check" size={13} strokeWidth={2.5} />
+          Removed “{removedLabel}”. No record was using it.
+        </p>
+      ) : null}
       {justSaved && !dirty ? (
         <p className="flex items-center gap-1.5 border-b border-line-faint px-3 py-2 text-[12.5px] text-ok">
           <Icon name="check" size={13} strokeWidth={2.5} />
@@ -451,6 +503,45 @@ function ScopeEditor({
                           onClick={() => move(i, i + 1)}
                         />
                       </span>
+
+                      {/* Two clicks for a stored option, because the second
+                          one cannot be undone from here. One for a row that
+                          was never saved — there is nothing to lose. */}
+                      {r.key && confirming === r.key ? (
+                        <span className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => removeAt(i)}
+                            className="rounded bg-bad px-2 py-1 text-[11.5px] font-semibold text-white disabled:opacity-60"
+                          >
+                            {pending ? 'Removing…' : 'Remove'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => setConfirming(null)}
+                            className="px-1.5 py-1 text-[11.5px] text-ink-500"
+                          >
+                            Keep
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${r.value || 'new option'}`}
+                          title={
+                            r.key && savedCount <= 1
+                              ? 'A list needs at least one option — add its replacement first.'
+                              : `Remove ${r.value || 'this option'}`
+                          }
+                          disabled={pending || Boolean(r.key && savedCount <= 1)}
+                          onClick={() => (r.key ? setConfirming(r.key) : removeAt(i))}
+                          className="grid size-6 shrink-0 place-items-center rounded text-ink-400 transition-colors hover:bg-bad-bg hover:text-bad disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-ink-400"
+                        >
+                          <Icon name="x" size={12} />
+                        </button>
+                      )}
                     </>
                   )}
                 </SortableRow>
@@ -474,7 +565,7 @@ function ScopeEditor({
           >
             Add option
           </Button>
-          <OutlineChip icon="info">Options cannot be removed — records store them</OutlineChip>
+          <OutlineChip icon="info">An option can be removed only when no record uses it</OutlineChip>
         </div>
       </div>
     </div>

@@ -34,6 +34,7 @@ import {
   setModuleFieldListSchema,
   setFieldChoicesSchema,
   moduleOverrideSchema,
+  removeFieldChoiceSchema,
   createPipelineSchema,
   renamePipelineSchema,
   setPipelineStepsSchema,
@@ -47,7 +48,13 @@ import {
 } from '@/lib/records/adminPresets';
 import { createField, updateField, archiveField, restoreField } from '@/lib/records/adminFields';
 import { setModuleColumns, setModuleHeaderFields } from '@/lib/records/adminColumns';
-import { setFieldChoices, createModuleOverride, type SetChoicesResult } from '@/lib/records/adminChoices';
+import {
+  setFieldChoices,
+  createModuleOverride,
+  removeFieldChoice,
+  type SetChoicesResult,
+  type RemoveChoiceResult,
+} from '@/lib/records/adminChoices';
 import {
   createPipeline,
   renamePipeline,
@@ -373,6 +380,22 @@ export async function createModuleOverrideAction(fieldId: string, moduleId: stri
   if (!result.ok) return result;
 
   revalidateConfig();
+  return result;
+}
+
+/** Removes one option, if no record in that scope holds it. */
+export async function removeFieldChoiceAction(
+  fieldId: string,
+  moduleId: string | null,
+  key: string,
+): Promise<RemoveChoiceResult> {
+  const ctx = await authorize();
+
+  const parsed = removeFieldChoiceSchema.safeParse({ fieldId, moduleId, key });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await removeFieldChoice(ctx, parsed.data);
+  if (result.ok) revalidateConfig();
   return result;
 }
 

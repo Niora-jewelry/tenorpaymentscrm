@@ -35,6 +35,12 @@ const check = (name, pass, detail = '') => {
   results.push({ name, pass, detail });
   console.log(`${pass ? ' PASS' : '*FAIL'}  ${name}${detail ? '  — ' + detail : ''}`);
 };
+/** Could not be checked against today's data. Never counted as a pass. */
+const skipped = [];
+const skip = (name, why) => {
+  skipped.push({ name, why });
+  console.log(` SKIP  ${name}  — ${why}`);
+};
 
 /* ── sign in as the client ───────────────────────────────────────────── */
 /**
@@ -392,11 +398,36 @@ const leadsTxt = await page.locator('body').innerText();
 check('8. pipeline column on the dashboard', /Lead Pipeline Status/i.test(leadsTxt), '');
 check('9. "Other files" subtab is gone', !/Other files/i.test(leadsTxt), '');
 
-await page.goto(`${BASE}/deals`, { waitUntil: 'networkidle', timeout: 120000 });
-await page.waitForTimeout(1200);
-const dealsHtml = await page.content();
-check('10. pipeline step is clickable in the table', dealsHtml.includes('Change the pipeline step'), '');
-check('11. Current Status is a dropdown too', dealsHtml.includes('Change Current Status'), '');
+/*
+ * ⚠ THE TABLE IS CHOSEN FROM THE DATA, NOT NAMED.
+ * 10 and 11 read Deals, and 14b read Leads. On 14 Oct 2026 the client archived
+ * the fifty demo records and began entering real merchants, Deals and Leads
+ * emptied, and all three failed — a table with no rows has no pill to click
+ * and no filter to narrow. Nothing in the product had changed. A check that
+ * fails when the client does ordinary work teaches everyone to skim past red,
+ * which is how a real regression would get missed next to it.
+ *
+ * So: the display module with the most live records that also has a
+ * pipeline, which is what both pills need.
+ */
+const [busyMod] = await q(
+  `select m.slug, m.label, count(*)::int n
+     from record_modules rm
+     join records r on r.id = rm.record_id and r.deleted_at is null
+     join modules m on m.id = rm.module_id
+    where not m.admin_only
+      and exists (select 1 from pipelines p where p.module_id = m.id)
+    group by m.slug, m.label order by n desc limit 1`);
+if (!busyMod) {
+  skip('10. pipeline step is clickable in the table', 'no display module with a pipeline has any live records');
+  skip('11. Current Status is a dropdown too', 'same — no rows to click');
+} else {
+  await page.goto(`${BASE}/${busyMod.slug}`, { waitUntil: 'networkidle', timeout: 120000 });
+  await page.waitForTimeout(1200);
+  const tableHtml = await page.content();
+  check('10. pipeline step is clickable in the table', tableHtml.includes('Change the pipeline step'), `${busyMod.label}, ${busyMod.n} record(s)`);
+  check('11. Current Status is a dropdown too', tableHtml.includes('Change Current Status'), busyMod.label);
+}
 
 /* ── 14. A SAVED FILTER ON A FIELD VALUE STILL LOADS THE PAGE ─────────── */
 /*
@@ -451,9 +482,20 @@ check('11. Current Status is a dropdown too', dealsHtml.includes('Change Current
       `select count(*)::int n from records r
          join record_modules rm on rm.record_id = r.id
         where rm.module_id = $1 and r.deleted_at is null`, [leadsMod.id]);
-    check('14b. the filter is applied by the database',
-      onPipeline.n < allLeads.n,
-      `${onPipeline.n} of ${allLeads.n} leads are on a pipeline — a filter that matched everything would prove nothing`);
+    /*
+     * Only provable when some leads are on the pipeline and some are not: if
+     * every lead (or none) matches, a filter that was silently dropped and one
+     * that was applied look the same. That is a fact about today's data, not
+     * a failure — so it is reported as a skip, loudly, never as a pass.
+     */
+    if (allLeads.n === 0 || onPipeline.n === allLeads.n) {
+      skip('14b. the filter is applied by the database',
+        `${onPipeline.n} of ${allLeads.n} leads are on a pipeline — no mix to tell a dropped filter from an applied one`);
+    } else {
+      check('14b. the filter is applied by the database',
+        onPipeline.n < allLeads.n,
+        `${onPipeline.n} of ${allLeads.n} leads are on a pipeline — a filter that matched everything would prove nothing`);
+    }
 
     await db.query(`delete from user_filters where user_id=$1 and module_id=$2`, [u.id, leadsMod.id]);
     void shownNow;
@@ -571,6 +613,12 @@ check('13. this script changed no module memberships',
 const failed = results.filter((r) => !r.pass);
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);
 if (failed.length) console.log('STILL BROKEN:\n' + failed.map((f) => '  - ' + f.name + (f.detail ? ' — ' + f.detail : '')).join('\n'));
+if (skipped.length) {
+  console.log(
+    "NOT CHECKED (today's data cannot prove these — not a pass):\n" +
+      skipped.map((k) => '  - ' + k.name + ' — ' + k.why).join('\n'),
+  );
+}
 
 await browser.close();
 await db.end();

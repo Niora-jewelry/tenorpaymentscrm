@@ -121,14 +121,30 @@ suite('a Hidden field grant', () => {
     const [leads] = await asOwner<{ id: string }>(`select id from modules where slug = 'leads' limit 1`);
     leadsModuleId = leads.id;
 
+    /*
+     * ── THE FIXTURE IS BUILT HERE, NOT FOUND ───────────────────────────────
+     * This used to borrow "a record in Leads". On 14 Oct 2026 the client
+     * archived the fifty demo records and started entering real merchants,
+     * Leads emptied, and this suite — the only automated proof that a Hidden
+     * grant keeps a field out of the query — failed before asserting anything.
+     *
+     * So it takes any live record and places it in Leads AND Deals itself.
+     * Two modules, because the "hidden in one of several" case below needs a
+     * record shown in more than one. Everything happens inside the BEGIN above
+     * and is undone by the ROLLBACK in afterAll: no membership, EIN or team
+     * assignment written here is ever committed, real merchant or not.
+     */
     const [rec] = await asOwner<{ id: string }>(
-      `select r.id from records r
-        join record_modules rm on rm.record_id = r.id and rm.module_id = $1
-       where r.deleted_at is null limit 1`,
-      [leadsModuleId],
+      `select r.id from records r where r.deleted_at is null order by r.created_at limit 1`,
     );
-    if (!rec) throw new Error('No record in Leads to test against.');
+    if (!rec) throw new Error('No live record exists to test against.');
     recordId = rec.id;
+
+    const [deals] = await asOwner<{ id: string }>(`select id from modules where slug = 'deals' limit 1`);
+    await asOwner(
+      `insert into record_modules (record_id, module_id) values ($1, $2), ($1, $3) on conflict do nothing`,
+      [recordId, leadsModuleId, deals.id],
+    );
 
     /*
      * `record_field_grant` resolves over every non-admin-only module the
@@ -200,10 +216,10 @@ suite('a Hidden field grant', () => {
      * every non-admin-only module the record belongs to: most restrictive
      * WITHIN a module, most permissive ACROSS them.
      *
-     * That is deliberate and it is right. This record sits in Leads, Deals,
-     * Contacts and Residuals, so a member who may read EIN through Deals can
-     * simply open it there — hiding it in Leads alone would be a padlock on
-     * one of four doors. Pinned because it is the thing most likely to be
+     * That is deliberate and it is right. This record sits in Leads and Deals
+     * (placed there in beforeAll), so a member who may read EIN through Deals
+     * can simply open it there — hiding it in Leads alone would be a padlock
+     * on one of two doors. Pinned because it is the thing most likely to be
      * mistaken for the bug this suite is looking for: the grant IS written and
      * the field IS still readable, and both are correct.
      */

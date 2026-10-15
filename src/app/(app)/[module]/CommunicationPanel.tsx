@@ -106,10 +106,22 @@ export function CommunicationPanel({
       </SpecNote>
 
       {/*
-        ── ORDER MATTERS ON THE TEXT SUBTAB ───────────────────────────────
-        History first, composer LAST. A conversation reads downward to the
-        newest message with the send box beneath it; the first arrangement put
-        the composer on top with older messages below, which reads backwards.
+        ── ORDER ON THE TEXT SUBTAB: COMPOSER FIRST ───────────────────────
+        The send box comes straight after the info note, above any history —
+        the client's layout. SmsThread renders its own texts NEWEST-FIRST
+        beneath the box so the message being answered sits right under the
+        reply; see the note there for why oldest-first read backwards.
+      */}
+      {channel === 'text' ? (
+        <SmsThread
+          moduleSlug={moduleSlug}
+          messages={smsMessages}
+          toE164={replyTarget(smsMessages, calls)}
+          recordPhones={recordPhones}
+        />
+      ) : null}
+
+      {/*
 
         The empty state is also suppressed once live texts exist. Two sources
         feed this tab — `messages` (arrived through a provider webhook) and
@@ -149,14 +161,6 @@ export function CommunicationPanel({
         </ul>
       )}
 
-      {channel === 'text' ? (
-        <SmsThread
-          moduleSlug={moduleSlug}
-          messages={smsMessages}
-          toE164={replyTarget(smsMessages, calls)}
-          recordPhones={recordPhones}
-        />
-      ) : null}
     </div>
   );
 }

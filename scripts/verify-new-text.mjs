@@ -56,7 +56,10 @@ await page.route('**://*.posthog.com/**', (r) => r.abort());
 const pass = [], fail = [];
 const t = (n, ok, d = '') => (ok ? pass : fail).push(`${n}${d ? '  — ' + d : ''}`);
 
-await page.goto(`${BASE}/leads?record=${rec.id}`, { waitUntil: 'networkidle', timeout: 180000 });
+/* Through the Records List, which shows every record whatever its module
+   membership — the client archived the demo records on 14 Oct, and a drawer
+   opened through /leads stopped existing for this one. */
+await page.goto(`${BASE}/records?record=${rec.id}`, { waitUntil: 'networkidle', timeout: 180000 });
 await page.waitForTimeout(1200);
 
 const tab = async (name) => {
@@ -86,6 +89,16 @@ t(
   /Text \(?\d{3}\)? ?\d{3}-\d{4}/i.test(body),
   body.match(/TEXT [^\n]*/)?.[0] ?? '',
 );
+/* The composer sits straight under the info note, above the empty state —
+   the client's layout. Compared by position in the page text, which is the
+   order a person reads. */
+{
+  const note = body.indexOf('Inbound messages land on a record');
+  const box = body.search(/TEXT \(?\d{3}/);
+  const empty = body.indexOf('No messages yet');
+  t('the text box comes right after the info note', note >= 0 && box > note, `note@${note} box@${box}`);
+  t('and above "No messages yet"', empty === -1 || box < empty, `box@${box} empty@${empty}`);
+}
 t('the consent warning shows', /No consent on file/i.test(body));
 
 const picker = page.getByLabel('Who to text');

@@ -278,11 +278,21 @@ export function SmsThread({
     });
   };
 
-  return (
-    <div className="space-y-3">
-      {messages.length > 0 ? (
+  /*
+   * ── COMPOSER ON TOP, SO THE THREAD READS NEWEST-FIRST ──────────────────
+   * The send box sits directly under the tab's info note, where a rep looks
+   * first — asked for by the client. With the composer above, an oldest-first
+   * thread would put the message being answered at the very bottom, as far
+   * from the reply box as it can get; an earlier version did exactly that and
+   * read backwards. So the newest message is the one right under the box,
+   * like an inbox. `messages` itself stays oldest-first: `replyTarget()`
+   * reads its last element.
+   */
+  const newestFirst = [...messages].reverse();
+  const history =
+    messages.length > 0 ? (
         <ul className="space-y-2">
-          {messages.map((m) => (
+          {newestFirst.map((m) => (
             <li
               key={m.id}
               className={`rounded-xl border p-3 ${
@@ -311,7 +321,10 @@ export function SmsThread({
             </li>
           ))}
         </ul>
-      ) : null}
+    ) : null;
+
+  return (
+    <div className="space-y-3">
 
       {target ? (
         <div className="rounded-xl border border-line bg-white p-3">
@@ -404,6 +417,8 @@ export function SmsThread({
           sync-enabled, so a reply to either would arrive attached to nothing.
         </SpecNote>
       )}
+
+      {history}
     </div>
   );
 }

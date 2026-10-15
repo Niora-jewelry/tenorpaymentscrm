@@ -43,18 +43,36 @@ if (v.length > 3180) for (let i = 0, n = 0; i < v.length; i += 3180, n++)
   cookies.push({ name: `sb-${ref}-auth-token.${n}`, value: v.slice(i, i + 3180), domain: 'localhost', path: '/' });
 else cookies.push({ name: `sb-${ref}-auth-token`, value: v, domain: 'localhost', path: '/' });
 
-/* The record the one real inbound text landed on, and a module it is actually
-   IN — the drawer only opens from a module page that contains the record. */
+/*
+ * ── A NUMBER NOBODY HAS CONSENTED YET, ON A RECORD NO MODULE SHOWS ───────
+ * This used to take "the record the one inbound text landed on". On 14 Oct a
+ * real consent was recorded for that number on the live site, so the badge
+ * rightly read "Consented" and there was nothing for this script to click.
+ *
+ * So it picks a record whose first contact phone (sync-enabled, so the
+ * composer offers it) has no active consent, from the ARCHIVED records — the
+ * client's demo data, shown in no module. Probing there means nothing this
+ * does can appear on a screen staff are working from.
+ */
 const [rec] = await q(
-  `select r.id, r.deal_name, m.from_e164,
-          (select mo.slug from record_modules rm join modules mo on mo.id = rm.module_id
-            where rm.record_id = r.id limit 1) as slug
-     from phone_messages m join records r on r.id = m.record_id
-    where m.deleted_at is null limit 1`,
+  `select r.id, r.deal_name, r.values -> 'contact' -> 0 ->> 'phone' as e164
+     from records r
+    where r.deleted_at is null
+      and not exists (select 1 from record_modules rm where rm.record_id = r.id)
+      and r.values -> 'contact' -> 0 ->> 'phone' ~ '^\\+[1-9][0-9]{7,14}$'
+      and not exists (select 1 from phone_messages m where m.record_id = r.id and m.deleted_at is null)
+      and not exists (select 1 from sms_consents c
+                       where c.e164 = r.values -> 'contact' -> 0 ->> 'phone' and c.revoked_at is null)
+    order by r.created_at limit 1`,
 );
-if (!rec?.slug) { console.log('the record carrying the inbound text is in no module'); process.exit(1); }
+if (!rec) { console.log('no archived record with an unconsented contact phone — nothing to probe'); process.exit(1); }
+const startedAt = new Date();
+/* Opened through the Records List, which shows every record regardless of
+   module membership. This required a module and stopped running on 14 Oct,
+   when the client archived the demo records — this one among them. */
 
-const before = (await q(`select count(*)::int n from sms_consents`))[0].n;
+const mine = () => q(`select count(*)::int n from sms_consents where e164 = $1 and recorded_by_id = $2 and created_at >= $3`, [rec.e164, me.id, startedAt]);
+const before = (await mine())[0].n;
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1100 } });
@@ -67,7 +85,7 @@ page.on('response', (r) => { if (r.status() >= 500) errors.push(`${r.status()} $
 const pass = [], fail = [];
 const t = (name, ok, detail = '') => (ok ? pass : fail).push(`${name}${detail ? '  — ' + detail : ''}`);
 
-await page.goto(`${BASE}/${rec.slug}?record=${rec.id}`, { waitUntil: 'networkidle', timeout: 180000 });
+await page.goto(`${BASE}/records?record=${rec.id}`, { waitUntil: 'networkidle', timeout: 180000 });
 await page.waitForTimeout(1200);
 
 /*
@@ -140,11 +158,19 @@ if (await recordBtn.count()) {
   t('a control to record consent exists', false, 'no button found');
 }
 
+/*
+ * ⚠ ONLY THIS RUN'S ROW. This read the newest consent in the whole table and
+ * passed off a real one a person had recorded the day before — a pass that
+ * proved nothing about the click. Number, author and start time pin it to
+ * the row this script itself caused.
+ */
 const rows = await q(
   `select e164, source, left(consent_text, 48) as text, recorded_by_id is not null as has_author, created_at
-     from sms_consents order by created_at desc limit 1`,
+     from sms_consents where e164 = $1 and recorded_by_id = $2 and created_at >= $3
+    order by created_at desc limit 1`,
+  [rec.e164, me.id, startedAt],
 );
-const after = (await q(`select count(*)::int n from sms_consents`))[0].n;
+const after = (await mine())[0].n;
 t('a row was written to sms_consents', after === before + 1, `${before} -> ${after}`);
 if (rows[0]) {
   t('it stores the number, the source and who recorded it', Boolean(rows[0].e164 && rows[0].source && rows[0].has_author), JSON.stringify(rows[0]));
@@ -157,8 +183,18 @@ for (const f of fail) console.log('*FAIL  ' + f);
 console.log(`\n=== ${pass.length}/${pass.length + fail.length} passed ===`);
 
 /* Put the database back. */
-await db.query(`delete from sms_consents where created_at > now() - interval '5 minutes'`);
-console.log('probe consent row removed; sms_consents back to', (await q(`select count(*)::int n from sms_consents`))[0].n);
+/*
+ * ⚠ ONLY THE PROBE'S OWN ROW. This deleted every consent created in the last
+ * five minutes — harmless on a demo database, and on a live one it would
+ * erase a real consent a rep happened to record during the run: the exact
+ * evidence the carriers ask for. Number + author + start time, nothing wider.
+ */
+const removed = await db.query(
+  `delete from sms_consents where e164 = $1 and recorded_by_id = $2 and created_at >= $3`,
+  [rec.e164, me.id, startedAt],
+);
+console.log(`probe consent removed (${removed.rowCount} row); total sms_consents now`,
+  (await q(`select count(*)::int n from sms_consents`))[0].n);
 
 await browser.close();
 await db.end();

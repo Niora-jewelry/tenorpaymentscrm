@@ -20,6 +20,8 @@
         "verify:consent": "node --env-file=.env scripts/verify-sms-consent.mjs",
         "verify:newtext": "node --env-file=.env scripts/verify-new-text.mjs",
         "verify:choices": "node --env-file=.env scripts/verify-choices-admin.mjs",
+        "verify:member": "node --env-file=.env scripts/verify-as-member.mjs",
+        "verify:bulk": "node --env-file=.env scripts/verify-bulk-edit.mjs",
         "test:integration": "vitest run --dir src --testTimeout 60000 flow.integration",
         "invite": "node scripts/invite.mjs",
         "create-user": "node --env-file=.env scripts/create-user.mjs",

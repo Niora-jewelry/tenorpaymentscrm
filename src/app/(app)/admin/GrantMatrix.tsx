@@ -44,7 +44,7 @@
  */
 import { useCallback, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { OutlineChip, Spinner } from '@/proto/ui/kit';
+import { BarAction, BarCount, FloatingBar, OutlineChip, Spinner } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { PlaceholderNotice } from './PlaceholderNotice';
 // Types only from the data layer — it is `server-only`, and importing a VALUE
@@ -52,12 +52,13 @@ import { PlaceholderNotice } from './PlaceholderNotice';
 // enforcement notes and the resolution rules therefore live in their own
 // client-safe modules rather than being copied into this file, where they would
 // drift.
-import type { GrantMatrix as Matrix, GrantResult, ScopeRow } from '@/lib/records/adminGrants';
+import type { GrantMatrix as Matrix, GrantResult, GrantBatchResult, ScopeRow } from '@/lib/records/adminGrants';
 import { ENFORCEMENT_NOTE } from '@/lib/records/grantEnforcement';
 import {
   GRANT_LEVELS,
   lockedGrantLevels,
   resolveScope,
+  resolveMembership,
   capGrant,
   maxGrant,
   type Grant,
@@ -84,8 +85,26 @@ const NOT_SET = {
 
 const CELL_BASE = 'inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11.5px] font-medium';
 
-function GrantCell({ grant, muted }: { grant: Grant | null; muted?: boolean }) {
-  const s = grant ? GRANT_STYLE[grant] : NOT_SET;
+/**
+ * The add/remove-records row (`membership` scope, migration 9766) has two
+ * answers, not three. It stores `edit` for Yes and `view` for No — the same
+ * enum as every other grant, so one resolver and one writer serve it — but
+ * drawing "Edit" and "View" on a row that asks "may they move records?"
+ * would be the wrong words. `hidden` is never stored for it; it shows as No
+ * for a module the person cannot see at all.
+ */
+type CellVariant = 'levels' | 'yesno';
+const MEMBERSHIP_STYLE: Record<Grant, { label: string; className: string }> = {
+  hidden: { label: 'No', className: GRANT_STYLE.hidden.className },
+  view: { label: 'No', className: GRANT_STYLE.view.className },
+  edit: { label: 'Yes', className: GRANT_STYLE.edit.className },
+};
+const styleFor = (variant: CellVariant, grant: Grant) =>
+  variant === 'yesno' ? MEMBERSHIP_STYLE[grant] : GRANT_STYLE[grant];
+const variantOf = (row: ScopeRow): CellVariant => (row.kind === 'membership' ? 'yesno' : 'levels');
+
+function GrantCell({ grant, muted, variant = 'levels' }: { grant: Grant | null; muted?: boolean; variant?: CellVariant }) {
+  const s = grant ? styleFor(variant, grant) : NOT_SET;
   return <span className={`${CELL_BASE} ${s.className} ${muted ? 'opacity-55' : ''}`}>{s.label}</span>;
 }
 
@@ -122,20 +141,26 @@ function GrantToggle({
   caps,
   busy,
   label,
+  variant = 'levels',
   onChange,
 }: {
   value: Grant | null;
   caps: ScopeCaps;
   busy: boolean;
   label: string;
+  variant?: CellVariant;
   onChange: (next: Grant | null) => void;
 }) {
   const locks = lockedGrantLevels(caps);
   const reasonFor = (g: Grant) => locks.find((l) => l.level === g)?.reason ?? null;
 
+  // The yes/no row offers its two answers only — Hidden is a level the writer
+  // refuses for it (`grantWriteRefusal`), so it is not drawn at all rather
+  // than drawn disabled with a tooltip explaining itself.
+  const levels: readonly Grant[] = variant === 'yesno' ? ['view', 'edit'] : GRANT_LEVELS;
   const options: { key: string; level: Grant | null; text: string }[] = [
     { key: 'unset', level: null, text: 'Not set' },
-    ...GRANT_LEVELS.map((g) => ({ key: g, level: g as Grant | null, text: GRANT_STYLE[g].label })),
+    ...levels.map((g) => ({ key: g, level: g as Grant | null, text: styleFor(variant, g).label })),
   ];
 
   return (
@@ -167,7 +192,7 @@ function GrantToggle({
             className={`px-2 py-1 text-[11.5px] font-semibold transition-colors ${
               active
                 ? o.level
-                  ? `${GRANT_STYLE[o.level].className} border-0`
+                  ? `${styleFor(variant, o.level).className} border-0`
                   : 'bg-ink-800 text-white'
                 : 'text-ink-500 hover:bg-white hover:text-ink-800'
             } ${disabled && !active ? 'cursor-not-allowed opacity-35 hover:bg-transparent' : ''}`}
@@ -235,6 +260,9 @@ function ScopeLine({
   error,
   templateName,
   onEdit,
+  selectable,
+  selected,
+  onSelect,
 }: {
   row: ScopeRow;
   showOverride: boolean;
@@ -246,7 +274,12 @@ function ScopeLine({
   /** The template this person is attached to, for the inline hint. */
   templateName: string | null;
   onEdit: (row: ScopeRow, column: 'template' | 'user', next: Grant | null) => void;
+  /** Bulk selection (the client's Addition 4). Only a writable matrix selects. */
+  selectable: boolean;
+  selected: boolean;
+  onSelect: (row: ScopeRow, shiftKey: boolean) => void;
 }) {
+  const variant = variantOf(row);
   /*
    * The padlock appears only when the RESULT differs from what this row is set
    * to — which is the only moment the distinction is worth a reader's attention.
@@ -259,8 +292,8 @@ function ScopeLine({
   const writeLocks = editable ? lockedGrantLevels(row.caps) : [];
   const lockNote =
     (capped
-      ? `This row resolves to ${GRANT_STYLE[row.resolved].label}, but the app gives ${
-          GRANT_STYLE[row.effective].label
+      ? `This row resolves to ${styleFor(variant, row.resolved).label}, but the app gives ${
+          styleFor(variant, row.effective).label
         }. ${row.lock ?? ''}`.trim()
       : row.lock) ?? (writeLocks.length ? writeLocks.map((l) => l.reason).join(' ') : null);
 
@@ -272,9 +305,28 @@ function ScopeLine({
     <div
       className={`border-b border-line-faint last:border-b-0 ${indent ? 'pl-8' : ''} ${
         alt ? 'bg-canvas/40' : ''
-      }`}
+      } ${selected ? 'bg-brand-50/70' : ''}`}
     >
       <div className="flex items-center gap-3 px-3 py-1.5">
+        {selectable ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            aria-label={`Select ${row.label}`}
+            // Shift-click extends from the last row ticked to this one
+            // (Addition 4). The browser would also start a text selection on
+            // a shift-click, which is the one thing it must not do here.
+            onMouseDown={(e) => {
+              if (e.shiftKey) e.preventDefault();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(row, e.shiftKey);
+            }}
+            onChange={() => {}}
+            className="size-3.5 shrink-0 accent-[#1d4ed8]"
+          />
+        ) : null}
         <span className="min-w-0 flex-1">
           <span className={`${indent ? 'text-[13px]' : 'text-[14px] font-medium'} text-ink-800`}>
             {row.label}
@@ -290,7 +342,7 @@ function ScopeLine({
             {inherited ? (
               <>
                 {templateName ?? 'Template'}:{' '}
-                <span className="font-medium text-ink-600">{GRANT_STYLE[inherited].label}</span>
+                <span className="font-medium text-ink-600">{styleFor(variant, inherited).label}</span>
               </>
             ) : null}
           </span>
@@ -302,13 +354,14 @@ function ScopeLine({
               value={ownValue}
               caps={row.caps}
               busy={busy}
+              variant={variant}
               label={
                 editable === 'user' ? `Permission for ${row.label}` : `Template permission for ${row.label}`
               }
               onChange={(next) => onEdit(row, editable, next)}
             />
           ) : (
-            <GrantCell grant={ownValue} />
+            <GrantCell grant={ownValue} variant={variant} />
           )}
         </span>
 
@@ -330,7 +383,7 @@ function ScopeLine({
             </span>
           ) : (
             <>
-              <GrantCell grant={row.effective} />
+              <GrantCell grant={row.effective} variant={variant} />
               {lockNote ? (
                 <span className="inline-flex items-center text-ink-300" title={lockNote}>
                   <Icon name="lock" size={11} />
@@ -408,6 +461,12 @@ export type GrantWriter = {
   column: 'template' | 'user';
   set: (scopeKind: GrantScope, scopeId: string, level: Grant) => Promise<GrantResult>;
   clear: (scopeKind: GrantScope, scopeId: string) => Promise<GrantResult>;
+  /**
+   * Several cells in one request — the client's Addition 4. A `null` level is
+   * "Not set". Optional only so a route without it still renders; without it
+   * the selection controls are not offered at all.
+   */
+  setMany?: (items: { scopeKind: GrantScope; scopeId: string; level: Grant | null }[]) => Promise<GrantBatchResult>;
 };
 
 /**
@@ -450,6 +509,25 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
   const [errors, setErrors] = useState<Map<RowKey, string>>(new Map());
   const [, startTransition] = useTransition();
 
+  /*
+   * ── BULK SELECTION (the client's Addition 4, 16 Oct 2026) ──────────────
+   * "Select multiple at once and choose the permission", and "select a
+   * permission item and then scroll down and select another while holding
+   * shift which will automatically select all items in between."
+   *
+   * `selected` holds row keys. `anchor` is the last row ticked without shift;
+   * a shift-click selects every row drawn between the anchor and the row
+   * clicked, in the order they are on screen. That order is collected while
+   * rendering (`line()` below pushes each key it draws into `orderRef`), so
+   * "in between" means exactly what the admin sees — rows inside a collapsed
+   * tab are not on screen and are not selected.
+   */
+  const [selected, setSelected] = useState<Set<RowKey>>(new Set());
+  const [anchor, setAnchor] = useState<RowKey | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkNote, setBulkNote] = useState<string | null>(null);
+  const selectable = Boolean(writer?.setMany);
+
   /** This matrix's rows, keyed for the module it is actually describing. */
   const rowKey = useCallback(
     (row: ScopeRow) => rowKeyIn(matrix.moduleScopeId, row),
@@ -476,6 +554,10 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
     if (edits.size > 0) setEdits(new Map());
     if (errors.size > 0) setErrors(new Map());
     if (busyKey !== null) setBusyKey(null);
+    // A selection belongs to the module it was made in, like the overlay.
+    if (selected.size > 0) setSelected(new Set());
+    if (anchor !== null) setAnchor(null);
+    if (bulkNote !== null) setBulkNote(null);
   }
 
   const subject = matrix.subject;
@@ -535,11 +617,110 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
     });
   };
 
+  // A search narrows the tree to something small enough to read at once, so
+  // opening every surviving tab is the useful default — collapsing is only
+  // there because 129 fields at once is not.
+  const filtering = Boolean(needle) || onlySet;
+  const isOpen = useCallback((tabId: string) => filtering || openTabs.has(tabId), [filtering, openTabs]);
+
+  /* ── selection handlers ── */
+  const onSelect = (row: ScopeRow, shiftKey: boolean) => {
+    const key = rowKey(row);
+    setBulkNote(null);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const from = anchor ? order.indexOf(anchor) : -1;
+      const to = order.indexOf(key);
+      if (shiftKey && from >= 0 && to >= 0) {
+        // Every row on screen between the anchor and this one, inclusive —
+        // added to the selection, never toggled, so a second shift-click
+        // extends rather than flips.
+        const [a, b] = from < to ? [from, to] : [to, from];
+        for (let i = a; i <= b; i++) next.add(order[i]);
+        return next;
+      }
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    if (!shiftKey) setAnchor(key);
+  };
+
+  /**
+   * Applies one level to every selected row, in one request.
+   *
+   * Rows the writer would refuse at this level (a read-only field at Edit,
+   * Deal Name at Hidden, the yes/no row at Hidden) are skipped and counted
+   * rather than sent to fail — the same locks the single control greys out.
+   * Optimistic like a single click; rows the server reports back as failed
+   * are rolled back individually with their message against the row.
+   */
+  const applyBulk = (level: Grant | null) => {
+    if (!writer?.setMany || selected.size === 0) return;
+    const items: { scopeKind: GrantScope; scopeId: string; level: Grant | null }[] = [];
+    const keys: RowKey[] = [];
+    let skipped = 0;
+    for (const key of selected) {
+      const row = rowByKey.get(key);
+      if (!row) continue;
+      if (level !== null && lockedGrantLevels(row.caps).some((l) => l.level === level)) {
+        skipped++;
+        continue;
+      }
+      items.push({ scopeKind: row.kind, scopeId: row.id, level });
+      keys.push(key);
+    }
+    if (items.length === 0) {
+      setBulkNote(`Nothing changed — that level is not allowed on ${skipped === 1 ? 'the selected row' : 'any of the selected rows'}.`);
+      return;
+    }
+
+    setEdits((prev) => {
+      const m = new Map(prev);
+      for (const k of keys) m.set(k, level);
+      return m;
+    });
+    setErrors((prev) => {
+      const m = new Map(prev);
+      for (const k of keys) m.delete(k);
+      return m;
+    });
+    setBulkBusy(true);
+
+    startTransition(async () => {
+      const result = await writer.setMany!(items);
+      setBulkBusy(false);
+      const failedKeys = new Map<RowKey, string>();
+      for (const f of result.failed) {
+        const k = keys.find((key) => {
+          const r = rowByKey.get(key);
+          return r && r.kind === f.scopeKind && r.id === f.scopeId;
+        });
+        if (k) failedKeys.set(k, f.message);
+      }
+      if (failedKeys.size) {
+        setEdits((prev) => {
+          const m = new Map(prev);
+          for (const k of failedKeys.keys()) m.delete(k);
+          return m;
+        });
+        setErrors((prev) => new Map([...prev, ...failedKeys]));
+      }
+      const done = items.length - failedKeys.size;
+      const parts = [`${done} row${done === 1 ? '' : 's'} set to ${level === null ? 'Not set' : GRANT_STYLE[level].label}`];
+      if (skipped) parts.push(`${skipped} skipped — that level is not allowed there`);
+      if (failedKeys.size) parts.push(`${failedKeys.size} failed — see the rows`);
+      setBulkNote(parts.join(' · '));
+      setSelected(new Set());
+      setAnchor(null);
+    });
+  };
+
   // One matcher, defined inside the memo it belongs to — a `matches` closure
   // declared in the component body would be a new function every render and
   // would have to be listed as a dependency of the memo below, which is a lint
   // fight for no benefit.
-  const { modules, tabs } = useMemo(() => {
+  const { modules, memberships, tabs } = useMemo(() => {
     const matches = (row: ScopeRow) => {
       if (needle && !row.label.toLowerCase().includes(needle) && !row.detail.toLowerCase().includes(needle)) {
         return false;
@@ -560,8 +741,33 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
     const moduleRows = matrix.modules.map(withEdits);
     const moduleEffective = new Map(moduleRows.map((m) => [m.id, m.effective] as const));
 
+    /*
+     * The add/remove-records row under each module. Its answer depends on
+     * the module's own result (`resolveMembership`, mirroring
+     * `module_membership_allowed()` in SQL): a module the person cannot see
+     * is No whatever is set, and an unset row follows the module — Edit means
+     * Yes. The padlock carries that explanation, since "Not set" here does
+     * not mean what it means on every other row.
+     */
+    const membershipRows = matrix.memberships.map(withEdits).map((r) => {
+      const mod = moduleEffective.get(r.id) ?? 'edit';
+      const raw = r.userGrant ?? r.templateGrant;
+      const effective = resolveMembership(mod, raw, matrix.subjectIsAdmin);
+      let lock = r.lock;
+      if (!matrix.subjectIsAdmin) {
+        if (mod === 'hidden') lock = 'The module is Hidden for this person, so they cannot add or remove records in it whatever this row says.';
+        else if (raw === null) lock = `Not set — follows the module row: ${mod === 'edit' ? 'Edit means Yes' : 'View means No'}.`;
+      }
+      return { ...r, effective, lock };
+    });
+
     return {
       modules: moduleRows.filter(matches),
+      // Shown under its module when that module is shown; "only scopes with
+      // an entry" applies to the row's own entry, like every other row.
+      memberships: membershipRows.filter(
+        (r) => !onlySet || edits.has(rowKey(r)) || r.templateGrant !== null || r.userGrant !== null,
+      ),
       tabs: matrix.tabs
         .map((t) => {
           const ceiling = ceilingOf(t.moduleIds, moduleEffective);
@@ -593,7 +799,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         .map((t) => ({ ...t, tabMatches: matches(t.tab) }))
         .filter((t) => t.tabMatches || t.groups.length > 0),
     };
-  }, [matrix.modules, matrix.tabs, needle, onlySet, edits, withEdits, rowKey]);
+  }, [matrix.modules, matrix.memberships, matrix.tabs, matrix.subjectIsAdmin, needle, onlySet, edits, withEdits, rowKey]);
 
   /**
    * The header chips, recounted over the whole tree with pending edits applied
@@ -619,6 +825,13 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
     const moduleRows = matrix.modules.map(withEdits);
     const moduleEffective = new Map(moduleRows.map((m) => [m.id, m.effective] as const));
     moduleRows.forEach(tally);
+    // The yes/no rows count as entries, not as "below Edit" — a No there is
+    // a different kind of restriction from a View, and the chip says "below
+    // Edit".
+    for (const r of matrix.memberships.map(withEdits)) {
+      if (r.templateGrant !== null) templateSet++;
+      if (r.userGrant !== null) userSet++;
+    }
     for (const t of matrix.tabs) {
       const tab = applyCeiling(withEdits(t.tab), ceilingOf(t.moduleIds, moduleEffective), MODULE_CEILING_NOTE);
       tally(tab);
@@ -628,29 +841,68 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       }
     }
     return { ...matrix.counts, templateSet, userSet, restricted };
-  }, [matrix.counts, matrix.modules, matrix.tabs, withEdits]);
+  }, [matrix.counts, matrix.modules, matrix.memberships, matrix.tabs, withEdits]);
 
-  /** One row, with everything the write path needs threaded through it. */
-  const line = (row: ScopeRow, indent: boolean, alt = false) => (
-    <ScopeLine
-      key={row.id}
-      row={row}
-      showOverride={showOverride}
-      indent={indent}
-      alt={alt}
-      editable={writer?.column ?? null}
-      busy={busyKey === rowKey(row)}
-      error={errors.get(rowKey(row)) ?? null}
-      templateName={subject.kind === 'user' ? subject.templateLabel : null}
-      onEdit={onEdit}
-    />
+  const membershipByModule = useMemo(
+    () => new Map(memberships.map((r) => [r.id, r] as const)),
+    [memberships],
   );
 
-  // A search narrows the tree to something small enough to read at once, so
-  // opening every surviving tab is the useful default — collapsing is only
-  // there because 129 fields at once is not.
-  const filtering = Boolean(needle) || onlySet;
-  const isOpen = (tabId: string) => filtering || openTabs.has(tabId);
+  /*
+   * The rows on screen, in the order they are drawn — the same walk the JSX
+   * below makes, so "every row between these two" for a shift-click and
+   * "every row shown" for select-all mean exactly what the admin sees. Rows
+   * inside a collapsed tab are not on screen and are not in this list.
+   */
+  const { order, rowByKey } = useMemo(() => {
+    const rows: ScopeRow[] = [];
+    for (const m of modules) {
+      rows.push(m);
+      const mem = membershipByModule.get(m.id);
+      if (mem) rows.push(mem);
+    }
+    for (const t of tabs) {
+      rows.push(t.tab);
+      if (!isOpen(t.tab.id)) continue;
+      for (const g of t.groups) {
+        if (g.subtab) rows.push(g.subtab);
+        rows.push(...g.fields);
+      }
+    }
+    return {
+      order: rows.map(rowKey),
+      rowByKey: new Map(rows.map((r) => [rowKey(r), r] as const)),
+    };
+  }, [modules, membershipByModule, tabs, isOpen, rowKey]);
+
+  const allShownSelected = order.length > 0 && order.every((k) => selected.has(k));
+  const toggleAllShown = () => {
+    setBulkNote(null);
+    setSelected(allShownSelected ? new Set() : new Set(order));
+  };
+
+  /** One row, with everything the write path needs threaded through it. */
+  const line = (row: ScopeRow, indent: boolean, alt = false) => {
+    const key = rowKey(row);
+    return (
+      <ScopeLine
+        key={key}
+        row={row}
+        showOverride={showOverride}
+        indent={indent}
+        alt={alt}
+        editable={writer?.column ?? null}
+        busy={bulkBusy ? selected.has(key) || edits.has(key) : busyKey === key}
+        error={errors.get(key) ?? null}
+        templateName={subject.kind === 'user' ? subject.templateLabel : null}
+        onEdit={onEdit}
+        selectable={selectable}
+        selected={selected.has(key)}
+        onSelect={onSelect}
+      />
+    );
+  };
+
   const toggle = (tabId: string) =>
     setOpenTabs((prev) => {
       const next = new Set(prev);
@@ -733,6 +985,12 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
           <input type="checkbox" checked={onlySet} onChange={(e) => setOnlySet(e.target.checked)} />
           Only scopes with an entry
         </label>
+        {selectable ? (
+          <label className="flex items-center gap-1.5 text-[12.5px] text-ink-600" title="Tick every row currently shown. Shift-click a row's box to select a range.">
+            <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} className="accent-[#1d4ed8]" />
+            Select all shown
+          </label>
+        ) : null}
         <span className="ml-auto flex items-center gap-2 text-[12px] text-ink-400">
           <OutlineChip>{counts.scopes} scopes</OutlineChip>
           <OutlineChip tone={counts.templateSet ? 'brand' : 'neutral'}>
@@ -754,7 +1012,17 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
           <EnforcementChip kind="module" />
         </div>
         <HeaderRow showOverride={showOverride} first="Module" editable={writer?.column ?? null} />
-        {modules.map((m) => line(m, false))}
+        {modules.map((m) => {
+          const membership = membershipByModule.get(m.id);
+          return (
+            <div key={m.id}>
+              {line(m, false)}
+              {/* "May they add records to / remove them from this module?" —
+                  the client's Addition 2, one yes/no row under its module. */}
+              {membership ? line(membership, true, true) : null}
+            </div>
+          );
+        })}
         {modules.length === 0 ? (
           <p className="px-3 py-4 text-[12.5px] text-ink-400">No module matches that.</p>
         ) : null}
@@ -858,6 +1126,39 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         ) : null}
       </section>
 
+      {bulkNote ? (
+        <p role="status" className="text-[12.5px] text-ink-500">
+          {bulkNote}
+        </p>
+      ) : null}
+
+      {/*
+        The bulk bar — the same floating bar the records table uses for its
+        selection, so the two screens agree about what "N selected" looks
+        like. One action per level; "Not set" clears, like the control.
+      */}
+      {selectable ? (
+        <FloatingBar
+          open={selected.size > 0}
+          lead={<BarCount n={selected.size} label={selected.size === 1 ? 'row selected' : 'rows selected'} />}
+          onClose={() => {
+            setSelected(new Set());
+            setAnchor(null);
+          }}
+        >
+          <BarAction icon="x" label="Not set" disabled={bulkBusy} onClick={() => applyBulk(null)} title="Clear the grant on every selected row" />
+          {GRANT_LEVELS.map((g) => (
+            <BarAction
+              key={g}
+              icon={g === 'hidden' ? 'eye-off' : g === 'view' ? 'eye' : 'pencil'}
+              label={GRANT_STYLE[g].label}
+              disabled={bulkBusy}
+              onClick={() => applyBulk(g)}
+              title={`Set every selected row to ${GRANT_STYLE[g].label}${g === 'edit' ? ' (Yes on an add/remove row)' : g === 'view' ? ' (No on an add/remove row)' : ''}`}
+            />
+          ))}
+        </FloatingBar>
+      ) : null}
     </div>
   );
 }

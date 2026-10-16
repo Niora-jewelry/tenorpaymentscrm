@@ -35,11 +35,18 @@
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
 import { createTemplate, renameTemplate } from '@/lib/records/adminTemplates';
-import { clearTemplateGrant, setTemplateGrant, type GrantResult } from '@/lib/records/adminGrants';
+import {
+  clearTemplateGrant,
+  setTemplateGrant,
+  setTemplateGrants,
+  type GrantResult,
+  type GrantBatchResult,
+} from '@/lib/records/adminGrants';
 import {
   createTemplateSchema,
   renameTemplateSchema,
   setTemplateGrantSchema,
+  setTemplateGrantsSchema,
   clearTemplateGrantSchema,
   firstIssueMessage,
 } from '@/lib/records/adminSchemas';
@@ -127,6 +134,28 @@ export async function setTemplateGrantAction(
 
   revalidateTemplateGrants(parsed.data.templateId);
   return { ok: true };
+}
+
+/**
+ * Several cells of one template at once — the client's Addition 4. Each item
+ * goes through the same writer as a single click, so nothing a click would
+ * refuse is stored by a batch; the result names every item that did not land.
+ */
+export async function setTemplateGrantsAction(
+  templateId: string,
+  items: { scopeKind: GrantScope; scopeId: string; level: Grant | null }[],
+  moduleId?: string | null,
+): Promise<GrantBatchResult> {
+  const ctx = await authorize();
+
+  const parsed = setTemplateGrantsSchema.safeParse({ templateId, moduleId, items });
+  if (!parsed.success) {
+    return { ok: false, failed: items.map((i) => ({ ...i, message: firstIssueMessage(parsed.error) })) };
+  }
+
+  const result = await setTemplateGrants(ctx, parsed.data);
+  revalidateTemplateGrants(parsed.data.templateId);
+  return result;
 }
 
 /** Back to inherited — which for a template means `GRANT_DEFAULT`, i.e. Edit.

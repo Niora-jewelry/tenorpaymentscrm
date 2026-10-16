@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { HeaderFacts } from './HeaderFacts';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
-import { authorize, moduleGrant, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
+import { authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -110,6 +110,16 @@ export default async function ModulePage({
   const visibleDisplayModules = displayModuleGrantsForList
     .filter(([, g]) => g !== 'hidden')
     .map(([m]) => m);
+  // The bulk bar moves records between modules, which is the `membership`
+  // permission (Addition 2), not plain Edit: the restore picker offers only
+  // modules this viewer may add to, and the archive / remove action is
+  // offered only when they may remove from THIS module.
+  const moveableDisplayModules = (
+    await Promise.all(visibleDisplayModules.map(async (m) => [m, await membershipAllowed(ctx, m)] as const))
+  )
+    .filter(([, ok]) => ok)
+    .map(([m]) => m);
+  const canMoveRecords = mod.kind === 'display' ? await membershipAllowed(ctx, mod) : grant === 'edit';
 
   const adminColumns = columnsForModule(config, mod.id);
   const orderedColumnIds = resolveOrder(adminColumns.map((f) => f.id), savedColumnOrder);
@@ -206,9 +216,21 @@ export default async function ModulePage({
             <span>
               {columns.length} of {adminColumns.length} columns visible to you
             </span>
+            {mod.showsOpenCases ? (
+              <>
+                <span aria-hidden className="text-line">·</span>
+                <span>Records appear here automatically while they have an open case</span>
+              </>
+            ) : null}
           </p>
         </div>
-        {grant === 'edit' ? (
+        {/*
+          No "New record" on a module that shows open cases (migration 9764):
+          a record is in it exactly while it has an open case, so one made
+          here would have nowhere to be. Records arrive by opening a case on
+          them, and the subtitle says so.
+        */}
+        {grant === 'edit' && !mod.showsOpenCases ? (
           <span className="shrink-0">
             <CreateRecordDialog moduleSlug={slug} moduleLabel={mod.label} viewerId={ctx.userId} />
           </span>
@@ -231,7 +253,11 @@ export default async function ModulePage({
            * module the gate in `setMemberships` refuses and named a module
            * the viewer is not meant to know exists — it shipped the whole
            * module table, ids included, in the page payload. */
-          displayModules={visibleDisplayModules.map((m) => ({ id: m.id, slug: m.slug, label: m.label }))}
+          displayModules={moveableDisplayModules
+            // Not a module a person can put a record into — see migration 9764.
+            .filter((m) => !m.showsOpenCases)
+            .map((m) => ({ id: m.id, slug: m.slug, label: m.label }))}
+          canMoveRecords={canMoveRecords}
           hasCustomColumnOrder={Boolean(savedColumnOrder?.length)}
           filters={savedFilters}
           pipelines={pipelineFilterOptions}
@@ -624,6 +650,13 @@ async function RecordDrawer({
     allDisplayModules.map(async (m) => [m, await moduleGrant(ctx, m.id, m.adminOnly)] as const),
   );
   const displayModules = displayModuleGrants.filter(([, g]) => g !== 'hidden').map(([m]) => m);
+  // Which of those this viewer may add records to and remove them from — the
+  // `membership` permission (Addition 2). The chip row draws the rest locked.
+  const membershipAllowedIds = (
+    await Promise.all(displayModules.map(async (m) => [m.id, await membershipAllowed(ctx, m)] as const))
+  )
+    .filter(([, ok]) => ok)
+    .map(([id]) => id);
 
   const headerFields = headerFieldsForModule(config, moduleId);
 
@@ -943,6 +976,7 @@ async function RecordDrawer({
            * exists. */
           allModules={displayModules}
           current={memberships}
+          allowed={membershipAllowedIds}
         />
       </div>
 

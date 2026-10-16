@@ -68,6 +68,7 @@ export function RecordsTable({
   pipelines,
   pipelineStatusFields,
   canEdit,
+  canMoveRecords,
   page,
   pageCount,
   total,
@@ -90,6 +91,11 @@ export function RecordsTable({
    * Labelling only; see `DataTable`'s `filterOnlyFields`. */
   pipelineStatusFields: Field[];
   canEdit: boolean;
+  /** May this viewer add records to / remove them from THIS module — the
+   * `membership` permission (migration 9766), which is what the bar's
+   * Archive / Remove / Restore actions do. Separate from `canEdit`, which
+   * is about the records' values. */
+  canMoveRecords: boolean;
   /** Server paging — `DataTable` is handed one page at a time, so it cannot
    * work these out for itself. See its `serverPaging` prop. */
   page: number;
@@ -617,7 +623,7 @@ export function RecordsTable({
           moduleSlug={moduleSlug}
           onClear={() => setSelected(new Set())}
           onBulkEdit={() => setBulkEditing(true)}
-          onArchive={() => setConfirmBulk(allSelectedArchived ? 'restore' : 'archive')}
+          onArchive={canMoveRecords ? () => setConfirmBulk(allSelectedArchived ? 'restore' : 'archive') : undefined}
           onDelete={moduleSlug === 'records' ? () => setConfirmBulk('delete') : undefined}
           allSelectedArchived={allSelectedArchived}
         />

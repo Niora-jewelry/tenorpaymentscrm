@@ -9,7 +9,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
-import { moduleGrant } from './permissions';
+import { membershipAllowed } from './permissions';
 import { loadConfig } from './config';
 import { moduleWriteCap } from './tabAccess';
 
@@ -64,22 +64,35 @@ export async function setMemberships(
   recordId: string,
   moduleIds: string[],
 ): Promise<void> {
+  /*
+   * A module that shows open cases is not anyone's to set (migration 9764):
+   * the cases trigger owns it. `set_record_memberships` ignores it in both
+   * directions, so it is taken out of the request here as well — otherwise
+   * archiving a record that sits in Tickets because of an open case would be
+   * refused for want of Edit on Tickets, a membership nobody is changing.
+   */
+  const config = await loadConfig();
+  const automatic = new Set(config.modules.filter((m) => m.showsOpenCases).map((m) => m.id));
+  moduleIds = moduleIds.filter((id) => !automatic.has(id));
+
   if (!ctx.isAdmin) {
     const cap = (await moduleWriteCap(ctx, [recordId])).get(recordId) ?? 'hidden';
     if (cap !== 'edit') throw new Error('You do not have edit access to this record.');
 
-    const config = await loadConfig();
-    const before = new Set(await membershipsFor(ctx, recordId));
+    const before = new Set((await membershipsFor(ctx, recordId)).filter((id) => !automatic.has(id)));
     const after = new Set(moduleIds);
     const touched = [...new Set([...before, ...after])].filter(
       (id) => before.has(id) !== after.has(id),
     );
 
+    // Every module ADDED or REMOVED needs the add/remove-records permission
+    // on that module (migration 9766) — its own setting since the client's
+    // Addition 2, falling back to Edit on the module when nothing is set.
     for (const id of touched) {
       const mod = config.modules.find((m) => m.id === id);
       if (!mod) throw new Error('That module no longer exists.');
-      if ((await moduleGrant(ctx, mod.id, mod.adminOnly)) !== 'edit') {
-        throw new Error(`You do not have edit access to ${mod.label}.`);
+      if (!(await membershipAllowed(ctx, mod))) {
+        throw new Error(`You cannot add records to or remove them from ${mod.label}.`);
       }
     }
   }

@@ -36,6 +36,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import {
   GRANT_DEFAULT,
   resolveModuleGrant,
+  resolveMembership,
   resolveTabGrant,
   resolveSubtabGrant,
   resolveFieldGrant,
@@ -282,6 +283,28 @@ export async function moduleGrant(
   const decided = (moduleAdminOnly && !ctx.isAdmin) || ctx.isAdmin;
   const raw = decided ? GRANT_DEFAULT : await rawGrant(ctx, 'module', moduleId);
   return resolveModuleGrant(raw, moduleAdminOnly, ctx.isAdmin);
+}
+
+/**
+ * May this person add records to, and remove them from, a module — the
+ * `membership` scope (migration 9766), resolved exactly as
+ * `module_membership_allowed()` does in SQL: the module must not be Hidden,
+ * and the stored membership row — or, when none is set, the module grant —
+ * must be Edit. Admins always may.
+ *
+ * Read from the same per-request grant set as everything else, through the
+ * key `effective_grants()` emits for a global row (`membership:<module id>`).
+ * `rawGrant` cannot be used here: its miss resolves to `GRANT_DEFAULT`, and
+ * for this scope a miss must fall through to the module grant instead.
+ */
+export async function membershipAllowed(
+  ctx: AuthContext,
+  module: { id: string; adminOnly: boolean },
+): Promise<boolean> {
+  if (ctx.isAdmin) return true;
+  const mg = await moduleGrant(ctx, module.id, module.adminOnly);
+  const raw = (await allGrantsFor(ctx.userId)).get(`membership:${module.id}`) ?? null;
+  return resolveMembership(mg, raw, false) === 'edit';
 }
 
 /**

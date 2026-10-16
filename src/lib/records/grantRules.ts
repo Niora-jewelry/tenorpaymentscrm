@@ -30,7 +30,14 @@
  */
 
 export type Grant = 'hidden' | 'view' | 'edit';
-export type GrantScope = 'module' | 'tab' | 'subtab' | 'field';
+/**
+ * `membership` (migration 9765) is the fifth kind: may this person add records
+ * to, and remove them from, the module named by `scope_id`? It reuses the
+ * three levels — `edit` = Yes, `view` = No, `hidden` never stored — and, unlike
+ * every other scope, an unset row falls through to the MODULE grant rather
+ * than to `GRANT_DEFAULT`. See `resolveMembership`.
+ */
+export type GrantScope = 'module' | 'tab' | 'subtab' | 'field' | 'membership';
 
 /**
  * The three levels as a runtime list, ordered least → most permissive.
@@ -57,7 +64,7 @@ void _everyGrantIsOffered;
  * `verify-grant-matrix.mjs` confirms this list against the live
  * `grant_scope` enum, so the two cannot drift.
  */
-export const GRANT_SCOPES = ['module', 'tab', 'subtab', 'field'] as const satisfies readonly GrantScope[];
+export const GRANT_SCOPES = ['module', 'tab', 'subtab', 'field', 'membership'] as const satisfies readonly GrantScope[];
 
 type MissingScope = Exclude<GrantScope, (typeof GRANT_SCOPES)[number]>;
 const _everyScopeIsOffered: [MissingScope] extends [never] ? true : { missing: MissingScope } = true;
@@ -261,7 +268,29 @@ export function maxGrant(a: Grant, b: Grant): Grant {
 export type ScopeCaps =
   | { kind: 'module'; adminOnly: boolean }
   | { kind: 'tab' }
-  | { kind: 'field'; readOnly: boolean; frozenColumn: boolean };
+  | { kind: 'field'; readOnly: boolean; frozenColumn: boolean }
+  /** The add/remove-records setting for one module. Resolved by
+   *  `resolveMembership` against that module's own effective grant. */
+  | { kind: 'membership'; adminOnly: boolean };
+
+/**
+ * May a person add records to, and remove them from, a module — the
+ * `membership` scope, resolved the way `module_membership_allowed()` does it
+ * in SQL (migration 9766):
+ *
+ *     allowed = module ≠ Hidden  and  (membership row ?? module) = Edit
+ *
+ * `raw` is the stored membership level, or null when no row exists. The
+ * fallthrough is the MODULE grant, not `GRANT_DEFAULT`, so until an admin
+ * sets the row this means exactly what it always did: Edit on the module.
+ * Returned as a Grant so the matrix can draw it with the same cells —
+ * `edit` reads "Yes", anything else "No".
+ */
+export function resolveMembership(moduleEffective: Grant, raw: Grant | null, isAdmin: boolean): Grant {
+  if (isAdmin) return 'edit';
+  if (moduleEffective === 'hidden') return 'hidden';
+  return (raw ?? moduleEffective) === 'edit' ? 'edit' : 'view';
+}
 
 export type ResolvedScope = {
   /** `coalesce(user, template, 'edit')` — exactly what `effective_grant()`
@@ -310,6 +339,22 @@ export function resolveScope(
     return { resolved, effective: resolveTabGrant(resolved, isAdmin), lock: isAdmin ? adminNote : null };
   }
 
+  /*
+   * A membership row cannot be resolved on its own: its answer depends on the
+   * module's effective grant, which the matrix folds in afterwards with
+   * `resolveMembership` (the same way it folds the module ceiling into tabs).
+   * What is returned here is the stored value, so `resolved` stays the honest
+   * report of the row and the matrix overwrites `effective`.
+   */
+  if (caps.kind === 'membership') {
+    const effective = isAdmin ? 'edit' : userGrant ?? templateGrant ?? 'edit';
+    if (isAdmin) return { resolved, effective, lock: adminNote };
+    if (caps.adminOnly) {
+      return { resolved, effective: 'hidden', lock: 'Admin-only module — no non-admin can add or remove records here.' };
+    }
+    return { resolved, effective, lock: null };
+  }
+
   const effective = applyFieldFloors(resolved, caps, isAdmin);
   if (caps.readOnly) {
     return { resolved, effective, lock: 'Read-only field — capped at View for everyone, admins included.' };
@@ -350,6 +395,14 @@ export function resolveScope(
  * Returns the reason, or null when the write is allowed.
  */
 export function grantWriteRefusal(caps: ScopeCaps, level: Grant): string | null {
+  // The add/remove setting has two answers, Yes (edit) and No (view). Hidden
+  // would store a level the resolver treats as No anyway — a no-op the screen
+  // could not distinguish, which is the lie this function exists to refuse.
+  if (caps.kind === 'membership') {
+    return level === 'hidden'
+      ? 'Adding and removing records is either allowed (Yes) or not (No). To hide the module itself, set its module row to Hidden.'
+      : null;
+  }
   if (caps.kind !== 'field') return null;
   if (caps.readOnly && level === 'edit') {
     return 'This field is read-only — it is capped at View for everyone, admins included, so an Edit grant on it would never take effect. Choose View or Hidden.';

@@ -29,6 +29,7 @@ import {
   inviteMatrixAction,
   setInviteGrantAction,
   clearInviteGrantAction,
+  setInviteGrantsAction,
   sendInviteEmailAction,
 } from './actions';
 import type { GrantMatrix as GrantMatrixData } from '@/lib/records/adminGrants';
@@ -124,6 +125,16 @@ export function InvitePermissionsStep({
         await clearInviteGrantAction(inviteId, scopeKind, scopeId, moduleId),
         'Saved \u2014 back to the template value.',
       ),
+    setMany: async (items) => {
+      const result = await setInviteGrantsAction(inviteId, items, moduleId);
+      setSaved(
+        result.ok
+          ? `Saved \u2014 ${items.length} row${items.length === 1 ? '' : 's'} set.`
+          : `${result.failed.length} of ${items.length} could not be saved.`,
+      );
+      if (result.failed.length < items.length) reload();
+      return result;
+    },
   };
 
   /*

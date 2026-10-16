@@ -20,7 +20,7 @@ import { authorize } from '@/lib/records/permissions';
 import { templateGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../GrantMatrix';
-import { setTemplateGrantAction, clearTemplateGrantAction } from '../actions';
+import { setTemplateGrantAction, clearTemplateGrantAction, setTemplateGrantsAction } from '../actions';
 import { ModuleScopePicker } from '../../ModuleScopePicker';
 import { loadConfig } from '@/lib/records/config';
 
@@ -58,6 +58,10 @@ export default async function TemplateGrantsPage({
     clear: async (scopeKind, scopeId) => {
       'use server';
       return clearTemplateGrantAction(templateId, scopeKind, scopeId, activeModuleId);
+    },
+    setMany: async (items) => {
+      'use server';
+      return setTemplateGrantsAction(templateId, items, activeModuleId);
     },
   };
 

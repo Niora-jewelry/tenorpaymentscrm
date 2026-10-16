@@ -81,6 +81,16 @@ export const ENFORCEMENT_NOTE: Record<GrantScope, { level: Enforcement; note: st
    * history (`activity.ts:65`), and refused on write (`records.ts:272,315`,
    * `repeatGroups.ts:40`). Absent from the query, not blanked in the UI.
    */
+  /**
+   * The add/remove-records setting (migration 9766). Checked in
+   * `set_record_memberships` for every module being added or removed, in RLS
+   * on `record_modules`, and in `setMemberships` in the app; the drawer's
+   * chip for a module the person may not move records into is drawn locked.
+   */
+  membership: {
+    level: 'enforced',
+    note: 'Fully enforced. Every chip click, Archive and bulk move goes through one writer that checks this per module; a chip the person may not use is shown locked.',
+  },
   field: {
     level: 'enforced',
     note: 'Fully enforced. A hidden field never reaches the page — its key is stripped server-side before the row leaves the data layer, in dashboards, drawers, history and writes. Not blanked in the UI, and not readable in dev tools.',

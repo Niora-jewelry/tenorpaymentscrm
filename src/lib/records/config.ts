@@ -41,6 +41,13 @@ export type Module = {
   position: number;
   adminOnly: boolean;
   frozen: boolean;
+  /**
+   * A record is a member of this module exactly while it has an open case
+   * (migration 9764). Membership is written by the cases trigger and nothing
+   * else: the drawer shows the chip as an indicator, the module offers no
+   * "New record", and the bulk restore picker leaves it out.
+   */
+  showsOpenCases: boolean;
 };
 
 export type Tab = {
@@ -171,6 +178,7 @@ const loadConfigCached = unstable_cache(
       modules: modules.data!.map((m) => ({
         id: m.id, slug: m.slug, label: m.label, kind: m.kind,
         position: m.position, adminOnly: m.admin_only, frozen: m.frozen,
+        showsOpenCases: m.shows_open_cases,
       })),
       tabs: tabs.data!.map((t) => ({
         id: t.id, key: t.key, label: t.label, kind: t.kind,

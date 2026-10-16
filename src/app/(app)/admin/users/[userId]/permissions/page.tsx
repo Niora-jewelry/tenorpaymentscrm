@@ -29,7 +29,7 @@ import { userGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
 import { PlaceholderNotice } from '../../../PlaceholderNotice';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../../GrantMatrix';
-import { setUserGrantAction, clearUserGrantAction } from '../../actions';
+import { setUserGrantAction, clearUserGrantAction, setUserGrantsAction } from '../../actions';
 import { ModuleScopePicker } from '../../../ModuleScopePicker';
 import { loadConfig } from '@/lib/records/config';
 
@@ -71,6 +71,10 @@ export default async function UserPermissionsPage({
     clear: async (scopeKind, scopeId) => {
       'use server';
       return clearUserGrantAction(userId, scopeKind, scopeId, activeModuleId);
+    },
+    setMany: async (items) => {
+      'use server';
+      return setUserGrantsAction(userId, items, activeModuleId);
     },
   };
 

@@ -1726,7 +1726,10 @@ export function BulkBar({
   moduleSlug: string;
   onClear: () => void;
   onBulkEdit: () => void;
-  onArchive: () => void;
+  /** Absent when the viewer may not add records to / remove them from this
+   *  module (the `membership` permission): the action is not offered, rather
+   *  than offered and refused. */
+  onArchive?: () => void;
   onDelete?: () => void;
   allSelectedArchived?: boolean;
 }) {
@@ -1740,19 +1743,21 @@ export function BulkBar({
     >
       <BarAction icon="pencil" label="Edit" trailing="chevron-down" onClick={onBulkEdit} />
       {/* "Delete" appears in exactly one module. Everywhere else it is Archive. */}
-      <BarAction
-        icon={showRestore ? 'rotate-ccw' : 'archive'}
-        label={showRestore ? 'Restore to module' : isStore ? 'Archive' : 'Remove'}
-        trailing={showRestore ? 'chevron-down' : undefined}
-        title={
-          showRestore
-            ? 'Add these archived records back into a display module.'
-            : isStore
-              ? 'Clear every display membership. The records stay in the Records List.'
-              : 'Remove from this module only. Clearing a record’s last membership archives it.'
-        }
-        onClick={onArchive}
-      />
+      {onArchive ? (
+        <BarAction
+          icon={showRestore ? 'rotate-ccw' : 'archive'}
+          label={showRestore ? 'Restore to module' : isStore ? 'Archive' : 'Remove'}
+          trailing={showRestore ? 'chevron-down' : undefined}
+          title={
+            showRestore
+              ? 'Add these archived records back into a display module.'
+              : isStore
+                ? 'Clear every display membership. The records stay in the Records List.'
+                : 'Remove from this module only. Clearing a record’s last membership archives it.'
+          }
+          onClick={onArchive}
+        />
+      ) : null}
       {isStore && onDelete ? (
         <BarAction
           icon="trash"

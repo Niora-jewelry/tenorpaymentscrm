@@ -32,6 +32,9 @@ import {
 import {
   clearUserGrant,
   setUserGrant,
+  setUserGrants,
+  setInviteGrants,
+  type GrantBatchResult,
   clearInviteGrant,
   setInviteGrant,
   inviteGrantMatrix,
@@ -48,6 +51,8 @@ import {
   userIdSchema,
   assignTemplateSchema,
   setUserGrantSchema,
+  setUserGrantsSchema,
+  setInviteGrantsSchema,
   clearUserGrantSchema,
   setInviteGrantSchema,
   clearInviteGrantSchema,
@@ -174,6 +179,28 @@ export async function setUserGrantAction(
 
   revalidateUserGrants(parsed.data.userId);
   return { ok: true };
+}
+
+/**
+ * Several of one person's overrides at once — the client's Addition 4. Same
+ * writer per item as a single click; the result names every item that did
+ * not land, so the matrix can roll back exactly those rows.
+ */
+export async function setUserGrantsAction(
+  userId: string,
+  items: { scopeKind: GrantScope; scopeId: string; level: Grant | null }[],
+  moduleId?: string | null,
+): Promise<GrantBatchResult> {
+  const ctx = await authorize();
+
+  const parsed = setUserGrantsSchema.safeParse({ userId, moduleId, items });
+  if (!parsed.success) {
+    return { ok: false, failed: items.map((i) => ({ ...i, message: firstIssueMessage(parsed.error) })) };
+  }
+
+  const result = await setUserGrants(ctx, parsed.data);
+  revalidateUserGrants(parsed.data.userId);
+  return result;
 }
 
 /** Back to the template's value — which is not Hidden, and not Edit either,
@@ -445,6 +472,24 @@ export async function setInviteGrantAction(
   revalidatePath(`/admin/users/invites/${parsed.data.inviteId}/permissions`);
   revalidatePath('/admin/users');
   return { ok: true };
+}
+
+export async function setInviteGrantsAction(
+  inviteId: string,
+  items: { scopeKind: GrantScope; scopeId: string; level: Grant | null }[],
+  moduleId?: string | null,
+): Promise<GrantBatchResult> {
+  const ctx = await authorize();
+
+  const parsed = setInviteGrantsSchema.safeParse({ inviteId, moduleId, items });
+  if (!parsed.success) {
+    return { ok: false, failed: items.map((i) => ({ ...i, message: firstIssueMessage(parsed.error) })) };
+  }
+
+  const result = await setInviteGrants(ctx, parsed.data);
+  revalidatePath(`/admin/users/invites/${parsed.data.inviteId}/permissions`);
+  revalidatePath('/admin/users');
+  return result;
 }
 
 export async function clearInviteGrantAction(

@@ -30,7 +30,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { OutlineChip } from '@/proto/ui/kit';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../../../GrantMatrix';
 import { ModuleScopePicker } from '../../../../ModuleScopePicker';
-import { setInviteGrantAction, clearInviteGrantAction } from '../../../actions';
+import { setInviteGrantAction, clearInviteGrantAction, setInviteGrantsAction } from '../../../actions';
 
 export default async function InvitePermissionsPage({
   params,
@@ -85,6 +85,10 @@ export default async function InvitePermissionsPage({
     clear: async (scopeKind, scopeId) => {
       'use server';
       return clearInviteGrantAction(inviteId, scopeKind, scopeId, activeModuleId);
+    },
+    setMany: async (items) => {
+      'use server';
+      return setInviteGrantsAction(inviteId, items, activeModuleId);
     },
   };
 

@@ -84,6 +84,10 @@ import type {
   ClearTemplateGrantInput,
   ClearUserGrantInput,
   SetTemplateGrantInput,
+  SetTemplateGrantsInput,
+  SetUserGrantsInput,
+  SetInviteGrantsInput,
+  GrantBatchItem,
   SetUserGrantInput,
 } from './adminSchemas';
 
@@ -213,6 +217,14 @@ export type GrantMatrix = {
    * template, which describes a role rather than a person. */
   subjectIsAdmin: boolean;
   modules: ScopeRow[];
+  /**
+   * One `membership` row per display module the subject could move records
+   * into or out of — "may add records to / remove them from this module"
+   * (migration 9766). Keyed to its module by `id`, which IS the module id.
+   * Admin-only modules and modules that fill themselves from open cases
+   * (migration 9764) are left out: nobody chooses membership there.
+   */
+  memberships: ScopeRow[];
   tabs: TabGroup[];
   counts: {
     scopes: number;
@@ -349,6 +361,14 @@ async function buildMatrix(
     .sort((a, b) => a.position - b.position)
     .map((m) => row('module', m.id, m.label, m.slug, { kind: 'module', adminOnly: m.adminOnly }));
 
+  /* ---- add / remove records, per module ---- */
+  const memberships = [...config.modules]
+    .sort((a, b) => a.position - b.position)
+    .filter((m) => m.kind === 'display' && !m.adminOnly && !m.showsOpenCases)
+    .map((m) =>
+      row('membership', m.id, 'Add / remove records', m.slug, { kind: 'membership', adminOnly: m.adminOnly }),
+    );
+
   /* ---- tabs, with their fields ---- */
   const subtabsByTab = new Map<string, typeof config.subtabs>();
   for (const s of config.subtabs) {
@@ -434,6 +454,7 @@ async function buildMatrix(
     subjectIsAdmin: isAdmin,
     moduleScopeId,
     modules,
+    memberships,
     tabs,
     counts: {
       scopes: seen.size,
@@ -605,6 +626,13 @@ async function refuseCappedGrant(
   scopeId: string,
   level: Grant,
 ): Promise<GrantResult | null> {
+  if (scopeKind === 'membership') {
+    const config = await loadConfig();
+    const mod = config.modules.find((m) => m.id === scopeId);
+    if (!mod) return null;
+    const message = grantWriteRefusal({ kind: 'membership', adminOnly: mod.adminOnly }, level);
+    return message ? { ok: false, message } : null;
+  }
   if (scopeKind !== 'field') return null;
 
   const config = await loadConfig();
@@ -658,8 +686,9 @@ async function upsertGrant(
         scope_kind: scopeKind,
         scope_id: scopeId,
         // A module-scope grant already names its module in scope_id; carrying
-        // one here too is refused by a CHECK (migration 77).
-        module_id: scopeKind === 'module' ? null : moduleId,
+        // one here too is refused by a CHECK (migration 77). A membership
+        // grant is shaped the same way (migration 9766).
+        module_id: scopeKind === 'module' || scopeKind === 'membership' ? null : moduleId,
         grant_level: level,
       },
       // The unique index, spelled out: PostgREST needs the conflict target to
@@ -787,6 +816,62 @@ export async function clearUserGrant(ctx: AuthContext, input: ClearUserGrantInpu
     input.scopeId,
     input.moduleId ?? null,
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Writes — several cells at once (the client's Addition 4, 16 Oct 2026)       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What a batch write hands back: every item that did NOT land, with the same
+ * sentence the single-cell write would have put beside its row. An empty list
+ * is total success. The matrix rolls back exactly those rows and leaves the
+ * rest as drawn.
+ */
+export type GrantBatchResult = {
+  ok: boolean;
+  failed: { scopeKind: GrantScope; scopeId: string; message: string }[];
+};
+
+/**
+ * One item at a time through the SAME two writers the single-cell path uses,
+ * so a batch can never store what a click could not — the cap refusals, the
+ * module-id shaping and the cache invalidation all happen per item exactly as
+ * before. The gain is one round trip from the browser instead of one per row;
+ * a hundred rows is a hundred small statements inside one request, which is
+ * fine, and a per-row result is the honest shape when some may be capped.
+ */
+async function writeGrantBatch(
+  table: 'template_grants' | 'user_grants' | 'invite_grants',
+  column: 'template_id' | 'user_id' | 'invite_id',
+  ownerId: string,
+  moduleId: string | null,
+  items: GrantBatchItem[],
+): Promise<GrantBatchResult> {
+  const failed: GrantBatchResult['failed'] = [];
+  for (const it of items) {
+    const result =
+      it.level === null
+        ? await deleteGrant(table, column, ownerId, it.scopeKind, it.scopeId, moduleId)
+        : await upsertGrant(table, column, ownerId, it.scopeKind, it.scopeId, it.level, moduleId);
+    if (!result.ok) failed.push({ scopeKind: it.scopeKind, scopeId: it.scopeId, message: result.message });
+  }
+  return { ok: failed.length === 0, failed };
+}
+
+export async function setTemplateGrants(ctx: AuthContext, input: SetTemplateGrantsInput): Promise<GrantBatchResult> {
+  assertAdmin(ctx);
+  return writeGrantBatch('template_grants', 'template_id', input.templateId, input.moduleId ?? null, input.items);
+}
+
+export async function setUserGrants(ctx: AuthContext, input: SetUserGrantsInput): Promise<GrantBatchResult> {
+  assertAdmin(ctx);
+  return writeGrantBatch('user_grants', 'user_id', input.userId, input.moduleId ?? null, input.items);
+}
+
+export async function setInviteGrants(ctx: AuthContext, input: SetInviteGrantsInput): Promise<GrantBatchResult> {
+  assertAdmin(ctx);
+  return writeGrantBatch('invite_grants', 'invite_id', input.inviteId, input.moduleId ?? null, input.items);
 }
 
 

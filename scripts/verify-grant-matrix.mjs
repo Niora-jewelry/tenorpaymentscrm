@@ -56,6 +56,8 @@ const ALL_SCOPES = `
   select 'subtab'::grant_scope, id from subtabs
   union all
   select 'field'::grant_scope, id from fields where archived_at is null
+  union all
+  select 'membership'::grant_scope, id from modules
 `;
 
 async function main() {
@@ -192,9 +194,12 @@ async function main() {
       `select unnest(enum_range(null::grant_scope))::text as v order by 1`,
     );
     const scopes = enumVals.map((r) => r.v).sort().join(',');
+    // `membership` joined in migration 9765 — the add/remove-records setting
+    // the client asked for (Addition 2, 16 Oct 2026). It renders as the row
+    // under each module in GrantMatrix.tsx and resolves via resolveMembership.
     ok(
-      'grant_scope is exactly (field, module, subtab, tab) — every one of which the matrix renders',
-      scopes === 'field,module,subtab,tab',
+      'grant_scope is exactly (field, membership, module, subtab, tab) — every one of which the matrix renders',
+      scopes === 'field,membership,module,subtab,tab',
       `${scopes} — a new scope needs a row in GrantMatrix.tsx and a cap in grantRules.ts`,
     );
 

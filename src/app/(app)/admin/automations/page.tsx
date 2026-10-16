@@ -33,10 +33,13 @@ const CANDIDATES: { rule: string; note: string }[] = [
     rule: 'Add a record to Deals when its status changes',
     note: 'Which status, on which module, and whether it also leaves the module it came from — none of it specified.',
   },
-  {
-    rule: 'Add a record to Tickets when a case is opened',
-    note: 'The Cases tab already enforces its own rules at the database level; whether opening a case should move the record anywhere is a separate, unanswered question.',
-  },
+  /*
+   * "Add a record to Tickets when a case is opened" used to sit here as an
+   * unanswered question. The client answered it on 16 Oct 2026: a record is
+   * in Tickets exactly while it has an open case. It is now a rule in the
+   * database (migration 9764, `modules.shows_open_cases`), not an automation
+   * anyone configures, so it no longer belongs on this list.
+   */
 ];
 
 export default async function AdminAutomationsPage() {

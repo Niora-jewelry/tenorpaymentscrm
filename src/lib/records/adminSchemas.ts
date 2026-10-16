@@ -576,10 +576,47 @@ export const setInviteGrantSchema = z.object({
 
 export const clearInviteGrantSchema = z.object({ inviteId: uuid, ...grantScopeShape });
 
+/**
+ * Several cells at once — the client's Addition 4 (16 Oct 2026): "bulk select
+ * permissions … select multiple at once and choose the permission". A `null`
+ * level is "Not set", the same clear the single-cell action performs.
+ *
+ * The module context is bound on the server like the single-cell actions'
+ * (`moduleId` is the page's, never the client's); the array carries only
+ * what the admin ticked. 500 is more than any matrix holds, and a bound at
+ * all keeps one request from being asked to write without limit.
+ */
+const grantBatchItem = z.object({
+  scopeKind: grantScopeSchema,
+  scopeId: uuid,
+  level: grantLevelSchema.nullable(),
+});
+export const grantBatchItemsSchema = z.array(grantBatchItem).min(1).max(500);
+
+export const setTemplateGrantsSchema = z.object({
+  templateId: uuid,
+  moduleId: grantScopeShape.moduleId,
+  items: grantBatchItemsSchema,
+});
+export const setUserGrantsSchema = z.object({
+  userId: uuid,
+  moduleId: grantScopeShape.moduleId,
+  items: grantBatchItemsSchema,
+});
+export const setInviteGrantsSchema = z.object({
+  inviteId: uuid,
+  moduleId: grantScopeShape.moduleId,
+  items: grantBatchItemsSchema,
+});
+export type GrantBatchItem = z.infer<typeof grantBatchItem>;
+
 export type SetTemplateGrantInput = z.infer<typeof setTemplateGrantSchema>;
 export type ClearTemplateGrantInput = z.infer<typeof clearTemplateGrantSchema>;
 export type SetUserGrantInput = z.infer<typeof setUserGrantSchema>;
 export type ClearUserGrantInput = z.infer<typeof clearUserGrantSchema>;
+export type SetTemplateGrantsInput = z.infer<typeof setTemplateGrantsSchema>;
+export type SetUserGrantsInput = z.infer<typeof setUserGrantsSchema>;
+export type SetInviteGrantsInput = z.infer<typeof setInviteGrantsSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Users — retro-fitted in Phase 6c                                           */

@@ -16,11 +16,19 @@ export function MembershipsForm({
   recordId,
   allModules,
   current,
+  allowed,
 }: {
   moduleSlug: string;
   recordId: string;
   allModules: Module[];
   current: string[];
+  /**
+   * Modules this viewer may add records to and remove them from — the
+   * `membership` permission (migration 9766), resolved on the server. A chip
+   * outside this list is drawn but cannot be clicked, with the reason on
+   * hover, so the row still shows where the record is.
+   */
+  allowed: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -50,6 +58,48 @@ export function MembershipsForm({
       {error ? <span role="alert" className="text-[11.5px] text-danger">{error}</span> : null}
       {allModules.map((m) => {
         const on = current.includes(m.id);
+        /*
+         * A module that shows open cases is an indicator, not a switch: the
+         * record is in it exactly while a case is open (migration 9764), and
+         * the server ignores any request to change that. Drawn in the same
+         * on/off colours so the row still reads as one list, with the reason
+         * on hover.
+         */
+        if (m.showsOpenCases) {
+          return (
+            <span
+              key={m.id}
+              title={
+                on
+                  ? `In ${m.label} automatically — a case is open on this record.`
+                  : `${m.label} is automatic — the record appears there while it has an open case.`
+              }
+              className={`inline-flex cursor-default items-center gap-1 rounded-full border border-dashed px-2.5 py-[3px] text-[11.5px] font-semibold ${
+                on ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-line bg-white text-ink-300'
+              }`}
+            >
+              {on ? <Icon name="check" size={11} strokeWidth={2.5} /> : null}
+              {m.label}
+            </span>
+          );
+        }
+        const canToggle = allowed.includes(m.id);
+        if (!canToggle) {
+          return (
+            <span
+              key={m.id}
+              aria-disabled
+              title={`You do not have permission to add records to or remove them from ${m.label}.`}
+              className={`inline-flex cursor-not-allowed items-center gap-1 rounded-full border px-2.5 py-[3px] text-[11.5px] font-semibold opacity-70 ${
+                on ? 'border-brand-100 bg-brand-50 text-brand-700' : 'border-line bg-white text-ink-400'
+              }`}
+            >
+              {on ? <Icon name="check" size={11} strokeWidth={2.5} /> : null}
+              {m.label}
+              <Icon name="lock" size={10} className="opacity-70" />
+            </span>
+          );
+        }
         return (
           <button
             key={m.id}

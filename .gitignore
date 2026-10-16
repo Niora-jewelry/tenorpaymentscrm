@@ -51,5 +51,10 @@ next-env.d.ts
 docs/
 HANDOVER/
 
+# The residuals handoff ships with the code: the next engineer needs it in git,
+# and the spec it cites by section number lives nowhere else in this repo.
+!handoff/
+!handoff/**
+
 # Scratch
 .tmp-*

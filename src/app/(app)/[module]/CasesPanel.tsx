@@ -10,10 +10,18 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useActionState } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, CaseStatePill, EmptyState, SectionLabel, SpecNote } from '@/proto/ui/kit';
+import { Button, CaseStatePill, Dialog, EmptyState, IconButton, SectionLabel, SpecNote } from '@/proto/ui/kit';
 import { relative } from '@/proto/ui/tokens';
 import { UserAvatar } from './UserAvatar';
-import { createCaseAction, addCaseReplyAction, setCaseStateAction, setCaseSolutionAction, setCaseHandlingNoteAction, type ActionState } from './actions';
+import {
+  createCaseAction,
+  addCaseReplyAction,
+  setCaseStateAction,
+  setCaseSolutionAction,
+  setCaseHandlingNoteAction,
+  deleteCaseAction,
+  type ActionState,
+} from './actions';
 import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import { CaseAttachments } from './CaseAttachments';
@@ -268,26 +276,159 @@ function CaseCard({
     });
   };
 
+  /*
+   * ── CLOSE AND DELETE FROM THE HEADER ROW ─────────────────────────────────
+   * Asked for by the client (16 Oct 2026): "add delete icon and also closed
+   * case or complete option" on the case itself. Both used to need the card
+   * expanded — Close sat at the bottom of the open card, Delete did not exist
+   * in the app at all (`delete_case` has been in the database since migration
+   * 53 with nothing calling it).
+   *
+   * Closing needs a Solution — a database rule, `closed_requires_solution` —
+   * so a case without one does not simply refuse: the header button opens a
+   * small "Complete" box that takes the solution and closes in one go. A case
+   * that already has one closes straight away. Reopen is the same button.
+   *
+   * Delete is admin-only (the function refuses anyone else) and soft: the
+   * thread and its replies go to the Recycle Bin, where `restore_case` brings
+   * them back. Case NUMBERS are never reused, so #10068 stays #10068.
+   */
+  const [completing, setCompleting] = useState(false);
+  const [completeDraft, setCompleteDraft] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const complete = () => {
+    if (c.state !== 'open') return toggleState();
+    if (c.solution) return toggleState();
+    setCompleteDraft('');
+    setCompleting(true);
+  };
+
+  const confirmComplete = () => {
+    const solution = completeDraft.trim();
+    if (!solution) return;
+    startTransition(async () => {
+      const saved = await setCaseSolutionAction(moduleSlug, c.id, solution);
+      if (!saved.ok) {
+        setError(saved.message ?? 'Could not save the solution.');
+        setCompleting(false);
+        return;
+      }
+      const closed = await setCaseStateAction(moduleSlug, c.id, true);
+      if (!closed.ok) setError(closed.message ?? 'Could not close the case.');
+      setCompleting(false);
+      router.refresh();
+    });
+  };
+
+  const runDelete = () => {
+    startTransition(async () => {
+      const result = await deleteCaseAction(moduleSlug, c.id);
+      setConfirmDelete(false);
+      if (!result.ok) setError(result.message ?? 'Could not delete that case.');
+      else router.refresh();
+    });
+  };
+
   return (
     <li className="overflow-hidden rounded-xl border border-line bg-white">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full flex-wrap items-center gap-2 border-b border-line-soft bg-canvas px-4 py-2.5 text-left transition-colors hover:bg-[#eef3f7]"
-      >
-        <Icon name="chevron-down" size={13} className={`text-ink-400 transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} />
-        <span className="font-mono text-[12.5px] font-semibold text-ink-500 tabular">#{c.number}</span>
-        <span className="text-[13.5px] font-semibold text-ink-900">{c.title}</span>
-        <span className="ml-auto flex items-center gap-2">
+      {/* A row, not one big button: the title half toggles the card, the
+          action half holds real controls. Nesting buttons is invalid HTML and
+          made every control a toggle as well. */}
+      <div className="flex w-full flex-wrap items-center gap-2 border-b border-line-soft bg-canvas px-4 py-2.5">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left transition-colors hover:text-brand-700"
+        >
+          <Icon name="chevron-down" size={13} className={`shrink-0 text-ink-400 transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} />
+          <span className="font-mono text-[12.5px] font-semibold text-ink-500 tabular">#{c.number}</span>
+          <span className="truncate text-[13.5px] font-semibold text-ink-900">{c.title}</span>
           {replies.length ? (
-            <span className="inline-flex items-center gap-1 text-[11.5px] text-ink-400">
+            <span className="inline-flex shrink-0 items-center gap-1 text-[11.5px] text-ink-400">
               <Icon name="message-square" size={11} />
               {replies.length}
             </span>
           ) : null}
+        </button>
+        <span className="ml-auto flex shrink-0 items-center gap-2">
           <CaseStatePill state={c.state} />
+          {editable ? (
+            <Button
+              size="sm"
+              icon={c.state === 'open' ? 'check' : 'rotate-ccw'}
+              variant={c.state === 'open' ? 'secondary' : 'ghost'}
+              disabled={pending || !isManager}
+              title={
+                !isManager
+                  ? 'Only an assigned ticket manager can change the state'
+                  : c.state === 'open'
+                    ? c.solution
+                      ? 'Close this case'
+                      : 'Write the solution and close this case'
+                    : 'Reopen this case'
+              }
+              onClick={complete}
+            >
+              {c.state === 'open' ? 'Close case' : 'Reopen'}
+            </Button>
+          ) : null}
+          {isAdmin && editable ? (
+            <IconButton
+              icon="trash"
+              tone="danger"
+              size={28}
+              title={`Delete case #${c.number} — moves it to the Recycle Bin`}
+              onClick={() => setConfirmDelete(true)}
+            />
+          ) : null}
         </span>
-      </button>
+      </div>
+
+      {completing ? (
+        <Dialog
+          title={`Close case #${c.number}`}
+          confirmLabel={pending ? 'Closing…' : 'Save solution and close'}
+          confirmIcon="check"
+          onConfirm={confirmComplete}
+          onClose={() => setCompleting(false)}
+        >
+          <p className="text-[13px] text-ink-600">
+            A case closes with its solution on record. Write what resolved it; the case is then marked
+            Closed and leaves Tickets.
+          </p>
+          <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Solution</label>
+          <textarea
+            autoFocus
+            value={completeDraft}
+            onChange={(e) => setCompleteDraft(e.target.value)}
+            rows={4}
+            placeholder="What resolved this case?"
+            className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
+          />
+          {!completeDraft.trim() ? (
+            <p className="mt-1 text-[11.5px] text-ink-400">The solution is required to close a case.</p>
+          ) : null}
+        </Dialog>
+      ) : null}
+
+      {confirmDelete ? (
+        <Dialog
+          title={`Delete case #${c.number}?`}
+          tone="danger"
+          confirmLabel={pending ? 'Deleting…' : 'Delete case'}
+          confirmIcon="trash"
+          onConfirm={runDelete}
+          onClose={() => setConfirmDelete(false)}
+        >
+          <p className="text-[13px] text-ink-600">
+            <strong className="font-semibold text-ink-900">{c.title}</strong> and its{' '}
+            {replies.length === 1 ? 'reply' : `${replies.length} replies`} move to the Recycle Bin, where an admin
+            can restore them. Its number is never reused.
+          </p>
+        </Dialog>
+      ) : null}
 
       {expanded ? (
         <>

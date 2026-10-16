@@ -185,6 +185,21 @@ export async function setCaseSolution(ctx: AuthContext, caseId: string, solution
   if (error) throw error;
 }
 
+/**
+ * Admin-only, soft: the thread and its live replies go to the Recycle Bin
+ * (`delete_case`, migration 53 — defined there and never called from the app
+ * until the client asked for a delete control on the case, 16 Oct 2026).
+ * `restore_case` in `recycleBin.ts` is the way back. The admin rule is
+ * enforced inside the function; this check only gives the refusal a sentence
+ * before the round trip.
+ */
+export async function deleteCase(ctx: AuthContext, caseId: string): Promise<void> {
+  if (!ctx.isAdmin) throw new Error('Only an admin can delete a case.');
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('delete_case', { p_case_id: caseId });
+  if (error) throw error;
+}
+
 /** Admin-only. "Immutable to non-admins including authors; admins may edit
  * under full audit with an 'edited by' marker and prior text logged." */
 export async function adminEditCase(

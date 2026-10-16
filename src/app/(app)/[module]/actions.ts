@@ -24,7 +24,7 @@ import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { addEntry, updateEntry, deleteEntry } from '@/lib/records/customEntries';
-import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote } from '@/lib/records/cases';
+import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
@@ -395,6 +395,18 @@ export async function setCaseStateAction(moduleSlug: string, caseId: string, clo
     await setCaseState(ctx, caseId, close);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Could not change state.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+/** Admin-only; the case and its replies move to the Recycle Bin. */
+export async function deleteCaseAction(moduleSlug: string, caseId: string): Promise<ActionState> {
+  const ctx = await authorize();
+  try {
+    await deleteCase(ctx, caseId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not delete that case.' };
   }
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };

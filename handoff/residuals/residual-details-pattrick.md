@@ -360,7 +360,3 @@ Verdicts are computed on read (`residual_verdicts`), never stored. A month's inp
 ## 11. Questions to put to Izzy, in order
 
 1. The partner-split formula for Tab 4 (per MID? per partner default? before or after Additional Income? what about vendor costs?). Nothing can be built until this is written down.
-5. The real changeover date for the monthly fee (the registry boundary is a placeholder).
-6. Whether non-admin staff should ever see a merchant's residual figures, and whether Residuals should be a sidebar module rather than an admin page.
-
-Everything else is answered in `spec/` or the migration headers — check there before asking; four of five earlier "questions for Izzy" turned out to be already answered in those files.

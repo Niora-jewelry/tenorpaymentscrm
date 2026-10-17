@@ -50,10 +50,21 @@ describe('Email module source guards', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('exposes only the cron and Graph webhook paths without a session', () => {
+    const proxy = readFileSync(path.join(ROOT, 'src/proxy.ts'), 'utf8');
+    const listed = [...proxy.matchAll(/'(\/api\/mail[^']*)'/g)].map((m) => m[1]);
+    const allowed = new Set(['/api/mail/tick', '/api/mail/graph/notifications', '/api/mail/graph/lifecycle']);
+    expect(listed).toContain('/api/mail/tick');
+    expect(listed.filter((p) => !allowed.has(p))).toEqual([]);
+    // Never a prefix: that would also open the OAuth, attachment and image routes.
+    expect(proxy).not.toMatch(/startsWith\(\s*'\/api\/mail/);
+  });
+
   it('sandboxes every srcdoc iframe, never with allow-scripts', () => {
     for (const f of all) {
       const src = readFileSync(f, 'utf8');
-      if (!/\bsrcDoc\b|\bsrcdoc\b/.test(src)) continue;
+      // The attribute, not the word: comments may mention srcdoc.
+      if (!/\b(srcDoc|srcdoc)\s*=/.test(src)) continue;
       expect(src, `${rel(f)} renders srcdoc without a sandbox`).toMatch(/sandbox=/);
       expect(src, `${rel(f)} allows scripts in the email frame`).not.toMatch(/allow-scripts/);
     }

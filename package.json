@@ -26,6 +26,7 @@
         "verify:member-permissions": "node --env-file=.env scripts/verify-member-permissions.mjs",
         "verify:case-controls": "node --env-file=.env scripts/verify-case-controls.mjs",
         "verify:mail-connect": "node --env-file=.env scripts/verify-mail-connect.mjs",
+        "verify:mail-sync": "node --env-file=.env scripts/verify-mail-sync.mjs",
         "mail:mock": "node scripts/mail-mock-graph.mjs",
         "test:integration": "vitest run --dir src --testTimeout 60000 flow.integration",
         "invite": "node scripts/invite.mjs",

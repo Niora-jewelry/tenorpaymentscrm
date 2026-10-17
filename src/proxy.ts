@@ -76,6 +76,15 @@ const PUBLIC_API_PATHS = new Set([
   '/api/auth/signup',
 
   /*
+   * ── Email sync heartbeat ─────────────────────────────────────────────
+   * Vercel Cron calls this every minute with no user session. The route's
+   * constant-time `Authorization: Bearer $CRON_SECRET` check is the
+   * authentication, and it refuses when the secret is unset. Listed alone:
+   * every other /api/mail path stays session-gated.
+   */
+  '/api/mail/tick',
+
+  /*
    * ── Twilio webhooks ───────────────────────────────────────────────────
    * Twilio POSTs these server-to-server with NO user session. Without an
    * entry here the proxy redirects the request to /login, Twilio receives

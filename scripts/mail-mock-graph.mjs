@@ -23,8 +23,19 @@
  *   person@outlook.test personal Microsoft account (consumer tenant)
  * Shared mailboxes: team@mock.test (owner has access), vault@mock.test (nobody).
  *
- * Fault injection: POST /__mock/fault {"refresh":"invalid_grant"|"secret"|null}
- * Inspection:      GET  /__mock/state
+ * Mail: each mailbox has the folders below and a message store with a
+ * change sequence. `mailFolders/{id}/messages/delta` pages (Prefer
+ * odata.maxpagesize), bakes its cutoff into the nextLink, and returns
+ * changes since its cursor -- including `@removed` for messages that LEFT the
+ * folder (moved or deleted), exactly the ambiguity Graph has.
+ *
+ * Test hooks (POST, JSON):
+ *   /__mock/message  {mailbox, folder, subject?, body?, from?, isRead?, receivedDaysAgo?, attachments?} -> {id}
+ *   /__mock/update   {id, isRead?, folder?, subject?}   (folder = move)
+ *   /__mock/delete   {id}
+ *   /__mock/fault    {refresh: "invalid_grant"|"secret"|null, expireDelta: bool, throttle: n, revokeAccess: bool}
+ *   /__mock/reset    clears mail and faults
+ * Inspection:        GET /__mock/state
  */
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
@@ -59,7 +70,108 @@ const folderId = (mailbox, key) => `fld-${mailbox}-${key}`;
 const codes = new Map(); // code → { email, challenge, redirectUri, used }
 const access = new Map(); // access token → email
 const refresh = new Map(); // refresh token → email
-let fault = { refresh: null };
+let fault = { refresh: null, expireDelta: false, throttle: 0 };
+
+// -- mail store ---------------------------------------------------------------
+let seq = 1;
+const messages = new Map(); // id -> message
+const removals = []; // { mailbox, folder, id, seq }
+let nextMsg = 1;
+
+function folderKeyOf(address, id) {
+  const f = FOLDERS.find((x) => folderId(address, x[0]) === id || x[0] === String(id).toLowerCase());
+  return f ? f[0] : null;
+}
+
+function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from = 'ann@client.example', isRead = false, receivedDaysAgo = 0, attachments = [] }) {
+  const id = `AAMkMock${String(nextMsg++).padStart(6, '0')}`; // immutable: never changes on move
+  const received = new Date(Date.now() - receivedDaysAgo * 86_400_000).toISOString();
+  messages.set(id, {
+    id, mailbox, folder, subject, isRead, received, from, seq: seq++,
+    body: body ?? `<p>${subject}</p>`,
+    attachments: attachments.map((a, i) => ({ id: `${id}-att-${i}`, name: a.name, contentType: a.contentType ?? 'application/pdf', size: a.size ?? 1234, isInline: Boolean(a.isInline) })),
+  });
+  return id;
+}
+
+function messageJson(m) {
+  return {
+    id: m.id,
+    conversationId: `conv-${m.id}`,
+    changeKey: `ck-${m.seq}`,
+    subject: m.subject,
+    bodyPreview: m.subject,
+    body: { contentType: 'html', content: m.body },
+    from: { emailAddress: { name: m.from.split('@')[0], address: m.from } },
+    sender: { emailAddress: { name: m.from.split('@')[0], address: m.from } },
+    toRecipients: [{ emailAddress: { name: 'Owner', address: m.mailbox } }],
+    ccRecipients: [], bccRecipients: [], replyTo: [],
+    receivedDateTime: m.received,
+    sentDateTime: m.received,
+    isRead: m.isRead,
+    isDraft: false,
+    hasAttachments: m.attachments.some((a) => !a.isInline),
+    importance: 'normal',
+    parentFolderId: folderId(m.mailbox, m.folder),
+    lastModifiedDateTime: new Date().toISOString(),
+  };
+}
+
+function mutate({ id, isRead, folder, subject }) {
+  const m = messages.get(id);
+  if (!m) return false;
+  if (folder && folder !== m.folder) {
+    removals.push({ mailbox: m.mailbox, folder: m.folder, id, seq: seq++ });
+    m.folder = folder;
+  }
+  if (typeof isRead === 'boolean') m.isRead = isRead;
+  if (subject) m.subject = subject;
+  m.seq = seq++;
+  return true;
+}
+
+function remove(id) {
+  const m = messages.get(id);
+  if (!m) return false;
+  removals.push({ mailbox: m.mailbox, folder: m.folder, id, seq: seq++ });
+  messages.delete(id);
+  return true;
+}
+
+function messageDelta(address, folderKey, url, pageSize) {
+  const p = url.searchParams;
+  const base = `http://127.0.0.1:${PORT}${url.pathname}`;
+  const token = p.get('$deltatoken');
+  if (token) {
+    if (fault.expireDelta) {
+      fault.expireDelta = false;
+      return graphErr(410, 'SyncStateNotFound', 'The sync state generation is not found.');
+    }
+    const since = Number(token);
+    const changed = [...messages.values()].filter((m) => m.mailbox === address && m.folder === folderKey && m.seq >= since).map(messageJson);
+    const gone = removals.filter((r) => r.mailbox === address && r.folder === folderKey && r.seq >= since).map((r) => ({ id: r.id, '@removed': { reason: 'deleted' } }));
+    return { status: 200, body: { value: [...changed, ...gone], '@odata.deltaLink': `${base}?$deltatoken=${seq}` } };
+  }
+  // Initial walk: cutoff from $filter (or carried in the skiptoken), paged.
+  let cutoff = 0;
+  let offset = 0;
+  const skip = p.get('$skiptoken');
+  if (skip) {
+    [offset, cutoff] = skip.split('~').map(Number);
+  } else {
+    const m = /receivedDateTime ge (\S+)/.exec(p.get('$filter') ?? '');
+    cutoff = m ? Date.parse(m[1]) : 0;
+    if (!(p.get('$select') ?? '').split(',').includes('body')) return graphErr(400, 'MockStrict', 'delta seed without $select body');
+  }
+  const all = [...messages.values()]
+    .filter((m) => m.mailbox === address && m.folder === folderKey && Date.parse(m.received) >= cutoff)
+    .sort((a, b) => b.received.localeCompare(a.received));
+  const page = all.slice(offset, offset + pageSize).map(messageJson);
+  if (offset + pageSize < all.length) {
+    return { status: 200, body: { value: page, '@odata.nextLink': `${base}?$skiptoken=${offset + pageSize}~${cutoff}` } };
+  }
+  return { status: 200, body: { value: page, '@odata.deltaLink': `${base}?$deltatoken=${seq}` } };
+}
 const log = [];
 
 const b64url = (b) => Buffer.from(b).toString('base64url');
@@ -163,7 +275,7 @@ function folderJson(address, [key, name, parent, total, unread]) {
   };
 }
 
-function graph(caller, method, pathAndQuery) {
+function graph(caller, method, pathAndQuery, pageSize = 10) {
   const url = new URL(pathAndQuery, 'http://mock');
   const parts = url.pathname.replace(/^\/v1\.0/, '').split('/').filter(Boolean);
   if (method === 'GET' && parts.length === 1 && parts[0] === 'me') {
@@ -184,8 +296,27 @@ function graph(caller, method, pathAndQuery) {
     return { status: 200, body: { value: all.slice(5), '@odata.deltaLink': `http://127.0.0.1:${PORT}/v1.0/users/${parts[1]}/mailFolders/delta?$deltatoken=x` } };
   }
   if (method === 'GET' && rest[0] === 'mailFolders' && rest.length === 2) {
-    const f = FOLDERS.find((x) => x[0] === rest[1].toLowerCase());
-    return f ? { status: 200, body: { id: folderId(mb.address, f[0]) } } : graphErr(404, 'ErrorFolderNotFound');
+    const key = folderKeyOf(mb.address, decodeURIComponent(rest[1]));
+    if (!key) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+    const inFolder = [...messages.values()].filter((m) => m.mailbox === mb.address && m.folder === key);
+    return {
+      status: 200,
+      body: { id: folderId(mb.address, key), totalItemCount: inFolder.length, unreadItemCount: inFolder.filter((m) => !m.isRead).length },
+    };
+  }
+  if (method === 'GET' && rest[0] === 'mailFolders' && rest[2] === 'messages' && rest[3] === 'delta') {
+    const key = folderKeyOf(mb.address, decodeURIComponent(rest[1]));
+    if (!key) return graphErr(404, 'ErrorItemNotFound');
+    return messageDelta(mb.address, key, url, pageSize);
+  }
+  if (method === 'GET' && rest[0] === 'messages' && rest.length === 2) {
+    const m = messages.get(decodeURIComponent(rest[1]));
+    return m && m.mailbox === mb.address ? { status: 200, body: messageJson(m) } : graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+  }
+  if (method === 'GET' && rest[0] === 'messages' && rest[2] === 'attachments' && rest.length === 3) {
+    const m = messages.get(decodeURIComponent(rest[1]));
+    if (!m || m.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound');
+    return { status: 200, body: { value: m.attachments.map((a) => ({ '@odata.type': '#microsoft.graph.fileAttachment', ...a })) } };
   }
   return graphErr(400, 'BadRequest', `Mock does not serve ${method} ${url.pathname}`);
 }
@@ -193,11 +324,27 @@ function graph(caller, method, pathAndQuery) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
-    if (url.pathname === '/__mock/state') return send(res, 200, { codes: codes.size, access: access.size, refresh: refresh.size, fault, log: log.slice(-50) });
+    if (url.pathname === '/__mock/state') {
+      return send(res, 200, { codes: codes.size, access: access.size, refresh: refresh.size, messages: messages.size, seq, fault, log: log.slice(-80) });
+    }
     if (url.pathname === '/__mock/fault' && req.method === 'POST') {
-      fault = { refresh: null, ...JSON.parse((await readBody(req)) || '{}') };
+      const next = JSON.parse((await readBody(req)) || '{}');
+      // revokeAccess: every access token stops working at once (a revoked session).
+      if (next.revokeAccess) access.clear();
+      delete next.revokeAccess;
+      fault = { refresh: null, expireDelta: false, throttle: 0, ...next };
       return send(res, 200, fault);
     }
+    if (url.pathname === '/__mock/reset' && req.method === 'POST') {
+      messages.clear();
+      removals.length = 0;
+      fault = { refresh: null, expireDelta: false, throttle: 0 };
+      log.length = 0;
+      return send(res, 200, { ok: true });
+    }
+    if (url.pathname === '/__mock/message' && req.method === 'POST') return send(res, 200, { id: addMessage(JSON.parse(await readBody(req))) });
+    if (url.pathname === '/__mock/update' && req.method === 'POST') return send(res, 200, { ok: mutate(JSON.parse(await readBody(req))) });
+    if (url.pathname === '/__mock/delete' && req.method === 'POST') return send(res, 200, { ok: remove(JSON.parse(await readBody(req)).id) });
     if (url.pathname === '/oauth2/v2.0/authorize') return send(res, 200, authorizePage(url));
     if (url.pathname === '/oauth2/v2.0/token' && req.method === 'POST') {
       const r = token(new URLSearchParams(await readBody(req)));
@@ -209,17 +356,23 @@ const server = http.createServer(async (req, res) => {
       if (!caller) return send(res, 401, { error: { code: 'InvalidAuthenticationToken', message: 'Access token is empty or invalid.' } });
       const prefer = String(req.headers.prefer ?? '');
       if (!prefer.includes('IdType="ImmutableId"')) return send(res, 400, { error: { code: 'MockStrict', message: 'Prefer IdType="ImmutableId" missing' } });
+      if (fault.throttle > 0) {
+        fault.throttle -= 1;
+        log.push(`429 ${url.pathname}`);
+        return send(res, 429, { error: { code: 'TooManyRequests', message: 'Application is over its MailboxConcurrency limit.' } }, { 'Retry-After': '2' });
+      }
+      const pageSize = Number(/odata\.maxpagesize=(\d+)/.exec(prefer)?.[1] ?? 10);
       if (url.pathname === '/v1.0/$batch' && req.method === 'POST') {
         const { requests = [] } = JSON.parse(await readBody(req));
         if (requests.length > 20) return send(res, 400, { error: { code: 'BadRequest', message: 'More than 20 requests' } });
         const responses = requests.map((r) => {
-          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`);
+          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`, pageSize);
           return { id: r.id, status: out.status, headers: {}, body: out.body };
         });
         log.push(`batch ${requests.length}`);
         return send(res, 200, { responses });
       }
-      const out = graph(caller, req.method, url.pathname + url.search);
+      const out = graph(caller, req.method, url.pathname + url.search, pageSize);
       log.push(`${req.method} ${url.pathname} ${out.status}`);
       return send(res, out.status, out.body);
     }

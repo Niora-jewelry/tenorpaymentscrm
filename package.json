@@ -37,6 +37,9 @@
         "@supabase/ssr": "^0.12.4",
         "@supabase/supabase-js": "^2.112.2",
         "@twilio/voice-sdk": "^2.18.5",
+        "fflate": "^0.8.3",
+        "html-to-text": "^10.0.1",
+        "isomorphic-dompurify": "^3.19.0",
         "next": "16.3.0",
         "nodemailer": "^10.0.10",
         "pdfjs-dist": "^4.8.69",
@@ -45,11 +48,13 @@
         "react-dom": "19.2.8",
         "server-only": "^0.0.1",
         "twilio": "^5.13.1",
+        "undici": "^8.12.2",
         "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
         "zod": "^4.4.3"
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",
+        "@types/html-to-text": "^9.0.4",
         "@types/node": "^20",
         "@types/nodemailer": "^8.0.2",
         "@types/pg": "^8.21.0",

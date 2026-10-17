@@ -76,6 +76,25 @@ describe('redactMetadata', () => {
     expect(() => redactMetadata(deep)).not.toThrow();
   });
 
+  it('redacts the Email module secrets: refresh tokens, PKCE verifiers, clientState, nonces', () => {
+    const out = redactMetadata({
+      refresh: 'M.R3_BAY...',
+      code_verifier: 'abc',
+      clientState: 'xyz',
+      client_state: 'xyz',
+      nonce: 'n',
+      graph: { headers: { Bearer: 'ey..' }, mailbox: 'ok-to-keep-id' },
+    }) as Record<string, unknown> & { graph: { headers: Record<string, unknown>; mailbox: string } };
+
+    expect(out.refresh).toBe(REDACTED);
+    expect(out.code_verifier).toBe(REDACTED);
+    expect(out.clientState).toBe(REDACTED);
+    expect(out.client_state).toBe(REDACTED);
+    expect(out.nonce).toBe(REDACTED);
+    expect(out.graph.headers.Bearer).toBe(REDACTED);
+    expect(out.graph.mailbox).toBe('ok-to-keep-id');
+  });
+
   it('handles arrays, null and undefined', () => {
     expect(redactMetadata(null)).toBeNull();
     expect(redactMetadata(undefined)).toBeUndefined();

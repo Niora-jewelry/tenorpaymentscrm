@@ -40,6 +40,24 @@ export const RATE_LIMITS = {
   loginPerIp: { limit: 30, windowSeconds: 900 },
   /** OTP verification submissions, per email. Backstop to the 5-attempt cap. */
   otpVerifyPerEmail: { limit: 15, windowSeconds: 900 },
+
+  /*
+   * ── Email module ───────────────────────────────────────────────────────
+   * Generous for a person, tight for a script. Sending is the one with a cost
+   * outside this app (a mailbox that sends too much is blocked by Microsoft),
+   * so it has a daily cap as well as a per-minute one.
+   */
+  mailSendPerUserMinute: { limit: 30, windowSeconds: 60 },
+  mailSendPerUserDay: { limit: 500, windowSeconds: 86400 },
+  /** Read/unread, move, delete, pin, folders, rules — each bulk call counts once. */
+  mailActionPerUser: { limit: 120, windowSeconds: 60 },
+  mailConnectStartPerUser: { limit: 10, windowSeconds: 3600 },
+  mailImagePerUser: { limit: 600, windowSeconds: 60 },
+  mailAttachmentPerUser: { limit: 120, windowSeconds: 60 },
+  mailSearchPerUser: { limit: 60, windowSeconds: 60 },
+  mailBackfillPerMailbox: { limit: 6, windowSeconds: 3600 },
+  mailTickPerIp: { limit: 120, windowSeconds: 60 },
+  mailNotifyPerSubscription: { limit: 600, windowSeconds: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = {
@@ -102,4 +120,9 @@ export function emailKey(scope: string, email: string): string {
 
 export function ipKey(scope: string, ip: string | null): string {
   return `${scope}:ip:${ip ?? 'unknown'}`;
+}
+
+/** Per signed-in person — the key for actions that already require a session. */
+export function userKey(scope: string, userId: string): string {
+  return `${scope}:user:${userId}`;
 }

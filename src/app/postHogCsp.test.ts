@@ -67,6 +67,14 @@ describe('CSP and PostHog', () => {
     );
   });
 
+  it('allows same-origin frames for the email reading pane, and still allows data: images', () => {
+    const csp = contentSecurityPolicy();
+    expect(directive(csp, 'frame-src')).toBe("frame-src 'self'");
+    expect(directive(csp, 'img-src')).toContain('data:');
+    // Framing BY other sites stays forbidden — a different directive.
+    expect(csp).toContain("frame-ancestors 'none'");
+  });
+
   it('lists a self-hosted host once, not twice', () => {
     process.env[KEY] = 'phc_testkeytestkeytestkey';
     process.env[HOST] = 'https://analytics.example.com';

@@ -16,7 +16,14 @@
 export const DEFAULT_REDIRECT = '/dashboard';
 
 /** Paths a signed-in user must never be "restored" to. */
-const NEVER_RESTORE = new Set(['/login', '/signup', '/reset-password']);
+const NEVER_RESTORE = new Set([
+  '/login',
+  '/signup',
+  '/reset-password',
+  // A session that lapses mid-way through connecting a mailbox must not be
+  // "restored" into the OAuth callback: that would replay a used code.
+  '/api/mail/oauth/callback',
+]);
 
 /**
  * Control characters (including tab, newline, carriage return) and spaces are

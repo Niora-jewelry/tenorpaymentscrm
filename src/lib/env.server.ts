@@ -98,6 +98,43 @@ const serverSchema = z.object({
    */
   TWILIO_AUTH_TOKEN: optionalString,
 
+  /**
+   * The Email module — Outlook / Microsoft 365 over Microsoft Graph.
+   *
+   * Optional for the same reason Twilio's are: the CRM must boot without
+   * them, and `mailConfigured` below is the single switch. Delegated
+   * permissions only — the app can never reach a mailbox nobody connected.
+   *
+   *   MAIL_CLIENT_ID / MAIL_CLIENT_SECRET   the Azure app registration
+   *   MAIL_STATE_SIGNING_SECRET              HMAC key for the OAuth state cookie
+   *   MAIL_TOKEN_ENC_KEY                     AES-256-GCM key for stored refresh/access
+   *                                          tokens, 32 random bytes base64. Kept OUT of
+   *                                          the database on purpose: the DB URL is in
+   *                                          every script and test, and a leaked one must
+   *                                          yield ciphertext only. Changing it orphans
+   *                                          every stored token — rotate with the script.
+   *   CRON_SECRET                            Vercel sends it as `Authorization: Bearer` on
+   *                                          cron calls; the tick route checks it.
+   */
+  MAIL_CLIENT_ID: optionalString,
+  MAIL_CLIENT_SECRET: optionalString,
+  MAIL_STATE_SIGNING_SECRET: optionalString,
+  MAIL_TOKEN_ENC_KEY: optionalString,
+  /** Comma-separated Entra tenant ids allowed to connect. Blank = any work tenant. */
+  MAIL_ALLOWED_TENANT_IDS: optionalString,
+  /** Override for a local tunnel only. Default: `${NEXT_PUBLIC_APP_URL}/api/mail/oauth/callback`. */
+  MAIL_REDIRECT_URI: optionalString,
+  /** Graph change notifications. Only 'true' turns them on, and only in production. */
+  MAIL_WEBHOOKS_ENABLED: optionalString,
+  /** Kill switch: 'false' hides the module without touching configuration. */
+  MAIL_MODULE_ENABLED: optionalString,
+  /** 'graph' (default) or 'mock' — the local Graph stand-in. Refused in production. */
+  MAIL_PROVIDER: z.enum(['graph', 'mock']).optional(),
+  MAIL_MOCK_BASE_URL: optionalString,
+  /** ISO date the Azure client secret expires, for the 30-day warning. */
+  MAIL_CLIENT_SECRET_EXPIRES_AT: optionalString,
+  CRON_SECRET: optionalString,
+
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -115,6 +152,18 @@ const parsed = serverSchema.safeParse({
   TWILIO_API_KEY_SECRET: process.env.TWILIO_API_KEY_SECRET,
   TWILIO_TWIML_APP_SID: process.env.TWILIO_TWIML_APP_SID,
   TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+  MAIL_CLIENT_ID: process.env.MAIL_CLIENT_ID,
+  MAIL_CLIENT_SECRET: process.env.MAIL_CLIENT_SECRET,
+  MAIL_STATE_SIGNING_SECRET: process.env.MAIL_STATE_SIGNING_SECRET,
+  MAIL_TOKEN_ENC_KEY: process.env.MAIL_TOKEN_ENC_KEY,
+  MAIL_ALLOWED_TENANT_IDS: process.env.MAIL_ALLOWED_TENANT_IDS,
+  MAIL_REDIRECT_URI: process.env.MAIL_REDIRECT_URI,
+  MAIL_WEBHOOKS_ENABLED: process.env.MAIL_WEBHOOKS_ENABLED,
+  MAIL_MODULE_ENABLED: process.env.MAIL_MODULE_ENABLED,
+  MAIL_PROVIDER: process.env.MAIL_PROVIDER || undefined,
+  MAIL_MOCK_BASE_URL: process.env.MAIL_MOCK_BASE_URL,
+  MAIL_CLIENT_SECRET_EXPIRES_AT: process.env.MAIL_CLIENT_SECRET_EXPIRES_AT,
+  CRON_SECRET: process.env.CRON_SECRET,
   NODE_ENV: process.env.NODE_ENV,
 });
 
@@ -127,6 +176,34 @@ if (!parsed.success) {
 export const serverEnv = parsed.data;
 
 export const isProduction = serverEnv.NODE_ENV === 'production';
+
+/*
+ * The mock Graph server is a development and CI tool. In production it would
+ * mean every mailbox action talks to a fake — refused at boot rather than
+ * discovered later, the same posture as the demo-auth switch.
+ */
+if (isProduction && serverEnv.MAIL_PROVIDER === 'mock') {
+  throw new Error('MAIL_PROVIDER=mock is not allowed in production.');
+}
+
+/** Which Graph the Email module talks to. */
+export const mailProvider: 'graph' | 'mock' = serverEnv.MAIL_PROVIDER ?? 'graph';
+
+/**
+ * Is the Email module configured?
+ *
+ * One definition, like `phoneConfigured`. The module needs the Azure app
+ * (id + secret), the state-signing key and the token-encryption key; without
+ * any one of them connecting a mailbox cannot work, so the module is off
+ * rather than half on. The mock provider replaces the Azure app outside
+ * production, but still needs the two keys — they protect real data paths.
+ */
+export const mailConfigured =
+  serverEnv.MAIL_MODULE_ENABLED !== 'false' &&
+  Boolean(serverEnv.MAIL_STATE_SIGNING_SECRET && serverEnv.MAIL_TOKEN_ENC_KEY) &&
+  (mailProvider === 'mock'
+    ? Boolean(serverEnv.MAIL_MOCK_BASE_URL)
+    : Boolean(serverEnv.MAIL_CLIENT_ID && serverEnv.MAIL_CLIENT_SECRET));
 
 /**
  * Is the phone module configured?

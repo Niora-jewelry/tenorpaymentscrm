@@ -14,6 +14,10 @@
 const FORBIDDEN_KEY_FRAGMENTS = [
   'password', 'passwd', 'secret', 'token', 'ticket', 'code', 'otp',
   'key', 'authorization', 'cookie', 'session', 'hash', 'pepper',
+  // The Email module's OAuth and Graph webhooks: a refresh token, a PKCE
+  // verifier, a webhook clientState and an OAuth nonce are each enough to act
+  // as, or impersonate, the mailbox they belong to.
+  'refresh', 'verifier', 'clientstate', 'client_state', 'bearer', 'nonce',
 ];
 
 export const REDACTED = '[redacted]';

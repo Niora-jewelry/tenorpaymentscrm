@@ -126,6 +126,15 @@ export function contentSecurityPolicy(): string {
      * working — so only add it when recording is actually on.
      */
     ...(posthog ? ["worker-src 'self' blob:"] : []),
+    /*
+     * The Email module renders each message body in a sandboxed `srcdoc`
+     * iframe — no scripts, no forms — so a mail's HTML can never run in or
+     * restyle the CRM. Browsers do not source-match `about:srcdoc` against
+     * frame-src, so this changes nothing today; it is here to make the intent
+     * explicit and to stop a future tightening of default-src from silently
+     * blanking every email. The `sandbox` attribute is the real control.
+     */
+    "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

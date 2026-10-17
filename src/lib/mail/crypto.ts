@@ -11,9 +11,12 @@
  * log.
  *
  * ── AAD BINDS A CIPHERTEXT TO ITS ROW ────────────────────────────────────
- * The additional authenticated data is the owning row's id. Copy one
- * person's encrypted token onto another person's row and decryption fails
- * outright instead of quietly handing over the wrong mailbox.
+ * The additional authenticated data is `<crm user id>:<microsoft user id>`
+ * (`config.ts` `tokenAad`) — the pair that identifies a sign-in, and known
+ * before the identity row exists, so the token can be sealed before the
+ * connect RPC stores it. Copy one person's encrypted token onto another
+ * person's row and decryption fails outright instead of quietly handing over
+ * the wrong mailbox.
  *
  * Pure (no env, no `server-only`) so it can be tested in isolation; the
  * key is passed in by `tokens.ts`.
@@ -55,4 +58,17 @@ export function open(sealed: Sealed, key: Buffer, aad: string): string {
   decipher.setAAD(Buffer.from(aad, 'utf8'));
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8');
+}
+
+/**
+ * Postgres `bytea` over PostgREST travels as the hex text form `\x…`.
+ * These are the only two conversions; never hand-roll either.
+ */
+export function toBytea(buf: Buffer): string {
+  return `\\x${buf.toString('hex')}`;
+}
+
+export function fromBytea(value: unknown): Buffer {
+  if (typeof value !== 'string' || !value.startsWith('\\x')) throw new Error('Not a bytea hex value.');
+  return Buffer.from(value.slice(2), 'hex');
 }

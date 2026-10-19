@@ -35,6 +35,12 @@
  *   /__mock/delete   {id}
  *   /__mock/fault    {refresh: "invalid_grant"|"secret"|null, expireDelta: bool, throttle: n, revokeAccess: bool}
  *   /__mock/reset    clears mail and faults
+ *   /__mock/lifecycle {mailbox, event}  posts a lifecycle notification to that mailbox's subscriptions
+ *
+ * Subscriptions: POST /v1.0/subscriptions runs Microsoft's validation
+ * handshake against notificationUrl before accepting; every message change
+ * then POSTs a change notification there (fault notifyBadClientState sends a
+ * wrong clientState). PATCH renews, DELETE removes.
  * Inspection:        GET /__mock/state
  */
 import http from 'node:http';
@@ -70,7 +76,62 @@ const folderId = (mailbox, key) => `fld-${mailbox}-${key}`;
 const codes = new Map(); // code → { email, challenge, redirectUri, used }
 const access = new Map(); // access token → email
 const refresh = new Map(); // refresh token → email
-let fault = { refresh: null, expireDelta: false, throttle: 0 };
+let fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false };
+
+// -- subscriptions ------------------------------------------------------------
+const subs = new Map(); // id -> { id, mailbox, kind, notificationUrl, lifecycleUrl, clientState, expires }
+let nextSub = 1;
+const deliveries = []; // { url, status }
+
+async function post(url, body) {
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    deliveries.push({ url: url.replace(/\?.*$/, ''), status: r.status });
+    return r;
+  } catch {
+    deliveries.push({ url, status: 0 });
+    return null;
+  }
+}
+
+function notify(mailbox, changeType, messageId) {
+  for (const sub of subs.values()) {
+    if (sub.mailbox !== mailbox || sub.kind !== 'messages') continue;
+    void post(sub.notificationUrl, {
+      value: [{
+        subscriptionId: sub.id,
+        clientState: fault.notifyBadClientState ? 'forged-client-state' : sub.clientState,
+        changeType,
+        resource: `Users/${ACCOUNTS[mailbox]?.oid ?? mailbox}/Messages/${messageId}`,
+        resourceData: { '@odata.type': '#Microsoft.Graph.Message', id: messageId },
+        tenantId: 'tid-tapdash',
+      }],
+    });
+  }
+}
+
+async function createSubscription(caller, body) {
+  const m = /^\/?users\/([^/]+)\/(messages|mailFolders)$/i.exec(body.resource ?? '');
+  if (!m) return graphErr(400, 'InvalidRequest', 'Unsupported resource');
+  const mb = resolveMailbox(caller, m[1]);
+  if (mb.status) return mb;
+  if (!body.notificationUrl || !body.clientState || !body.changeType) return graphErr(400, 'InvalidRequest', 'Missing fields');
+  // Microsoft's handshake: the endpoint must echo the token within 10 s.
+  const token = `validation-${randomBytes(6).toString('hex')}`;
+  const r = await post(`${body.notificationUrl}?validationToken=${encodeURIComponent(token)}`, {});
+  const echoed = r ? await r.text() : '';
+  if (!r || r.status !== 200 || echoed !== token) {
+    return graphErr(400, 'ValidationError', 'Subscription validation request failed. Response must exactly match validationToken query parameter.');
+  }
+  const id = `sub-${nextSub++}`;
+  const sub = {
+    id, mailbox: mb.address, kind: m[2] === 'messages' ? 'messages' : 'mailFolders',
+    notificationUrl: body.notificationUrl, lifecycleUrl: body.lifecycleNotificationUrl, clientState: body.clientState,
+    expires: body.expirationDateTime,
+  };
+  subs.set(id, sub);
+  return { status: 201, body: { id, resource: body.resource, expirationDateTime: sub.expires, clientState: sub.clientState } };
+}
 
 // -- mail store ---------------------------------------------------------------
 let seq = 1;
@@ -91,6 +152,7 @@ function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from =
     body: body ?? `<p>${subject}</p>`,
     attachments: attachments.map((a, i) => ({ id: `${id}-att-${i}`, name: a.name, contentType: a.contentType ?? 'application/pdf', size: a.size ?? 1234, isInline: Boolean(a.isInline) })),
   });
+  notify(mailbox, 'created', id);
   return id;
 }
 
@@ -127,6 +189,7 @@ function mutate({ id, isRead, folder, subject }) {
   if (typeof isRead === 'boolean') m.isRead = isRead;
   if (subject) m.subject = subject;
   m.seq = seq++;
+  notify(m.mailbox, 'updated', id);
   return true;
 }
 
@@ -135,6 +198,7 @@ function remove(id) {
   if (!m) return false;
   removals.push({ mailbox: m.mailbox, folder: m.folder, id, seq: seq++ });
   messages.delete(id);
+  notify(m.mailbox, 'deleted', id);
   return true;
 }
 
@@ -325,22 +389,40 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
   try {
     if (url.pathname === '/__mock/state') {
-      return send(res, 200, { codes: codes.size, access: access.size, refresh: refresh.size, messages: messages.size, seq, fault, log: log.slice(-80) });
+      return send(res, 200, {
+        codes: codes.size, access: access.size, refresh: refresh.size, messages: messages.size, seq, fault,
+        // clientState is a secret: never echoed, even by the mock.
+        subscriptions: [...subs.values()].map((sub) => ({ ...sub, clientState: undefined })),
+        deliveries: deliveries.slice(-50), log: log.slice(-80),
+      });
     }
     if (url.pathname === '/__mock/fault' && req.method === 'POST') {
       const next = JSON.parse((await readBody(req)) || '{}');
       // revokeAccess: every access token stops working at once (a revoked session).
       if (next.revokeAccess) access.clear();
       delete next.revokeAccess;
-      fault = { refresh: null, expireDelta: false, throttle: 0, ...next };
+      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, ...next };
       return send(res, 200, fault);
     }
     if (url.pathname === '/__mock/reset' && req.method === 'POST') {
       messages.clear();
       removals.length = 0;
-      fault = { refresh: null, expireDelta: false, throttle: 0 };
+      subs.clear();
+      deliveries.length = 0;
+      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false };
       log.length = 0;
       return send(res, 200, { ok: true });
+    }
+    if (url.pathname === '/__mock/lifecycle' && req.method === 'POST') {
+      const { mailbox, event } = JSON.parse(await readBody(req));
+      const sent = [];
+      for (const sub of subs.values()) {
+        if (sub.mailbox !== mailbox || !sub.lifecycleUrl) continue;
+        if (event === 'subscriptionRemoved') subs.delete(sub.id);
+        const r = await post(sub.lifecycleUrl, { value: [{ subscriptionId: sub.id, clientState: sub.clientState, lifecycleEvent: event, resource: sub.kind }] });
+        sent.push(r?.status ?? 0);
+      }
+      return send(res, 200, { sent });
     }
     if (url.pathname === '/__mock/message' && req.method === 'POST') return send(res, 200, { id: addMessage(JSON.parse(await readBody(req))) });
     if (url.pathname === '/__mock/update' && req.method === 'POST') return send(res, 200, { ok: mutate(JSON.parse(await readBody(req))) });
@@ -362,6 +444,26 @@ const server = http.createServer(async (req, res) => {
         return send(res, 429, { error: { code: 'TooManyRequests', message: 'Application is over its MailboxConcurrency limit.' } }, { 'Retry-After': '2' });
       }
       const pageSize = Number(/odata\.maxpagesize=(\d+)/.exec(prefer)?.[1] ?? 10);
+      if (url.pathname === '/v1.0/subscriptions' && req.method === 'POST') {
+        const out = await createSubscription(caller, JSON.parse(await readBody(req)));
+        log.push(`subscribe ${out.status}`);
+        return send(res, out.status, out.body);
+      }
+      const subMatch = /^\/v1\.0\/subscriptions\/([^/]+)$/.exec(url.pathname);
+      if (subMatch) {
+        const sub = subs.get(decodeURIComponent(subMatch[1]));
+        if (!sub) return send(res, 404, { error: { code: 'ResourceNotFound', message: 'The object was not found.' } });
+        if (req.method === 'DELETE') {
+          subs.delete(sub.id);
+          log.push('unsubscribe');
+          return send(res, 204, undefined);
+        }
+        if (req.method === 'PATCH') {
+          sub.expires = JSON.parse(await readBody(req)).expirationDateTime;
+          log.push('renew');
+          return send(res, 200, { id: sub.id, expirationDateTime: sub.expires });
+        }
+      }
       if (url.pathname === '/v1.0/$batch' && req.method === 'POST') {
         const { requests = [] } = JSON.parse(await readBody(req));
         if (requests.length > 20) return send(res, 400, { error: { code: 'BadRequest', message: 'More than 20 requests' } });

@@ -49,6 +49,11 @@ const recordsBefore = (await one(`select count(*)::int n from records`)).n;
 const mock = (path, body) =>
   fetch(`${MOCK}${path}`, { method: body === undefined ? 'GET' : 'POST', body: body === undefined ? undefined : JSON.stringify(body) }).then((r) => r.json());
 
+// The 24h idle rule in proxy.ts signs a stale test account straight out:
+// freshen the admin's last_seen_at for the run and restore it afterwards.
+const adminSeenBefore = (await db.query(`select last_seen_at from profiles where email=$1`, [ADMIN])).rows[0].last_seen_at;
+await db.query(`update profiles set last_seen_at = now() where email=$1`, [ADMIN]);
+
 const svc = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const anon = createClient(SUPA, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const ref = new URL(SUPA).hostname.split('.')[0];
@@ -237,6 +242,7 @@ try {
   fail.push(`threw: ${e.stack ?? e}`);
 } finally {
   await browser.close();
+  await db.query(`update profiles set last_seen_at = $2 where email=$1`, [ADMIN, adminSeenBefore]).catch((e) => fail.push(`restore admin last_seen_at: ${e}`));
   await db.query(`delete from mail_mailboxes where address like '%@mock.test'`);
   await db.query(`delete from mail_identities where user_id = $1 and microsoft_user_id like 'oid-%'`, [me.id]);
   await db.query(`update mail_provider_health set state=$1, last_success_at=$2, down_since=$3, last_error_code=$4 where id=1`,

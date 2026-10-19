@@ -85,6 +85,15 @@ const PUBLIC_API_PATHS = new Set([
   '/api/mail/tick',
 
   /*
+   * ── Microsoft Graph webhooks ──────────────────────────────────────────
+   * Microsoft posts change and lifecycle notifications with no session. Each
+   * is checked against the subscription's random clientState (constant
+   * time); unknown or mismatched ones are dropped. Listed individually.
+   */
+  '/api/mail/graph/notifications',
+  '/api/mail/graph/lifecycle',
+
+  /*
    * ── Twilio webhooks ───────────────────────────────────────────────────
    * Twilio POSTs these server-to-server with NO user session. Without an
    * entry here the proxy redirects the request to /login, Twilio receives

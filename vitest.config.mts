@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import path from 'node:path';
 
 const root = import.meta.dirname;
@@ -12,9 +12,10 @@ export default defineConfig({
      * renders — that a `javascript:` URL never becomes an href, and that a body
      * containing markup never becomes markup. Those have to render JSX, and
      * under a `.ts`-only pattern such a file is collected by nothing and
-     * "passes" by being invisible.
+     * "passes" by being invisible. (The patterns live on the projects below;
+     * a root-level `include` would be merged INTO each project and run the
+     * integration files twice, once in parallel.)
      */
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['./src/test/load-env.ts'],
     /*
      * The integration suite talks to the real Supabase project in us-west-2.
@@ -28,6 +29,33 @@ export default defineConfig({
      */
     testTimeout: 60_000,
     hookTimeout: 60_000,
+    /*
+     * Two projects, because the integration files share ONE live database.
+     * Several of them borrow the same real rows inside rolled-back
+     * transactions (the oldest records, the test accounts' profiles); run in
+     * parallel they lock those rows in different orders and Postgres kills
+     * one with "deadlock detected" — a failure about scheduling, not about
+     * the code. Integration files therefore run one at a time; unit tests,
+     * which touch no database, stay parallel.
+     */
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+          exclude: [...configDefaults.exclude, 'src/**/*.integration.test.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'integration',
+          include: ['src/**/*.integration.test.ts'],
+          fileParallelism: false,
+        },
+      },
+    ],
   },
   resolve: {
     alias: {

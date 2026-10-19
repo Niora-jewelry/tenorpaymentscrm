@@ -24,6 +24,7 @@ import { nextSyncDelayMinutes } from '../backoff';
 import { mailLog } from '../log';
 import { refreshFolderTree, rootFor } from './folders';
 import { refetchMessages, refreshFolderCounts, runFolderDelta, type FolderState } from './delta';
+import { ensureSubscriptions } from './subscriptions';
 import type { FolderInfo, MailboxCtx } from './ingest';
 
 export type ClaimedMailbox = {
@@ -47,7 +48,7 @@ type QueueItem = { id: number; kind: string; target: string; attempts: number };
 const MAX_ATTEMPTS = 5;
 const TAKE = 10;
 /** Work a later phase owns; acknowledged so it does not block the queue. */
-const LATER = new Set(['subscription_ensure', 'rules_refresh', 'contacts_delta', 'load_older', 'attachments_list']);
+const LATER = new Set(['rules_refresh', 'contacts_delta', 'load_older', 'attachments_list']);
 
 const FOLDER_COLUMNS = 'id, graph_id, well_known, delta_link, seeded_at, oldest_loaded_at';
 
@@ -153,6 +154,9 @@ export async function drainMailbox(mb: ClaimedMailbox, deadline: number, owner: 
             p_folder_id: null,
           });
           changed += Number(data ?? 0);
+          await finish(item.id);
+        } else if (item.kind === 'subscription_ensure') {
+          await ensureSubscriptions(ctx);
           await finish(item.id);
         } else if (LATER.has(item.kind)) {
           await finish(item.id, { last_error: 'deferred' });

@@ -27,6 +27,10 @@ export type MailConfig = {
   tokenKey: Buffer;
   /** Empty = any work/school tenant that has consented. */
   allowedTenants: ReadonlySet<string>;
+  /** Change notifications on? Off → the engine polls hot folders every minute. */
+  webhooksEnabled: boolean;
+  /** Origin Microsoft posts notifications to, no trailing slash. */
+  webhookBase: string;
 };
 
 let cached: MailConfig | null = null;
@@ -51,6 +55,8 @@ export function mailConfig(): MailConfig {
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean),
     ),
+    webhooksEnabled: serverEnv.MAIL_WEBHOOKS_ENABLED === 'true',
+    webhookBase: (serverEnv.MAIL_WEBHOOK_BASE_URL ?? env.NEXT_PUBLIC_APP_URL).replace(/\/+$/, ''),
   };
   return cached;
 }

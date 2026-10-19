@@ -126,6 +126,8 @@ const serverSchema = z.object({
   MAIL_REDIRECT_URI: optionalString,
   /** Graph change notifications. Only 'true' turns them on, and only in production. */
   MAIL_WEBHOOKS_ENABLED: optionalString,
+  /** Where Microsoft posts notifications. Default NEXT_PUBLIC_APP_URL; override for a tunnel or the mock. */
+  MAIL_WEBHOOK_BASE_URL: optionalString,
   /** Kill switch: 'false' hides the module without touching configuration. */
   MAIL_MODULE_ENABLED: optionalString,
   /** 'graph' (default) or 'mock' — the local Graph stand-in. Refused in production. */
@@ -159,6 +161,7 @@ const parsed = serverSchema.safeParse({
   MAIL_ALLOWED_TENANT_IDS: process.env.MAIL_ALLOWED_TENANT_IDS,
   MAIL_REDIRECT_URI: process.env.MAIL_REDIRECT_URI,
   MAIL_WEBHOOKS_ENABLED: process.env.MAIL_WEBHOOKS_ENABLED,
+  MAIL_WEBHOOK_BASE_URL: process.env.MAIL_WEBHOOK_BASE_URL,
   MAIL_MODULE_ENABLED: process.env.MAIL_MODULE_ENABLED,
   MAIL_PROVIDER: process.env.MAIL_PROVIDER || undefined,
   MAIL_MOCK_BASE_URL: process.env.MAIL_MOCK_BASE_URL,

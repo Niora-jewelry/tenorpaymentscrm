@@ -16,6 +16,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { mailLog } from '../log';
+import { mailConfig } from '../config';
 import { drainMailbox, type ClaimedMailbox, type DrainResult } from './drain';
 
 export type TickSummary = {
@@ -44,6 +45,15 @@ export async function runTick(opts: { only?: string; budgetMs?: number; trigger?
   const { data: scheduled, error: schedErr } = await admin.rpc('mail_schedule_due');
   if (schedErr) mailLog('error', 'tick', 'schedule_failed', { code: schedErr.code });
   summary.scheduled = Number(scheduled ?? 0);
+
+  // Push notifications: keep each mailbox's pair alive — or, switched off,
+  // make sure nothing still believes they are.
+  if (mailConfig().webhooksEnabled) {
+    const { error: subErr } = await admin.rpc('mail_schedule_subscriptions');
+    if (subErr) mailLog('error', 'tick', 'schedule_subscriptions_failed', { code: subErr.code });
+  } else {
+    await admin.from('mail_mailboxes').update({ subscription_healthy: false }).eq('subscription_healthy', true);
+  }
 
   const tally = (r: DrainResult) => {
     summary.mailboxes += 1;

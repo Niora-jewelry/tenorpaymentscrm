@@ -52,6 +52,11 @@ const otherCounts = async () => ({
 });
 const beforeOther = await otherCounts();
 
+// The 24h idle rule in proxy.ts signs a stale test account straight out:
+// freshen the admin's last_seen_at for the run and restore it afterwards.
+const adminSeenBefore = (await db.query(`select last_seen_at from profiles where email=$1`, [ADMIN])).rows[0].last_seen_at;
+await db.query(`update profiles set last_seen_at = now() where email=$1`, [ADMIN]);
+
 const svc = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const anon = createClient(SUPA, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const ref = new URL(SUPA).hostname.split('.')[0];
@@ -220,6 +225,7 @@ try {
   fail.push(`threw: ${e.stack ?? e}`);
 } finally {
   await browser.close();
+  await db.query(`update profiles set last_seen_at = $2 where email=$1`, [ADMIN, adminSeenBefore]).catch((e) => fail.push(`restore admin last_seen_at: ${e}`));
   await restoreSeen().catch((e) => fail.push(`restore last_seen_at: ${e}`));
   // Remove everything the run created.
   await db.query(`delete from mail_mailboxes where address like '%@mock.test'`);

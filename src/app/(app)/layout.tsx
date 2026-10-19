@@ -19,6 +19,20 @@ import { PhoneProvider } from './phone/PhoneProvider';
 import { CallBar } from './phone/CallBar';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { CallEndedToast } from './phone/CallEndedToast';
+import { canSeeEmail } from '@/lib/mail/access';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+
+/** Unread across the person's own Inboxes, or null when Email is not theirs to see. */
+async function emailUnreadFor(ctx: Awaited<ReturnType<typeof authorize>>): Promise<number | null> {
+  if (!(await canSeeEmail(ctx))) return null;
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data } = await supabase.rpc('mail_unread_total');
+    return Number(data ?? 0);
+  } catch {
+    return 0; // the nav item still appears; the count catches up on the Email page
+  }
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const ctx = await authorize();
@@ -30,10 +44,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // picker and the create dialog are all Client Components several levels down.
   // Added to this existing batch rather than awaited separately, so it costs one
   // more round trip in parallel and no extra latency.
-  const [notifications, unreadCount, people] = await Promise.all([
+  const [notifications, unreadCount, people, emailUnread] = await Promise.all([
     notificationsFor(ctx),
     unreadNotificationCount(ctx),
     teamDirectory(ctx),
+    emailUnreadFor(ctx),
   ]);
 
   // The nav is filtered by the SAME gate the module page itself uses, rather
@@ -104,6 +119,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         isAdmin={ctx.isAdmin}
         initialNotifications={notifications}
         initialUnreadCount={unreadCount}
+        emailUnread={emailUnread}
       />
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       <CallBar />

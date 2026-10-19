@@ -62,7 +62,7 @@
  * white canvas. They are in different planes and read as "where you are" and
  * "the thing to do", never as two competing calls to action.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Icon, MODULE_ICON, type IconName } from '@/proto/ui/icons';
@@ -86,6 +86,7 @@ export function Sidebar({
   isAdmin,
   initialNotifications,
   initialUnreadCount,
+  emailUnread,
 }: {
   storageModules: Module[];
   displayModules: Module[];
@@ -96,8 +97,21 @@ export function Sidebar({
   isAdmin: boolean;
   initialNotifications: NotificationRow[];
   initialUnreadCount: number;
+  /** null = Email is not available to this person (no nav item at all). */
+  emailUnread: number | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  // Starts from the server's count; the Email page's polls keep it current
+  // while it is open (`tapdash:email-unread`).
+  const [mailUnread, setMailUnread] = useState(emailUnread ?? 0);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const n = (e as CustomEvent<number>).detail;
+      if (typeof n === 'number' && Number.isFinite(n)) setMailUnread(n);
+    };
+    window.addEventListener('tapdash:email-unread', on);
+    return () => window.removeEventListener('tapdash:email-unread', on);
+  }, []);
   const pathname = usePathname();
   const initial = (userName.trim().charAt(0) || '?').toUpperCase();
 
@@ -236,6 +250,21 @@ export function Sidebar({
           hiding the link as well would leave someone who HAS the grant unable
           to find it after an admin turns it on.
         */}
+        {/*
+          Email, like Phone, is not a module. Unlike Phone it is listed only
+          when this person may use it: the module can be switched off
+          entirely, and a link that always bounces would be noise.
+        */}
+        {emailUnread !== null ? (
+          <NavItem
+            href="/email"
+            icon="mail"
+            label="Email"
+            count={mailUnread > 0 ? mailUnread : undefined}
+            active={pathname === '/email' || pathname.startsWith('/email/')}
+            collapsed={collapsed}
+          />
+        ) : null}
         <NavItem
           href="/phone"
           icon="phone"

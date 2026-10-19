@@ -144,13 +144,16 @@ function folderKeyOf(address, id) {
   return f ? f[0] : null;
 }
 
-function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from = 'ann@client.example', isRead = false, receivedDaysAgo = 0, attachments = [] }) {
+function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from = 'ann@client.example', fromName, to, cc, conversationId, importance = 'normal', isRead = false, receivedDaysAgo = 0, attachments = [] }) {
   const id = `AAMkMock${String(nextMsg++).padStart(6, '0')}`; // immutable: never changes on move
   const received = new Date(Date.now() - receivedDaysAgo * 86_400_000).toISOString();
   messages.set(id, {
-    id, mailbox, folder, subject, isRead, received, from, seq: seq++,
+    id, mailbox, folder, subject, isRead, received, from, fromName, to, cc, conversationId, importance, seq: seq++,
     body: body ?? `<p>${subject}</p>`,
-    attachments: attachments.map((a, i) => ({ id: `${id}-att-${i}`, name: a.name, contentType: a.contentType ?? 'application/pdf', size: a.size ?? 1234, isInline: Boolean(a.isInline) })),
+    attachments: attachments.map((a, i) => ({
+      id: `${id}-att-${i}`, name: a.name, contentType: a.contentType ?? 'application/pdf', size: a.size ?? 1234,
+      isInline: Boolean(a.isInline), contentId: a.contentId ?? null, bytes: a.bytes ?? null,
+    })),
   });
   notify(mailbox, 'created', id);
   return id;
@@ -159,21 +162,21 @@ function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from =
 function messageJson(m) {
   return {
     id: m.id,
-    conversationId: `conv-${m.id}`,
+    conversationId: m.conversationId ?? `conv-${m.id}`,
     changeKey: `ck-${m.seq}`,
     subject: m.subject,
     bodyPreview: m.subject,
     body: { contentType: 'html', content: m.body },
-    from: { emailAddress: { name: m.from.split('@')[0], address: m.from } },
-    sender: { emailAddress: { name: m.from.split('@')[0], address: m.from } },
-    toRecipients: [{ emailAddress: { name: 'Owner', address: m.mailbox } }],
-    ccRecipients: [], bccRecipients: [], replyTo: [],
+    from: { emailAddress: { name: m.fromName ?? m.from.split('@')[0], address: m.from } },
+    sender: { emailAddress: { name: m.fromName ?? m.from.split('@')[0], address: m.from } },
+    toRecipients: (m.to ?? [{ name: 'Owner', address: m.mailbox }]).map((r) => ({ emailAddress: r })),
+    ccRecipients: (m.cc ?? []).map((r) => ({ emailAddress: r })), bccRecipients: [], replyTo: [],
     receivedDateTime: m.received,
     sentDateTime: m.received,
     isRead: m.isRead,
     isDraft: false,
     hasAttachments: m.attachments.some((a) => !a.isInline),
-    importance: 'normal',
+    importance: m.importance,
     parentFolderId: folderId(m.mailbox, m.folder),
     lastModifiedDateTime: new Date().toISOString(),
   };
@@ -380,7 +383,29 @@ function graph(caller, method, pathAndQuery, pageSize = 10) {
   if (method === 'GET' && rest[0] === 'messages' && rest[2] === 'attachments' && rest.length === 3) {
     const m = messages.get(decodeURIComponent(rest[1]));
     if (!m || m.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound');
-    return { status: 200, body: { value: m.attachments.map((a) => ({ '@odata.type': '#microsoft.graph.fileAttachment', ...a })) } };
+    return {
+      status: 200,
+      // Like Graph's list: no bytes, and no contentId (that needs a per-attachment read).
+      body: {
+        value: m.attachments.map((a) => ({
+          '@odata.type': '#microsoft.graph.fileAttachment', id: a.id, name: a.name, contentType: a.contentType, size: a.size, isInline: a.isInline,
+        })),
+      },
+    };
+  }
+  if (method === 'GET' && rest[0] === 'messages' && rest[2] === 'attachments' && rest[3] && rest.length <= 5) {
+    const m = messages.get(decodeURIComponent(rest[1]));
+    const a = m?.attachments.find((x) => x.id === decodeURIComponent(rest[3]));
+    if (!m || m.mailbox !== mb.address || !a) return graphErr(404, 'ErrorItemNotFound');
+    const bytes = Buffer.from(a.bytes ?? Buffer.from(`%PDF-1.4 mock ${a.name}`).toString('base64'), 'base64');
+    if (rest[4] === '$value') return { status: 200, raw: bytes, type: a.contentType };
+    return {
+      status: 200,
+      body: {
+        '@odata.type': '#microsoft.graph.fileAttachment', id: a.id, name: a.name, contentType: a.contentType, size: a.size,
+        isInline: a.isInline, contentId: a.contentId, contentBytes: bytes.toString('base64'),
+      },
+    };
   }
   return graphErr(400, 'BadRequest', `Mock does not serve ${method} ${url.pathname}`);
 }
@@ -476,6 +501,10 @@ const server = http.createServer(async (req, res) => {
       }
       const out = graph(caller, req.method, url.pathname + url.search, pageSize);
       log.push(`${req.method} ${url.pathname} ${out.status}`);
+      if (out.raw) {
+        res.writeHead(out.status, { 'Content-Type': out.type ?? 'application/octet-stream', 'Content-Length': out.raw.length });
+        return res.end(out.raw);
+      }
       return send(res, out.status, out.body);
     }
     send(res, 404, { error: 'not found' });

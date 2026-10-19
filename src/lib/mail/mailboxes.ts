@@ -10,10 +10,11 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from '@/lib/records/permissions';
+import type { Health } from './viewTypes';
 
 export const MAX_CONNECTIONS = 30;
 
-export type ConnectionHealth = 'ok' | 'setting_up' | 'needs_reconnect' | 'needs_permission' | 'stalled' | 'throttled';
+export type ConnectionHealth = Health;
 
 export type MyMailbox = {
   connectionId: string;
@@ -41,7 +42,7 @@ type Row = {
   } | null;
 };
 
-export function healthOf(r: Pick<Row, 'status'> & { mb: NonNullable<Row['mail_mailboxes']> }): ConnectionHealth {
+export function healthOf(r: { status: string; mb: { sync_status: string; seeded_at: string | null } }): ConnectionHealth {
   if (r.status === 'broken') return 'needs_reconnect';
   if (r.status === 'degraded') return 'needs_permission';
   if (r.mb.sync_status === 'broken' || r.mb.sync_status === 'stalled') return 'stalled';

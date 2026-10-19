@@ -159,6 +159,21 @@ export function createGraphTransport(opts: GraphTransportOptions) {
     return (text ? JSON.parse(text) : undefined) as T;
   }
 
+  /**
+   * One call, the Response itself — for bytes that must be STREAMED to the
+   * browser (attachments), never parsed or held in memory. Same 401 retry
+   * and error classification as `request`.
+   */
+  async function raw(req: GraphRequest): Promise<Response> {
+    let res = await send(req, false);
+    if (res.status === 401) {
+      await res.body?.cancel().catch(() => {});
+      res = await send(req, true);
+    }
+    if (!res.ok) throw await errorFrom(res);
+    return res;
+  }
+
   /** Many calls through `$batch`, 20 at a time; answers in request order. */
   async function batch(reqs: GraphRequest[]): Promise<BatchItem[]> {
     const out: BatchItem[] = new Array(reqs.length);
@@ -194,7 +209,7 @@ export function createGraphTransport(opts: GraphTransportOptions) {
     return out;
   }
 
-  return { request, batch, baseUrl: base };
+  return { request, raw, batch, baseUrl: base };
 }
 
 export type GraphTransport = ReturnType<typeof createGraphTransport>;

@@ -27,6 +27,22 @@ const BANNER_STYLE: Record<Banner['tone'], string> = {
 const START = '/api/mail/oauth/start';
 const RETURN = '/email/settings';
 
+/**
+ * Connect forms navigate from script. As plain form submissions they would
+ * redirect on to Microsoft, and the CSP's `form-action 'self'` applies to
+ * that redirect too — under an enforced CSP the button would simply do
+ * nothing. A navigation is not a form submission. (Without JS the forms
+ * still submit normally.)
+ */
+function goConnect(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault();
+  const data = new FormData(e.currentTarget);
+  const q = new URLSearchParams();
+  for (const [k, v] of data) if (typeof v === 'string') q.set(k, v);
+  // A full navigation (not router.push): this route answers with a redirect to Microsoft.
+  window.location.assign(new URL(`${START}?${q.toString()}`, window.location.origin).toString());
+}
+
 function reconnectHref(mb: MyMailbox): string {
   const q = new URLSearchParams({ kind: mb.kind, return: RETURN });
   if (mb.kind === 'shared') q.set('address', mb.address);
@@ -142,7 +158,7 @@ export function MailboxSettings({
             <p className="text-[13px] text-ink-500">You&apos;ve connected {max} mailboxes, the maximum. Disconnect one to add another.</p>
           ) : null}
           <div className="grid gap-4 md:grid-cols-2">
-            <form action={START} method="get" className="space-y-2 rounded-xl border border-line bg-white p-4">
+            <form action={START} method="get" onSubmit={goConnect} className="space-y-2 rounded-xl border border-line bg-white p-4">
               <input type="hidden" name="kind" value="personal" />
               <input type="hidden" name="return" value={RETURN} />
               <p className="text-[13.5px] font-semibold text-ink-900">Your Outlook mailbox</p>
@@ -152,7 +168,7 @@ export function MailboxSettings({
               </Button>
             </form>
 
-            <form action={START} method="get" className="space-y-2 rounded-xl border border-line bg-white p-4">
+            <form action={START} method="get" onSubmit={goConnect} className="space-y-2 rounded-xl border border-line bg-white p-4">
               <input type="hidden" name="kind" value="shared" />
               <input type="hidden" name="return" value={RETURN} />
               <label htmlFor="shared-address" className="block text-[13.5px] font-semibold text-ink-900">

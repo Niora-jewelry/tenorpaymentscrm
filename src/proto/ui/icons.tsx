@@ -73,6 +73,18 @@ export type IconName =
   | 'external-link'
   | 'calendar'
   | 'user'
+  // mail
+  | 'inbox'
+  | 'folder'
+  | 'file-pen'
+  | 'ban'
+  | 'pin'
+  | 'image-off'
+  | 'refresh-cw'
+  | 'reply-all'
+  | 'forward'
+  | 'more-horizontal'
+  | 'users-round'
   // formatting — the Updates rich-text bar (Modules §3.2)
   | 'type-bold'
   | 'type-italic'
@@ -428,6 +440,78 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="3" y="4.5" width="18" height="17" rx="2" />
       <path d="M16 2.5v4M8 2.5v4M3 10h18" />
+    </>
+  ),
+  inbox: (
+    <>
+      <path d="M21.5 13h-5.2l-1.6 2.5H9.3L7.7 13H2.5" />
+      <path d="M5.8 5.6 2.5 13v5a2 2 0 0 0 2 2h15a2 2 0 0 0 2-2v-5l-3.3-7.4a2 2 0 0 0-1.8-1.1H7.6a2 2 0 0 0-1.8 1.1Z" />
+    </>
+  ),
+  folder: (
+    <path d="M3.5 7.5a2 2 0 0 1 2-2h3.8l2 2.2h7.2a2 2 0 0 1 2 2v7.8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z" />
+  ),
+  'file-pen': (
+    <>
+      <path d="M12.5 21.5H6.5a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2h8l5 5v4" />
+      <path d="M14.5 2.5v5h5" />
+      <path d="m19.6 14.4 1.9 1.9-5 5h-1.9v-1.9Z" />
+    </>
+  ),
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="9.5" />
+      <path d="m5.3 5.3 13.4 13.4" />
+    </>
+  ),
+  pin: (
+    <>
+      <path d="M12 16.5v5" />
+      <path d="M8.5 3h7l-1 6.2 3 3.3v2H6.5v-2l3-3.3Z" />
+    </>
+  ),
+  'image-off': (
+    <>
+      <path d="m3 3 18 18" />
+      <path d="M20.5 15.5V5.5a2 2 0 0 0-2-2H8.5" />
+      <path d="M3.5 6.5v12a2 2 0 0 0 2 2h12" />
+      <path d="m3.5 16 4.5-4.5 3 3" />
+      <circle cx="15.5" cy="8.5" r="1.5" />
+    </>
+  ),
+  'refresh-cw': (
+    <>
+      <path d="M20.5 11A8.5 8.5 0 0 0 6 5.5L3.5 8" />
+      <path d="M3.5 3.5V8H8" />
+      <path d="M3.5 13A8.5 8.5 0 0 0 18 18.5l2.5-2.5" />
+      <path d="M20.5 20.5V16H16" />
+    </>
+  ),
+  'reply-all': (
+    <>
+      <path d="m7.5 16-5-5 5-5" />
+      <path d="m12.5 16-5-5 5-5" />
+      <path d="M21.5 19v-2a6 6 0 0 0-6-6h-8" />
+    </>
+  ),
+  forward: (
+    <>
+      <path d="m15.5 16 5-5-5-5" />
+      <path d="M3.5 19v-2a6 6 0 0 1 6-6h11" />
+    </>
+  ),
+  'more-horizontal': (
+    <>
+      <circle cx="5.5" cy="12" r="1.1" />
+      <circle cx="12" cy="12" r="1.1" />
+      <circle cx="18.5" cy="12" r="1.1" />
+    </>
+  ),
+  'users-round': (
+    <>
+      <circle cx="9" cy="8" r="3.5" />
+      <path d="M2.5 20a6.5 6.5 0 0 1 13 0" />
+      <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 20a6.5 6.5 0 0 0-3-5.5" />
     </>
   ),
   user: (

@@ -28,6 +28,7 @@
         "verify:mail-connect": "node --env-file=.env scripts/verify-mail-connect.mjs",
         "verify:mail-sync": "node --env-file=.env scripts/verify-mail-sync.mjs",
         "verify:mail-notify": "node --env-file=.env scripts/verify-mail-notify.mjs",
+        "verify:mail-ui": "node --env-file=.env scripts/verify-mail-ui.mjs",
         "mail:mock": "node scripts/mail-mock-graph.mjs",
         "test:integration": "vitest run --dir src --testTimeout 60000 flow.integration",
         "invite": "node scripts/invite.mjs",

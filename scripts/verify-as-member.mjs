@@ -40,6 +40,8 @@ if (!/@([a-z0-9-]+\.)*test$/i.test(ADMIN)) process.exit(1);
 
 const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await db.connect();
+// Test accounts sign in with a borrowed password; their real one is put back at the end.
+const savedHashes = new Map();
 const q = (s, p = []) => db.query(s, p).then((r) => r.rows);
 
 const [target] = await q(
@@ -50,7 +52,8 @@ if (target.is_admin) { console.log(`${TARGET} is an admin — admins see everyth
 const [me] = await q(`select id from profiles where email=$1`, [ADMIN]);
 const svc = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const PW = 'ZzProbe-2026!page';
-await svc.auth.admin.updateUserById(me.id, { password: PW });
+if (!savedHashes.has(me.id)) savedHashes.set(me.id, (await db.query('select encrypted_password from auth.users where id = $1', [me.id])).rows[0]?.encrypted_password ?? null);
+  await svc.auth.admin.updateUserById(me.id, { password: PW });
 const anon = createClient(SUPA, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const { data } = await anon.auth.signInWithPassword({ email: ADMIN, password: PW });
 const ref = new URL(SUPA).hostname.split('.')[0];
@@ -178,6 +181,9 @@ try {
       : `⚠ the audit log's last impersonation event is ${last?.e ?? 'missing'} — check Users.`);
   }
   await browser.close();
+  for (const [id, hash] of savedHashes) {
+    if (hash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
+  }
   await db.end();
 }
 

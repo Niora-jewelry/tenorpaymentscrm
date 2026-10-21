@@ -37,6 +37,8 @@ if (![ADMIN, MEMBER].every((e) => /@([a-z0-9-]+\.)*test$/i.test(e))) process.exi
 
 const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await db.connect();
+// Test accounts sign in with a borrowed password; their real one is put back at the end.
+const savedHashes = new Map();
 const q = (s, p = []) => db.query(s, p).then((r) => r.rows);
 const one = async (s, p = []) => (await q(s, p))[0];
 const MAIL_TABLES = (await q(`select table_name t from information_schema.tables where table_schema='public' and table_name like 'mail\\_%' order by 1`)).map((r) => r.t);
@@ -81,6 +83,7 @@ const svc = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { 
 const anon = createClient(SUPA, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 const ref = new URL(SUPA).hostname.split('.')[0];
 async function cookiesFor(id, email) {
+  if (!savedHashes.has(id)) savedHashes.set(id, (await db.query('select encrypted_password from auth.users where id = $1', [id])).rows[0]?.encrypted_password ?? null);
   await svc.auth.admin.updateUserById(id, { password: 'ZzProbe-2026!mail' });
   const { data } = await anon.auth.signInWithPassword({ email, password: 'ZzProbe-2026!mail' });
   const v = 'base64-' + Buffer.from(JSON.stringify(data.session)).toString('base64url');
@@ -273,6 +276,9 @@ try {
   const drift = MAIL_TABLES.filter((x) => after[x] !== before[x]);
   t('every mail_* table back to its starting count', drift.length === 0, drift.map((d) => `${d} ${before[d]}→${after[d]}`).join(', '));
   t('no page errors / 5xx', errors.length === 0, errors.join(' | ').slice(0, 400));
+  for (const [id, hash] of savedHashes) {
+    if (hash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
+  }
   await db.end();
 }
 

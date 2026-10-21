@@ -37,6 +37,8 @@ if (KEY.length !== 32) {
 
 const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await db.connect();
+// Test accounts sign in with a borrowed password; their real one is put back at the end.
+const savedHashes = new Map();
 const q = (s, p = []) => db.query(s, p).then((r) => r.rows);
 
 const MAIL_TABLES = (await q(`select table_name t from information_schema.tables where table_schema='public' and table_name like 'mail\\_%' order by 1`)).map((r) => r.t);
@@ -63,6 +65,7 @@ const ref = new URL(SUPA).hostname.split('.')[0];
 async function cookiesFor(email) {
   const [u] = await q(`select id from profiles where email=$1`, [email]);
   const PW = 'ZzProbe-2026!mail';
+  if (!savedHashes.has(u.id)) savedHashes.set(u.id, (await db.query('select encrypted_password from auth.users where id = $1', [u.id])).rows[0]?.encrypted_password ?? null);
   await svc.auth.admin.updateUserById(u.id, { password: PW });
   const { data, error } = await anon.auth.signInWithPassword({ email, password: PW });
   if (error) throw error;
@@ -238,6 +241,9 @@ try {
   const afterOther = await otherCounts();
   t('records and profiles/roles untouched', JSON.stringify(afterOther) === JSON.stringify(beforeOther));
   t('no page errors / 5xx', errors.length === 0, errors.join(' | ').slice(0, 400));
+  for (const [id, hash] of savedHashes) {
+    if (hash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
+  }
   await db.end();
 }
 

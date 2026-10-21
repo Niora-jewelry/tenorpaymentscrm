@@ -176,6 +176,26 @@ export async function openFolderAction(input: { folderId: string }): Promise<Rea
   }, 'open_folder');
 }
 
+/**
+ * "Load older mail": the 30 days before what this folder holds, fetched from
+ * Outlook now. A read, so View is enough; limited per mailbox (6 an hour).
+ */
+export async function loadOlderAction(input: { folderId: string }): Promise<Read<{ queued: boolean; retryAfterSeconds?: number }>> {
+  const parsed = z.object({ folderId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return { ok: true, data: { queued: false } };
+  return guarded(async () => {
+    const supabase = await createSupabaseServerClient();
+    // RLS read: a folder of a mailbox this person can see.
+    const { data: f } = await supabase.from('mail_folders').select('id, mailbox_id').eq('id', parsed.data.folderId).is('deleted_at', null).maybeSingle();
+    if (!f) return { queued: false };
+    const limit = await rateLimit(`mail_backfill:mailbox:${f.mailbox_id}`, RATE_LIMITS.mailBackfillPerMailbox);
+    if (!limit.allowed) return { queued: false, retryAfterSeconds: limit.retryAfterSeconds };
+    await supabaseAdmin().rpc('mail_enqueue', { p_mailbox_id: f.mailbox_id, p_kind: 'load_older', p_target: f.id, p_priority: 2 });
+    after(() => drainSoon([f.mailbox_id as string], 45_000));
+    return { queued: true };
+  }, 'load_older');
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Changing mail
 //

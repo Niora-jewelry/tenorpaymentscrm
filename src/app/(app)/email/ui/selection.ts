@@ -4,7 +4,7 @@
  */
 import type { MailboxView } from '@/lib/mail/viewTypes';
 
-export type Selection = { kind: 'all' } | { kind: 'folder'; folderId: string };
+export type Selection = { kind: 'all' } | { kind: 'folder'; folderId: string } | { kind: 'scheduled' };
 export type Open = { mailboxId: string; key: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,6 +12,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The folders a selection lists: one folder, or every own mailbox's Inbox. */
 export function folderIdsFor(sel: Selection, boxes: MailboxView[]): string[] {
   if (sel.kind === 'folder') return [sel.folderId];
+  if (sel.kind === 'scheduled') return [];
   return boxes.filter((b) => b.own).flatMap((b) => b.folders.filter((f) => f.wellKnown === 'inbox').map((f) => f.id));
 }
 
@@ -30,6 +31,7 @@ export function parseOpen(raw: string | null | undefined): Open | null {
  */
 export function resolveSelection(f: string | null | undefined, boxes: MailboxView[]): Selection {
   const own = boxes.filter((b) => b.own);
+  if (f === 'scheduled') return { kind: 'scheduled' };
   if (f && f !== 'all' && boxes.some((b) => b.folders.some((x) => x.id === f))) return { kind: 'folder', folderId: f };
   if (f === 'all' && own.length > 0) return { kind: 'all' };
   if (own.length > 1) return { kind: 'all' };

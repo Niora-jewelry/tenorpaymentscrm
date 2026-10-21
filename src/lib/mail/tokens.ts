@@ -173,6 +173,13 @@ async function mint(identityId: string, forceRefresh: boolean): Promise<string> 
     mailLog('warn', 'tokens', 'refresh_failed', { identityId, status: e.status, code: c.code, detail: c.detail });
     throw new GraphError(e.status, c, e.oauthCode);
   }
+  // Microsoft accepted our client secret: if it had been flagged as expired
+  // (and has since been rotated), say so — the admin banner clears itself.
+  await admin
+    .from('mail_provider_health')
+    .update({ state: 'up', last_error_code: null, updated_at: new Date().toISOString() })
+    .eq('id', 1)
+    .eq('state', 'config_error');
 
   const acc = seal(set.accessToken, cfg.tokenKey, aad);
   const patch: Record<string, unknown> = {

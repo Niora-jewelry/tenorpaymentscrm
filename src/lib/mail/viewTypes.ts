@@ -15,6 +15,8 @@ export type FolderView = {
   total: number;
   hasChildren: boolean;
   seeded: boolean;
+  /** Mail older than this hasn't been fetched yet ("Load older mail"); 1970 = everything is here. */
+  oldestLoadedAt: string | null;
 };
 
 export type MailboxView = {
@@ -106,4 +108,41 @@ export type SyncState = {
   unreadTotal: number;
   /** Undismissed "Outlook didn't…" notices for this person, newest first. */
   notices: Notice[];
+  /** Messages this person has scheduled and not yet sent. */
+  scheduled: number;
+  /** Outlook unreachable / the app secret expiring — about the whole module, not one mailbox. */
+  moduleNotice: ModuleNotice;
 };
+
+export type ComposeKind = 'new' | 'reply' | 'replyAll' | 'forward';
+
+export type FromOption = { mailboxId: string; address: string; displayName: string; signatureHtml: string };
+
+/** Everything the composer opens with. */
+export type ComposeInit = {
+  kind: ComposeKind;
+  /** Our mail_drafts id once an Outlook draft exists. */
+  draftId: string | null;
+  sourceMessageId: string | null;
+  mailboxId: string;
+  fromOptions: FromOption[];
+  to: Addr[];
+  cc: Addr[];
+  bcc: Addr[];
+  subject: string;
+  /** Initial editor content: empty for new mail, or the message's own body. */
+  html: string;
+  /** Whether the mailbox signature is added (default true). False when `html` already carries it. */
+  includeSignature?: boolean;
+  /** Files already in private storage (a message brought back by Undo). */
+  attachments?: OutgoingAttachment[];
+  /** The message being answered or forwarded, shown under the editor. */
+  source: { fromName: string; fromAddress: string; at: string; subject: string } | null;
+};
+
+export type OutgoingAttachment = { path: string; name: string; size: number; contentType: string };
+
+/** A line about the whole module (Outlook unreachable, the app secret expiring), or null. */
+export type ModuleNotice = { tone: 'warn' | 'error'; text: string } | null;
+
+export type ScheduledItem = { id: string; mailboxId: string; subject: string; to: Addr[]; releaseAt: string };

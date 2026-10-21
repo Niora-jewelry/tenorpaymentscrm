@@ -36,8 +36,21 @@ function scrub(value: unknown, depth = 0): unknown {
   return value;
 }
 
+/**
+ * The shared redactor hides any key containing "code" (OTP and OAuth codes).
+ * The engine's `code` is a classified error name (`send_as_denied`), which the
+ * runbook needs to see — so a short snake_case value is carried as `reason`.
+ * Anything else under `code` (an OAuth code, say) still meets the redactor.
+ */
+const ERROR_CLASS = /^[a-z][a-z0-9_]{1,40}$/;
+function classifiedCodes(meta: Record<string, unknown>): Record<string, unknown> {
+  if (typeof meta.code !== 'string' || !ERROR_CLASS.test(meta.code)) return meta;
+  const { code, ...rest } = meta;
+  return { reason: code, ...rest };
+}
+
 export function sanitizeLogMeta(meta: Record<string, unknown> = {}): Record<string, unknown> {
-  return scrub(redactMetadata(meta)) as Record<string, unknown>;
+  return scrub(redactMetadata(classifiedCodes(meta))) as Record<string, unknown>;
 }
 
 export function mailLog(

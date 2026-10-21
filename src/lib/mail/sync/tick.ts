@@ -18,6 +18,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { mailLog } from '../log';
 import { mailConfig } from '../config';
 import { drainMailbox, type ClaimedMailbox, type DrainResult } from './drain';
+import { sendDue } from '../compose/send';
+import { sweepUploads } from '../compose/sweep';
 
 export type TickSummary = {
   scheduled: number;
@@ -41,6 +43,15 @@ export async function runTick(opts: { only?: string; budgetMs?: number; trigger?
   const owner = `${opts.trigger ?? 'tick'}-${randomUUID()}`;
   const admin = supabaseAdmin();
   const summary: TickSummary = { scheduled: 0, mailboxes: 0, ok: 0, throttled: 0, failed: 0, changed: 0, ms: 0 };
+
+  // Mail someone is waiting to go out comes first: undo windows that have
+  // passed, scheduled sends that are due, and retries.
+  try {
+    const sent = await sendDue({ budgetMs: Math.min(60_000, deadline - Date.now() - 30_000) });
+    if (sent.sent || sent.failed || sent.retried) mailLog('info', 'tick', 'outbox', sent);
+  } catch (e) {
+    mailLog('error', 'tick', 'outbox_crashed', { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
+  }
 
   const { data: scheduled, error: schedErr } = await admin.rpc('mail_schedule_due');
   if (schedErr) mailLog('error', 'tick', 'schedule_failed', { code: schedErr.code });
@@ -106,6 +117,15 @@ export async function runTick(opts: { only?: string; budgetMs?: number; trigger?
   }
   const { error: pruneErr } = await admin.rpc('mail_prune');
   if (pruneErr) mailLog('warn', 'tick', 'prune_failed', { code: pruneErr.code });
+  // Attachments for messages that will never go, four times an hour.
+  if (!opts.only && new Date().getUTCMinutes() % 15 === 0) {
+    try {
+      const swept = await sweepUploads();
+      if (swept) mailLog('info', 'tick', 'uploads_swept', { swept });
+    } catch (e) {
+      mailLog('warn', 'tick', 'upload_sweep_failed', { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
+    }
+  }
 
   summary.ms = Date.now() - t0;
   return summary;

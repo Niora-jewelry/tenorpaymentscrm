@@ -45,7 +45,25 @@
  * {destinationId}, DELETE messages/{id}; mailFolders POST / childFolders POST
  * / PATCH {displayName} / POST {id}/move / DELETE — all per mailbox.
  * Fault failOps: n → the next n message writes answer 500 (ErrorInternalServerError).
- * Inspection:        GET /__mock/state
+ * Compose: POST messages (draft), messages/{id}/createReply|createReplyAll|
+ * createForward (draft whose body is an Outlook-style HTML document with the
+ * quote), PATCH a draft's subject/body/recipients, POST {id}/attachments,
+ * {id}/attachments/createUploadSession → PUT /upload/{token} with
+ * Content-Range (refused if it carries an Authorization header, as Microsoft's
+ * upload host does), POST {id}/send (Sent Items; copies land in any mock
+ * mailbox it was addressed to). Faults: sendFail "<ExchangeCode>" fails every
+ * send with that code; failSend n → the next n sends answer 503.
+ * Rules: GET/POST mailFolders/inbox/messageRules, PATCH/DELETE …/{id}
+ * (a move/copy to an unknown folder is refused with ErrorInvalidRule).
+ * Meetings: /__mock/message {meeting: {start, end, location, cancelled?,
+ * notInCalendar?}} makes an eventMessageRequest; GET messages/{id}?$expand=…event
+ * returns its event; POST events/{id}/accept|tentativelyAccept|decline answers
+ * (a decline files the invitation under Deleted Items).
+ * Older mail: GET mailFolders/{id}/messages with receivedDateTime lt/ge filters.
+ * Contacts: GET contacts/delta. Hooks: /__mock/rule {mailbox, rule},
+ * /__mock/rules {mailbox}, /__mock/contact {mailbox, name, addresses},
+ * /__mock/contact-delete {mailbox, id}, GET /__mock/events.
+ * Inspection:        GET /__mock/state, GET /__mock/sent, POST /__mock/drafts {mailbox}
  */
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
@@ -88,7 +106,8 @@ const WELL_KNOWN_KEYS = new Set(['inbox', 'drafts', 'sentitems', 'deleteditems',
 const codes = new Map(); // code → { email, challenge, redirectUri, used }
 const access = new Map(); // access token → email
 const refresh = new Map(); // refresh token → email
-let fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0 };
+const NO_FAULT = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0, sendFail: null, failSend: 0, rejectRules: false };
+let fault = { ...NO_FAULT };
 
 // -- subscriptions ------------------------------------------------------------
 const subs = new Map(); // id -> { id, mailbox, kind, notificationUrl, lifecycleUrl, clientState, expires }
@@ -156,24 +175,38 @@ function folderKeyOf(address, id) {
   return f ? f[0] : null;
 }
 
-function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from = 'ann@client.example', fromName, to, cc, conversationId, importance = 'normal', isRead = false, receivedDaysAgo = 0, attachments = [] }) {
+function addMessage({ mailbox, folder = 'inbox', subject = 'Hello', body, from = 'ann@client.example', fromName, to, cc, bcc, conversationId, importance = 'normal', isRead = false, isDraft = false, receivedDaysAgo = 0, attachments = [], meeting = null }) {
   const id = `AAMkMock${String(nextMsg++).padStart(6, '0')}`; // immutable: never changes on move
   const received = new Date(Date.now() - receivedDaysAgo * 86_400_000).toISOString();
   messages.set(id, {
-    id, mailbox, folder, subject, isRead, received, from, fromName, to, cc, conversationId, importance, seq: seq++,
+    id, mailbox, folder, subject, isRead, isDraft, received, from, fromName, to, cc, bcc, conversationId, importance, seq: seq++,
     body: body ?? `<p>${subject}</p>`,
     attachments: attachments.map((a, i) => ({
       id: `${id}-att-${i}`, name: a.name, contentType: a.contentType ?? 'application/pdf', size: a.size ?? 1234,
       isInline: Boolean(a.isInline), contentId: a.contentId ?? null, bytes: a.bytes ?? null,
     })),
   });
+  if (meeting) {
+    const m = messages.get(id);
+    m.meeting = true;
+    if (!meeting.notInCalendar) {
+      const eid = `evt-${nextEvent++}`;
+      events.set(eid, {
+        id: eid, mailbox, messageId: id, start: meeting.start, end: meeting.end, location: meeting.location ?? '',
+        organizer: from, organizerName: fromName ?? from, response: 'notResponded', isCancelled: Boolean(meeting.cancelled),
+      });
+      m.eventId = eid;
+    }
+  }
   notify(mailbox, 'created', id);
   return id;
 }
 
 function messageJson(m) {
   return {
+    ...(m.meeting ? { '@odata.type': '#microsoft.graph.eventMessageRequest', meetingMessageType: 'meetingRequest' } : {}),
     id: m.id,
+    internetMessageId: `<${m.id}@mock.test>`,
     conversationId: m.conversationId ?? `conv-${m.id}`,
     changeKey: `ck-${m.seq}`,
     subject: m.subject,
@@ -182,11 +215,11 @@ function messageJson(m) {
     from: { emailAddress: { name: m.fromName ?? m.from.split('@')[0], address: m.from } },
     sender: { emailAddress: { name: m.fromName ?? m.from.split('@')[0], address: m.from } },
     toRecipients: (m.to ?? [{ name: 'Owner', address: m.mailbox }]).map((r) => ({ emailAddress: r })),
-    ccRecipients: (m.cc ?? []).map((r) => ({ emailAddress: r })), bccRecipients: [], replyTo: [],
+    ccRecipients: (m.cc ?? []).map((r) => ({ emailAddress: r })), bccRecipients: (m.bcc ?? []).map((r) => ({ emailAddress: r })), replyTo: [],
     receivedDateTime: m.received,
     sentDateTime: m.received,
     isRead: m.isRead,
-    isDraft: false,
+    isDraft: Boolean(m.isDraft),
     hasAttachments: m.attachments.some((a) => !a.isInline),
     importance: m.importance,
     parentFolderId: folderId(m.mailbox, m.folder),
@@ -215,6 +248,289 @@ function remove(id) {
   messages.delete(id);
   notify(m.mailbox, 'deleted', id);
   return true;
+}
+
+// -- rules, calendar, contacts, folder listing (P7) ---------------------------
+const rules = new Map(); // address -> [{ id, displayName, sequence, isEnabled, isReadOnly, hasError, conditions, exceptions, actions }]
+let nextRule = 1;
+const events = new Map(); // event id -> { id, mailbox, start, end, location, organizer, response, isCancelled }
+let nextEvent = 1;
+const contacts = new Map(); // address -> Map(id -> { id, displayName, emailAddresses, seq, removed })
+let nextContact = 1;
+
+const rulesOf = (address) => {
+  if (!rules.has(address)) rules.set(address, []);
+  return rules.get(address);
+};
+/** Graph replaces a complex property on PATCH; null members mean "not set". */
+const cleanSection = (obj) => Object.fromEntries(Object.entries(obj ?? {}).filter(([, v]) => v !== null && v !== undefined));
+function ruleProblem(address, r) {
+  if (fault.rejectRules) return graphErr(400, 'ErrorInvalidRule', 'The rule contains a condition that is not valid for this mailbox.');
+  if (!String(r.displayName ?? '').trim()) return graphErr(400, 'ErrorInvalidRequest', 'displayName is required.');
+  for (const key of ['moveToFolder', 'copyToFolder']) {
+    const id = r.actions?.[key];
+    if (id && !folderKeyOf(address, id)) return graphErr(400, 'ErrorInvalidRule', `The folder in "${key}" doesn't exist in this mailbox.`);
+  }
+  return null;
+}
+function rulesApi(mb, method, rest, body) {
+  // rest: ['mailFolders', 'inbox', 'messageRules', id?]
+  const list = rulesOf(mb.address);
+  if (rest.length === 3) {
+    if (method === 'GET') return { status: 200, body: { value: [...list].sort((a, b) => a.sequence - b.sequence) } };
+    if (method === 'POST') {
+      const r = {
+        id: `rule-${nextRule++}`, displayName: body?.displayName, sequence: Number(body?.sequence ?? list.length + 1), isEnabled: body?.isEnabled !== false,
+        isReadOnly: false, hasError: false, conditions: cleanSection(body?.conditions), exceptions: cleanSection(body?.exceptions), actions: cleanSection(body?.actions),
+      };
+      const bad = ruleProblem(mb.address, r);
+      if (bad) return bad;
+      list.push(r);
+      return { status: 201, body: r };
+    }
+  }
+  const r = list.find((x) => x.id === decodeURIComponent(rest[3] ?? ''));
+  if (!r) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+  if (method === 'GET') return { status: 200, body: r };
+  if (method === 'DELETE') {
+    rules.set(mb.address, list.filter((x) => x !== r));
+    return { status: 204, body: undefined };
+  }
+  if (method === 'PATCH') {
+    if (r.isReadOnly) return graphErr(403, 'ErrorAccessDenied', 'The rule is read-only.');
+    const next = { ...r };
+    for (const k of ['displayName', 'sequence', 'isEnabled']) if (body && k in body) next[k] = body[k];
+    for (const k of ['conditions', 'exceptions', 'actions']) if (body && k in body) next[k] = cleanSection(body[k]);
+    const bad = ruleProblem(mb.address, next);
+    if (bad) return bad;
+    Object.assign(r, next);
+    return { status: 200, body: r };
+  }
+  return null;
+}
+
+function eventJson(e) {
+  return {
+    id: e.id, isAllDay: false, isCancelled: e.isCancelled, isOrganizer: false,
+    start: { dateTime: e.start.replace(/Z$/, '.0000000'), timeZone: 'UTC' },
+    end: { dateTime: e.end.replace(/Z$/, '.0000000'), timeZone: 'UTC' },
+    location: { displayName: e.location }, organizer: { emailAddress: { name: e.organizerName, address: e.organizer } },
+    responseStatus: { response: e.response },
+  };
+}
+function eventsApi(mb, method, rest) {
+  // rest: ['events', id, 'accept' | 'tentativelyAccept' | 'decline']
+  const e = events.get(decodeURIComponent(rest[1] ?? ''));
+  if (!e || e.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+  if (method === 'GET' && rest.length === 2) return { status: 200, body: eventJson(e) };
+  const verb = { accept: 'accepted', tentativelyAccept: 'tentativelyAccepted', decline: 'declined' }[rest[2]];
+  if (method !== 'POST' || !verb) return null;
+  if (e.isCancelled) return graphErr(400, 'ErrorMeetingCancelled', 'The meeting was cancelled.');
+  e.response = verb;
+  responsesSent.push({ event: e.id, response: verb, mailbox: mb.address });
+  // Exchange files a declined invitation under Deleted Items.
+  if (verb === 'declined' && e.messageId) mutate({ id: e.messageId, folder: 'deleteditems' });
+  return { status: 202, body: undefined };
+}
+const responsesSent = [];
+
+/** GET mailFolders/{id}/messages with Graph's receivedDateTime lt/ge $filter, newest first, $top + $skip paging. */
+function folderMessages(address, folderKey, url) {
+  const p = url.searchParams;
+  const f = p.get('$filter') ?? '';
+  const imid = /internetMessageId eq '([^']+)'/.exec(f)?.[1];
+  const lt = /receivedDateTime lt (\S+)/.exec(f)?.[1];
+  const ge = /receivedDateTime ge (\S+)/.exec(f)?.[1];
+  const top = Math.min(Number(p.get('$top') ?? 10), 1000);
+  const skip = Number(p.get('$skip') ?? 0);
+  const all = [...messages.values()]
+    .filter((m) => m.mailbox === address && m.folder === folderKey)
+    .filter((m) => (!lt || Date.parse(m.received) < Date.parse(lt)) && (!ge || Date.parse(m.received) >= Date.parse(ge)))
+    .filter((m) => !imid || `<${m.id}@mock.test>` === imid)
+    .sort((a, b) => b.received.localeCompare(a.received));
+  const page = all.slice(skip, skip + top);
+  const body = { value: page.map(messageJson) };
+  if (skip + top < all.length) {
+    const next = new URL(`http://127.0.0.1:${PORT}${url.pathname}`);
+    for (const [k, v] of p) if (k !== '$skip') next.searchParams.set(k, v);
+    next.searchParams.set('$skip', String(skip + top));
+    body['@odata.nextLink'] = next.toString();
+  }
+  return { status: 200, body };
+}
+
+function contactsOf(address) {
+  if (!contacts.has(address)) contacts.set(address, new Map());
+  return contacts.get(address);
+}
+function contactsDelta(address, url) {
+  const since = Number(url.searchParams.get('$deltatoken') ?? 0);
+  const list = [...contactsOf(address).values()].filter((c) => c.seq >= since);
+  const base = `http://127.0.0.1:${PORT}${url.pathname}`;
+  return {
+    status: 200,
+    body: {
+      value: list.map((c) => (c.removed ? { id: c.id, '@removed': { reason: 'deleted' } } : { id: c.id, displayName: c.displayName, emailAddresses: c.emailAddresses })),
+      '@odata.deltaLink': `${base}?$deltatoken=${seq++}`,
+    },
+  };
+}
+
+// -- compose ------------------------------------------------------------------
+const sentLog = []; // { mailbox, id, subject, body, to, cc, bcc, attachments: [{name, size}] }
+const uploads = new Map(); // token -> { messageId, name, size, contentType, parts: Buffer[], received }
+const fromGraph = (list) => (Array.isArray(list) ? list : []).map((r) => ({ name: r?.emailAddress?.name ?? '', address: String(r?.emailAddress?.address ?? '') }));
+const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const isMockMailbox = (a) => Boolean(ACCOUNTS[a]?.mailbox || SHARED[a]);
+
+/** What Outlook's createReply/createForward return as the body: a whole document with the quote. */
+function quoteDocument(src) {
+  const who = (r) => `${esc(r.name || r.address)} &lt;${esc(r.address)}&gt;`;
+  return (
+    '<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><style>p.MsoNormal{margin:0}</style></head><body>' +
+    '<div id="divRplyFwdMsg" dir="ltr"><hr style="display:inline-block;width:98%"><font face="Calibri" style="font-size:11pt">' +
+    `<b>From:</b> ${who({ name: src.fromName ?? '', address: src.from })}<br><b>Sent:</b> ${esc(new Date(src.received).toUTCString())}<br>` +
+    `<b>Subject:</b> ${esc(src.subject)}</font><div>&nbsp;</div></div><div class="mock-quoted">${src.body}</div></body></html>`
+  );
+}
+
+function createDraftFrom(mbAddress, src, kind) {
+  const self = mbAddress.toLowerCase();
+  const sender = { name: src.fromName ?? '', address: src.from };
+  let to = [];
+  let cc = [];
+  if (kind === 'createReply') to = [sender];
+  if (kind === 'createReplyAll') {
+    const seen = new Set([self]);
+    const keep = (r) => r.address && !seen.has(r.address.toLowerCase()) && seen.add(r.address.toLowerCase());
+    to = [sender, ...(src.to ?? [])].filter(keep);
+    cc = (src.cc ?? []).filter(keep);
+  }
+  const prefix = kind === 'createForward' ? 'FW: ' : 'RE: ';
+  return addMessage({
+    mailbox: mbAddress, folder: 'drafts', isDraft: true, isRead: true, from: mbAddress, fromName: '',
+    subject: /^(re|fw|fwd):/i.test(src.subject) ? src.subject : prefix + src.subject,
+    body: quoteDocument(src), to, cc, bcc: [], conversationId: src.conversationId ?? `conv-${src.id}`,
+    attachments: kind === 'createForward' ? src.attachments.filter((a) => !a.isInline).map((a) => ({ ...a })) : [],
+  });
+}
+
+function deliverSent(m) {
+  m.isDraft = false;
+  m.isRead = true;
+  m.received = new Date().toISOString();
+  sentLog.push({
+    mailbox: m.mailbox, id: m.id, subject: m.subject, body: m.body, to: m.to ?? [], cc: m.cc ?? [], bcc: m.bcc ?? [],
+    attachments: m.attachments.map((a) => ({ name: a.name, size: a.size, contentType: a.contentType })),
+  });
+  mutate({ id: m.id, folder: 'sentitems' });
+  // Copies for any mock mailbox it was addressed to, so a reply can be read back.
+  for (const r of [...(m.to ?? []), ...(m.cc ?? []), ...(m.bcc ?? [])]) {
+    const a = String(r.address).toLowerCase();
+    if (!isMockMailbox(a) || a === m.mailbox) continue;
+    addMessage({ mailbox: a, subject: m.subject, body: m.body, from: m.mailbox, fromName: ACCOUNTS[m.mailbox]?.name, to: m.to, cc: m.cc, conversationId: m.conversationId, attachments: m.attachments });
+  }
+}
+
+function sendError() {
+  if (fault.failSend > 0) {
+    fault.failSend -= 1;
+    return graphErr(503, 'ErrorServerBusy', 'The server cannot service this request right now.');
+  }
+  if (!fault.sendFail) return null;
+  const status = { ErrorSendAsDenied: 403, ErrorMessageSizeExceeded: 413, ErrorInvalidRecipients: 400, ErrorSubmissionQuotaExceeded: 429 }[fault.sendFail] ?? 400;
+  return graphErr(status, fault.sendFail, `Mock send failure: ${fault.sendFail}`);
+}
+
+const isDraftEdit = (method, rest, body) =>
+  method === 'PATCH' && rest[0] === 'messages' && rest.length === 2 && body && ('subject' in body || 'body' in body || 'toRecipients' in body);
+
+/** POST /messages, createReply/All/Forward, draft PATCH, attachments, upload session, send. Null when not a compose call. */
+function compose(mb, method, rest, body) {
+  if (method === 'POST' && rest[0] === 'messages' && rest.length === 1) {
+    const id = addMessage({
+      mailbox: mb.address, folder: 'drafts', isDraft: true, isRead: true, from: mb.address, fromName: '',
+      subject: String(body?.subject ?? ''), body: String(body?.body?.content ?? ''),
+      to: fromGraph(body?.toRecipients), cc: fromGraph(body?.ccRecipients), bcc: fromGraph(body?.bccRecipients),
+    });
+    return { status: 201, body: messageJson(messages.get(id)) };
+  }
+  const isPost = method === 'POST' && rest[0] === 'messages' && rest.length >= 3 && rest[2] !== 'move';
+  if (!isPost && !isDraftEdit(method, rest, body)) return null;
+  const m = messages.get(decodeURIComponent(rest[1]));
+  if (!m || m.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+  if (method === 'PATCH') {
+    if (!m.isDraft) return graphErr(400, 'ErrorInvalidPropertyUpdateSentMessage', 'Update is not allowed for this type of item.');
+    if ('subject' in body) m.subject = String(body.subject ?? '');
+    if (body.body) m.body = String(body.body.content ?? '');
+    if (body.toRecipients) m.to = fromGraph(body.toRecipients);
+    if (body.ccRecipients) m.cc = fromGraph(body.ccRecipients);
+    if (body.bccRecipients) m.bcc = fromGraph(body.bccRecipients);
+    mutate({ id: m.id });
+    return { status: 200, body: messageJson(m) };
+  }
+  if (['createReply', 'createReplyAll', 'createForward'].includes(rest[2]) && rest.length === 3) {
+    return { status: 201, body: messageJson(messages.get(createDraftFrom(mb.address, m, rest[2]))) };
+  }
+  if (rest[2] === 'attachments' && rest.length === 3) {
+    if (!m.isDraft) return graphErr(400, 'ErrorInvalidOperation', 'Attachments can only be added to drafts.');
+    const bytes = Buffer.from(String(body?.contentBytes ?? ''), 'base64');
+    if (bytes.length > 3 * 1024 * 1024) return graphErr(413, 'ErrorAttachmentSizeLimitExceeded', 'Use an upload session above 3 MB.');
+    const att = {
+      id: `${m.id}-att-${m.attachments.length}`, name: String(body?.name ?? 'file'), contentType: String(body?.contentType ?? 'application/octet-stream'),
+      size: bytes.length, isInline: false, contentId: null, bytes: bytes.toString('base64'),
+    };
+    m.attachments.push(att);
+    return { status: 201, body: { id: att.id, name: att.name, size: att.size } };
+  }
+  if (rest[2] === 'attachments' && rest[3] === 'createUploadSession') {
+    const item = body?.AttachmentItem ?? {};
+    if (!item.name || !Number(item.size)) return graphErr(400, 'ErrorInvalidRequest', 'AttachmentItem needs name and size.');
+    const token = randomBytes(10).toString('hex');
+    uploads.set(token, { messageId: m.id, name: String(item.name), size: Number(item.size), contentType: String(item.contentType ?? 'application/octet-stream'), parts: [], received: 0 });
+    return {
+      status: 201,
+      body: { uploadUrl: `http://127.0.0.1:${PORT}/upload/${token}`, expirationDateTime: new Date(Date.now() + 3_600_000).toISOString(), nextExpectedRanges: ['0-'] },
+    };
+  }
+  if (rest[2] === 'send' && rest.length === 3) {
+    if (!m.isDraft) return graphErr(400, 'ErrorInvalidOperation', 'This message has already been sent.');
+    const err = sendError();
+    if (err) return err;
+    if (![...(m.to ?? []), ...(m.cc ?? []), ...(m.bcc ?? [])].length) return graphErr(400, 'ErrorInvalidRecipients', 'At least one recipient is not valid.');
+    deliverSent(m);
+    return { status: 202, body: undefined };
+  }
+  return null;
+}
+
+/** Microsoft's upload host: Content-Range chunks, no bearer token allowed. */
+async function uploadChunk(req, res, token) {
+  const up = uploads.get(token);
+  if (!up) return send(res, 404, { error: { code: 'ItemNotFound', message: 'Upload session not found.' } });
+  if (req.headers.authorization) return send(res, 401, { error: { code: 'InvalidAuthenticationToken', message: 'Do not send an Authorization header to the upload URL.' } });
+  const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(String(req.headers['content-range'] ?? ''));
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const data = Buffer.concat(chunks);
+  if (!range) return send(res, 400, { error: { code: 'InvalidContentRange', message: 'Content-Range missing.' } });
+  const [start, end, total] = range.slice(1).map(Number);
+  const last = end + 1 === total;
+  if (start !== up.received || total !== up.size || data.length !== end - start + 1) {
+    return send(res, 416, { error: { code: 'InvalidRange', message: `Expected range ${up.received}-` } });
+  }
+  if (!last && data.length % (320 * 1024) !== 0) return send(res, 400, { error: { code: 'InvalidChunkSize', message: 'Chunks must be multiples of 320 KiB.' } });
+  if (data.length > 4 * 1024 * 1024) return send(res, 413, { error: { code: 'RequestEntityTooLarge', message: 'Chunk over 4 MB.' } });
+  up.parts.push(data);
+  up.received = end + 1;
+  log.push(`upload ${start}-${end}/${total}`);
+  if (!last) return send(res, 200, { expirationDateTime: new Date(Date.now() + 3_600_000).toISOString(), nextExpectedRanges: [`${up.received}-`] });
+  const m = messages.get(up.messageId);
+  uploads.delete(token);
+  if (!m) return send(res, 404, { error: { code: 'ErrorItemNotFound' } });
+  const bytes = Buffer.concat(up.parts);
+  m.attachments.push({ id: `${m.id}-att-${m.attachments.length}`, name: up.name, contentType: up.contentType, size: bytes.length, isInline: false, contentId: null, bytes: bytes.toString('base64') });
+  return send(res, 201, undefined);
 }
 
 function messageDelta(address, folderKey, url, pageSize) {
@@ -389,6 +705,28 @@ function graph(caller, method, pathAndQuery, pageSize = 10, body = null) {
     if (!key) return graphErr(404, 'ErrorItemNotFound');
     return messageDelta(mb.address, key, url, pageSize);
   }
+  // ── rules, events, older mail, contacts ──
+  if (rest[0] === 'mailFolders' && rest[2] === 'messageRules') {
+    if (decodeURIComponent(rest[1]).toLowerCase() !== 'inbox') return graphErr(400, 'BadRequest', 'Rules live on the Inbox.');
+    const r = rulesApi(mb, method, rest, body);
+    if (r) return r;
+  }
+  if (rest[0] === 'events') {
+    const r = eventsApi(mb, method, rest);
+    if (r) return r;
+  }
+  if (method === 'GET' && rest[0] === 'mailFolders' && rest[2] === 'messages' && rest.length === 3) {
+    const key = folderKeyOf(mb.address, decodeURIComponent(rest[1]));
+    if (!key) return graphErr(404, 'ErrorItemNotFound');
+    return folderMessages(mb.address, key, url);
+  }
+  if (method === 'GET' && rest[0] === 'contacts' && rest[1] === 'delta') {
+    if (SHARED[mb.address]) return graphErr(403, 'ErrorAccessDenied', 'Access is denied.');
+    return contactsDelta(mb.address, url);
+  }
+  // ── compose ──
+  const composed = method === 'GET' || method === 'DELETE' ? null : compose(mb, method, rest, body);
+  if (composed) return composed;
   // ── writes ──
   if (rest[0] === 'messages' && rest.length >= 2 && method !== 'GET') {
     const m = messages.get(decodeURIComponent(rest[1]));
@@ -453,7 +791,13 @@ function graph(caller, method, pathAndQuery, pageSize = 10, body = null) {
   }
   if (method === 'GET' && rest[0] === 'messages' && rest.length === 2) {
     const m = messages.get(decodeURIComponent(rest[1]));
-    return m && m.mailbox === mb.address ? { status: 200, body: messageJson(m) } : graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+    if (!m || m.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+    const json = messageJson(m);
+    if ((url.searchParams.get('$expand') ?? '').includes('eventMessage/event')) {
+      const e = m.eventId ? events.get(m.eventId) : null;
+      json.event = e ? eventJson(e) : null;
+    }
+    return { status: 200, body: json };
   }
   if (method === 'GET' && rest[0] === 'messages' && rest[2] === 'attachments' && rest.length === 3) {
     const m = messages.get(decodeURIComponent(rest[1]));
@@ -501,7 +845,7 @@ const server = http.createServer(async (req, res) => {
       // revokeAccess: every access token stops working at once (a revoked session).
       if (next.revokeAccess) access.clear();
       delete next.revokeAccess;
-      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0, ...next };
+      fault = { ...NO_FAULT, ...next };
       return send(res, 200, fault);
     }
     if (url.pathname === '/__mock/reset' && req.method === 'POST') {
@@ -510,7 +854,13 @@ const server = http.createServer(async (req, res) => {
       subs.clear();
       deliveries.length = 0;
       customFolders.clear();
-      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0 };
+      sentLog.length = 0;
+      uploads.clear();
+      rules.clear();
+      events.clear();
+      contacts.clear();
+      responsesSent.length = 0;
+      fault = { ...NO_FAULT };
       log.length = 0;
       return send(res, 200, { ok: true });
     }
@@ -528,12 +878,52 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/__mock/inspect' && req.method === 'POST') {
       const { id } = JSON.parse(await readBody(req));
       const m = messages.get(id);
-      return send(res, 200, m ? { exists: true, folder: m.folder, isRead: m.isRead } : { exists: false });
+      return send(
+        res,
+        200,
+        m
+          ? {
+              exists: true, folder: m.folder, isRead: m.isRead, isDraft: Boolean(m.isDraft), subject: m.subject, body: m.body,
+              to: m.to ?? [], cc: m.cc ?? [], bcc: m.bcc ?? [], attachments: m.attachments.map((a) => ({ name: a.name, size: a.size })),
+            }
+          : { exists: false },
+      );
     }
     if (url.pathname === '/__mock/folders' && req.method === 'POST') {
       const { mailbox } = JSON.parse(await readBody(req));
       return send(res, 200, { folders: foldersOf(mailbox).map(([key, name, parent]) => ({ key, name, parent })) });
     }
+    if (url.pathname === '/__mock/sent') return send(res, 200, { sent: sentLog });
+    if (url.pathname === '/__mock/events') return send(res, 200, { events: [...events.values()], responses: responsesSent });
+    if (url.pathname === '/__mock/rules' && req.method === 'POST') {
+      const { mailbox } = JSON.parse(await readBody(req));
+      return send(res, 200, { rules: [...rulesOf(mailbox)].sort((a, b) => a.sequence - b.sequence) });
+    }
+    if (url.pathname === '/__mock/rule' && req.method === 'POST') {
+      const { mailbox, rule } = JSON.parse(await readBody(req));
+      const r = { id: `rule-${nextRule++}`, sequence: rulesOf(mailbox).length + 1, isEnabled: true, isReadOnly: false, hasError: false, conditions: {}, exceptions: {}, actions: {}, ...rule };
+      rulesOf(mailbox).push(r);
+      return send(res, 200, r);
+    }
+    if (url.pathname === '/__mock/contact' && req.method === 'POST') {
+      const { mailbox, name, addresses } = JSON.parse(await readBody(req));
+      const id = `contact-${nextContact++}`;
+      contactsOf(mailbox).set(id, { id, displayName: name, emailAddresses: addresses.map((a) => ({ name, address: a })), seq: seq++ });
+      return send(res, 200, { id });
+    }
+    if (url.pathname === '/__mock/contact-delete' && req.method === 'POST') {
+      const { mailbox, id } = JSON.parse(await readBody(req));
+      const c = contactsOf(mailbox).get(id);
+      if (c) Object.assign(c, { removed: true, seq: seq++ });
+      return send(res, 200, { ok: Boolean(c) });
+    }
+    if (url.pathname === '/__mock/drafts' && req.method === 'POST') {
+      const { mailbox } = JSON.parse(await readBody(req));
+      const drafts = [...messages.values()].filter((m) => m.mailbox === mailbox && m.isDraft);
+      return send(res, 200, { drafts: drafts.map((m) => ({ id: m.id, subject: m.subject, body: m.body, to: m.to ?? [] })) });
+    }
+    const up = /^\/upload\/([0-9a-f]+)$/.exec(url.pathname);
+    if (up && req.method === 'PUT') return uploadChunk(req, res, up[1]);
     if (url.pathname === '/__mock/message' && req.method === 'POST') return send(res, 200, { id: addMessage(JSON.parse(await readBody(req))) });
     if (url.pathname === '/__mock/update' && req.method === 'POST') return send(res, 200, { ok: mutate(JSON.parse(await readBody(req))) });
     if (url.pathname === '/__mock/delete' && req.method === 'POST') return send(res, 200, { ok: remove(JSON.parse(await readBody(req)).id) });

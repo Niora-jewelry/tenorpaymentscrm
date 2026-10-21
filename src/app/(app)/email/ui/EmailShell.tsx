@@ -27,13 +27,14 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { BarAction, BarCount, Dialog, FloatingBar, Spinner } from '@/proto/ui/kit';
-import type { ConversationRow, ListPage, MailboxView, Notice } from '@/lib/mail/viewTypes';
+import type { ConversationRow, ListPage, MailboxView, ModuleNotice, Notice } from '@/lib/mail/viewTypes';
 import {
   conversationAction,
   conversationOpAction,
   dismissNoticeAction,
   folderAction,
   listConversationsAction,
+  loadOlderAction,
   mailboxesAction,
   openFolderAction,
   pinAction,
@@ -41,9 +42,14 @@ import {
   syncStateAction,
 } from '../actions';
 import { FolderPane, type FolderOp } from './FolderPane';
-import { ConversationToolbar, MoveTo, deleteOp, type Op } from './Actions';
+import { ConversationToolbar, MoveTo, deleteOp, type Op, type ReplyKind } from './Actions';
+import { Composer, type SentResult } from './Composer';
+import { ScheduledList } from './ScheduledList';
+import { composeStartAction, releaseOutboxAction, undoSendAction } from '../composeActions';
+import { fullStamp } from '@/lib/mail/dates';
+import type { ComposeInit, ComposeKind } from '@/lib/mail/viewTypes';
 import { folderIdsFor, parseOpen, type Open, type Selection } from './selection';
-import { ConversationList, type ListFilter } from './ConversationList';
+import { ConversationList, LoadOlder, type ListFilter } from './ConversationList';
 import { ReadingPane, type Thread } from './ReadingPane';
 
 type ListState = ListPage & { status: 'loading' | 'ready' | 'error'; loadingMore: boolean };
@@ -62,7 +68,9 @@ function subscribeOnline(cb: () => void) {
 const EMPTY_LIST: ListState = { pinned: [], rows: [], next: null, status: 'loading', loadingMore: false };
 const rowId = (r: { mailboxId: string; key: string }) => `${r.mailboxId}~${r.key}`;
 const sameSelection = (a: Selection, b: Selection) =>
-  a.kind === b.kind && (a.kind === 'all' || (b.kind === 'folder' && a.folderId === b.folderId));
+  a.kind === b.kind && (a.kind !== 'folder' || (b.kind === 'folder' && a.folderId === b.folderId));
+const parseSelection = (f: string | null): Selection =>
+  !f || f === 'all' ? { kind: 'all' } : f === 'scheduled' ? { kind: 'scheduled' } : { kind: 'folder', folderId: f };
 const MOVE_LIKE = new Set<Op>(['archive', 'delete', 'purge', 'junk', 'not_junk', 'move']);
 const DONE: Partial<Record<Op, string>> = {
   archive: 'Archived',
@@ -76,7 +84,7 @@ const READ_DWELL_MS = 1_500;
 
 function writeUrl(sel: Selection, open: Open | null, mode: 'push' | 'replace') {
   const u = new URL(window.location.href);
-  u.searchParams.set('f', sel.kind === 'all' ? 'all' : sel.folderId);
+  u.searchParams.set('f', sel.kind === 'folder' ? sel.folderId : sel.kind);
   if (open) u.searchParams.set('c', `${open.mailboxId}~${open.key}`);
   else u.searchParams.delete('c');
   if (u.toString() === window.location.href) return;
@@ -116,8 +124,13 @@ export function EmailShell({
   const anchor = useRef<string | null>(null);
   const [banner, setBanner] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [moduleNotice, setModuleNotice] = useState<ModuleNotice>(null);
   const [confirmPurge, setConfirmPurge] = useState<ConversationRow[] | null>(null);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [compose, setCompose] = useState<{ init: ComposeInit; key: string } | null>(null);
+  const [pending, setPending] = useState<{ outboxId: string; releaseAt: string; subject: string } | null>(null);
+  const [scheduledCount, setScheduledCount] = useState(0);
+  const [scheduledKey, setScheduledKey] = useState(0);
 
   const listReq = useRef(0);
   const threadReq = useRef(0);
@@ -259,6 +272,8 @@ export function EmailShell({
     setNow(new Date());
     window.dispatchEvent(new CustomEvent('tapdash:email-unread', { detail: res.data.unreadTotal }));
     setNotices(res.data.notices);
+    setScheduledCount(res.data.scheduled);
+    setModuleNotice(res.data.moduleNotice);
 
     const before = seqs.current;
     const after = new Map(res.data.mailboxes.map((m) => [m.id, m.seq]));
@@ -273,9 +288,12 @@ export function EmailShell({
 
     const fresh = await mailboxesAction();
     if (fresh.ok) setBoxes(fresh.data);
-    const viewing = s.kind === 'all'
-      ? b.filter((x) => x.own).map((x) => x.id)
-      : b.filter((x) => x.folders.some((fd) => fd.id === s.folderId)).map((x) => x.id);
+    const viewing =
+      s.kind === 'all'
+        ? b.filter((x) => x.own).map((x) => x.id)
+        : s.kind === 'folder'
+          ? b.filter((x) => x.folders.some((fd) => fd.id === s.folderId)).map((x) => x.id)
+          : [];
     if (q.status === 'idle' && viewing.some((id) => changed.has(id))) void loadList(s, f, { silent: true });
     if (o && changed.has(o.mailboxId)) void loadThread(o, { background: true });
   }, [loadList, loadThread]);
@@ -358,8 +376,7 @@ export function EmailShell({
     writeUrl(initialSelection, initialOpen, 'replace');
     const onPop = () => {
       const p = new URLSearchParams(window.location.search);
-      const f = p.get('f');
-      const s: Selection = !f || f === 'all' ? { kind: 'all' } : { kind: 'folder', folderId: f };
+      const s = parseSelection(p.get('f'));
       const o = parseOpen(p.get('c'));
       changeSel(s);
       changeOpen(o);
@@ -530,6 +547,61 @@ export function EmailShell({
     return () => document.removeEventListener('keydown', onKey);
   }, [canEdit, requestDelete, visibleRows]);
 
+  // ── writing ─────────────────────────────────────────────────────────────
+  const openCompose = useCallback(async (kind: ComposeKind | 'draft', opts: { sourceMessageId?: string; draftMessageId?: string; mailboxId?: string } = {}) => {
+    const res = await composeStartAction({ kind: kind === 'draft' ? 'new' : kind, ...opts });
+    if (!res.ok) {
+      setBanner({ tone: 'error', text: res.message });
+      return;
+    }
+    setCompose({ init: res.data, key: crypto.randomUUID() });
+  }, []);
+
+  const onSent = useCallback((r: SentResult) => {
+    setCompose(null);
+    if (r.status === 'held') setPending({ outboxId: r.outboxId, releaseAt: r.releaseAt, subject: r.subject });
+    else {
+      setBanner({ tone: 'ok', text: `Scheduled “${r.subject}” for ${fullStamp(r.releaseAt)}.` });
+      setScheduledKey((k) => k + 1);
+      kick.current(500);
+    }
+  }, []);
+
+  const undoSend = useCallback(async (outboxId: string) => {
+    const res = await undoSendAction({ outboxId });
+    setPending(null);
+    if (!res.ok) {
+      setBanner({ tone: 'error', text: res.message });
+      return;
+    }
+    if (res.data) setCompose({ init: res.data, key: crypto.randomUUID() });
+  }, []);
+
+  // ── older mail ──────────────────────────────────────────────────────────
+  // Busy until Outlook's answer moves the folder's "loaded since" (the poll
+  // brings it), or 90 s at most.
+  const [older, setOlder] = useState<{ folderId: string; from: string | null } | null>(null);
+  useEffect(() => {
+    if (!older) return;
+    const t = setTimeout(() => setOlder(null), 90_000);
+    return () => clearTimeout(t);
+  }, [older]);
+  const olderBusy = Boolean(older && current && older.folderId === current.id && current.oldestLoadedAt === older.from);
+  const requestOlder = async () => {
+    if (!current) return;
+    const res = await loadOlderAction({ folderId: current.id });
+    if (!res.ok) return setBanner({ tone: 'error', text: res.message });
+    if (!res.data.queued) {
+      const mins = Math.max(1, Math.ceil((res.data.retryAfterSeconds ?? 0) / 60));
+      return setBanner({
+        tone: 'error',
+        text: res.data.retryAfterSeconds ? `Older mail can be fetched six times an hour per mailbox. Try again in ${mins} minute${mins === 1 ? '' : 's'}.` : 'That folder is no longer here.',
+      });
+    }
+    setOlder({ folderId: current.id, from: current.oldestLoadedAt });
+    kick.current(2_500);
+  };
+
   // ── search ──────────────────────────────────────────────────────────────
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runSearch = useCallback((q: string, scope: SearchState['scope']) => {
@@ -543,9 +615,9 @@ export function EmailShell({
       const { sel: s, boxes: b } = live.current;
       const here = scope === 'here';
       const mailboxIds = here
-        ? s.kind === 'all'
-          ? b.filter((x) => x.own).map((x) => x.id)
-          : b.filter((x) => x.folders.some((f) => f.id === s.folderId)).map((x) => x.id)
+        ? s.kind === 'folder'
+          ? b.filter((x) => x.folders.some((f) => f.id === s.folderId)).map((x) => x.id)
+          : b.filter((x) => x.own).map((x) => x.id)
         : b.map((x) => x.id);
       const res = await searchAction({ q, mailboxIds, folderIds: here && s.kind === 'folder' ? [s.folderId] : null });
       setSearch((p) => (p.q !== q || p.scope !== scope ? p : { q, scope, status: res.ok ? 'ready' : 'error', rows: res.ok ? res.data : [] }));
@@ -553,10 +625,12 @@ export function EmailShell({
   }, []);
 
   // ── render ──────────────────────────────────────────────────────────────
-  const title = sel.kind === 'all' ? 'All inboxes' : (current?.name ?? 'Folder');
-  const subtitle = sel.kind === 'all' ? `${ownBoxes.length} mailboxes` : (current?.box.address ?? '');
+  const title = sel.kind === 'all' ? 'All inboxes' : sel.kind === 'scheduled' ? 'Scheduled' : (current?.name ?? 'Folder');
+  const subtitle = sel.kind === 'all' ? `${ownBoxes.length} mailboxes` : sel.kind === 'scheduled' ? 'Waiting to be sent' : (current?.box.address ?? '');
   const unread = sel.kind === 'all' ? ownBoxes.reduce((n, b) => n + (b.folders.find((f) => f.wellKnown === 'inbox')?.unread ?? 0), 0) : (current?.unread ?? 0);
   const searching = search.status !== 'idle';
+  const olderFooter =
+    sel.kind === 'folder' && !searching && current ? <LoadOlder folder={current} busy={olderBusy} onLoad={() => void requestOlder()} /> : null;
   const rows = searching ? search.rows : list.rows;
   const selectedKey = open ? `${open.mailboxId}~${open.key}` : null;
   const showMailbox = boxes.length > 1 && (sel.kind === 'all' || (searching && search.scope === 'everywhere'));
@@ -594,6 +668,10 @@ export function EmailShell({
     : null;
   const openBox = open ? boxes.find((b) => b.id === open.mailboxId) : undefined;
   const openWellKnown = searching ? wellKnownOf(openRowData?.folderId ?? null) : viewWellKnown;
+  // A conversation spans folders: answer the newest message someone sent us (not our own
+  // sent copy or a draft), and continue the draft itself when there is one.
+  const draftMsg = thread?.messages.find((m) => m.isDraft);
+  const replyTarget = thread?.messages.find((m) => !m.outbound && !m.isDraft) ?? thread?.messages.find((m) => !m.isDraft);
   const picked = allVisible.filter((r) => checked.has(rowId(r)));
   const pickedBoxes = new Set(picked.map((r) => r.mailboxId));
   const pickedBox = pickedBoxes.size === 1 ? boxes.find((b) => b.id === [...pickedBoxes][0]) : undefined;
@@ -601,7 +679,15 @@ export function EmailShell({
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[248px_minmax(330px,400px)_minmax(0,1fr)] bg-white">
-      <FolderPane mailboxes={boxes} selection={sel} onSelect={select} canEdit={canEdit} onFolderOp={(f) => void onFolderOp(f)} />
+      <FolderPane
+        mailboxes={boxes}
+        selection={sel}
+        onSelect={select}
+        canEdit={canEdit}
+        onFolderOp={(f) => void onFolderOp(f)}
+        onNewMail={canEdit && ownBoxes.length ? () => void openCompose('new', sel.kind === 'folder' && current?.box.own ? { mailboxId: current.box.id } : {}) : undefined}
+        scheduledCount={scheduledCount}
+      />
 
       <section aria-label={title} className="flex min-h-0 flex-col border-r border-line bg-white">
         <div className="border-b border-line px-4 pb-3 pt-4">
@@ -625,6 +711,8 @@ export function EmailShell({
             </button>
           </div>
 
+          {sel.kind === 'scheduled' ? null : (
+          <>
           <label className="mt-3 flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1.5 transition-colors focus-within:border-brand-600 focus-within:bg-white focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-brand-600)_14%,transparent)]">
             <Icon name="search" size={14} className="shrink-0 text-ink-400" />
             <input
@@ -664,6 +752,8 @@ export function EmailShell({
               </>
             )}
           </div>
+          </>
+          )}
         </div>
 
         {troubled.length ? (
@@ -689,6 +779,17 @@ export function EmailShell({
             <Icon name="alert-triangle" size={13} className="shrink-0 text-ink-400" />
             {!online ? 'You’re offline. Showing what was last loaded.' : 'Can’t reach TapDash right now — retrying.'}
           </p>
+        ) : null}
+        {moduleNotice ? (
+          <div
+            role={moduleNotice.tone === 'error' ? 'alert' : 'status'}
+            className={`flex items-start gap-2 border-b px-4 py-2 text-[12px] ${
+              moduleNotice.tone === 'error' ? 'border-[#f7cfd1] bg-[#fce9ea] text-[#b02a30]' : 'border-[#f5e2b8] bg-[#fdf6e7] text-[#8a5a00]'
+            }`}
+          >
+            <Icon name="alert-triangle" size={13} className="mt-px shrink-0" />
+            <span className="min-w-0 flex-1">{moduleNotice.text}</span>
+          </div>
         ) : null}
         {notices[0] ? (
           <div role="alert" className="flex items-start gap-2 border-b border-[#f7cfd1] bg-[#fce9ea] px-4 py-2 text-[12px] text-[#b02a30]">
@@ -724,7 +825,17 @@ export function EmailShell({
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {(!searching && list.status === 'loading') || (searching && search.status === 'loading' && search.rows.length === 0) ? (
+          {sel.kind === 'scheduled' ? (
+            <ScheduledList
+              refreshKey={scheduledKey}
+              addressOf={addressOf}
+              onError={(m) => setBanner({ tone: 'error', text: m })}
+              onEdit={(init) => {
+                setCompose({ init, key: crypto.randomUUID() });
+                kick.current(500);
+              }}
+            />
+          ) : (!searching && list.status === 'loading') || (searching && search.status === 'loading' && search.rows.length === 0) ? (
             <ListSkeleton />
           ) : !searching && list.status === 'error' ? (
             <Empty icon="alert-triangle" title="This folder could not be loaded." body="Check your connection and try again.">
@@ -741,7 +852,9 @@ export function EmailShell({
               <Empty
                 icon={filter === 'unread' ? 'check' : 'inbox'}
                 title={filter === 'unread' ? 'You’re all caught up.' : filter === 'attachments' ? 'No conversations with files here.' : `Nothing in ${title}.`}
-              />
+              >
+                {olderFooter}
+              </Empty>
             )
           ) : (
             <ConversationList
@@ -757,11 +870,41 @@ export function EmailShell({
               now={now}
               checked={canEdit ? checked : null}
               onCheck={onCheck}
+              footer={olderFooter}
             />
           )}
         </div>
       </section>
 
+      {compose ? (
+        <Composer
+          key={compose.key}
+          init={compose.init}
+          onSent={onSent}
+          onClose={(saved) => {
+            setCompose(null);
+            if (saved) {
+              setBanner({ tone: 'ok', text: 'Saved to Drafts.' });
+              kick.current(2_500);
+            }
+          }}
+          onDiscarded={() => {
+            setCompose(null);
+            setBanner({ tone: 'ok', text: 'Draft discarded.' });
+            kick.current(2_500);
+          }}
+        />
+      ) : sel.kind === 'scheduled' ? (
+        <div className="grid h-full place-items-center bg-canvas px-8">
+          <div className="max-w-[36ch] text-center">
+            <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-300 shadow-[0_1px_2px_rgba(8,32,47,.06)]">
+              <Icon name="clock" size={20} />
+            </span>
+            <p className="text-[14px] font-semibold text-ink-700">Scheduled mail waits here</p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-400">Nothing reaches Outlook until its time. “Edit or cancel” brings a message back to change it.</p>
+          </div>
+        </div>
+      ) : (
       <ReadingPane
         thread={thread}
         currentFolderIds={currentFolderIds}
@@ -781,10 +924,26 @@ export function EmailShell({
               folders={openBox.folders.filter((f) => !currentFolderIds.has(f.id))}
               onOp={(op, dest) => (op === 'delete' || op === 'purge' ? requestDelete([openRowData], openWellKnown) : void runOp(op, [openRowData], { dest }))}
               onPin={(p) => void togglePin(openRowData, p)}
+              isDraft={Boolean(draftMsg) && (openWellKnown === 'drafts' || !replyTarget)}
+              onReply={
+                openBox.own
+                  ? (kind: ReplyKind) =>
+                      void (kind === 'draft'
+                        ? draftMsg && openCompose('draft', { draftMessageId: draftMsg.id })
+                        : replyTarget && openCompose(kind, { sourceMessageId: replyTarget.id }))
+                  : undefined
+              }
             />
           ) : null
         }
       />
+      )}
+
+      {pending ? <UndoSendBar pending={pending} onUndo={() => void undoSend(pending.outboxId)} onDone={() => {
+        setPending(null);
+        setBanner({ tone: 'ok', text: `Sent “${pending.subject}”.` });
+        kick.current(4_000);
+      }} /> : null}
 
       <FloatingBar
         open={canEdit && picked.length > 0}
@@ -888,3 +1047,50 @@ function ListSkeleton() {
   );
 }
 
+/**
+ * The undo window. Counts down from the server's release time (not a local
+ * guess), then asks the server to send at once; the cron is the fallback if
+ * this tab closes first.
+ */
+function UndoSendBar({
+  pending,
+  onUndo,
+  onDone,
+}: {
+  pending: { outboxId: string; releaseAt: string; subject: string };
+  onUndo: () => void;
+  onDone: () => void;
+}) {
+  const [left, setLeft] = useState(() => Math.max(0, Math.ceil((Date.parse(pending.releaseAt) - Date.now()) / 1000)));
+  const fired = useRef(false);
+  const done = useRef(onDone);
+  useEffect(() => {
+    done.current = onDone;
+  }, [onDone]);
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const ms = Date.parse(pending.releaseAt) - Date.now();
+      setLeft(Math.max(0, Math.ceil(ms / 1000)));
+      if (ms <= 0 && !fired.current) {
+        fired.current = true;
+        clearInterval(tick);
+        void releaseOutboxAction({ outboxId: pending.outboxId }).finally(() => done.current());
+      }
+    }, 200);
+    return () => clearInterval(tick);
+  }, [pending]);
+  return (
+    <FloatingBar
+      open
+      align="stack"
+      lead={
+        <span role="status" className="inline-flex items-center gap-2 pr-1 text-[13px] text-ink-700">
+          <Spinner />
+          Sending “{pending.subject.slice(0, 40)}” in {left}s
+        </span>
+      }
+    >
+      <BarAction icon="rotate-ccw" label="Undo" onClick={onUndo} />
+    </FloatingBar>
+  );
+}

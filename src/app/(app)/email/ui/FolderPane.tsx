@@ -71,7 +71,11 @@ export function FolderPane({
   onSelect,
   canEdit,
   onFolderOp,
+  onNewMail,
+  scheduledCount = 0,
 }: {
+  onNewMail?: () => void;
+  scheduledCount?: number;
   mailboxes: MailboxView[];
   selection: Selection;
   onSelect: (s: Selection) => void;
@@ -133,6 +137,19 @@ export function FolderPane({
         </Link>
       </div>
 
+      {onNewMail ? (
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            onClick={onNewMail}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim"
+          >
+            <Icon name="pencil" size={14} />
+            New mail
+          </button>
+        </div>
+      ) : null}
+
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {own.length > 1 ? (
           <Row
@@ -141,6 +158,18 @@ export function FolderPane({
             badge={allUnread}
             active={selection.kind === 'all'}
             onClick={() => onSelect({ kind: 'all' })}
+            depth={0}
+          />
+        ) : null}
+
+        {scheduledCount > 0 || selection.kind === 'scheduled' ? (
+          <Row
+            icon="clock"
+            label="Scheduled"
+            badge={scheduledCount}
+            badgeMuted
+            active={selection.kind === 'scheduled'}
+            onClick={() => onSelect({ kind: 'scheduled' })}
             depth={0}
           />
         ) : null}
@@ -323,6 +352,17 @@ function MailboxSection({
               </li>
             ),
           )}
+          {mailbox.folders.length && mailbox.health !== 'setting_up' ? (
+            <li>
+              <Link
+                href={`/email/rules/${mailbox.id}`}
+                className="mt-0.5 flex items-center gap-2 rounded-lg py-1.5 pl-9 pr-2.5 text-[12.5px] text-ink-400 transition-colors hover:bg-white/70 hover:text-ink-800"
+              >
+                <Icon name="sliders" size={13} className="shrink-0" />
+                Rules
+              </Link>
+            </li>
+          ) : null}
         </ul>
       )}
     </section>

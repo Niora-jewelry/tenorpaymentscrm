@@ -18,4 +18,10 @@ describe('mail log sanitising', () => {
     const out = sanitizeLogMeta({ subject: 'Salary', body: 'private', to: ['a@b.c'], mailboxId: 'mb-1', status: 429 });
     expect(out).toEqual({ mailboxId: 'mb-1', status: 429 });
   });
+
+  it('shows a classified error code as `reason`; anything else under `code` stays redacted', () => {
+    expect(sanitizeLogMeta({ code: 'send_as_denied', attempt: 2 })).toEqual({ reason: 'send_as_denied', attempt: 2 });
+    expect(sanitizeLogMeta({ code: 'M.C507_BL2.2.U.8a1f0c' })).toEqual({ code: '[redacted]' });
+    expect(sanitizeLogMeta({ code: 'x'.repeat(60) })).toEqual({ code: '[redacted]' });
+  });
 });

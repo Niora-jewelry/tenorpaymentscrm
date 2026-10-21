@@ -8,6 +8,7 @@
  * on the way through, and not stored.
  */
 import 'server-only';
+import { moduleNotice } from './health';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from '@/lib/records/permissions';
 import { healthOf } from './mailboxes';
@@ -44,6 +45,7 @@ type FolderRow = {
   total_count: number;
   child_count: number;
   seeded_at: string | null;
+  oldest_loaded_at?: string | null;
 };
 
 /** Depth-first: well-known folders first in Outlook's order, then the rest A–Z, children under parents. */
@@ -76,6 +78,7 @@ export function orderFolders(rows: FolderRow[]): FolderView[] {
         total: r.total_count,
         hasChildren: (kids.get(r.id) ?? []).length > 0,
         seeded: Boolean(r.seeded_at),
+        oldestLoadedAt: r.oldest_loaded_at ?? null,
       });
       if (depth < 12) walk(r.id, depth + 1);
     }
@@ -132,7 +135,7 @@ export async function loadMailboxes(ctx: AuthContext): Promise<MailboxView[]> {
 
   const { data: folders, error: fErr } = await supabase
     .from('mail_folders')
-    .select('id, mailbox_id, parent_folder_id, display_name, well_known, depth, unread_count, total_count, child_count, seeded_at')
+    .select('id, mailbox_id, parent_folder_id, display_name, well_known, depth, unread_count, total_count, child_count, seeded_at, oldest_loaded_at')
     .in('mailbox_id', boxes.map((b) => b.id))
     .returns<FolderRow[]>();
   if (fErr) throw new Error(`folders read failed: ${fErr.code ?? 'db'}`);
@@ -373,7 +376,7 @@ export async function loadMessageBody(ctx: AuthContext, messageId: string): Prom
 
 export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise<SyncState> {
   const supabase = await createSupabaseServerClient();
-  const [{ data: boxes }, { data: conns }, { data: total }, { data: notices }] = await Promise.all([
+  const [{ data: boxes }, { data: conns }, { data: total }, { data: notices }, { count: scheduled }] = await Promise.all([
     supabase.from('mail_mailboxes').select('id, change_seq, sync_status, seeded_at').in('id', mailboxIds),
     supabase.from('mail_connections').select('mailbox_id, status').eq('user_id', ctx.userId).is('disconnected_at', null),
     supabase.rpc('mail_unread_total'),
@@ -385,6 +388,7 @@ export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise
       .in('kind', ['action_failed', 'send_failed', 'scheduled_failed', 'draft_conflict'])
       .order('created_at', { ascending: false })
       .limit(5),
+    supabase.from('mail_outbox').select('id', { count: 'exact', head: true }).eq('user_id', ctx.userId).eq('status', 'scheduled'),
   ]);
   const status = new Map((conns ?? []).map((c) => [c.mailbox_id as string, c.status as 'ok']));
   return {
@@ -394,6 +398,8 @@ export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise
       health: healthOf({ status: status.get(b.id as string) ?? 'ok', mb: { sync_status: b.sync_status as string, seeded_at: b.seeded_at as string | null } }),
     })),
     unreadTotal: Number(total ?? 0),
+    scheduled: scheduled ?? 0,
+    moduleNotice: await moduleNotice(ctx.isAdmin),
     notices: (notices ?? []).map((n) => ({ id: n.id as string, kind: n.kind as string, body: n.body as string, at: n.created_at as string })),
   };
 }

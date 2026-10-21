@@ -15,6 +15,9 @@ import { emailAccess } from '@/lib/mail/access';
 import { myMailboxes, MAX_CONNECTIONS } from '@/lib/mail/mailboxes';
 import { MAIL_MESSAGES, connectErrorMessage, isConnectErrorCode } from '@/lib/mail/messages';
 import { MailboxSettings, type Banner } from './MailboxSettings';
+import { ComposeSettings } from './ComposeSettings';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { templatesAction } from '../composeActions';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -23,7 +26,8 @@ const asEmail = (v: string | undefined) => (v && z.email().max(254).safeParse(v)
 
 export default async function EmailSettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await authorize();
-  if ((await emailAccess(ctx)) === 'hidden') redirect('/dashboard');
+  const access = await emailAccess(ctx);
+  if (access === 'hidden') redirect('/dashboard');
 
   const [impersonating, mailboxes, sp] = await Promise.all([currentImpersonation(), myMailboxes(ctx), searchParams]);
 
@@ -63,6 +67,30 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
         readOnly={Boolean(impersonating)}
         banner={banner}
       />
+
+      {!impersonating && access === 'edit' ? await writingSettings(ctx.userId, ctx.isAdmin, mailboxes) : null}
     </div>
+  );
+}
+
+/** Undo window, signatures and templates — only for people who can write mail. */
+async function writingSettings(userId: string, isAdmin: boolean, mailboxes: Array<{ mailboxId: string; address: string }>) {
+  const supabase = await createSupabaseServerClient();
+  const [{ data: settings }, { data: sigs }, templates] = await Promise.all([
+    supabase.from('mail_user_settings').select('undo_send_seconds, hide_my_mailboxes_from_admins').eq('user_id', userId).maybeSingle(),
+    mailboxes.length
+      ? supabase.from('mail_signatures').select('mailbox_id, body_html').in('mailbox_id', mailboxes.map((m) => m.mailboxId))
+      : Promise.resolve({ data: [] as Array<{ mailbox_id: string; body_html: string }> }),
+    templatesAction(),
+  ]);
+  const byBox = new Map((sigs ?? []).map((s) => [s.mailbox_id as string, s.body_html as string]));
+  return (
+    <ComposeSettings
+      undoSeconds={Number(settings?.undo_send_seconds ?? 5)}
+      signatures={mailboxes.map((m) => ({ mailboxId: m.mailboxId, address: m.address, html: byBox.get(m.mailboxId) ?? '' }))}
+      templates={templates.ok ? templates.data : []}
+      isAdmin={isAdmin}
+      hideFromAdmins={Boolean(settings?.hide_my_mailboxes_from_admins)}
+    />
   );
 }

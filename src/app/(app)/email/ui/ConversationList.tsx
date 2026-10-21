@@ -15,7 +15,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
 import { dateGroup, rowStamp } from '@/lib/mail/dates';
-import type { ConversationRow } from '@/lib/mail/viewTypes';
+import type { ConversationRow, FolderView } from '@/lib/mail/viewTypes';
 import { swatchFor } from './people';
 
 export type ListFilter = 'all' | 'unread' | 'attachments';
@@ -33,6 +33,7 @@ export function ConversationList({
   now,
   checked,
   onCheck,
+  footer,
 }: {
   pinned: ConversationRow[];
   rows: ConversationRow[];
@@ -47,6 +48,8 @@ export function ConversationList({
   /** Multi-select: row ids (mailboxId~key) that are ticked; null when the person can't act. */
   checked: ReadonlySet<string> | null;
   onCheck: (row: ConversationRow, range: boolean) => void;
+  /** Shown once the whole list is loaded ("Load older mail"). */
+  footer?: React.ReactNode;
 }) {
   const sentinel = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -122,7 +125,9 @@ export function ConversationList({
             </button>
           )}
         </div>
-      ) : null}
+      ) : (
+        footer
+      )}
     </div>
   );
 }
@@ -234,3 +239,37 @@ function Row({
     </div>
   );
 }
+
+/** Where a folder's fetched mail starts, and the way to fetch the 30 days before it. */
+export function LoadOlder({ folder, busy, onLoad }: { folder: FolderView | undefined; busy: boolean; onLoad: () => void }) {
+  if (!folder?.seeded) return null;
+  const since = folder.oldestLoadedAt ? Date.parse(folder.oldestLoadedAt) : NaN;
+  if (Number.isFinite(since) && since <= Date.UTC(1970, 0, 2)) {
+    return <p className="px-4 py-5 text-center text-[12px] text-ink-300">That’s everything in {folder.name}.</p>;
+  }
+  const from = Number.isFinite(since)
+    ? new Date(since).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: new Date(since).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' })
+    : null;
+  return (
+    <div className="flex flex-col items-center gap-1.5 px-4 py-5 text-center">
+      {busy ? (
+        <p role="status" className="flex items-center gap-2 text-[12px] text-ink-500">
+          <Spinner /> Fetching older mail from Outlook…
+        </p>
+      ) : (
+        <>
+          <p className="text-[11.5px] text-ink-400">{from ? `Showing mail since ${from}` : 'Showing the last two weeks'}</p>
+          <button
+            type="button"
+            onClick={onLoad}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[12.5px] font-semibold text-ink-700 transition-colors hover:border-ink-400"
+          >
+            <Icon name="clock" size={13} className="text-ink-400" />
+            Load 30 more days
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+

@@ -66,6 +66,8 @@ function cleanCss(css: string): string {
 // DOMPurify hooks are per instance and global to it; sanitising is fully
 // synchronous, so a module-level collector is safe across concurrent requests.
 let collector: string[] | null = null;
+/** Outbound HTML keeps its remote images: it is the person's own message, not hostile mail. */
+let outbound = false;
 let hooksInstalled = false;
 
 function installHooks(): void {
@@ -83,7 +85,10 @@ function installHooks(): void {
       else el.removeAttribute('style');
     }
 
-    if (tag === 'img') {
+    if (tag === 'img' && outbound) {
+      const src = (el.getAttribute('src') ?? '').trim();
+      if (!/^(https:|cid:)/i.test(src) && !SAFE_DATA_IMAGE.test(src)) el.removeAttribute('src');
+    } else if (tag === 'img') {
       const src = (el.getAttribute('src') ?? '').trim();
       if (/^https?:\/\//i.test(src) && collector && collector.length < MAX_EXTERNAL_IMAGES) {
         el.setAttribute('data-mail-img', String(collector.length));
@@ -166,5 +171,26 @@ export function sanitizeEmail(raw: string | null | undefined, contentType: strin
     return { html, text: htmlToText(html), externalImages: collector };
   } finally {
     collector = null;
+  }
+}
+
+/**
+ * The person's own message on its way out (compose, signatures, templates).
+ * Same active-content rules as inbound mail — nothing scripted, framed or
+ * form-like reaches Outlook — but https images and links are kept as written.
+ */
+export function sanitizeOutgoing(raw: string | null | undefined): string {
+  installHooks();
+  outbound = true;
+  try {
+    return DOMPurify.sanitize(raw ?? '', {
+      FORBID_TAGS,
+      FORBID_ATTR,
+      ADD_ATTR: ['target'],
+      ALLOW_DATA_ATTR: false,
+      ALLOW_UNKNOWN_PROTOCOLS: false,
+    }) as unknown as string;
+  } finally {
+    outbound = false;
   }
 }

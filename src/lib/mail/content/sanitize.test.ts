@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeEmail } from './sanitize';
+import { sanitizeEmail, sanitizeOutgoing } from './sanitize';
 
 const clean = (html: string) => sanitizeEmail(html, 'html');
 
@@ -93,5 +93,21 @@ describe('sanitizeEmail — mail still looks like mail', () => {
     const r = clean('<img src="https://b.example/2.png">');
     expect(r.externalImages).toEqual(['https://b.example/2.png']);
     expect(r.html).toContain('data-mail-img="0"');
+  });
+});
+
+describe('sanitizeOutgoing', () => {
+  it('keeps the person’s formatting, https images and links; strips anything active', () => {
+    const out = sanitizeOutgoing('<p><b>Hi</b> <a href="https://tapdash.co">site</a></p><img src="https://cdn.tapdash.co/logo.png"><img src="http://x/y.gif"><script>x()</script><img src=x onerror=alert(1)><iframe></iframe>');
+    expect(out).toContain('<b>Hi</b>');
+    expect(out).toContain('src="https://cdn.tapdash.co/logo.png"');
+    expect(out).not.toContain('http://x/y.gif');
+    expect(out).not.toMatch(/<script|onerror|<iframe/i);
+    expect(out).not.toContain('data-mail-img');
+  });
+
+  it('does not leak outbound mode into the next inbound sanitise', () => {
+    sanitizeOutgoing('<img src="https://a.example/1.png">');
+    expect(sanitizeEmail('<img src="https://a.example/1.png">').externalImages).toEqual(['https://a.example/1.png']);
   });
 });

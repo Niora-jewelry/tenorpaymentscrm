@@ -19,16 +19,21 @@
  * deployment says so by itself, and a configured one cannot keep claiming to be
  * "coming soon".
  *
+ * The Email module (Outlook / Microsoft 365, two-way) reads `mailConfigured`
+ * the same way, and shows its health from the engine's own tables.
+ *
  * ── WHAT IS STILL HONESTLY NOT BUILT ─────────────────────────────────────
- * Outlook and Instantly remain real READS of the `messages` table with nothing
- * writing it — no provider, no webhook, no send path. Teams has no provider.
+ * Mail deposited onto RECORDS (the drawer's Email tab) and Instantly remain
+ * real READS of the `messages` table with nothing writing it — the Email
+ * module is deliberately standalone (spec). Teams has no provider.
  * DocuSign has never been specified. Those four keep the old, accurate framing,
  * and the notice at the bottom is narrowed to them rather than to the screen.
  */
 import { redirect } from 'next/navigation';
 import { authorize } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
-import { phoneConfigured } from '@/lib/env.server';
+import { mailConfigured, phoneConfigured } from '@/lib/env.server';
+import { adminHealth, SECRET_WARNING_DAYS, type AdminHealth } from '@/lib/mail/health';
 import { PlaceholderNotice } from '../PlaceholderNotice';
 
 type State = 'live' | 'needs-config' | 'read-only' | 'coming-soon' | 'unspecified';
@@ -54,7 +59,23 @@ const STATE_CLASS: Record<State, string> = {
 
 type Provider = { name: string; what: string; where: string; state: State; note?: string };
 
-function providers(twilioReady: boolean): Provider[] {
+function mailNote(h: AdminHealth | null): string {
+  if (!h) return 'The MAIL_* environment variables are not set on this deployment, so Email stays hidden. See docs/mail-azure-setup.md.';
+  const parts = [
+    h.provider === 'config_error'
+      ? 'Microsoft is refusing the app secret — rotate it in Azure and update MAIL_CLIENT_SECRET.'
+      : h.provider === 'down'
+        ? 'Outlook could not be reached on the last attempts.'
+        : 'Outlook is answering.',
+    `${h.mailboxes} mailbox${h.mailboxes === 1 ? '' : 'es'} from ${h.connections} connection${h.connections === 1 ? '' : 's'}${h.attention ? `, ${h.attention} needing attention` : ''}.`,
+  ];
+  if (h.secretDaysLeft !== null && h.secretDaysLeft <= SECRET_WARNING_DAYS) {
+    parts.push(h.secretDaysLeft < 0 ? 'The app secret has expired.' : `The app secret expires in ${h.secretDaysLeft} day${h.secretDaysLeft === 1 ? '' : 's'}.`);
+  }
+  return parts.join(' ');
+}
+
+function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
   /*
    * Read from configuration rather than written down. The previous version of
    * this screen was a hand-maintained list, which is exactly how it came to
@@ -87,7 +108,14 @@ function providers(twilioReady: boolean): Provider[] {
       note: 'Sending additionally needs the number registered for A2P 10DLC or toll-free verification in the Twilio console — that is carrier state this app cannot check ahead of time. Receiving is unaffected.',
     },
     {
-      name: 'Outlook',
+      name: 'Email (Outlook / Microsoft 365)',
+      what: 'Mailboxes synced both ways with Outlook — read, send, folders, rules, invitations',
+      where: 'Email · Settings → Email',
+      state: mail ? 'live' : 'needs-config',
+      note: mailNote(mail),
+    },
+    {
+      name: 'Outlook on records',
       what: 'Inbound email, deposited onto the matching record',
       where: 'Communication → Email',
       state: 'read-only',
@@ -117,7 +145,7 @@ export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
   if (!ctx.isAdmin) redirect('/dashboard');
 
-  const list = providers(phoneConfigured);
+  const list = providers(phoneConfigured, mailConfigured ? await adminHealth() : null);
   const twilioLive = phoneConfigured;
 
   return (
@@ -179,7 +207,7 @@ export default async function AdminIntegrationsPage() {
         <p className="flex gap-2 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-[12.5px] leading-relaxed text-brand-700">
           <Icon name="info" size={14} className="mt-0.5 shrink-0 opacity-70" />
           <span>
-            <strong>Outlook and Instantly read only.</strong> The drawer renders both from the real{' '}
+            <strong>Email on records and Instantly read only.</strong> The drawer renders both from the real{' '}
             <code>messages</code> table, so that read path is finished — what is missing is any
             provider that puts a message into it. The matching rules are settled even though nothing
             is wired: an inbound message matches against sync-enabled Email and Phone fields, a

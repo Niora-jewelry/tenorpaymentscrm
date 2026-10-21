@@ -18,6 +18,7 @@ import type { Addr, AttachmentView, MessageBody, MessageView } from '@/lib/mail/
 import { messageBodyAction } from '../actions';
 import { SWATCHES } from '@/proto/ui/tokens';
 import { displayName, initials, swatchFor } from './people';
+import { InviteCard } from './InviteCard';
 
 export type Thread = { status: 'idle' | 'loading' | 'ready' | 'error'; messages: MessageView[] };
 
@@ -285,12 +286,7 @@ function MessageCard({
       ) : null}
 
       <div className="px-5 pb-5 pt-4">
-        {m.meetingType ? (
-          <p className="mb-3 flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2 text-[12.5px] text-ink-600">
-            <Icon name="calendar" size={14} className="text-ink-400" />
-            Meeting {m.meetingType === 'meetingRequest' ? 'invitation' : 'update'} — respond to it in Outlook for now.
-          </p>
-        ) : null}
+        {m.meetingType && m.meetingType !== 'meetingResponse' ? <InviteCard messageId={m.id} kind={m.meetingType} /> : null}
         <Body body={body} message={m} onRetry={onRetryBody} />
       </div>
     </div>
@@ -392,7 +388,7 @@ function Body({ body, message, onRetry }: { body: BodyState | undefined; message
         </button>
       ) : null}
 
-      {b.attachments.length ? <Attachments list={b.attachments} /> : null}
+      {b.attachments.length ? <Attachments list={b.attachments} messageId={message.id} /> : null}
     </>
   );
 }
@@ -403,7 +399,7 @@ function Body({ body, message, onRetry }: { body: BodyState | undefined; message
  * the document itself can do nothing), links open in a new tab via the
  * base target, and the document's own CSP blocks every remote load.
  */
-function BodyFrame({ html, messageId, loadImages, title }: { html: string; messageId: string; loadImages: boolean; title: string }) {
+export function BodyFrame({ html, messageId, loadImages, title }: { html: string; messageId: string; loadImages: boolean; title: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(48);
   const doc = frameDocument(rewriteForFrame(html, messageId, loadImages));
@@ -449,12 +445,22 @@ function BodyFrame({ html, messageId, loadImages, title }: { html: string; messa
 
 const EXT_TONE: Record<string, keyof typeof SWATCHES> = { pdf: 'red', doc: 'blue', docx: 'blue', xls: 'green', xlsx: 'green', csv: 'green', ppt: 'orange', pptx: 'orange', zip: 'brown' };
 
-function Attachments({ list }: { list: AttachmentView[] }) {
+function Attachments({ list, messageId }: { list: AttachmentView[]; messageId: string }) {
+  const files = list.filter((a) => a.kind !== 'reference').length;
   return (
     <div className="mt-4 border-t border-line-faint pt-3">
       <p className="mb-2 flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-500">
         <Icon name="paperclip" size={12} />
         {list.length} attachment{list.length === 1 ? '' : 's'}
+        {files > 1 ? (
+          <a
+            href={`/api/mail/messages/${messageId}/attachments.zip`}
+            download
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold text-ink-500 transition-colors hover:bg-canvas hover:text-ink-900"
+          >
+            <Icon name="download" size={12} /> Download all
+          </a>
+        ) : null}
       </p>
       <ul className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-2">
         {list.map((a) => {

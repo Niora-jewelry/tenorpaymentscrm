@@ -26,6 +26,9 @@ import { refreshFolderTree, rootFor } from './folders';
 import { refetchMessages, refreshFolderCounts, runFolderDelta, type FolderState } from './delta';
 import { ensureSubscriptions } from './subscriptions';
 import { runOps } from './ops';
+import { loadOlder } from './older';
+import { syncContacts } from './contacts';
+import { refreshRules } from '../rules/server';
 import type { FolderInfo, MailboxCtx } from './ingest';
 
 export type ClaimedMailbox = {
@@ -48,8 +51,8 @@ type QueueItem = { id: number; kind: string; target: string; attempts: number };
 
 const MAX_ATTEMPTS = 5;
 const TAKE = 10;
-/** Work a later phase owns; acknowledged so it does not block the queue. */
-const LATER = new Set(['rules_refresh', 'contacts_delta', 'load_older', 'attachments_list']);
+/** Work nothing performs any more; acknowledged so it does not block the queue. */
+const LATER = new Set(['attachments_list']);
 
 const FOLDER_COLUMNS = 'id, graph_id, well_known, delta_link, seeded_at, oldest_loaded_at';
 
@@ -181,6 +184,23 @@ export async function drainMailbox(mb: ClaimedMailbox, deadline: number, owner: 
           await finish(item.id);
         } else if (item.kind === 'subscription_ensure') {
           await ensureSubscriptions(ctx);
+          await finish(item.id);
+        } else if (item.kind === 'load_older') {
+          const out = await loadOlder(ctx, item.target, deadline);
+          const f = ctx.foldersById.get(item.target);
+          if (f && out.loaded > 0) touched.set(f.id, f);
+          changed += out.loaded;
+          await finish(item.id);
+          if (!out.complete) await admin.rpc('mail_enqueue', { p_mailbox_id: mb.id, p_kind: 'load_older', p_target: item.target, p_priority: 2 });
+          // The folder's "loaded since" moved even when nothing arrived: let screens re-read.
+          else await admin.rpc('mail_bump_seq', { p_mailbox_id: mb.id });
+        } else if (item.kind === 'contacts_delta') {
+          const out = await syncContacts(ctx, mb.kind, deadline);
+          await finish(item.id);
+          if (!out.complete) await admin.rpc('mail_enqueue', { p_mailbox_id: mb.id, p_kind: 'contacts_delta', p_target: '', p_priority: 8 });
+        } else if (item.kind === 'rules_refresh') {
+          // Shared mailboxes are read when their rules screen opens (it may need rights the sign-in lacks).
+          if (mb.kind === 'personal') await refreshRules({ mailboxId: mb.id, graph: ctx.graph, root: ctx.root });
           await finish(item.id);
         } else if (LATER.has(item.kind)) {
           await finish(item.id, { last_error: 'deferred' });

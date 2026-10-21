@@ -45,6 +45,8 @@ export class GraphError extends Error {
     public readonly status: number,
     public readonly classified: Classified,
     public readonly graphCode: string | null,
+    /** Microsoft's own explanation. Shown to the person who caused it (a rejected rule); never logged. */
+    public readonly graphMessage: string | null = null,
   ) {
     super(`Graph request failed (${status} ${graphCode ?? classified.code})`);
     this.name = 'GraphError';
@@ -126,6 +128,7 @@ export function createGraphTransport(opts: GraphTransportOptions) {
       res.status,
       classifyGraphError({ status: res.status, code, message, retryAfter: res.headers.get('retry-after') }),
       code,
+      message?.slice(0, 500) ?? null,
     );
   }
 
@@ -221,5 +224,5 @@ export function batchItemError(item: BatchItem): GraphError | null {
   const code = typeof b?.error?.code === 'string' ? b.error.code : null;
   const message = typeof b?.error?.message === 'string' ? b.error.message : null;
   const retryAfter = Object.entries(item.headers).find(([k]) => k.toLowerCase() === 'retry-after')?.[1] ?? null;
-  return new GraphError(item.status, classifyGraphError({ status: item.status, code, message, retryAfter }), code);
+  return new GraphError(item.status, classifyGraphError({ status: item.status, code, message, retryAfter }), code, message?.slice(0, 500) ?? null);
 }

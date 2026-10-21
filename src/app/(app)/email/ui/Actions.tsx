@@ -59,20 +59,40 @@ function ToolButton({
 }
 
 /** Reading-pane toolbar for the open conversation. */
+export type ReplyKind = 'reply' | 'replyAll' | 'forward' | 'draft';
+
 export function ConversationToolbar({
   ctx,
   folders,
   onOp,
   onPin,
+  onReply,
+  isDraft,
 }: {
   ctx: ActionContext;
   folders: FolderView[];
   onOp: (op: Op, destFolderId?: string) => void;
   onPin: (pinned: boolean) => void;
+  /** Absent when the person cannot write from this mailbox. */
+  onReply?: (kind: ReplyKind) => void;
+  /** The newest message is an unsent draft: offer to continue it instead of replying. */
+  isDraft?: boolean;
 }) {
   const del = deleteOp(ctx.wellKnown);
   return (
     <div role="toolbar" aria-label="Conversation actions" className="-ml-2 mt-2 flex flex-wrap items-center gap-0.5">
+      {onReply ? (
+        isDraft ? (
+          <ToolButton icon="pencil" label="Continue draft" onClick={() => onReply('draft')} />
+        ) : (
+          <>
+            <ToolButton icon="reply" label="Reply" onClick={() => onReply('reply')} />
+            <ToolButton icon="reply-all" label="Reply all" onClick={() => onReply('replyAll')} />
+            <ToolButton icon="forward" label="Forward" onClick={() => onReply('forward')} />
+          </>
+        )
+      ) : null}
+      {onReply ? <span aria-hidden className="mx-1 h-4 w-px bg-line" /> : null}
       {ctx.hasArchive && ctx.wellKnown !== 'archive' ? <ToolButton icon="archive" label="Archive" onClick={() => onOp('archive')} /> : null}
       <ToolButton icon="trash" label={del === 'purge' ? 'Delete forever' : 'Delete'} onClick={() => onOp(del)} danger />
       <MoveTo folders={folders} exclude={null} onPick={(id) => onOp('move', id)}>

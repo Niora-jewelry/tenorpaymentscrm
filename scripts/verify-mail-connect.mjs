@@ -96,7 +96,16 @@ async function session(cookies) {
   return { ctx, page };
 }
 
-const banner = async (page) => ((await page.locator('[role=status], [role=alert]').first().textContent({ timeout: 15000 }).catch(() => '')) ?? '').trim();
+const banner = (async (page) => {
+  // Success is a dialog ("Outlook connected" + address); refusals stay a banner.
+  const dlg = page.getByRole('dialog');
+  if (await dlg.waitFor({ timeout: 6000 }).then(() => true, () => false)) {
+    const text = `${(await dlg.locator('h2').textContent()) ?? ''} ${(await dlg.locator('h2 + p').textContent()) ?? ''}`.trim();
+    await dlg.getByRole('button', { name: 'Done' }).click();
+    return text;
+  }
+  return ((await page.locator('[role=status], [role=alert]').first().textContent({ timeout: 15000 }).catch(() => '')) ?? '').trim();
+});
 
 /** Start a connection from the settings page and pick an account on the mock. */
 async function connectVia(page, { shared, account }) {
@@ -119,7 +128,7 @@ try {
 
   // 1. Personal mailbox.
   let r = await connectVia(page, { account: 'owner@mock.test' });
-  t('personal: connected banner', /Connected owner@mock\.test/.test(r.text), r.text);
+  t('personal: connected banner', /connected owner@mock\.test/i.test(r.text), r.text);
   const [mb] = await q(`select id, kind, graph_user_id, sync_identity_id, sync_status from mail_mailboxes where address='owner@mock.test'`);
   t('personal: one mailbox row, kind personal, driven by the new identity', mb?.kind === 'personal' && mb.graph_user_id === 'oid-owner' && !!mb.sync_identity_id);
   const folders = await q(`select f.graph_id, f.well_known, f.depth, p.graph_id parent from mail_folders f left join mail_folders p on p.id=f.parent_folder_id where f.mailbox_id=$1 and f.deleted_at is null order by f.graph_id`, [mb.id]);
@@ -157,7 +166,7 @@ try {
 
   // 2. Reconnect the same mailbox → no duplicate.
   r = await connectVia(page, { account: 'owner@mock.test' });
-  t('reconnect: banner', /Reconnected owner@mock\.test/.test(r.text), r.text);
+  t('reconnect: banner', /reconnected owner@mock\.test/i.test(r.text), r.text);
   const dupes = await q(`select (select count(*)::int from mail_mailboxes where address='owner@mock.test') m,
                                 (select count(*)::int from mail_connections where user_id=$1 and disconnected_at is null) c,
                                 (select count(*)::int from mail_identities where user_id=$1 and microsoft_user_id='oid-owner' and deleted_at is null) i`, [admin.id]);
@@ -165,7 +174,7 @@ try {
 
   // 3. Shared mailbox with access.
   r = await connectVia(page, { shared: 'team@mock.test', account: 'owner@mock.test' });
-  t('shared: connected', /Connected team@mock\.test/.test(r.text), r.text);
+  t('shared: connected', /connected team@mock\.test/i.test(r.text), r.text);
   const [smb] = await q(`select kind, graph_user_id from mail_mailboxes where address='team@mock.test'`);
   t('shared: kind shared, addressed by address', smb?.kind === 'shared' && smb.graph_user_id === null);
   t('shared: Shared chip shown', await page.locator('li', { hasText: 'team@mock.test' }).getByText('Shared').isVisible().catch(() => false));

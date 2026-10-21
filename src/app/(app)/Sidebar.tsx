@@ -261,7 +261,7 @@ export function Sidebar({
             icon="mail"
             label="Email"
             count={mailUnread > 0 ? mailUnread : undefined}
-            active={pathname === '/email' || pathname.startsWith('/email/')}
+            active={pathname === '/email' || (pathname.startsWith('/email/') && !(isAdmin && pathname.startsWith('/email/settings')))}
             collapsed={collapsed}
           />
         ) : null}
@@ -344,6 +344,18 @@ export function Sidebar({
               active={pathname.startsWith('/admin/residuals')}
               collapsed={collapsed}
             />
+            {/* Email settings: connecting mailboxes, signatures, templates, undo
+                window. Members reach the same page from the Email screen's gear;
+                admins also find it here with the other things they set up. */}
+            {emailUnread !== null ? (
+              <NavItem
+                href="/email/settings"
+                icon="cog"
+                label="Email settings"
+                active={pathname.startsWith('/email/settings')}
+                collapsed={collapsed}
+              />
+            ) : null}
             <NavItem
               href="/admin/integrations"
               icon="link"

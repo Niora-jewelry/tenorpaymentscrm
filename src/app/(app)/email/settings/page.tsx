@@ -8,13 +8,15 @@
  */
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { Icon } from '@/proto/ui/icons';
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { emailAccess } from '@/lib/mail/access';
 import { myMailboxes, MAX_CONNECTIONS } from '@/lib/mail/mailboxes';
-import { MAIL_MESSAGES, connectErrorMessage, isConnectErrorCode } from '@/lib/mail/messages';
-import { MailboxSettings, type Banner } from './MailboxSettings';
+import { connectErrorMessage, isConnectErrorCode } from '@/lib/mail/messages';
+import { MailboxSettings, type Banner, type JustConnected } from './MailboxSettings';
+import { SettingsNav } from './SettingsNav';
 import { ComposeSettings } from './ComposeSettings';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { templatesAction } from '../composeActions';
@@ -32,43 +34,61 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
   const [impersonating, mailboxes, sp] = await Promise.all([currentImpersonation(), myMailboxes(ctx), searchParams]);
 
   let banner: Banner | null = null;
+  let justConnected: JustConnected | null = null;
   const err = first(sp.mail_error);
   const connected = first(sp.connected);
   if (isConnectErrorCode(err)) {
     banner = { tone: 'error', text: connectErrorMessage(err, { shared: asEmail(first(sp.shared)), isAdmin: ctx.isAdmin }) };
   } else if (connected) {
-    // The id is only a pointer; the address shown comes from our own rows.
+    // The id is only a pointer: it must be one of this person's own connections.
     const mb = mailboxes.find((m) => m.mailboxId === connected);
-    if (mb) {
-      banner =
-        first(sp.degraded) === '1'
-          ? { tone: 'warn', text: MAIL_MESSAGES.degraded }
-          : { tone: 'ok', text: first(sp.reconnected) === '1' ? MAIL_MESSAGES.reconnected(mb.address) : MAIL_MESSAGES.connected(mb.address) };
-    }
+    if (mb) justConnected = { mailboxId: mb.mailboxId, reconnected: first(sp.reconnected) === '1', degraded: first(sp.degraded) === '1' };
   }
+  const writing = !impersonating && access === 'edit';
 
   return (
-    <div className="mx-auto max-w-[880px] space-y-6 p-6">
-      <div className="flex items-end justify-between gap-4">
+    <div className="mx-auto max-w-[1120px] p-6 lg:p-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-line pb-5">
         <div>
-          <h1 className="text-xl font-semibold text-ink-900">Email settings</h1>
-          <p className="text-[13px] text-ink-500">
+          <h1 className="text-[22px] font-semibold tracking-[-.01em] text-ink-900">Email settings</h1>
+          <p className="mt-1 max-w-[62ch] text-[13px] leading-relaxed text-ink-500">
             Mailboxes sync both ways with Outlook. Disconnecting stops the sync; nothing in Outlook is changed.
           </p>
         </div>
-        <Link href="/email" className="text-[13px] font-semibold text-ink-500 hover:text-ink-900">
-          Back to Email
+        <Link
+          href="/email"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[13px] font-semibold text-ink-700 hover:border-ink-400 hover:bg-canvas"
+        >
+          <Icon name="mail" size={14} /> Open Email
         </Link>
       </div>
 
-      <MailboxSettings
-        mailboxes={mailboxes}
-        max={MAX_CONNECTIONS}
-        readOnly={Boolean(impersonating)}
-        banner={banner}
-      />
-
-      {!impersonating && access === 'edit' ? await writingSettings(ctx.userId, ctx.isAdmin, mailboxes) : null}
+      <div className="grid gap-8 lg:grid-cols-[190px_minmax(0,1fr)]">
+        <SettingsNav
+          sections={[
+            { id: 'mailboxes', label: 'Mailboxes', icon: 'inbox' },
+            ...(impersonating ? [] : [{ id: 'connect', label: 'Connect', icon: 'plus' as const }]),
+            ...(writing
+              ? [
+                  { id: 'sending', label: 'Sending', icon: 'send' as const },
+                  { id: 'signatures', label: 'Signatures', icon: 'pencil' as const },
+                  { id: 'templates', label: 'Templates', icon: 'file-text' as const },
+                  ...(ctx.isAdmin ? [{ id: 'privacy', label: 'Privacy', icon: 'lock' as const }] : []),
+                ]
+              : []),
+          ]}
+        />
+        <div className="min-w-0 space-y-10 pb-[30vh]">
+          <MailboxSettings
+            mailboxes={mailboxes}
+            max={MAX_CONNECTIONS}
+            readOnly={Boolean(impersonating)}
+            banner={banner}
+            justConnected={justConnected}
+          />
+          {writing ? await writingSettings(ctx.userId, ctx.isAdmin, mailboxes) : null}
+        </div>
+      </div>
     </div>
   );
 }

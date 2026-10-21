@@ -69,7 +69,8 @@ export type IngestResult = { upserted: number; unknownFolder: boolean; guarded: 
  *               omits parentFolderId); null for single-message fetches.
  */
 export async function ingestMessages(mb: MailboxCtx, messages: GraphMessage[], walked: FolderInfo | null): Promise<IngestResult> {
-  const live = messages.filter((m) => m?.id && !m['@removed']);
+  // Never store a bare entry as a message: it would overwrite real fields with blanks.
+  const live = messages.filter((m) => m?.id && !m['@removed'] && ('receivedDateTime' in m || 'sentDateTime' in m || 'subject' in m));
   if (live.length === 0) return { upserted: 0, unknownFolder: false, guarded: 0 };
   const admin = supabaseAdmin();
   let unknownFolder = false;

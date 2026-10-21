@@ -552,7 +552,12 @@ function Row({
           {label}
         </span>
         {badge > 0 ? (
-          <span className={`shrink-0 text-[11.5px] tabular ${badgeMuted ? 'text-ink-400' : 'font-semibold text-brand-700'}`}>
+          // Gives way to the folder's "…" menu, which appears in the same spot on hover.
+          <span
+            className={`shrink-0 text-[11.5px] tabular ${badgeMuted ? 'text-ink-400' : 'font-semibold text-brand-700'} ${
+              menu ? 'transition-opacity group-focus-within:opacity-0 group-hover:opacity-0' : ''
+            }`}
+          >
             {badge > 999 ? '999+' : badge}
           </span>
         ) : null}

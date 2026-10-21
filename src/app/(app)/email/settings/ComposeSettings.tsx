@@ -8,7 +8,7 @@
  */
 import dynamic from 'next/dynamic';
 import { useRef, useState, useTransition } from 'react';
-import { Button, Dialog, SectionLabel } from '@/proto/ui/kit';
+import { Button, Dialog } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import type { EditorHandle } from '../ui/Editor';
 import { deleteTemplateAction, saveTemplateAction, setHideFromAdminsAction, setSignatureAction, setUndoSecondsAction, type TemplateView } from '../composeActions';
@@ -41,7 +41,7 @@ export function ComposeSettings({
   const say = (ok: boolean, text: string) => setNote({ tone: ok ? 'ok' : 'error', text });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {note ? (
         <p
           role={note.tone === 'error' ? 'alert' : 'status'}
@@ -51,10 +51,13 @@ export function ComposeSettings({
         </p>
       ) : null}
 
-      <section className="space-y-3">
-        <SectionLabel>Undo send</SectionLabel>
+      <section id="sending" className="scroll-mt-6 space-y-3">
+        <SectionHead title="Sending" />
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white p-4">
-          <p className="min-w-0 flex-1 text-[13px] text-ink-600">After you press Send, you have this long to take it back. Nothing reaches Outlook until it passes.</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13.5px] font-semibold text-ink-900">Undo send</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-500">After you press Send, you have this long to take it back. Nothing reaches Outlook until it passes.</p>
+          </div>
           <label className="flex items-center gap-2 text-[13px] text-ink-700">
             <select
               value={undo}
@@ -79,38 +82,9 @@ export function ComposeSettings({
         </div>
       </section>
 
-      {isAdmin ? (
-        <section className="space-y-3">
-          <SectionLabel>Privacy</SectionLabel>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
-            <input
-              type="checkbox"
-              checked={hidden}
-              disabled={pending}
-              onChange={(e) => {
-                const v = e.target.checked;
-                setHidden(v);
-                start(async () => {
-                  const r = await setHideFromAdminsAction({ hide: v });
-                  if (!r.ok) setHidden(!v);
-                  say(r.ok, r.ok ? (v ? 'Your mailboxes are now hidden from other admins.' : 'Other admins can see your mailboxes again.') : r.message);
-                });
-              }}
-              className="mt-0.5 accent-brand-600"
-            />
-            <span>
-              <span className="block text-[13.5px] font-semibold text-ink-900">Hide my mailboxes from other admins</span>
-              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-ink-500">
-                Admins can see members’ personal mailboxes. Turn this on and your own personal mailboxes stay visible only to you.
-                Shared mailboxes are only ever visible to the people connected to them.
-              </span>
-            </span>
-          </label>
-        </section>
-      ) : null}
 
-      <section className="space-y-3">
-        <SectionLabel>Signatures</SectionLabel>
+      <section id="signatures" className="scroll-mt-6 space-y-3">
+        <SectionHead title="Signatures" />
         <p className="text-[12.5px] leading-relaxed text-ink-500">
           Outlook keeps signatures on each computer, where Microsoft lets no app read them — so set yours here once, per mailbox. It is added
           below everything you write from that mailbox in TapDash.
@@ -122,9 +96,9 @@ export function ComposeSettings({
         )}
       </section>
 
-      <section className="space-y-3">
+      <section id="templates" className="scroll-mt-6 space-y-3">
         <div className="flex items-center justify-between">
-          <SectionLabel>Templates</SectionLabel>
+          <SectionHead title="Templates" />
           <Button size="sm" icon="plus" onClick={() => setEditing('new')}>
             New template
           </Button>
@@ -161,6 +135,36 @@ export function ComposeSettings({
           </ul>
         )}
       </section>
+
+      {isAdmin ? (
+        <section id="privacy" className="scroll-mt-6 space-y-3">
+          <SectionHead title="Privacy" />
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4">
+            <input
+              type="checkbox"
+              checked={hidden}
+              disabled={pending}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setHidden(v);
+                start(async () => {
+                  const r = await setHideFromAdminsAction({ hide: v });
+                  if (!r.ok) setHidden(!v);
+                  say(r.ok, r.ok ? (v ? 'Your mailboxes are now hidden from other admins.' : 'Other admins can see your mailboxes again.') : r.message);
+                });
+              }}
+              className="mt-0.5 accent-brand-600"
+            />
+            <span>
+              <span className="block text-[13.5px] font-semibold text-ink-900">Hide my mailboxes from other admins</span>
+              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-ink-500">
+                Admins can see members’ personal mailboxes. Turn this on and your own personal mailboxes stay visible only to you.
+                Shared mailboxes are only ever visible to the people connected to them.
+              </span>
+            </span>
+          </label>
+        </section>
+      ) : null}
 
       {editing ? (
         <TemplateDialog
@@ -286,4 +290,8 @@ function TemplateDialog({
       </div>
     </Dialog>
   );
+}
+
+function SectionHead({ title }: { title: string }) {
+  return <h2 className="text-[15px] font-semibold text-ink-900">{title}</h2>;
 }

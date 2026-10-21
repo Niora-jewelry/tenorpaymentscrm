@@ -40,6 +40,11 @@ export type DeltaOutcome = { changed: number; complete: boolean; reset: boolean 
 
 type DeltaPage = { value?: GraphMessage[]; '@odata.nextLink'?: string; '@odata.deltaLink'?: string };
 
+/** A delta entry that carries the message itself, not just its id. */
+export function isWholeMessage(m: GraphMessage): boolean {
+  return Boolean(m.id) && ('receivedDateTime' in m || 'sentDateTime' in m || 'subject' in m);
+}
+
 export function isCursorExpired(e: unknown): boolean {
   return e instanceof GraphError && (e.status === 410 || (e.graphCode !== null && RESET_CODES.has(e.graphCode)));
 }
@@ -72,7 +77,13 @@ export async function runFolderDelta(mb: MailboxCtx, folder: FolderState, deadli
     const items = res.value ?? [];
     const removed = items.filter((m) => m['@removed']).map((m) => m.id).filter(Boolean);
     const live = items.filter((m) => !m['@removed']);
-    if (live.length) changed += (await ingestMessages(mb, live, folder)).upserted;
+    // Graph's delta sometimes answers with a bare entry (id, maybe a changeKey)
+    // instead of the message. Storing it would make a blank row; fetch those
+    // in full instead.
+    const whole = live.filter(isWholeMessage);
+    const partial = live.filter((m) => !isWholeMessage(m)).map((m) => m.id).filter(Boolean);
+    if (whole.length) changed += (await ingestMessages(mb, whole, folder)).upserted;
+    if (partial.length) changed += await refetchMessages(mb, partial, null);
     if (removed.length) changed += await refetchMessages(mb, removed, folder);
 
     const deltaLink = res['@odata.deltaLink'];

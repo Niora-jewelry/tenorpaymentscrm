@@ -25,6 +25,13 @@ export type MyMailbox = {
   health: ConnectionHealth;
   connectedAt: string;
   lastSyncedAt: string | null;
+  /** Folders found in Outlook, and how many have had their mail fetched. */
+  folders: number;
+  foldersReady: number;
+  /** Messages Outlook reports across all folders (its own counts). */
+  messages: number;
+  inboxUnread: number;
+  inboxId: string | null;
 };
 
 type Row = {
@@ -64,9 +71,33 @@ export async function myMailboxes(ctx: AuthContext): Promise<MyMailbox[]> {
     .returns<Row[]>();
   if (error) throw new Error(`Could not load mailboxes: ${error.code ?? 'db'}`);
 
-  return (data ?? [])
-    .filter((r): r is Row & { mail_mailboxes: NonNullable<Row['mail_mailboxes']> } => r.mail_mailboxes !== null)
+  const live = (data ?? []).filter((r): r is Row & { mail_mailboxes: NonNullable<Row['mail_mailboxes']> } => r.mail_mailboxes !== null);
+  // Folder stats for the settings cards (RLS: only mailboxes this person sees).
+  const { data: folders } = live.length
+    ? await supabase
+        .from('mail_folders')
+        .select('id, mailbox_id, well_known, total_count, unread_count, seeded_at')
+        .in('mailbox_id', live.map((r) => r.mailbox_id))
+        .is('deleted_at', null)
+    : { data: [] };
+  type F = { id: string; mailbox_id: string; well_known: string | null; total_count: number; unread_count: number; seeded_at: string | null };
+  const stats = new Map<string, { folders: number; foldersReady: number; messages: number; inboxUnread: number; inboxId: string | null }>();
+  for (const f of (folders ?? []) as F[]) {
+    if (f.well_known === 'outbox') continue;
+    const st = stats.get(f.mailbox_id) ?? { folders: 0, foldersReady: 0, messages: 0, inboxUnread: 0, inboxId: null };
+    st.folders += 1;
+    if (f.seeded_at || (f.total_count ?? 0) === 0) st.foldersReady += 1;
+    st.messages += f.total_count ?? 0;
+    if (f.well_known === 'inbox') {
+      st.inboxUnread = f.unread_count ?? 0;
+      st.inboxId = f.id;
+    }
+    stats.set(f.mailbox_id, st);
+  }
+
+  return live
     .map((r) => ({
+      ...(stats.get(r.mailbox_id) ?? { folders: 0, foldersReady: 0, messages: 0, inboxUnread: 0, inboxId: null }),
       connectionId: r.id,
       mailboxId: r.mailbox_id,
       address: r.mail_mailboxes.address,

@@ -111,7 +111,16 @@ async function connectOwner() {
   await page.waitForURL(/oauth2\/v2\.0\/authorize/, { timeout: 30000 });
   await page.click('a[data-account="owner@mock.test"]');
   await page.waitForURL(/\/email\/settings/, { timeout: 90000 });
+  return (async (page) => {
+  // Success is a dialog ("Outlook connected" + address); refusals stay a banner.
+  const dlg = page.getByRole('dialog');
+  if (await dlg.waitFor({ timeout: 6000 }).then(() => true, () => false)) {
+    const text = `${(await dlg.locator('h2').textContent()) ?? ''} ${(await dlg.locator('h2 + p').textContent()) ?? ''}`.trim();
+    await dlg.getByRole('button', { name: 'Done' }).click();
+    return text;
+  }
   return ((await page.locator('[role=status], [role=alert]').first().textContent({ timeout: 15000 }).catch(() => '')) ?? '').trim();
+})(page);
 }
 
 try {
@@ -140,7 +149,7 @@ try {
 
   // ── connect + first sync ───────────────────────────────────────────────
   const banner = await connectOwner();
-  t('connected', /Connected owner@mock\.test/.test(banner), banner);
+  t('connected', /connected owner@mock\.test/i.test(banner), banner);
   const mb = await one(`select id from mail_mailboxes where address=$1`, [OWNER]);
   await tickAndWait(mb.id);
 

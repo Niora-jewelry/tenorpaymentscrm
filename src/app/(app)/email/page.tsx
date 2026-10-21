@@ -26,7 +26,8 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 
 export default async function EmailPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await authorize();
-  if ((await emailAccess(ctx)) === 'hidden') redirect('/dashboard');
+  const access = await emailAccess(ctx);
+  if (access === 'hidden') redirect('/dashboard');
 
   const [impersonating, mailboxes, sp] = await Promise.all([currentImpersonation(), loadMailboxes(ctx), searchParams]);
 
@@ -48,6 +49,7 @@ export default async function EmailPage({ searchParams }: { searchParams: Search
         initialSelection={selection}
         initialPage={initialPage}
         initialOpen={parseOpen(first(sp.c))}
+        canEdit={access === 'edit'}
       />
     </div>
   );

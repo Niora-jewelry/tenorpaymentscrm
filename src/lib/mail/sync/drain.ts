@@ -25,6 +25,7 @@ import { mailLog } from '../log';
 import { refreshFolderTree, rootFor } from './folders';
 import { refetchMessages, refreshFolderCounts, runFolderDelta, type FolderState } from './delta';
 import { ensureSubscriptions } from './subscriptions';
+import { runOps } from './ops';
 import type { FolderInfo, MailboxCtx } from './ingest';
 
 export type ClaimedMailbox = {
@@ -100,7 +101,30 @@ export async function drainMailbox(mb: ClaimedMailbox, deadline: number, owner: 
   const finish = (id: number, extra: Record<string, unknown> = {}) =>
     admin.from('mail_sync_queue').update({ processed_at: new Date().toISOString(), ...extra }).eq('id', id);
 
-  outer: while (Date.now() < deadline) {
+  // Someone's click is waiting on these: carry pending actions to Outlook first.
+  try {
+    const ops = await runOps(ctx, deadline);
+    items += ops.ran;
+    for (const id of ops.touchedFolders) {
+      const f = ctx.foldersById.get(id);
+      if (f) touched.set(id, f);
+    }
+    if (ops.refetch.length) changed += await refetchMessages(ctx, ops.refetch, null);
+    if (ops.stop) {
+      const c = ops.stop.classified;
+      if (c.code === 'throttled') {
+        const until = new Date(Date.now() + (c.retryAfterSeconds ?? 30) * 1000).toISOString();
+        await admin.from('mail_mailboxes').update({ throttled_until: until, sync_status: 'throttled' }).eq('id', mb.id);
+        result = { items, changed, status: 'throttled', errorCode: c.code };
+      } else {
+        result = { items, changed, status: 'failed', errorCode: c.code };
+      }
+    }
+  } catch (e) {
+    mailLog('error', 'drain', 'ops_crashed', { mailboxId: mb.id, message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
+  }
+
+  outer: while (result.status === 'ok' && Date.now() < deadline) {
     const { data: due, error } = await admin
       .from('mail_sync_queue')
       .select('id, kind, target, attempts')

@@ -9,7 +9,8 @@
  * band, so it reads at a glance even in a 200-folder tree.
  */
 import Link from 'next/link';
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
+import { Dialog, Popover } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import type { FolderView, Health, MailboxView } from '@/lib/mail/viewTypes';
 import { FOLDER_ICON, folderBadge, swatchFor } from './people';
@@ -54,15 +55,49 @@ const HEALTH_HINT: Partial<Record<Health, { tone: string; label: string }>> = {
   stalled: { tone: 'bg-[#d33b41]', label: 'Stopped syncing' },
 };
 
+export type FolderOp =
+  | { op: 'create'; mailboxId: string; parentId: string | null; name: string }
+  | { op: 'rename'; mailboxId: string; folderId: string; name: string }
+  | { op: 'delete'; mailboxId: string; folderId: string };
+
+type DialogState =
+  | { kind: 'create'; mailboxId: string; parentId: string | null; under: string }
+  | { kind: 'rename'; folder: FolderView }
+  | { kind: 'delete'; folder: FolderView; inBin: boolean };
+
 export function FolderPane({
   mailboxes,
   selection,
   onSelect,
+  canEdit,
+  onFolderOp,
 }: {
   mailboxes: MailboxView[];
   selection: Selection;
   onSelect: (s: Selection) => void;
+  /** Edit grant: folder menus appear. */
+  canEdit: boolean;
+  onFolderOp: (op: FolderOp) => void;
 }) {
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const menus: Menus | null = canEdit
+    ? {
+        create: (mailboxId, parent, mailboxName) =>
+          setDialog({ kind: 'create', mailboxId, parentId: parent?.id ?? null, under: parent?.name ?? mailboxName }),
+        rename: (folder) => setDialog({ kind: 'rename', folder }),
+        remove: (folder, box) => {
+          // Already inside Deleted Items? Then deleting is for good.
+          const byId = new Map(box.folders.map((f) => [f.id, f]));
+          let cur = folder.parentId ? byId.get(folder.parentId) : undefined;
+          let inBin = false;
+          for (let i = 0; cur && i < 32; i += 1) {
+            if (cur.wellKnown === 'deleteditems') inBin = true;
+            cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+          }
+          setDialog({ kind: 'delete', folder, inBin });
+        },
+      }
+    : null;
   const raw = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => '[]');
   const collapsed = useMemo(() => parseCollapsed(raw), [raw]);
   const toggle = (id: string) => {
@@ -118,6 +153,7 @@ export function FolderPane({
             onSelect={onSelect}
             collapsed={collapsed}
             toggle={toggle}
+            menus={menus}
           />
         ))}
 
@@ -136,11 +172,44 @@ export function FolderPane({
                 collapsed={collapsed}
                 toggle={toggle}
                 startCollapsed
+                menus={menus}
               />
             ))}
           </>
         ) : null}
       </div>
+
+      {dialog?.kind === 'create' || dialog?.kind === 'rename' ? (
+        <FolderNameDialog
+          key={dialog.kind === 'rename' ? dialog.folder.id : `${dialog.mailboxId}:${dialog.parentId}`}
+          title={dialog.kind === 'create' ? `New folder in ${dialog.under}` : `Rename ${dialog.folder.name}`}
+          initial={dialog.kind === 'rename' ? dialog.folder.name : ''}
+          confirm={dialog.kind === 'create' ? 'Create folder' : 'Rename'}
+          onClose={() => setDialog(null)}
+          onSubmit={(name) =>
+            onFolderOp(
+              dialog.kind === 'create'
+                ? { op: 'create', mailboxId: dialog.mailboxId, parentId: dialog.parentId, name }
+                : { op: 'rename', mailboxId: dialog.folder.mailboxId, folderId: dialog.folder.id, name },
+            )
+          }
+        />
+      ) : null}
+      {dialog?.kind === 'delete' ? (
+        <Dialog
+          title={dialog.inBin ? `Delete ${dialog.folder.name} for good?` : `Delete ${dialog.folder.name}?`}
+          tone="danger"
+          confirmLabel={dialog.inBin ? 'Delete for good' : 'Move to Deleted Items'}
+          onConfirm={() => onFolderOp({ op: 'delete', mailboxId: dialog.folder.mailboxId, folderId: dialog.folder.id })}
+          onClose={() => setDialog(null)}
+        >
+          <p>
+            {dialog.inBin
+              ? 'The folder and everything in it are removed from Outlook. This can’t be undone.'
+              : 'The folder and its mail move to Deleted Items, the same as deleting it in Outlook. You can still restore it from there.'}
+          </p>
+        </Dialog>
+      ) : null}
 
       <div className="border-t border-line px-3 py-2.5">
         <Link
@@ -162,6 +231,7 @@ function MailboxSection({
   collapsed,
   toggle,
   startCollapsed = false,
+  menus,
 }: {
   mailbox: MailboxView;
   selection: Selection;
@@ -169,6 +239,7 @@ function MailboxSection({
   collapsed: Set<string>;
   toggle: (id: string) => void;
   startCollapsed?: boolean;
+  menus: Menus | null;
 }) {
   // Team mailboxes start closed; the stored set records the OPPOSITE of the default for them.
   const key = `mb:${mailbox.id}`;
@@ -184,7 +255,18 @@ function MailboxSection({
   }
 
   return (
-    <section className="mt-3 first:mt-1">
+    <section className="group/mb relative mt-3 first:mt-1">
+      {menus ? (
+        <button
+          type="button"
+          onClick={() => menus.create(mailbox.id, null, title)}
+          title={`New folder in ${title}`}
+          aria-label={`New folder in ${title}`}
+          className="absolute right-1 top-1.5 z-[1] grid size-6 place-items-center rounded-md bg-canvas text-ink-400 opacity-0 transition-opacity hover:bg-white hover:text-ink-900 focus:opacity-100 group-hover/mb:opacity-100"
+        >
+          <Icon name="plus" size={13} />
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => toggle(key)}
@@ -227,6 +309,16 @@ function MailboxSection({
                   open={!collapsed.has(f.id)}
                   onToggle={() => toggle(f.id)}
                   onSelect={() => onSelect({ kind: 'folder', folderId: f.id })}
+                  menu={
+                    menus ? (
+                      <FolderMenu
+                        folder={f}
+                        onNew={() => menus.create(mailbox.id, f, title)}
+                        onRename={() => menus.rename(f)}
+                        onDelete={() => menus.remove(f, mailbox)}
+                      />
+                    ) : null
+                  }
                 />
               </li>
             ),
@@ -237,21 +329,113 @@ function MailboxSection({
   );
 }
 
+type Menus = {
+  create: (mailboxId: string, parent: FolderView | null, mailboxName: string) => void;
+  rename: (folder: FolderView) => void;
+  remove: (folder: FolderView, box: MailboxView) => void;
+};
+
+function FolderMenu({ folder, onNew, onRename, onDelete }: { folder: FolderView; onNew: () => void; onRename: () => void; onDelete: () => void }) {
+  const system = Boolean(folder.wellKnown);
+  const item = 'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]';
+  const run = (close: () => void, fn: () => void) => {
+    close();
+    fn();
+  };
+  return (
+    <Popover
+      width={210}
+      align="right"
+      trigger={() => (
+        <span title={`Folder actions: ${folder.name}`} className="grid size-6 place-items-center rounded-md text-ink-400 hover:bg-canvas hover:text-ink-900">
+          <Icon name="more-horizontal" size={14} />
+          <span className="sr-only">Folder actions: {folder.name}</span>
+        </span>
+      )}
+    >
+      {(close) => (
+        <div role="menu" aria-label={`${folder.name} actions`}>
+          <button type="button" role="menuitem" className={`${item} text-ink-700 hover:bg-canvas`} onClick={() => run(close, onNew)}>
+            <Icon name="plus" size={14} className="text-ink-400" /> New subfolder
+          </button>
+          {system ? (
+            <p className="px-2 pb-1 pt-1.5 text-[11.5px] leading-snug text-ink-400">Outlook system folders can’t be renamed or deleted.</p>
+          ) : (
+            <>
+              <button type="button" role="menuitem" className={`${item} text-ink-700 hover:bg-canvas`} onClick={() => run(close, onRename)}>
+                <Icon name="pencil" size={14} className="text-ink-400" /> Rename
+              </button>
+              <button type="button" role="menuitem" className={`${item} text-[#b02a30] hover:bg-[#fce9ea]`} onClick={() => run(close, onDelete)}>
+                <Icon name="trash" size={14} /> Delete folder
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+const BAD_NAME = /[\\/]/;
+
+function FolderNameDialog({
+  title,
+  initial,
+  confirm,
+  onClose,
+  onSubmit,
+}: {
+  title: string;
+  initial: string;
+  confirm: string;
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  const clean = name.trim();
+  const problem = !clean ? null : clean.length > 255 ? 'Up to 255 characters.' : BAD_NAME.test(clean) ? 'Can’t contain / or \\.' : null;
+  return (
+    <Dialog
+      title={title}
+      confirmLabel={confirm}
+      onConfirm={() => {
+        if (clean && !problem && clean !== initial) onSubmit(clean);
+      }}
+      onClose={onClose}
+    >
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        maxLength={255}
+        placeholder="Folder name"
+        aria-label="Folder name"
+        aria-invalid={Boolean(problem)}
+        className="w-full rounded-lg border border-line bg-white px-3 py-2 text-[13.5px] text-ink-900 outline-none focus:border-brand-600"
+      />
+      {problem ? <p className="text-[12px] text-[#b02a30]">{problem}</p> : null}
+    </Dialog>
+  );
+}
+
 function FolderRow({
   folder,
   active,
   open,
   onToggle,
   onSelect,
+  menu,
 }: {
   folder: FolderView;
   active: boolean;
   open: boolean;
   onToggle: () => void;
   onSelect: () => void;
+  menu: React.ReactNode;
 }) {
   return (
     <Row
+      menu={menu}
       icon={folder.wellKnown ? (FOLDER_ICON[folder.wellKnown] ?? 'folder') : 'folder'}
       label={folder.name}
       badge={folderBadge(folder)}
@@ -273,7 +457,9 @@ function Row({
   onClick,
   depth,
   chevron,
+  menu = null,
 }: {
+  menu?: React.ReactNode;
   icon: Parameters<typeof Icon>[0]['name'];
   label: string;
   badge: number;
@@ -331,6 +517,11 @@ function Row({
           </span>
         ) : null}
       </button>
+      {menu ? (
+        <span className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md bg-white opacity-0 shadow-[0_0_0_4px_white] transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+          {menu}
+        </span>
+      ) : null}
     </div>
   );
 }

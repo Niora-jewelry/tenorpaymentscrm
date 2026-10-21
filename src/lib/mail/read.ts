@@ -373,10 +373,18 @@ export async function loadMessageBody(ctx: AuthContext, messageId: string): Prom
 
 export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise<SyncState> {
   const supabase = await createSupabaseServerClient();
-  const [{ data: boxes }, { data: conns }, { data: total }] = await Promise.all([
+  const [{ data: boxes }, { data: conns }, { data: total }, { data: notices }] = await Promise.all([
     supabase.from('mail_mailboxes').select('id, change_seq, sync_status, seeded_at').in('id', mailboxIds),
     supabase.from('mail_connections').select('mailbox_id, status').eq('user_id', ctx.userId).is('disconnected_at', null),
     supabase.rpc('mail_unread_total'),
+    supabase
+      .from('mail_notices')
+      .select('id, kind, body, created_at')
+      .eq('user_id', ctx.userId)
+      .is('dismissed_at', null)
+      .in('kind', ['action_failed', 'send_failed', 'scheduled_failed', 'draft_conflict'])
+      .order('created_at', { ascending: false })
+      .limit(5),
   ]);
   const status = new Map((conns ?? []).map((c) => [c.mailbox_id as string, c.status as 'ok']));
   return {
@@ -386,5 +394,6 @@ export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise
       health: healthOf({ status: status.get(b.id as string) ?? 'ok', mb: { sync_status: b.sync_status as string, seeded_at: b.seeded_at as string | null } }),
     })),
     unreadTotal: Number(total ?? 0),
+    notices: (notices ?? []).map((n) => ({ id: n.id as string, kind: n.kind as string, body: n.body as string, at: n.created_at as string })),
   };
 }

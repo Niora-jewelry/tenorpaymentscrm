@@ -99,7 +99,11 @@ export type MessageBody = {
   state: 'ok' | 'protected' | 'unavailable';
 };
 
+export type Notice = { id: string; kind: string; body: string; at: string };
+
 export type SyncState = {
   mailboxes: Array<{ id: string; seq: number; health: Health }>;
   unreadTotal: number;
+  /** Undismissed "Outlook didn't…" notices for this person, newest first. */
+  notices: Notice[];
 };

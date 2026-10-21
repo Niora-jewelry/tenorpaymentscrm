@@ -163,14 +163,15 @@ export async function drainSoon(mailboxIds: string[], budgetMs = 20_000): Promis
   const owner = `notify-${randomUUID()}`;
   const deadline = Date.now() + budgetMs;
 
+  // Due work = queued sync items OR pending actions. (Checking the queue alone
+  // let a click made while another drain held the lease wait for the cron.)
   const hasDueWork = async (id: string) => {
-    const { count } = await admin
-      .from('mail_sync_queue')
-      .select('id', { count: 'exact', head: true })
-      .eq('mailbox_id', id)
-      .is('processed_at', null)
-      .lte('not_before', new Date().toISOString());
-    return (count ?? 0) > 0;
+    const at = new Date().toISOString();
+    const [{ count: queued }, { count: ops }] = await Promise.all([
+      admin.from('mail_sync_queue').select('id', { count: 'exact', head: true }).eq('mailbox_id', id).is('processed_at', null).lte('not_before', at),
+      admin.from('mail_ops').select('id', { count: 'exact', head: true }).eq('mailbox_id', id).eq('status', 'queued').lte('next_attempt_at', at),
+    ]);
+    return (queued ?? 0) + (ops ?? 0) > 0;
   };
 
   await Promise.all(

@@ -31,6 +31,8 @@ export function ConversationList({
   showMailbox,
   mailboxLabel,
   now,
+  checked,
+  onCheck,
 }: {
   pinned: ConversationRow[];
   rows: ConversationRow[];
@@ -42,6 +44,9 @@ export function ConversationList({
   showMailbox: boolean;
   mailboxLabel: (mailboxId: string) => string;
   now: Date;
+  /** Multi-select: row ids (mailboxId~key) that are ticked; null when the person can't act. */
+  checked: ReadonlySet<string> | null;
+  onCheck: (row: ConversationRow, range: boolean) => void;
 }) {
   const sentinel = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -98,6 +103,9 @@ export function ConversationList({
               onOpen={() => onOpen(r)}
               now={now}
               mailbox={showMailbox ? mailboxLabel(r.mailboxId) : null}
+              checked={checked ? checked.has(rowKey(r)) : null}
+              selecting={Boolean(checked && checked.size > 0)}
+              onCheck={(range) => onCheck(r, range)}
             />
           ))}
         </div>
@@ -126,6 +134,9 @@ function Row({
   onOpen,
   now,
   mailbox,
+  checked,
+  selecting,
+  onCheck,
 }: {
   row: ConversationRow;
   id: string;
@@ -133,6 +144,9 @@ function Row({
   onOpen: () => void;
   now: Date;
   mailbox: string | null;
+  checked: boolean | null;
+  selecting: boolean;
+  onCheck: (range: boolean) => void;
 }) {
   const unread = row.unread > 0;
   return (
@@ -148,10 +162,24 @@ function Row({
           onOpen();
         }
       }}
-      className={`relative cursor-pointer border-b border-line-faint px-4 py-2.5 outline-none transition-colors duration-100 [content-visibility:auto] [contain-intrinsic-size:auto_76px] focus-visible:bg-brand-50/60 ${
-        selected ? 'bg-brand-50' : 'hover:bg-canvas'
+      className={`group/row relative cursor-pointer border-b border-line-faint py-2.5 pl-9 pr-4 outline-none transition-colors duration-100 [content-visibility:auto] [contain-intrinsic-size:auto_76px] focus-visible:bg-brand-50/60 ${
+        selected || checked ? 'bg-brand-50' : 'hover:bg-canvas'
       }`}
     >
+      {checked !== null ? (
+        <span className="absolute left-0 top-0 grid h-full w-9 place-items-start justify-center pt-[13px]">
+          <input
+            type="checkbox"
+            checked={checked}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onCheck((e.nativeEvent as MouseEvent).shiftKey)}
+            aria-label={`Select conversation: ${row.subject}`}
+            className={`size-[15px] cursor-pointer accent-brand-600 transition-opacity ${
+              checked || selecting ? 'opacity-100' : 'opacity-0 focus:opacity-100 group-hover/row:opacity-100'
+            }`}
+          />
+        </span>
+      ) : null}
       {unread || selected ? (
         <span
           aria-hidden

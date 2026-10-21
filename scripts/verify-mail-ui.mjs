@@ -272,8 +272,9 @@ try {
   const sel2 = await page.locator('[role="option"][aria-selected="true"]').textContent();
   t('↓ moves to the next conversation', !!sel1 && !!sel2 && sel1 !== sel2);
   await page.goBack();
-  await page.waitForTimeout(1200);
-  t('Back returns to the previous folder', (await page.getByText('Signed application').count()) > 0);
+  const backOk = await page.getByText('Signed application').first().waitFor({ timeout: 15000 }).then(() => true, () => false);
+  t('Back returns to the previous folder', backOk,
+    `${page.url().replace(BASE, '')} · heading ${await page.locator('section h2').first().textContent().catch(() => '?')} · rows ${await page.locator('[role="option"]').count()} · skeleton ${await page.locator('[aria-label="Loading conversations"]').count()}`);
 
   // ── stays current without a reload ────────────────────────────────────
   await page.locator('nav[aria-label="Mail folders"]').getByRole('button', { name: /^Inbox(,|$)/ }).first().click();

@@ -29,6 +29,7 @@ export function ReadingPane({
   mailbox,
   onRetry,
   now,
+  toolbar,
 }: {
   thread: Thread;
   /** The folder(s) being viewed; a message living elsewhere gets a folder chip. */
@@ -36,6 +37,8 @@ export function ReadingPane({
   mailbox: string | null;
   onRetry: () => void;
   now: Date;
+  /** Actions for this conversation; omitted for people who can only read. */
+  toolbar?: React.ReactNode;
 }) {
   // Expanded = the newest + every unread message, until the reader toggles
   // one; the override belongs to this thread only (keyed by its newest id).
@@ -156,6 +159,7 @@ export function ReadingPane({
           ) : null}
           {thread.status === 'loading' ? <Spinner /> : null}
         </p>
+        {toolbar}
       </header>
 
       <ol className="space-y-3 px-6 py-5">

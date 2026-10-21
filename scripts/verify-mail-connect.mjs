@@ -126,8 +126,9 @@ try {
   t('folders: nested parent + depth', acme?.depth === 2 && acme.parent?.endsWith('-clients'), JSON.stringify(acme));
   const queue = await q(`select kind, count(*)::int n from mail_sync_queue where mailbox_id=$1 and processed_at is null group by kind order by kind`, [mb.id]);
   const qk = Object.fromEntries(queue.map((x) => [x.kind, x.n]));
-  // inbox, drafts, sent (hot) + deleted, archive, clients, acme (non-empty); not junk (empty), not outbox
-  t('bootstrap: seeds hot + non-empty folders, skips outbox/empty', qk.seed_folder === 7, JSON.stringify(qk));
+  // The mock mailbox is empty, so only the hot folders (Inbox, Drafts, Sent) queue a seed;
+  // empty cold folders and the Outbox never do.
+  t('bootstrap: seeds hot folders, skips outbox/empty', qk.seed_folder === 3, JSON.stringify(qk));
   t('bootstrap: subscription, rules, contacts queued', qk.subscription_ensure === 1 && qk.rules_refresh === 1 && qk.contacts_delta === 1);
 
   const [sec] = await q(`select s.refresh_token_enc, s.refresh_token_iv, s.access_token_enc, i.user_id, i.microsoft_user_id

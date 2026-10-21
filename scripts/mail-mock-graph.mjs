@@ -41,6 +41,10 @@
  * handshake against notificationUrl before accepting; every message change
  * then POSTs a change notification there (fault notifyBadClientState sends a
  * wrong clientState). PATCH renews, DELETE removes.
+ * Writes: PATCH messages/{id} {isRead}, POST messages/{id}/move
+ * {destinationId}, DELETE messages/{id}; mailFolders POST / childFolders POST
+ * / PATCH {displayName} / POST {id}/move / DELETE — all per mailbox.
+ * Fault failOps: n → the next n message writes answer 500 (ErrorInternalServerError).
  * Inspection:        GET /__mock/state
  */
 import http from 'node:http';
@@ -72,11 +76,19 @@ const FOLDERS = [
   ['acme', 'Acme', 'clients', 2, 0],
 ];
 const folderId = (mailbox, key) => `fld-${mailbox}-${key}`;
+const customFolders = new Map(); // address -> [[key, name, parentKey]]
+let nextFolder = 1;
+function foldersOf(address) {
+  const custom = customFolders.get(address) ?? [];
+  const overridden = new Set(custom.map((f) => f[0]));
+  return [...FOLDERS.filter((f) => !overridden.has(f[0])).map((f) => [f[0], f[1], f[2]]), ...custom];
+}
+const WELL_KNOWN_KEYS = new Set(['inbox', 'drafts', 'sentitems', 'deleteditems', 'junkemail', 'archive', 'outbox']);
 
 const codes = new Map(); // code → { email, challenge, redirectUri, used }
 const access = new Map(); // access token → email
 const refresh = new Map(); // refresh token → email
-let fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false };
+let fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0 };
 
 // -- subscriptions ------------------------------------------------------------
 const subs = new Map(); // id -> { id, mailbox, kind, notificationUrl, lifecycleUrl, clientState, expires }
@@ -140,7 +152,7 @@ const removals = []; // { mailbox, folder, id, seq }
 let nextMsg = 1;
 
 function folderKeyOf(address, id) {
-  const f = FOLDERS.find((x) => folderId(address, x[0]) === id || x[0] === String(id).toLowerCase());
+  const f = foldersOf(address).find((x) => folderId(address, x[0]) === id || x[0] === String(id).toLowerCase());
   return f ? f[0] : null;
 }
 
@@ -331,18 +343,19 @@ function resolveMailbox(caller, segment) {
   return { address: seg };
 }
 
-function folderJson(address, [key, name, parent, total, unread]) {
+function folderJson(address, [key, name, parent]) {
+  const inFolder = [...messages.values()].filter((m) => m.mailbox === address && m.folder === key);
   return {
     id: folderId(address, key),
     displayName: name,
     parentFolderId: parent ? folderId(address, parent) : `root-${address}`,
-    totalItemCount: total,
-    unreadItemCount: unread,
-    childFolderCount: FOLDERS.filter((f) => f[2] === key).length,
+    totalItemCount: inFolder.length,
+    unreadItemCount: inFolder.filter((m) => !m.isRead).length,
+    childFolderCount: foldersOf(address).filter((f) => f[2] === key).length,
   };
 }
 
-function graph(caller, method, pathAndQuery, pageSize = 10) {
+function graph(caller, method, pathAndQuery, pageSize = 10, body = null) {
   const url = new URL(pathAndQuery, 'http://mock');
   const parts = url.pathname.replace(/^\/v1\.0/, '').split('/').filter(Boolean);
   if (method === 'GET' && parts.length === 1 && parts[0] === 'me') {
@@ -355,7 +368,7 @@ function graph(caller, method, pathAndQuery, pageSize = 10) {
   const rest = parts.slice(2);
   if (method === 'GET' && rest[0] === 'mailFolders' && rest[1] === 'delta' && rest.length === 2) {
     // Two pages, the way Graph pages a real tree.
-    const all = FOLDERS.map((f) => folderJson(mb.address, f));
+    const all = foldersOf(mb.address).map((f) => folderJson(mb.address, f));
     const page = url.searchParams.get('$skiptoken') === '2' ? 2 : 1;
     if (page === 1) {
       return { status: 200, body: { value: all.slice(0, 5), '@odata.nextLink': `http://127.0.0.1:${PORT}/v1.0/users/${parts[1]}/mailFolders/delta?$skiptoken=2` } };
@@ -375,6 +388,68 @@ function graph(caller, method, pathAndQuery, pageSize = 10) {
     const key = folderKeyOf(mb.address, decodeURIComponent(rest[1]));
     if (!key) return graphErr(404, 'ErrorItemNotFound');
     return messageDelta(mb.address, key, url, pageSize);
+  }
+  // ── writes ──
+  if (rest[0] === 'messages' && rest.length >= 2 && method !== 'GET') {
+    const m = messages.get(decodeURIComponent(rest[1]));
+    if (!m || m.mailbox !== mb.address) return graphErr(404, 'ErrorItemNotFound', 'The specified object was not found in the store.');
+    if (fault.failOps > 0) {
+      fault.failOps -= 1;
+      return graphErr(500, 'ErrorInternalServerError', 'An internal server error occurred.');
+    }
+    if (method === 'PATCH' && rest.length === 2) {
+      mutate({ id: m.id, isRead: body?.isRead });
+      return { status: 200, body: messageJson(messages.get(m.id)) };
+    }
+    if (method === 'POST' && rest[2] === 'move') {
+      const key = folderKeyOf(mb.address, String(body?.destinationId ?? ''));
+      if (!key) return graphErr(400, 'ErrorInvalidIdMalformed', 'Id is malformed.');
+      mutate({ id: m.id, folder: key });
+      return { status: 201, body: messageJson(messages.get(m.id)) };
+    }
+    if (method === 'DELETE' && rest.length === 2) {
+      remove(m.id);
+      return { status: 204, body: undefined };
+    }
+  }
+  if (rest[0] === 'mailFolders' && method !== 'GET') {
+    const list = customFolders.get(mb.address) ?? [];
+    customFolders.set(mb.address, list);
+    const nameTaken = (parent, name) => foldersOf(mb.address).some((f) => (f[2] ?? null) === (parent ?? null) && f[1].toLowerCase() === String(name).toLowerCase());
+    if (method === 'POST' && (rest.length === 1 || rest[2] === 'childFolders')) {
+      const parent = rest.length === 1 ? null : folderKeyOf(mb.address, decodeURIComponent(rest[1]));
+      if (rest.length > 1 && !parent) return graphErr(404, 'ErrorItemNotFound');
+      if (nameTaken(parent, body?.displayName)) return graphErr(409, 'ErrorFolderExists', 'A folder with the specified name already exists.');
+      const key = `custom${nextFolder++}`;
+      list.push([key, String(body?.displayName ?? 'New folder'), parent]);
+      return { status: 201, body: folderJson(mb.address, [key, body?.displayName, parent]) };
+    }
+    const key = folderKeyOf(mb.address, decodeURIComponent(rest[1] ?? ''));
+    if (!key) return graphErr(404, 'ErrorItemNotFound');
+    const idx = list.findIndex((f) => f[0] === key);
+    if (WELL_KNOWN_KEYS.has(key) || idx === -1) {
+      if (!WELL_KNOWN_KEYS.has(key) && idx === -1) {
+        // a static custom folder (Clients/Acme): promote to editable
+        const stat = FOLDERS.find((f) => f[0] === key);
+        if (stat) list.push([stat[0], stat[1], stat[2]]);
+      } else {
+        return graphErr(403, 'ErrorAccessDenied', 'Cannot modify a default folder.');
+      }
+    }
+    const row = list.find((f) => f[0] === key);
+    if (method === 'PATCH') {
+      if (nameTaken(row[2], body?.displayName)) return graphErr(409, 'ErrorFolderExists', 'A folder with the specified name already exists.');
+      row[1] = String(body?.displayName);
+      return { status: 200, body: folderJson(mb.address, row) };
+    }
+    if (method === 'POST' && rest[2] === 'move') {
+      row[2] = folderKeyOf(mb.address, String(body?.destinationId ?? '')) ?? 'deleteditems';
+      return { status: 201, body: folderJson(mb.address, row) };
+    }
+    if (method === 'DELETE') {
+      customFolders.set(mb.address, list.filter((f) => f[0] !== key && f[2] !== key));
+      return { status: 204, body: undefined };
+    }
   }
   if (method === 'GET' && rest[0] === 'messages' && rest.length === 2) {
     const m = messages.get(decodeURIComponent(rest[1]));
@@ -426,7 +501,7 @@ const server = http.createServer(async (req, res) => {
       // revokeAccess: every access token stops working at once (a revoked session).
       if (next.revokeAccess) access.clear();
       delete next.revokeAccess;
-      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, ...next };
+      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0, ...next };
       return send(res, 200, fault);
     }
     if (url.pathname === '/__mock/reset' && req.method === 'POST') {
@@ -434,7 +509,8 @@ const server = http.createServer(async (req, res) => {
       removals.length = 0;
       subs.clear();
       deliveries.length = 0;
-      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false };
+      customFolders.clear();
+      fault = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0 };
       log.length = 0;
       return send(res, 200, { ok: true });
     }
@@ -448,6 +524,15 @@ const server = http.createServer(async (req, res) => {
         sent.push(r?.status ?? 0);
       }
       return send(res, 200, { sent });
+    }
+    if (url.pathname === '/__mock/inspect' && req.method === 'POST') {
+      const { id } = JSON.parse(await readBody(req));
+      const m = messages.get(id);
+      return send(res, 200, m ? { exists: true, folder: m.folder, isRead: m.isRead } : { exists: false });
+    }
+    if (url.pathname === '/__mock/folders' && req.method === 'POST') {
+      const { mailbox } = JSON.parse(await readBody(req));
+      return send(res, 200, { folders: foldersOf(mailbox).map(([key, name, parent]) => ({ key, name, parent })) });
     }
     if (url.pathname === '/__mock/message' && req.method === 'POST') return send(res, 200, { id: addMessage(JSON.parse(await readBody(req))) });
     if (url.pathname === '/__mock/update' && req.method === 'POST') return send(res, 200, { ok: mutate(JSON.parse(await readBody(req))) });
@@ -493,13 +578,15 @@ const server = http.createServer(async (req, res) => {
         const { requests = [] } = JSON.parse(await readBody(req));
         if (requests.length > 20) return send(res, 400, { error: { code: 'BadRequest', message: 'More than 20 requests' } });
         const responses = requests.map((r) => {
-          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`, pageSize);
+          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`, pageSize, r.body ?? null);
+          log.push(`batch:${r.method} ${r.url.split('?')[0]} ${out.status}`);
           return { id: r.id, status: out.status, headers: {}, body: out.body };
         });
         log.push(`batch ${requests.length}`);
         return send(res, 200, { responses });
       }
-      const out = graph(caller, req.method, url.pathname + url.search, pageSize);
+      const raw = req.method === 'GET' ? '' : await readBody(req);
+      const out = graph(caller, req.method, url.pathname + url.search, pageSize, raw ? JSON.parse(raw) : null);
       log.push(`${req.method} ${url.pathname} ${out.status}`);
       if (out.raw) {
         res.writeHead(out.status, { 'Content-Type': out.type ?? 'application/octet-stream', 'Content-Length': out.raw.length });

@@ -10,6 +10,14 @@
  * an idle inbox costs one tiny query. Failures back off (15 → 30 → 60 s);
  * after two in a row the list says so instead of silently going stale.
  *
+ * ── ACTING ───────────────────────────────────────────────────────────────
+ * Every action is optimistic: the rows leave (or flip to read) at once and
+ * the server applies the same change locally in one transaction, then the
+ * engine carries it to Outlook within seconds. If the server refuses, the
+ * list and thread are re-read and the reason is shown — never a silent
+ * revert. Opening an unread conversation marks it read after 1.5 s, so
+ * arrowing past mail does not read it all.
+ *
  * ── URL ──────────────────────────────────────────────────────────────────
  * `?f=<folder id | all>&c=<mailbox id>~<conversation>` is kept in the
  * address bar with history.pushState — shareable and Back-able, without a
@@ -18,17 +26,22 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Spinner } from '@/proto/ui/kit';
-import type { ConversationRow, ListPage, MailboxView } from '@/lib/mail/viewTypes';
+import { BarAction, BarCount, Dialog, FloatingBar, Spinner } from '@/proto/ui/kit';
+import type { ConversationRow, ListPage, MailboxView, Notice } from '@/lib/mail/viewTypes';
 import {
   conversationAction,
+  conversationOpAction,
+  dismissNoticeAction,
+  folderAction,
   listConversationsAction,
   mailboxesAction,
   openFolderAction,
+  pinAction,
   searchAction,
   syncStateAction,
 } from '../actions';
-import { FolderPane } from './FolderPane';
+import { FolderPane, type FolderOp } from './FolderPane';
+import { ConversationToolbar, MoveTo, deleteOp, type Op } from './Actions';
 import { folderIdsFor, parseOpen, type Open, type Selection } from './selection';
 import { ConversationList, type ListFilter } from './ConversationList';
 import { ReadingPane, type Thread } from './ReadingPane';
@@ -47,6 +60,19 @@ function subscribeOnline(cb: () => void) {
   };
 }
 const EMPTY_LIST: ListState = { pinned: [], rows: [], next: null, status: 'loading', loadingMore: false };
+const rowId = (r: { mailboxId: string; key: string }) => `${r.mailboxId}~${r.key}`;
+const sameSelection = (a: Selection, b: Selection) =>
+  a.kind === b.kind && (a.kind === 'all' || (b.kind === 'folder' && a.folderId === b.folderId));
+const MOVE_LIKE = new Set<Op>(['archive', 'delete', 'purge', 'junk', 'not_junk', 'move']);
+const DONE: Partial<Record<Op, string>> = {
+  archive: 'Archived',
+  delete: 'Moved to Deleted Items',
+  purge: 'Deleted for good',
+  junk: 'Moved to Junk Email',
+  not_junk: 'Moved to Inbox',
+  move: 'Moved',
+};
+const READ_DWELL_MS = 1_500;
 
 function writeUrl(sel: Selection, open: Open | null, mode: 'push' | 'replace') {
   const u = new URL(window.location.href);
@@ -63,7 +89,10 @@ export function EmailShell({
   initialSelection,
   initialPage,
   initialOpen,
+  canEdit,
 }: {
+  /** The Edit grant: actions, folder menus, multi-select. Without it the page is read-only. */
+  canEdit: boolean;
   initialMailboxes: MailboxView[];
   initialSelection: Selection;
   /** null = the server could not load it; the list shows its retry state. */
@@ -83,6 +112,12 @@ export function EmailShell({
   const online = useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [checked, setChecked] = useState<Set<string>>(() => new Set());
+  const anchor = useRef<string | null>(null);
+  const [banner, setBanner] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [confirmPurge, setConfirmPurge] = useState<ConversationRow[] | null>(null);
+  const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const listReq = useRef(0);
   const threadReq = useRef(0);
@@ -90,10 +125,26 @@ export function EmailShell({
   const failuresRef = useRef(0);
 
   // Refs mirror state for callbacks that outlive a render (poll, popstate).
-  const live = useRef({ sel, filter, open, boxes, list, search });
+  const live = useRef({ sel, filter, open, boxes, list, search, checkedIds: new Set<string>() as ReadonlySet<string> });
   useEffect(() => {
-    live.current = { sel, filter, open, boxes, list, search };
-  }, [sel, filter, open, boxes, list, search]);
+    live.current = { sel, filter, open, boxes, list, search, checkedIds: checked };
+  }, [sel, filter, open, boxes, list, search, checked]);
+
+  /*
+   * Selection, open conversation and filter change through these, which
+   * update the ref AT ONCE as well as the state. Callbacks that run before
+   * the next paint (a poll landing right after a folder switch, an action's
+   * auto-advance) must never see the previous folder or conversation — that
+   * once let a poll reload the old folder over the new one.
+   */
+  const changeSel = useCallback((s: Selection) => {
+    live.current = { ...live.current, sel: s };
+    setSel(s);
+  }, []);
+  const changeOpen = useCallback((o: Open | null) => {
+    live.current = { ...live.current, open: o };
+    setOpen(o);
+  }, []);
 
   const folderIds = useMemo(() => folderIdsFor(sel, boxes), [sel, boxes]);
   const folderById = useMemo(() => new Map(boxes.flatMap((b) => b.folders.map((f) => [f.id, { ...f, box: b }] as const))), [boxes]);
@@ -119,6 +170,8 @@ export function EmailShell({
       withAttachments: f === 'attachments',
     });
     if (req !== listReq.current) return;
+    // The person moved on while this was in flight: its rows belong to another view.
+    if (!sameSelection(s, live.current.sel) || f !== live.current.filter) return;
     if (!res.ok) {
       if (!opts.silent) setList({ ...EMPTY_LIST, status: 'error' });
       return;
@@ -126,7 +179,9 @@ export function EmailShell({
     setList((prev) => {
       if (!opts.silent || prev.rows.length <= res.data.rows.length) return { ...res.data, status: 'ready', loadingMore: false };
       // Keep pages already scrolled into, below the refreshed first page.
-      const fresh = new Set(res.data.rows.map((r) => `${r.mailboxId}~${r.key}`));
+      // Everything the server now lists — pinned included, or a just-pinned
+      // conversation would also linger below in its old place.
+      const fresh = new Set([...res.data.rows, ...res.data.pinned].map((r) => `${r.mailboxId}~${r.key}`));
       const lastAt = res.data.rows[res.data.rows.length - 1]?.lastAt ?? '';
       const older = prev.rows.filter((r) => !fresh.has(`${r.mailboxId}~${r.key}`) && r.lastAt <= lastAt);
       return { pinned: res.data.pinned, rows: [...res.data.rows, ...older], next: prev.next, status: 'ready', loadingMore: false };
@@ -166,14 +221,27 @@ export function EmailShell({
     else if (!opts.background) setThread({ status: 'error', messages: [] });
   }, []);
 
+  const runOpRef = useRef<(op: Op, targets: ConversationRow[], opts?: { dest?: string; quiet?: boolean }) => Promise<void>>(async () => {});
+  /**
+   * autoRead: a deliberate open marks unread mail read after the dwell. The
+   * conversation that slides into place after an archive/delete is NOT a
+   * deliberate open, so it stays unread until the person actually reads it.
+   */
   const openRow = useCallback(
-    (row: ConversationRow) => {
+    (row: ConversationRow, opts: { autoRead?: boolean } = {}) => {
       const o = { mailboxId: row.mailboxId, key: row.key };
-      setOpen(o);
+      changeOpen(o);
       writeUrl(live.current.sel, o, 'replace');
       void loadThread(o, { reset: true });
+      if (dwell.current) clearTimeout(dwell.current);
+      if (canEdit && row.unread > 0 && opts.autoRead !== false) {
+        dwell.current = setTimeout(() => {
+          const cur = live.current.open;
+          if (cur && cur.mailboxId === o.mailboxId && cur.key === o.key) void runOpRef.current('read', [row], { quiet: true });
+        }, READ_DWELL_MS);
+      }
     },
-    [loadThread],
+    [loadThread, canEdit, changeOpen],
   );
 
   // ── staying current ─────────────────────────────────────────────────────
@@ -190,6 +258,7 @@ export function EmailShell({
     setFailures(0);
     setNow(new Date());
     window.dispatchEvent(new CustomEvent('tapdash:email-unread', { detail: res.data.unreadTotal }));
+    setNotices(res.data.notices);
 
     const before = seqs.current;
     const after = new Map(res.data.mailboxes.map((m) => [m.id, m.seq]));
@@ -262,15 +331,16 @@ export function EmailShell({
 
   const select = useCallback(
     (s: Selection) => {
-      setSel(s);
+      changeSel(s);
       setSearch({ q: '', scope: 'here', status: 'idle', rows: [] });
-      setOpen(null);
+      setChecked(new Set());
+      changeOpen(null);
       setThread({ status: 'idle', messages: [] });
       writeUrl(s, null, 'push');
       void loadList(s, live.current.filter);
       void touchFolder(s);
     },
-    [loadList, touchFolder],
+    [loadList, touchFolder, changeSel, changeOpen],
   );
 
   // First paint: the server rendered the list. Open the conversation from the
@@ -291,17 +361,18 @@ export function EmailShell({
       const f = p.get('f');
       const s: Selection = !f || f === 'all' ? { kind: 'all' } : { kind: 'folder', folderId: f };
       const o = parseOpen(p.get('c'));
-      setSel(s);
-      setOpen(o);
+      changeSel(s);
+      changeOpen(o);
       void loadList(s, live.current.filter);
       if (o) void loadThread(o, { reset: true });
       else setThread({ status: 'idle', messages: [] });
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, [initialOpen, initialSelection, loadList, loadThread, touchFolder]);
+  }, [initialOpen, initialSelection, loadList, loadThread, touchFolder, changeSel, changeOpen]);
 
   const setListFilter = (f: ListFilter) => {
+    live.current = { ...live.current, filter: f };
     setFilter(f);
     void loadList(live.current.sel, f);
   };
@@ -313,6 +384,151 @@ export function EmailShell({
     await loadList(live.current.sel, live.current.filter, { silent: true });
     setRefreshing(false);
   };
+
+  // ── acting ──────────────────────────────────────────────────────────────
+  const visibleRows = useCallback((): ConversationRow[] => {
+    const { list: l, search: q } = live.current;
+    return q.status !== 'idle' ? q.rows : [...l.pinned, ...l.rows];
+  }, []);
+
+  const runOp = useCallback(
+    async (op: Op, targets: ConversationRow[], opts: { dest?: string; quiet?: boolean } = {}) => {
+      if (!canEdit || targets.length === 0) return;
+      const ids = new Set(targets.map(rowId));
+      const { sel: s, boxes: b, search: q, open: o } = live.current;
+      const scopeFolderIds =
+        q.status !== 'idle'
+          ? [...new Set(targets.map((t) => t.folderId).filter((x): x is string => Boolean(x)))]
+          : folderIdsFor(s, b);
+
+      // Optimistic: what the person asked for, on screen now.
+      if (MOVE_LIKE.has(op)) {
+        const flat = visibleRows();
+        const openIdx = o ? flat.findIndex((r) => rowId(r) === rowId(o)) : -1;
+        const remaining = flat.filter((r) => !ids.has(rowId(r)));
+        setList((l) => ({ ...l, pinned: l.pinned.filter((r) => !ids.has(rowId(r))), rows: l.rows.filter((r) => !ids.has(rowId(r))) }));
+        setSearch((x) => ({ ...x, rows: x.rows.filter((r) => !ids.has(rowId(r))) }));
+        if (o && ids.has(rowId(o))) {
+          // Like Outlook: the next conversation takes its place.
+          const next = remaining[Math.min(Math.max(openIdx, 0), remaining.length - 1)];
+          if (next) openRow(next, { autoRead: false });
+          else {
+            changeOpen(null);
+            setThread({ status: 'idle', messages: [] });
+            writeUrl(s, null, 'replace');
+          }
+        }
+      } else if (op === 'read' || op === 'unread') {
+        const flip = (r: ConversationRow) => (ids.has(rowId(r)) ? { ...r, unread: op === 'read' ? 0 : r.count } : r);
+        setList((l) => ({ ...l, pinned: l.pinned.map(flip), rows: l.rows.map(flip) }));
+        setSearch((x) => ({ ...x, rows: x.rows.map(flip) }));
+        if (o && ids.has(rowId(o))) setThread((t) => ({ ...t, messages: t.messages.map((m) => ({ ...m, isRead: op === 'read' })) }));
+      }
+      setChecked((c) => (c.size ? new Set() : c));
+
+      const res = await conversationOpAction({
+        items: targets.map((t) => ({ mailboxId: t.mailboxId, key: t.key })),
+        scopeFolderIds,
+        op,
+        destFolderId: opts.dest,
+        requestId: crypto.randomUUID(),
+      });
+      if (!res.ok) {
+        setBanner({ tone: 'error', text: res.message });
+        void loadList(live.current.sel, live.current.filter, { silent: true });
+        if (live.current.open) void loadThread(live.current.open, { background: true });
+        return;
+      }
+      if (!opts.quiet && DONE[op]) {
+        setBanner({ tone: 'ok', text: `${DONE[op]}: ${targets.length === 1 ? (targets[0].subject || 'conversation') : `${targets.length} conversations`}.` });
+      }
+      kick.current(1_500); // folder counts and Outlook's answer, shortly
+    },
+    [canEdit, loadList, loadThread, openRow, visibleRows, changeOpen],
+  );
+  useEffect(() => {
+    runOpRef.current = runOp;
+  }, [runOp]);
+
+  /** Delete, or — in Deleted Items / Junk — delete for good after asking. */
+  const requestDelete = useCallback(
+    (targets: ConversationRow[], wellKnown: string | null) => {
+      if (deleteOp(wellKnown) === 'purge') setConfirmPurge(targets);
+      else void runOp('delete', targets);
+    },
+    [runOp],
+  );
+
+  const togglePin = useCallback(
+    async (row: ConversationRow, pinned: boolean) => {
+      if (!row.folderId) return;
+      const res = await pinAction({ mailboxId: row.mailboxId, folderId: row.folderId, key: row.key, pinned });
+      if (!res.ok) setBanner({ tone: 'error', text: res.message });
+      void loadList(live.current.sel, live.current.filter, { silent: true });
+    },
+    [loadList],
+  );
+
+  const onFolderOp = useCallback(async (f: FolderOp) => {
+    const res = await folderAction(f);
+    if (!res.ok) {
+      setBanner({ tone: 'error', text: res.message });
+      return;
+    }
+    const fresh = await mailboxesAction();
+    if (fresh.ok) setBoxes(fresh.data);
+    setBanner({ tone: 'ok', text: f.op === 'create' ? `Created “${f.name}”.` : f.op === 'rename' ? `Renamed to “${f.name}”.` : 'Folder moved to Deleted Items.' });
+    if (f.op === 'delete' && live.current.sel.kind === 'folder' && live.current.sel.folderId === f.folderId) {
+      const inbox = live.current.boxes.find((x) => x.id === f.mailboxId)?.folders.find((x) => x.wellKnown === 'inbox');
+      if (inbox) select({ kind: 'folder', folderId: inbox.id });
+    }
+  }, [select]);
+
+  const onCheck = useCallback(
+    (row: ConversationRow, range: boolean) => {
+      const id = rowId(row);
+      setChecked((prev) => {
+        const next = new Set(prev);
+        if (range && anchor.current) {
+          const flat = visibleRows().map(rowId);
+          const a = flat.indexOf(anchor.current);
+          const z = flat.indexOf(id);
+          if (a !== -1 && z !== -1) {
+            for (const k of flat.slice(Math.min(a, z), Math.max(a, z) + 1)) next.add(k);
+            return next;
+          }
+        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        anchor.current = id;
+        return next;
+      });
+    },
+    [visibleRows],
+  );
+
+  // Delete key acts on the selection, else the open conversation; Esc clears.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === 'Escape') setChecked((c) => (c.size ? new Set() : c));
+      if (e.key !== 'Delete' || !canEdit) return;
+      const flat = visibleRows();
+      const { open: o, sel: s, boxes: b } = live.current;
+      const picked = live.current.checkedIds.size
+        ? flat.filter((r) => live.current.checkedIds.has(rowId(r)))
+        : o
+          ? flat.filter((r) => rowId(r) === rowId(o))
+          : [];
+      if (!picked.length) return;
+      e.preventDefault();
+      const wk = s.kind === 'folder' ? (b.flatMap((x) => x.folders).find((f) => f.id === s.folderId)?.wellKnown ?? null) : 'inbox';
+      requestDelete(picked, wk);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [canEdit, requestDelete, visibleRows]);
 
   // ── search ──────────────────────────────────────────────────────────────
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -348,9 +564,44 @@ export function EmailShell({
   const openAddress = open && boxes.length > 1 ? addressOf(open.mailboxId) : null;
   const settingUp = scopeBoxes.some((b) => b.health === 'setting_up') || (current ? !current.seeded : false);
 
+  const allVisible = searching ? rows : [...list.pinned, ...rows];
+  const wellKnownOf = (folderId: string | null) => (folderId ? (folderById.get(folderId)?.wellKnown ?? null) : null);
+  const viewWellKnown = sel.kind === 'all' ? 'inbox' : (current?.wellKnown ?? null);
+  const openRowData: ConversationRow | null = open
+    ? (allVisible.find((r) => rowId(r) === rowId(open)) ??
+      (thread.messages.length
+        ? {
+            key: open.key,
+            mailboxId: open.mailboxId,
+            folderId: thread.messages.find((m) => m.folderId && currentFolderIds.has(m.folderId))?.folderId ?? thread.messages[0].folderId,
+            latestMessageId: thread.messages[0].id,
+            subject: thread.messages[0].subject,
+            who: '',
+            whoAddress: '',
+            outbound: false,
+            preview: '',
+            lastAt: thread.messages[0].at,
+            count: thread.messages.length,
+            unread: thread.messages.filter((m) => !m.isRead).length,
+            hasAttachments: false,
+            firstAttachment: null,
+            attachmentCount: 0,
+            important: false,
+            hasDraft: false,
+            pinned: false,
+          }
+        : null))
+    : null;
+  const openBox = open ? boxes.find((b) => b.id === open.mailboxId) : undefined;
+  const openWellKnown = searching ? wellKnownOf(openRowData?.folderId ?? null) : viewWellKnown;
+  const picked = allVisible.filter((r) => checked.has(rowId(r)));
+  const pickedBoxes = new Set(picked.map((r) => r.mailboxId));
+  const pickedBox = pickedBoxes.size === 1 ? boxes.find((b) => b.id === [...pickedBoxes][0]) : undefined;
+  const pickedWellKnown = searching ? (new Set(picked.map((r) => wellKnownOf(r.folderId))).size === 1 ? wellKnownOf(picked[0]?.folderId ?? null) : null) : viewWellKnown;
+
   return (
     <div className="grid h-full min-h-0 grid-cols-[248px_minmax(330px,400px)_minmax(0,1fr)] bg-white">
-      <FolderPane mailboxes={boxes} selection={sel} onSelect={select} />
+      <FolderPane mailboxes={boxes} selection={sel} onSelect={select} canEdit={canEdit} onFolderOp={(f) => void onFolderOp(f)} />
 
       <section aria-label={title} className="flex min-h-0 flex-col border-r border-line bg-white">
         <div className="border-b border-line px-4 pb-3 pt-4">
@@ -439,6 +690,38 @@ export function EmailShell({
             {!online ? 'You’re offline. Showing what was last loaded.' : 'Can’t reach TapDash right now — retrying.'}
           </p>
         ) : null}
+        {notices[0] ? (
+          <div role="alert" className="flex items-start gap-2 border-b border-[#f7cfd1] bg-[#fce9ea] px-4 py-2 text-[12px] text-[#b02a30]">
+            <Icon name="alert-triangle" size={13} className="mt-px shrink-0" />
+            <span className="min-w-0 flex-1">{notices[0].body}</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => {
+                const id = notices[0].id;
+                setNotices((n) => n.filter((x) => x.id !== id));
+                void dismissNoticeAction({ id });
+              }}
+              className="shrink-0 font-semibold opacity-70 hover:opacity-100"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+        {banner ? (
+          <div
+            role={banner.tone === 'error' ? 'alert' : 'status'}
+            className={`flex items-start gap-2 border-b px-4 py-2 text-[12px] ${
+              banner.tone === 'error' ? 'border-[#f7cfd1] bg-[#fce9ea] text-[#b02a30]' : 'border-line bg-canvas text-ink-600'
+            }`}
+          >
+            <Icon name={banner.tone === 'error' ? 'alert-triangle' : 'check'} size={13} className="mt-px shrink-0" />
+            <span className="min-w-0 flex-1">{banner.text}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setBanner(null)} className="shrink-0 font-semibold opacity-70 hover:opacity-100">
+              ×
+            </button>
+          </div>
+        ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {(!searching && list.status === 'loading') || (searching && search.status === 'loading' && search.rows.length === 0) ? (
@@ -472,6 +755,8 @@ export function EmailShell({
               showMailbox={showMailbox}
               mailboxLabel={addressOf}
               now={now}
+              checked={canEdit ? checked : null}
+              onCheck={onCheck}
             />
           )}
         </div>
@@ -483,7 +768,65 @@ export function EmailShell({
         mailbox={openAddress}
         onRetry={() => open && void loadThread(open, { reset: true })}
         now={now}
+        toolbar={
+          canEdit && openRowData && openBox && thread.status === 'ready' ? (
+            <ConversationToolbar
+              ctx={{
+                wellKnown: openWellKnown,
+                hasArchive: openBox.folders.some((f) => f.wellKnown === 'archive'),
+                anyUnread: thread.messages.some((m) => !m.isRead),
+                pinned: allVisible.some((r) => rowId(r) === rowId(openRowData)) ? openRowData.pinned : null,
+                canPin: Boolean(openRowData.folderId) && !searching,
+              }}
+              folders={openBox.folders.filter((f) => !currentFolderIds.has(f.id))}
+              onOp={(op, dest) => (op === 'delete' || op === 'purge' ? requestDelete([openRowData], openWellKnown) : void runOp(op, [openRowData], { dest }))}
+              onPin={(p) => void togglePin(openRowData, p)}
+            />
+          ) : null
+        }
       />
+
+      <FloatingBar
+        open={canEdit && picked.length > 0}
+        lead={<BarCount n={picked.length} label="selected" />}
+        onClose={() => setChecked(new Set())}
+      >
+        <BarAction icon="mail" label="Read" onClick={() => void runOp('read', picked)} />
+        <BarAction icon="mail" label="Unread" onClick={() => void runOp('unread', picked)} />
+        <BarAction icon="archive" label="Archive" onClick={() => void runOp('archive', picked)} disabled={pickedWellKnown === 'archive'} />
+        {pickedBox ? (
+          <MoveTo folders={pickedBox.folders.filter((f) => !currentFolderIds.has(f.id))} exclude={null} onPick={(id) => void runOp('move', picked, { dest: id })}>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-1.5 text-[13px] font-semibold text-ink-700 transition-colors hover:bg-canvas hover:text-ink-900">
+              <Icon name="folder" size={14} />
+              Move
+              <Icon name="chevron-up" size={12} className="opacity-60" />
+            </span>
+          </MoveTo>
+        ) : null}
+        {pickedWellKnown === 'junkemail' ? (
+          <BarAction icon="inbox" label="Not junk" onClick={() => void runOp('not_junk', picked)} />
+        ) : (
+          <BarAction icon="ban" label="Junk" onClick={() => void runOp('junk', picked)} />
+        )}
+        <BarAction
+          icon="trash"
+          label={deleteOp(pickedWellKnown) === 'purge' ? 'Delete forever' : 'Delete'}
+          tone="danger"
+          onClick={() => requestDelete(picked, pickedWellKnown)}
+        />
+      </FloatingBar>
+
+      {confirmPurge ? (
+        <Dialog
+          title={confirmPurge.length === 1 ? 'Delete this conversation for good?' : `Delete ${confirmPurge.length} conversations for good?`}
+          tone="danger"
+          confirmLabel="Delete for good"
+          onConfirm={() => void runOp('purge', confirmPurge)}
+          onClose={() => setConfirmPurge(null)}
+        >
+          <p>They are removed from Outlook too, and can’t be recovered from Deleted Items.</p>
+        </Dialog>
+      ) : null}
     </div>
   );
 }

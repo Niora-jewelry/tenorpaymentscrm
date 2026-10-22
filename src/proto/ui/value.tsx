@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MenuSurface } from './MenuSurface';
 import type { Field, FieldType, FieldValue, GridRow, PercentSplit, AddressValue } from '../schema';
 import { choicesFor, choiceKey, choiceLabel } from '../fields';
-import { formatCurrency, formatDate, formatDateTime, MONTH_NAMES } from './tokens';
+import { formatCurrency, formatDate, formatDateTime, MONTH_NAMES, MONTHS_NONE, toggleMonth } from './tokens';
 import { StatusPill, OutlineChip, AvatarStack, Button, IconButton, NumberInput } from './kit';
 import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from './people';
 import { Icon } from './icons';
@@ -737,31 +737,45 @@ export function FieldRenderer({
           ? MONTH_NAMES.map((m) => ({ stored: m, label: m }))
           : options.map((c) => ({ stored: choiceKey(c), label: c.value }));
       const current = new Set((Array.isArray(value) ? (value as string[]) : []) ?? []);
+      const isMonths = field.type === 'months';
+      const chip = (stored: string, label: string, on: boolean, onPick: () => void, tone: 'brand' | 'ink' = 'brand') => (
+        <button
+          key={stored}
+          type="button"
+          aria-pressed={on}
+          onClick={onPick}
+          className={`rounded-full border px-2 py-[3px] text-[12px] font-semibold transition-colors duration-150 ${
+            on
+              ? tone === 'ink'
+                ? 'border-ink-900 bg-ink-900 text-white'
+                : 'border-brand-600 bg-brand-600 text-white'
+              : 'border-line bg-white text-ink-500 hover:border-ink-400'
+          }`}
+        >
+          {label}
+        </button>
+      );
       return (
         <div className="rounded-md border border-line bg-white p-2 field-editing">
-          <div className="flex flex-wrap gap-1.5">
-            {opts.map((o) => {
-              const on = current.has(o.stored);
-              return (
-                <button
-                  key={o.stored}
-                  type="button"
-                  onClick={() => {
-                    const next = new Set(current);
-                    if (on) next.delete(o.stored);
-                    else next.add(o.stored);
-                    onChange([...next]);
-                  }}
-                  className={`rounded-full border px-2 py-[3px] text-[12px] font-semibold transition-colors duration-150 ${
-                    on
-                      ? 'border-brand-600 bg-brand-600 text-white'
-                      : 'border-line bg-white text-ink-500 hover:border-ink-400'
-                  }`}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* "No" = not seasonal. Exclusive: it clears the months and a month
+                clears it, so the stored array never says both. Set apart from
+                the months by a divider and a darker fill. */}
+            {isMonths ? (
+              <>
+                {chip(MONTHS_NONE, 'No', current.has(MONTHS_NONE), () => onChange(toggleMonth([...current], MONTHS_NONE)), 'ink')}
+                <span aria-hidden className="mx-0.5 h-4 w-px bg-line" />
+              </>
+            ) : null}
+            {opts.map((o) =>
+              chip(o.stored, o.label, current.has(o.stored), () => {
+                if (isMonths) return onChange(toggleMonth([...current], o.stored));
+                const next = new Set(current);
+                if (next.has(o.stored)) next.delete(o.stored);
+                else next.add(o.stored);
+                onChange([...next]);
+              }),
+            )}
           </div>
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
             Done

@@ -303,7 +303,7 @@ export const FIELDS: Field[] = [
   f('fax_number', 'Fax number', 'phone', 'application/general', { width: 160 }),
   f('business_founded_date', 'Business founded date', 'date', 'application/general', { width: 170 }),
   f('seasonal', 'Seasonal', 'months', 'application/general', {
-    hint: 'Ability to choose up to 12 months and add a note.',
+    hint: 'Choose No, or the months the business is seasonal. Add a note if needed.',
     notes: true,
     wide: true,
     width: 260,

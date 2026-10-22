@@ -89,3 +89,20 @@ export function monthLabel(period: string): string {
 }
 
 export const MONTH_NAMES = MONTHS;
+
+/**
+ * "Not seasonal" for a `months` field. Stored in the same array as the
+ * months (`['No']`), so every reader — chips, filters, exports — keeps
+ * working unchanged; the editor keeps it exclusive. Asked for by the client
+ * on 22 Oct 2026: an empty Seasonal could not tell "not seasonal" from "not
+ * filled in".
+ */
+export const MONTHS_NONE = 'No';
+
+/** One click on a chip in the months editor: `No` clears the months, a month clears `No`. */
+export function toggleMonth(current: readonly string[], pick: string): string[] {
+  const on = current.includes(pick);
+  if (pick === MONTHS_NONE) return on ? [] : [MONTHS_NONE];
+  const months = current.filter((m) => m !== MONTHS_NONE);
+  return on ? months.filter((m) => m !== pick) : [...months, pick];
+}

@@ -37,6 +37,9 @@ import { FieldRenderer } from '@/proto/ui/value';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { Icon } from '@/proto/ui/icons';
 import { Button, CountPill, IconButton } from '@/proto/ui/kit';
+import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
+import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
+import type { NotificationView } from '@/lib/records/notifications';
 import type { Field as ProtoField, FieldValue } from '@/proto/schema';
 import {
   setValuesAction, addRepeatInstanceAction, removeRepeatInstanceAction,
@@ -142,15 +145,19 @@ function SortableFieldCell({
   id,
   span,
   requiredEmpty,
+  flash = false,
   children,
 }: {
   id: string;
   /** A `grid-column` value — see `spanFor`. */
   span: string;
   requiredEmpty?: boolean;
+  /** A mention link landed on this field: scroll to it and flash. */
+  flash?: boolean;
   children: (handle: DragHandleProps) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const flashing = useFlashTarget(targetId.field(id), flash);
 
   return (
     <div
@@ -174,9 +181,10 @@ function SortableFieldCell({
        *
        * A required-but-empty cell keeps its warning stripe on the LEFT edge.
        */
+      id={targetId.field(id)}
       className={`group/cell relative border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/30 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/60 ${
         requiredEmpty ? 'bg-warn-bg/45 shadow-[inset_2px_0_0_var(--color-warn)]' : 'bg-white'
-      } ${isDragging ? 'z-10 opacity-40' : ''}`}
+      } ${isDragging ? 'z-10 opacity-40' : ''} ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}
     >
       {children({ attributes, listeners })}
     </div>
@@ -206,10 +214,18 @@ export function RealFieldGrid({
   authorNames,
   viewerId,
   isAdmin,
+  mentionsByField = {},
+  openMention = null,
+  onMentionRead = () => undefined,
 }: {
   moduleSlug: string;
   recordId: string;
   tabId: string;
+  /** The viewer's unread mentions on this tab's fields, by field key. */
+  mentionsByField?: Record<string, NotificationView[]>;
+  /** A field mention a link landed on. */
+  openMention?: NotificationView | null;
+  onMentionRead?: (id: string) => void;
   subtabId: string | null;
   fields: ProtoField[];
   repeatGroups: RepeatGroupDef[];
@@ -689,8 +705,10 @@ export function RealFieldGrid({
                   const fieldEmpty =
                     v == null || v === '' || (Array.isArray(v) && !v.length) ||
                     (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
+                  const fieldMentions = mentionsByField[f.id] ?? [];
+                  const landedHere = openMention?.fieldKey === f.id;
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={f.required && fieldEmpty}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={f.required && fieldEmpty} flash={landedHere}>
                       {(handle) => (
                       <>
                       <div className="flex min-h-[18px] items-center gap-1.5">
@@ -711,6 +729,10 @@ export function RealFieldGrid({
                         {f.required && fieldEmpty ? (
                           <Icon name="alert-triangle" size={10} className="text-warn" />
                         ) : null}
+                        {/* The client's "@ on any field": a mention arrives
+                            with the dot; a mention leaves from the @. */}
+                        <FieldMentionNote mentions={fieldMentions} autoOpen={landedHere ? openMention : null} onRead={onMentionRead} />
+                        <FieldMentionButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} currentValue={valueText(v)} />
 
                         {f.notes ? (
                           <span className="ml-auto flex items-center gap-1">

@@ -18,6 +18,8 @@ import { MentionTextarea } from './MentionTextarea';
 import { RichText } from '@/proto/ui/richText';
 import { addUpdateAction, editUpdateAction, deleteUpdateAction } from './actions';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
+import type { NotificationView } from '@/lib/records/notifications';
+import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 
 export function UpdatesPanel({
   moduleSlug,
@@ -28,6 +30,8 @@ export function UpdatesPanel({
   isAdmin,
   teamRoster,
   editable,
+  mentionsByUpdate = {},
+  openMention = null,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -36,6 +40,10 @@ export function UpdatesPanel({
   viewerId: string;
   isAdmin: boolean;
   teamRoster: TeamRosterEntry[];
+  /** The viewer's unread mentions here, by update id. */
+  mentionsByUpdate?: Record<string, NotificationView>;
+  /** The mention a link landed on: scrolled to and flashed. */
+  openMention?: NotificationView | null;
   /** The Updates tab resolved to Edit for this viewer. False leaves the thread
    * readable and takes away every way to write to it — including an author's
    * own edit/delete. `lib/records/updates.ts` refuses the same set. */
@@ -43,6 +51,7 @@ export function UpdatesPanel({
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState('');
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [postError, setPostError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -58,6 +67,7 @@ export function UpdatesPanel({
     if (!draft.trim()) return;
     const formData = new FormData();
     formData.set('body', draft.trim());
+    formData.set('mentions', JSON.stringify(mentionIds));
     startTransition(async () => {
       /*
        * These actions return void and THROW on refusal — `requireTabEdit`
@@ -88,11 +98,12 @@ export function UpdatesPanel({
         <MentionTextarea
           value={draft}
           onChange={setDraft}
+          onMentionsChange={setMentionIds}
           roster={teamRoster}
           rows={2}
           disabled={pending}
           formatting
-          placeholder="Write an update…  **bold**, *italic*, - lists, and @mention a team member to notify them"
+          placeholder="Write an update…  **bold**, *italic*, - lists, and @mention someone to notify them"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           <p className="text-[11.5px] text-ink-400">Replies go exactly one level deep — no replies to replies.</p>
@@ -123,6 +134,8 @@ export function UpdatesPanel({
               viewerId={viewerId}
               isAdmin={isAdmin}
               editable={editable}
+              mentionsByUpdate={mentionsByUpdate}
+              openMention={openMention}
             />
           ))}
         </ul>
@@ -140,10 +153,14 @@ function Thread({
   viewerId,
   isAdmin,
   editable,
+  mentionsByUpdate,
+  openMention,
 }: {
   moduleSlug: string;
   root: Update;
   replies: Update[];
+  mentionsByUpdate: Record<string, NotificationView>;
+  openMention: NotificationView | null;
   /** Needed down here too: editing an update keeps the same composer, and that
    *  composer offers @mention autocomplete against this record's own team. */
   teamRoster: TeamRosterEntry[];
@@ -154,20 +171,27 @@ function Thread({
 }) {
   const router = useRouter();
   const [now] = useState(() => new Date());
-  const [open, setOpen] = useState(false);
+  // A link to a reply in this thread opens it; a mention on one keeps it open.
+  const targetReply = openMention?.updateId && replies.some((r) => r.id === openMention.updateId) ? openMention.updateId : null;
+  const [open, setOpen] = useState(Boolean(targetReply) || replies.some((r) => mentionsByUpdate[r.id]));
   const [draft, setDraft] = useState('');
+  const [replyMentionIds, setReplyMentionIds] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(root.body);
+  const [editMentionIds, setEditMentionIds] = useState<string[]>(root.mentionedUserIds);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const flashRoot = useFlashTarget(targetId.update(root.id), openMention?.updateId === root.id);
 
   const authorName = authorNames[root.authorId] ?? 'Unknown user';
   const mine = root.authorId === viewerId;
+  const mentionedHere = (id: string) => Boolean(mentionsByUpdate[id]);
 
   const reply = () => {
     if (!draft.trim()) return;
     const formData = new FormData();
     formData.set('body', draft.trim());
+    formData.set('mentions', JSON.stringify(replyMentionIds));
     startTransition(async () => {
       try {
         setError(null);
@@ -185,7 +209,7 @@ function Thread({
   const saveEdit = () => {
     if (!editDraft.trim()) return;
     startTransition(async () => {
-      const result = await editUpdateAction(moduleSlug, root.id, editDraft.trim());
+      const result = await editUpdateAction(moduleSlug, root.id, editDraft.trim(), editMentionIds);
       if (!result.ok) setError(result.message ?? 'Could not save.');
       else {
         setEditing(false);
@@ -207,7 +231,10 @@ function Thread({
   };
 
   return (
-    <li className="rounded-xl border border-line bg-white p-3">
+    <li
+      id={targetId.update(root.id)}
+      className={`rounded-xl border bg-white p-3 transition-shadow ${mentionedHere(root.id) ? 'border-brand-300' : 'border-line'} ${flashRoot ? FLASH_CLASS : ''}`}
+    >
       <div className="flex gap-3">
         <UserAvatar userId={root.authorId} name={authorName} size={26} />
         <div className="min-w-0 flex-1">
@@ -215,6 +242,7 @@ function Thread({
             <span className="text-[13px] font-semibold text-ink-900">{authorName}</span>
             <span className="text-[11.5px] text-ink-400">{relative(root.createdAt, now)}</span>
             {root.editedAt ? <span className="text-[11.5px] text-ink-400">(edited)</span> : null}
+            {mentionedHere(root.id) ? <MentionedYou /> : null}
             {editable && (mine || isAdmin) ? (
               <span className="ml-auto flex gap-0.5">
                 <IconButton
@@ -227,7 +255,7 @@ function Thread({
                     setError(null);
                   }}
                 />
-                <IconButton icon="trash" size={22} tone="danger" title={mine ? 'Delete your update' : 'Delete as admin'} onClick={remove} />
+                <IconButton icon="trash" size={22} tone="danger" title={mine ? 'Remove your update' : 'Remove as admin'} onClick={remove} />
               </span>
             ) : null}
           </div>
@@ -240,6 +268,8 @@ function Thread({
               <MentionTextarea
                 value={editDraft}
                 onChange={setEditDraft}
+                onMentionsChange={setEditMentionIds}
+                initialMentions={teamRoster.filter((m) => root.mentionedUserIds.includes(m.id))}
                 roster={teamRoster}
                 rows={2}
                 disabled={pending}
@@ -281,28 +311,31 @@ function Thread({
           {open ? (
             <div className="mt-2 space-y-2 border-l-2 border-line pl-3">
               {replies.map((r) => (
-                <div key={r.id}>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[12.5px] font-semibold text-ink-900">{authorNames[r.authorId] ?? 'Unknown user'}</span>
-                    <span className="text-[11.5px] text-ink-400">{relative(r.createdAt, now)}</span>
-                  </div>
-                  {/* Replies render the same way. The client asks for
-                      "update-style replies", and a reply that shows its markers
-                      raw while the update above it renders would read as a bug
-                      in the update, not a limitation of the reply. */}
-                  <RichText body={r.body} className="text-[13px] leading-relaxed text-ink-700" />
-                </div>
+                <Reply
+                  key={r.id}
+                  r={r}
+                  now={now}
+                  authorNames={authorNames}
+                  mentioned={mentionedHere(r.id)}
+                  flash={openMention?.updateId === r.id}
+                />
               ))}
               {editable ? (
-              <div className="flex gap-2 pt-1">
-                <input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && reply()}
-                  disabled={pending}
-                  placeholder="Reply…"
-                  className="flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none transition-colors focus-field"
-                />
+              <div className="flex items-start gap-2 pt-1">
+                <div className="min-w-0 flex-1">
+                  {/* The same @ picker as the post, minus the toolbar — the
+                      client asks for mentions in replies too. Enter sends. */}
+                  <MentionTextarea
+                    value={draft}
+                    onChange={setDraft}
+                    onMentionsChange={setReplyMentionIds}
+                    roster={teamRoster}
+                    rows={1}
+                    disabled={pending}
+                    placeholder="Reply… @mention someone to notify them"
+                    onSubmitShortcut={reply}
+                  />
+                </div>
                 <Button size="sm" icon="reply" loading={pending} loadingLabel="Sending…" disabled={!draft.trim()} onClick={reply}>
                   Reply
                 </Button>
@@ -313,5 +346,50 @@ function Thread({
         </div>
       </div>
     </li>
+  );
+}
+
+function Reply({
+  r,
+  now,
+  authorNames,
+  mentioned,
+  flash,
+}: {
+  r: Update;
+  now: Date;
+  authorNames: Record<string, string>;
+  mentioned: boolean;
+  flash: boolean;
+}) {
+  const flashing = useFlashTarget(targetId.update(r.id), flash);
+  return (
+    <div id={targetId.update(r.id)} className={`rounded-lg px-2 py-1 -mx-2 transition-shadow ${mentioned ? 'bg-brand-50/50' : ''} ${flashing ? FLASH_CLASS : ''}`}>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="text-[12.5px] font-semibold text-ink-900">{authorNames[r.authorId] ?? 'Unknown user'}</span>
+        <span className="text-[11.5px] text-ink-400">{relative(r.createdAt, now)}</span>
+        {mentioned ? <MentionedYou /> : null}
+      </div>
+      {/* Replies render the same way. The client asks for "update-style
+          replies", and a reply that shows its markers raw while the update
+          above it renders would read as a bug in the update, not a limitation
+          of the reply. */}
+      <RichText body={r.body} className="text-[13px] leading-relaxed text-ink-700" />
+      {r.mentionedUserIds.length ? (
+        <p className="mt-1 inline-flex flex-wrap items-center gap-x-1 text-[11.5px] text-brand-700">
+          <Icon name="bell" size={10} />
+          {r.mentionedUserIds.map((id) => `@${authorNames[id] ?? 'Unknown user'}`).join(', ')} {r.mentionedUserIds.length === 1 ? 'was' : 'were'} notified
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** The viewer's own unread mention, on this very item. */
+function MentionedYou() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-1.5 py-px text-[10px] font-bold uppercase tracking-[.04em] text-white">
+      <Icon name="at-sign" size={9} strokeWidth={2.5} /> You
+    </span>
   );
 }

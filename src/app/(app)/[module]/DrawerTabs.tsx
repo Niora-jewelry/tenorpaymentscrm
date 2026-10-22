@@ -7,7 +7,10 @@
  * is active (no data fetching here — everything for every tab is already on
  * the page, so switching tabs is instant, no loading state needed).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { recordMentionsAction } from './actions';
+import { CHANGED_EVENT } from '../useLiveCounts';
+import type { Candidate, NotificationView } from '@/lib/records/notifications';
 import { Icon } from '@/proto/ui/icons';
 import { CountPill, CompletenessBadge } from '@/proto/ui/kit';
 import type { Field as ProtoField } from '@/proto/schema';
@@ -110,10 +113,19 @@ export function DrawerTabs({
   isAdmin,
   openTabId,
   openSubtabId,
+  caseRoster = [],
+  mentions: initialMentions = [],
+  openMention = null,
 }: {
   moduleSlug: string;
   recordId: string;
   tabs: TabPayload[];
+  /** Who may be @mentioned on this record's cases. */
+  caseRoster?: Candidate[];
+  /** The viewer's unread @mentions on this record, oldest first. */
+  mentions?: NotificationView[];
+  /** The mention a link landed on — already marked read; scrolled to and flashed. */
+  openMention?: NotificationView | null;
   /** Already resolved from `?tab=`/`?subtab=` against the tabs this viewer can
    *  see, so these are either usable ids or null — never a hidden tab. */
   openTabId?: string | null;
@@ -154,6 +166,36 @@ export function DrawerTabs({
   const [activeTabId, setActiveTabId] = useState(openTabId ?? tabs[0]?.id ?? '');
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
+  /*
+   * My unread mentions on this record. Held here so reading one (from a
+   * field dot, a thread, a link) clears its markers everywhere at once, and
+   * refetched when the live count says something changed in another tab.
+   */
+  const [mentions, setMentions] = useState(initialMentions);
+  const onMentionRead = (id: string) => setMentions((l) => l.filter((m) => m.id !== id));
+  useEffect(() => {
+    const on = () => {
+      void recordMentionsAction({ recordId }).then(setMentions);
+    };
+    window.addEventListener(CHANGED_EVENT, on);
+    return () => window.removeEventListener(CHANGED_EVENT, on);
+  }, [recordId]);
+  const mentionsByTab = useMemo(() => {
+    const byTab: Record<string, number> = {};
+    const bySubtab: Record<string, number> = {};
+    const byField: Record<string, NotificationView[]> = {};
+    const byUpdate: Record<string, NotificationView> = {};
+    const byCase: Record<string, NotificationView[]> = {};
+    for (const m of mentions) {
+      if (m.tabKey) byTab[m.tabKey] = (byTab[m.tabKey] ?? 0) + 1;
+      if (m.tabKey && m.subtabKey) bySubtab[`${m.tabKey}/${m.subtabKey}`] = (bySubtab[`${m.tabKey}/${m.subtabKey}`] ?? 0) + 1;
+      if (m.fieldKey) (byField[m.fieldKey] ??= []).push(m);
+      if (m.updateId) byUpdate[m.updateId] = m;
+      if (m.caseId) (byCase[m.caseId] ??= []).push(m);
+    }
+    return { byTab, bySubtab, byField, byUpdate, byCase };
+  }, [mentions]);
+
   /* Every visible tab read-only means the ceiling is the MODULE, not any one
    * tab — a different setting, on a different screen, so the notice below says
    * so rather than blaming whichever tab happens to be open. */
@@ -161,6 +203,19 @@ export function DrawerTabs({
   const [activeSubtabId, setActiveSubtabId] = useState<string | undefined>(
     openSubtabId ?? activeTab?.subtabs[0]?.id,
   );
+  // A deep link into a drawer that is already open: follow it. (The two props
+  // were read once, so a notification click on an open record did nothing.)
+  // State adjusted during render from the previous props — React's own
+  // pattern for "react to a prop change", with no effect round-trip.
+  const target = `${openTabId ?? ''}/${openSubtabId ?? ''}/${openMention?.id ?? ''}`;
+  const [seenTarget, setSeenTarget] = useState(target);
+  if (seenTarget !== target) {
+    setSeenTarget(target);
+    if (openTabId) {
+      setActiveTabId(openTabId);
+      setActiveSubtabId(openSubtabId ?? tabs.find((t) => t.id === openTabId)?.subtabs[0]?.id);
+    }
+  }
 
   /*
    * ⚠️ THE EDITED VALUES LIVE HERE, not inside `RealFieldGrid`.
@@ -279,6 +334,7 @@ export function DrawerTabs({
                 />
               ) : null}
               {t.count != null ? <CountPill n={t.count} active={active} /> : null}
+              {mentionsByTab.byTab[t.key] ? <MentionPill n={mentionsByTab.byTab[t.key]} /> : null}
               {t.fieldCompleteness ? (
                 <span className="ml-1.5">
                   <CompletenessBadge have={t.fieldCompleteness.have} need={t.fieldCompleteness.need} />
@@ -341,6 +397,7 @@ export function DrawerTabs({
                 }`}
               >
                 {s.label}
+                {mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`] ? <MentionPill n={mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`]} onDark={active} /> : null}
               </button>
             );
           })}
@@ -398,6 +455,9 @@ export function DrawerTabs({
                   authorNames={authorNames}
                   viewerId={viewerId}
                   isAdmin={isAdmin}
+                  mentionsByField={mentionsByTab.byField}
+                  openMention={openMention?.fieldKey ? openMention : null}
+                  onMentionRead={onMentionRead}
                 />
               </div>
             );
@@ -423,6 +483,9 @@ export function DrawerTabs({
             viewerId={viewerId}
             isAdmin={isAdmin}
             editable={activeTab.editable}
+            caseRoster={caseRoster}
+            mentionsByCase={mentionsByTab.byCase}
+            openMention={openMention?.caseId ? openMention : null}
           />
         ) : activeTab.kind === 'updates' ? (
           <UpdatesPanel
@@ -434,6 +497,8 @@ export function DrawerTabs({
             isAdmin={isAdmin}
             teamRoster={teamRoster}
             editable={activeTab.editable}
+            mentionsByUpdate={mentionsByTab.byUpdate}
+            openMention={openMention?.updateId ? openMention : null}
           />
         ) : activeTab.kind === 'files' ? (
           <FilesPanel
@@ -521,5 +586,18 @@ export function DrawerTabs({
         </div>
       </div>
     </div>
+  );
+}
+
+/** "@ 2" on a tab or sub-tab: unread mentions for the viewer inside it. Brand-coloured, unlike the neutral record counts. */
+function MentionPill({ n, onDark = false }: { n: number; onDark?: boolean }) {
+  return (
+    <span
+      title={`${n} unread mention${n === 1 ? '' : 's'} for you here`}
+      className={`ml-1.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] font-bold tabular ${onDark ? 'bg-white/20 text-white' : 'bg-brand-600 text-white'}`}
+    >
+      <Icon name="at-sign" size={9} strokeWidth={2.5} />
+      {n}
+    </span>
   );
 }

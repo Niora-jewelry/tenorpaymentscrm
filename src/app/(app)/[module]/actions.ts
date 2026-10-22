@@ -10,6 +10,20 @@
  */
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
+import { z } from 'zod';
+import {
+  mentionCandidates,
+  myRecentFieldChange,
+  mentionOnField,
+  recordMentions,
+  isMuted,
+  setMuted,
+  type Candidate,
+  type RecentChange,
+  type NotificationView,
+} from '@/lib/records/notifications';
+import { deliverMentionEmails, notificationIdsFor } from '@/lib/notifications/email';
 import { authorize, fieldGrant } from '@/lib/records/permissions';
 import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, type Field } from '@/lib/records/config';
 // Plain values, deliberately NOT declared in this file — see the header of
@@ -379,11 +393,13 @@ export async function addCaseReplyAction(
   const body = String(formData.get('body') ?? '').trim();
   if (!body) return { ok: false, message: 'Write a reply first.' };
 
+  let posted: { id: string; mentioned: string[] };
   try {
-    await addReply(ctx, caseId, body);
+    posted = await addReply(ctx, caseId, body, mentionIdsFrom(formData.get('mentions')));
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Could not send that reply.' };
   }
+  if (posted.mentioned.length) emailMentions({ caseReplyId: posted.id });
 
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };
@@ -596,6 +612,30 @@ export async function bulkDeleteAction(recordIds: string[]): Promise<SkipReport>
   return { applied, skipped };
 }
 
+/** The ids the @ picker recorded, carried in the form as JSON. Anything
+ *  malformed is simply no mentions — the body still posts. */
+const MentionIds = z.array(z.uuid()).max(50);
+function mentionIdsFrom(raw: unknown): string[] {
+  if (typeof raw !== 'string' || !raw) return [];
+  try {
+    const parsed = MentionIds.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** One email per new mention, after the response has gone. */
+function emailMentions(target: Parameters<typeof notificationIdsFor>[0]) {
+  after(async () => {
+    try {
+      await deliverMentionEmails(await notificationIdsFor(target));
+    } catch (e) {
+      console.error('[mentions] email delivery failed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
+    }
+  });
+}
+
 export async function addUpdateAction(
   moduleSlug: string,
   recordId: string,
@@ -604,19 +644,102 @@ export async function addUpdateAction(
 ): Promise<void> {
   const ctx = await authorize();
   const body = String(formData.get('body') ?? '').trim();
-  if (body) await addUpdate(ctx, recordId, body, parentId ?? undefined);
+  if (body) {
+    const { id, mentioned } = await addUpdate(ctx, recordId, body, parentId ?? undefined, mentionIdsFrom(formData.get('mentions')));
+    if (mentioned.length) emailMentions({ updateId: id });
+  }
   revalidatePath(`/${moduleSlug}`);
 }
 
-export async function editUpdateAction(moduleSlug: string, updateId: string, body: string): Promise<ActionState> {
+export async function editUpdateAction(
+  moduleSlug: string,
+  updateId: string,
+  body: string,
+  mentionedUserIds: string[] = [],
+): Promise<ActionState> {
   const ctx = await authorize();
+  const ids = MentionIds.safeParse(mentionedUserIds);
   try {
-    await editUpdate(ctx, updateId, body);
+    await editUpdate(ctx, updateId, body, ids.success ? ids.data : []);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Could not save.' };
   }
+  emailMentions({ updateId });
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };
+}
+
+export async function mentionCandidatesAction(input: { recordId: string; scope: string }): Promise<Candidate[]> {
+  const parsed = z.object({ recordId: z.uuid(), scope: z.string().regex(/^(updates|cases|field:[a-z0-9_]{1,80})$/) }).safeParse(input);
+  if (!parsed.success) return [];
+  const ctx = await authorize();
+  try {
+    return await mentionCandidates(ctx, parsed.data.recordId, parsed.data.scope as Parameters<typeof mentionCandidates>[2]);
+  } catch {
+    return [];
+  }
+}
+
+/** Everything the field's @ box needs when it opens. */
+export async function fieldMentionContextAction(input: { recordId: string; fieldKey: string }): Promise<{ candidates: Candidate[]; recentChange: RecentChange }> {
+  const parsed = z.object({ recordId: z.uuid(), fieldKey: z.string().regex(/^[a-z0-9_]{1,80}$/) }).safeParse(input);
+  if (!parsed.success) return { candidates: [], recentChange: null };
+  const ctx = await authorize();
+  try {
+    const [candidates, recentChange] = await Promise.all([
+      mentionCandidates(ctx, parsed.data.recordId, `field:${parsed.data.fieldKey}`),
+      myRecentFieldChange(ctx, parsed.data.recordId, parsed.data.fieldKey),
+    ]);
+    return { candidates, recentChange };
+  } catch {
+    return { candidates: [], recentChange: null };
+  }
+}
+
+const FieldMention = z.object({
+  recordId: z.uuid(),
+  fieldKey: z.string().regex(/^[a-z0-9_]{1,80}$/),
+  userIds: z.array(z.uuid()).min(1).max(50),
+  note: z.string().max(500).nullable(),
+  includePrevious: z.boolean(),
+});
+
+export async function fieldMentionAction(input: z.input<typeof FieldMention>): Promise<ActionState & { sent?: number }> {
+  const parsed = FieldMention.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Choose at least one person; the note can be up to 500 characters.' };
+  const ctx = await authorize();
+  const since = new Date().toISOString();
+  let sent = 0;
+  try {
+    sent = await mentionOnField(ctx, { ...parsed.data, note: parsed.data.note?.trim() || null });
+  } catch (e) {
+    return { ok: false, message: e instanceof Error && /not found/.test(e.message) ? 'That field is no longer available.' : 'Could not send that mention.' };
+  }
+  if (sent > 0) emailMentions({ recordId: parsed.data.recordId, fieldKey: parsed.data.fieldKey, since });
+  return { ok: true, sent };
+}
+
+export async function recordMentionsAction(input: { recordId: string }): Promise<NotificationView[]> {
+  const parsed = z.object({ recordId: z.uuid() }).safeParse(input);
+  if (!parsed.success) return [];
+  const ctx = await authorize();
+  try {
+    return await recordMentions(ctx, parsed.data.recordId);
+  } catch {
+    return [];
+  }
+}
+
+export async function muteRecordAction(input: { recordId: string; muted: boolean }): Promise<ActionState & { muted?: boolean }> {
+  const parsed = z.object({ recordId: z.uuid(), muted: z.boolean() }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Could not change that.' };
+  const ctx = await authorize();
+  try {
+    await setMuted(ctx, parsed.data.recordId, parsed.data.muted);
+    return { ok: true, muted: await isMuted(ctx, parsed.data.recordId) };
+  } catch {
+    return { ok: false, message: 'Could not change that.' };
+  }
 }
 
 export async function deleteUpdateAction(moduleSlug: string, updateId: string): Promise<void> {

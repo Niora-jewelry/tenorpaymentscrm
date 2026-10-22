@@ -474,6 +474,8 @@ type DataTableProps = {
   rows: RecordRow[];
   columns: Field[];
   onOpen: (id: string) => void;
+  /** Opens the record straight at the viewer's oldest unread mention. */
+  onOpenMention?: (id: string) => void;
   /**
    * Server-side paging, when the caller has it.
    *
@@ -984,6 +986,7 @@ export function DataTable({
   rows,
   columns,
   onOpen,
+  onOpenMention,
   serverPaging,
   tableBusy,
   openingId,
@@ -1445,6 +1448,24 @@ export function DataTable({
                       </span>
                       {archived && moduleSlug === 'records' ? (
                         <OutlineChip icon="archive">Archived</OutlineChip>
+                      ) : null}
+                      {r.mentions ? (
+                        /* Only the viewer's own unread mentions — the count
+                           came from a query keyed on them. Clicking lands on
+                           the oldest one. */
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (onOpenMention ?? onOpen)(r.id);
+                          }}
+                          title={`${r.mentions} unread mention${r.mentions === 1 ? '' : 's'} for you — open`}
+                          aria-label={`${r.mentions} unread mention${r.mentions === 1 ? '' : 's'} for you — open`}
+                          className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-brand-600 px-1.5 py-px text-[10.5px] font-bold tabular text-white hover:bg-brand-700"
+                        >
+                          <Icon name="at-sign" size={9} strokeWidth={2.5} />
+                          {r.mentions}
+                        </button>
                       ) : null}
                     </div>
                   </td>

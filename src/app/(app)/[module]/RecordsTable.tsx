@@ -201,9 +201,11 @@ export function RecordsTable({
     router.replace(`/${moduleSlug}${params.toString() ? `?${params}` : ''}`);
   };
 
-  const openRecord = (id: string) => {
+  const openRecord = (id: string, atMention = false) => {
     const params = new URLSearchParams(window.location.search);
     params.set('record', id);
+    params.delete('n');
+    if (atMention) params.set('n', 'first');
     setOpeningId(id);
     startOpenTransition(() => {
       router.push(`/${moduleSlug}?${params.toString()}`);
@@ -552,7 +554,8 @@ export function RecordsTable({
         moduleSlug={moduleSlug}
         rows={localRows}
         columns={localColumns}
-        onOpen={openRecord}
+        onOpen={(id) => openRecord(id)}
+        onOpenMention={(id) => openRecord(id, true)}
         openingId={opening ? openingId : null}
         serverPaging={{ page, pageCount, total, onPage: goToPage }}
         selected={selected}

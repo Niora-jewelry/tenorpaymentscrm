@@ -58,6 +58,8 @@ import { useCallback, useState, useSyncExternalStore } from 'react';
 import { FieldRenderer, HeaderValue } from '@/proto/ui/value';
 import type { Field as ProtoField, FieldValue, Swatch } from '@/proto/schema';
 import { setValueAction } from './actions';
+import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
+import type { NotificationView } from '@/lib/records/notifications';
 import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
   publishValue, publishedValue, subscribeToValues, valuesSnapshot,
@@ -83,9 +85,15 @@ export function HeaderFacts({
   viewerId,
   viewerIsAdmin,
   visibilityFieldKey,
+  mentionsByField = {},
+  openMention = null,
+  onMentionRead = () => undefined,
 }: {
   moduleSlug: string;
   recordId: string;
+  mentionsByField?: Record<string, NotificationView[]>;
+  openMention?: NotificationView | null;
+  onMentionRead?: (id: string) => void;
   /** The record's compare-and-swap token as the server last rendered it. */
   updatedAt: string;
   facts: HeaderFact[];
@@ -300,8 +308,10 @@ export function HeaderFacts({
               */
               style={fact.field.type === 'team_member' ? { gridColumn: 'span 2' } : undefined}
             >
-              <dt className="block truncate text-[11px] leading-none text-ink-400" title={fact.label}>
-                {fact.label}
+              <dt className="group/cell flex items-center gap-1 text-[11px] leading-none text-ink-400" title={fact.label}>
+                <span className="truncate">{fact.label}</span>
+                <FieldMentionNote mentions={mentionsByField[fact.field.id] ?? []} autoOpen={openMention?.fieldKey === fact.field.id ? openMention : null} onRead={onMentionRead} />
+                <FieldMentionButton recordId={recordId} fieldKey={fact.field.id} fieldLabel={fact.label} currentValue={valueText(value)} />
               </dt>
               {/*
                 ⚠️ `min-w-0` ON THE CHILD, NOT JUST ON THE CELL.

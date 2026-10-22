@@ -23,6 +23,10 @@ import {
   type ActionState,
 } from './actions';
 import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
+import type { Candidate, NotificationView } from '@/lib/records/notifications';
+import { MentionTextarea } from './MentionTextarea';
+import { RichText } from '@/proto/ui/richText';
+import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import { CaseAttachments } from './CaseAttachments';
 
@@ -40,7 +44,15 @@ export function CasesPanel({
   isAdmin,
   editable,
   handlingNote,
+  caseRoster = [],
+  mentionsByCase = {},
+  openMention = null,
 }: {
+  /** Who may be @mentioned on this record's cases. */
+  caseRoster?: Candidate[];
+  /** The viewer's unread mentions here, by case id, oldest first. */
+  mentionsByCase?: Record<string, NotificationView[]>;
+  openMention?: NotificationView | null;
   moduleSlug: string;
   recordId: string;
   cases: CaseThread[];
@@ -184,6 +196,9 @@ export function CasesPanel({
               viewerId={viewerId}
               isAdmin={isAdmin}
               editable={editable}
+              roster={caseRoster}
+              mentions={mentionsByCase[c.id] ?? []}
+              openMention={openMention?.caseId === c.id ? openMention : null}
             />
           ))}
         </ul>
@@ -202,10 +217,16 @@ function CaseCard({
   viewerId,
   isAdmin,
   editable,
+  roster,
+  mentions,
+  openMention,
 }: {
   moduleSlug: string;
   c: CaseThread;
   replies: CaseReply[];
+  roster: Candidate[];
+  mentions: NotificationView[];
+  openMention: NotificationView | null;
   managerIds: string[];
   /** This case's files, by attachment point — `issue`, `solution`,
    *  `reply:<replyId>`. Absent keys mean nothing attached there. */
@@ -218,10 +239,14 @@ function CaseCard({
   const router = useRouter();
   const [now] = useState(() => new Date());
   const [pending, startTransition] = useTransition();
-  const [expanded, setExpanded] = useState(c.state === 'open');
+  // Open if the case is open, if a link landed here, or if I was mentioned in it.
+  const [expanded, setExpanded] = useState(c.state === 'open' || Boolean(openMention) || mentions.length > 0);
   const [writing, setWriting] = useState(false);
   const [solutionDraft, setSolutionDraft] = useState('');
   const [replyDraft, setReplyDraft] = useState('');
+  const [replyMentionIds, setReplyMentionIds] = useState<string[]>([]);
+  const mentionedReplies = new Set(mentions.map((m) => m.caseReplyId));
+  const flashCard = useFlashTarget(targetId.case(c.id), Boolean(openMention) && !openMention?.caseReplyId);
   const [error, setError] = useState<string | null>(null);
   /*
    * Reply failures get their OWN message, rendered under the reply box.
@@ -242,6 +267,7 @@ function CaseCard({
     if (!replyDraft.trim()) return;
     const formData = new FormData();
     formData.set('body', replyDraft.trim());
+    formData.set('mentions', JSON.stringify(replyMentionIds));
     startTransition(async () => {
       setReplyError(null);
       const result = await addCaseReplyAction(moduleSlug, c.id, formData);
@@ -331,7 +357,7 @@ function CaseCard({
   };
 
   return (
-    <li className="overflow-hidden rounded-xl border border-line bg-white">
+    <li id={targetId.case(c.id)} className={`overflow-hidden rounded-xl border bg-white transition-shadow ${mentions.length ? 'border-brand-300' : 'border-line'} ${flashCard ? FLASH_CLASS : ''}`}>
       {/* A row, not one big button: the title half toggles the card, the
           action half holds real controls. Nesting buttons is invalid HTML and
           made every control a toggle as well. */}
@@ -345,6 +371,15 @@ function CaseCard({
           <Icon name="chevron-down" size={13} className={`shrink-0 text-ink-400 transition-transform duration-200 ${expanded ? '' : '-rotate-90'}`} />
           <span className="font-mono text-[12.5px] font-semibold text-ink-500 tabular">#{c.number}</span>
           <span className="truncate text-[13.5px] font-semibold text-ink-900">{c.title}</span>
+          {mentions.length ? (
+            <span
+              title={`${mentions.length} unread mention${mentions.length === 1 ? '' : 's'} for you in this case`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-600 px-1.5 py-px text-[10px] font-bold text-white"
+            >
+              <Icon name="at-sign" size={9} strokeWidth={2.5} />
+              {mentions.length > 1 ? mentions.length : null}
+            </span>
+          ) : null}
           {replies.length ? (
             <span className="inline-flex shrink-0 items-center gap-1 text-[11.5px] text-ink-400">
               <Icon name="message-square" size={11} />
@@ -527,12 +562,18 @@ function CaseCard({
                   {replies.map((r) => {
                     const name = authorNames[r.authorId] ?? 'Unknown user';
                     return (
-                      <div key={r.id} className="flex gap-2">
+                      <CaseReplyRow
+                        key={r.id}
+                        r={r}
+                        mentioned={mentionedReplies.has(r.id)}
+                        flash={openMention?.caseReplyId === r.id}
+                      >
                         <UserAvatar userId={r.authorId} name={name} size={20} />
                         <div className="min-w-0 flex-1">
-                          <p className="text-[13px] leading-relaxed text-ink-700">{r.body}</p>
+                          <RichText body={r.body} className="text-[13px] leading-relaxed text-ink-700" />
                           <p className="text-[11px] text-ink-400">
                             {name} · {relative(r.createdAt, now)} · not editable
+                            {r.mentionedUserIds.length ? ` · ${r.mentionedUserIds.map((id) => `@${authorNames[id] ?? 'Unknown user'}`).join(', ')} notified` : ''}
                           </p>
                           {/* "Not editable" is about the WORDS — §3.7 says
                               replies cannot be edited or deleted once posted.
@@ -548,7 +589,7 @@ function CaseCard({
                             editable={editable}
                           />
                         </div>
-                      </div>
+                      </CaseReplyRow>
                     );
                   })}
                 </div>
@@ -557,15 +598,19 @@ function CaseCard({
               )}
 
               {editable ? (
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={replyDraft}
-                  onChange={(e) => setReplyDraft(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendReply()}
-                  disabled={pending}
-                  placeholder={c.state === 'open' ? 'Reply to this case…' : 'Reply — the case is closed'}
-                  className="flex-1 rounded-md border border-line px-2.5 py-1.5 text-[13px] outline-none transition-colors focus-field"
-                />
+              <div className="mt-2 flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <MentionTextarea
+                    value={replyDraft}
+                    onChange={setReplyDraft}
+                    onMentionsChange={setReplyMentionIds}
+                    roster={roster}
+                    rows={1}
+                    disabled={pending}
+                    placeholder={c.state === 'open' ? 'Reply to this case… @mention someone to notify them' : 'Reply — the case is closed'}
+                    onSubmitShortcut={sendReply}
+                  />
+                </div>
                 <Button size="sm" icon="reply" loading={pending} loadingLabel="Sending…" disabled={!replyDraft.trim()} onClick={sendReply}>
                   Reply
                 </Button>
@@ -797,6 +842,16 @@ function HandlingNote({
           Last set by {authorNames[note.updatedBy] ?? 'someone'} &middot; {relative(note.updatedAt, new Date())}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** One reply row; tinted when it mentions the viewer, flashed when a link lands on it. */
+function CaseReplyRow({ r, mentioned, flash, children }: { r: CaseReply; mentioned: boolean; flash: boolean; children: React.ReactNode }) {
+  const flashing = useFlashTarget(targetId.reply(r.id), flash);
+  return (
+    <div id={targetId.reply(r.id)} className={`-mx-2 flex gap-2 rounded-lg px-2 py-1 transition-shadow ${mentioned ? 'bg-brand-50/50' : ''} ${flashing ? FLASH_CLASS : ''}`}>
+      {children}
     </div>
   );
 }

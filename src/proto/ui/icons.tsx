@@ -52,6 +52,7 @@ export type IconName =
   | 'eye-off'
   | 'lock'
   | 'bell'
+  | 'at-sign'
   | 'alert-triangle'
   | 'info'
   | 'circle-dot'
@@ -274,6 +275,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <rect x="4" y="10.5" width="16" height="10.5" rx="2" />
       <path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5" />
+    </>
+  ),
+  'at-sign': (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
     </>
   ),
   bell: (

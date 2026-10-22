@@ -50,6 +50,8 @@ export function MenuSurface({
   width = 280,
   children,
   label,
+  role = 'menu',
+  padded = true,
 }: {
   open: boolean;
   onClose: () => void;
@@ -58,6 +60,10 @@ export function MenuSurface({
   width?: number;
   children: ReactNode;
   label?: string;
+  /** `dialog` for a panel with inputs (a form), `menu` for a list of actions. */
+  role?: 'menu' | 'dialog';
+  /** The menu's own inner padding; off when the content brings its own. */
+  padded?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -169,14 +175,21 @@ export function MenuSurface({
       });
     };
 
+    /*
+     * Escape is taken in the CAPTURE phase. The record drawer closes on
+     * Escape with its own listener on `document`, registered earlier, so a
+     * bubble-phase listener here ran second and `stopPropagation()` was too
+     * late: Escape in a field's @ box closed the whole drawer. Capturing
+     * runs first and stops the event before the drawer ever sees it.
+     */
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', place);
     return () => {
       if (frame) cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', place);
     };
@@ -203,7 +216,7 @@ export function MenuSurface({
   return createPortal(
     <div
       ref={panelRef}
-      role="menu"
+      role={role}
       aria-label={label}
       /*
        * Only what React may own. `top`, `left` and `visibility` are written by
@@ -212,7 +225,7 @@ export function MenuSurface({
        * so the first frame the browser draws is already positioned.
        */
       style={{ position: 'fixed', width }}
-      className="z-[200] max-h-[min(70vh,520px)] overflow-y-auto rounded-xl border border-line bg-white p-1.5 shadow-[0_16px_40px_-12px_rgba(8,32,47,.32)]"
+      className={`z-[200] max-h-[min(70vh,520px)] overflow-y-auto rounded-xl border border-line bg-white shadow-[0_16px_40px_-12px_rgba(8,32,47,.32)] ${padded ? 'p-1.5' : ''}`}
     >
       {children}
     </div>,

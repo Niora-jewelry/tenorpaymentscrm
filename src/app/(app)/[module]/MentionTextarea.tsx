@@ -22,11 +22,23 @@
  * Typing the markers by hand does exactly the same thing — the buttons are a
  * convenience over the format, not a different way in. `RichText` renders it.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/proto/ui/icons';
+import { UserAvatar } from './UserAvatar';
 import type { TeamRosterEntry } from '@/lib/records/updates';
 
-const MENTION_PATTERN = /@([^\s@][^\n@]{0,39})$/;
+// A bare "@" lists everyone who can be mentioned; typing narrows it.
+const MENTION_PATTERN = /@(|[^\s@][^\n@]{0,39})$/;
+
+/**
+ * Which picked people are still named in the text. The picker inserts
+ * `@Full Name`; delete the tag and the person is no longer mentioned. The
+ * server applies the same rule (`reconcileMentions`), so the ids sent are a
+ * record of what was picked, never the authority.
+ */
+export function mentionIdsIn(text: string, picked: TeamRosterEntry[]): string[] {
+  return picked.filter((p) => text.includes(`@${p.name}`)).map((p) => p.id);
+}
 
 export function MentionTextarea({
   value,
@@ -37,6 +49,8 @@ export function MentionTextarea({
   disabled,
   onSubmitShortcut,
   formatting = false,
+  onMentionsChange,
+  initialMentions = [],
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -52,10 +66,25 @@ export function MentionTextarea({
   /** Enter-to-submit for single-line-feeling inputs (replies); omit for the
    * multi-line post box, where Enter should just add a newline. */
   onSubmitShortcut?: () => void;
+  /** The ids of the people currently tagged in the text, whenever that changes. */
+  onMentionsChange?: (ids: string[]) => void;
+  /** People already tagged when editing an existing post. */
+  initialMentions?: TeamRosterEntry[];
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<{ text: string; start: number } | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [picked, setPicked] = useState<TeamRosterEntry[]>(initialMentions);
+  const announce = useRef(onMentionsChange);
+  useEffect(() => {
+    announce.current = onMentionsChange;
+  }, [onMentionsChange]);
+  // Tell the parent whenever the set of tagged people changes — after a pick,
+  // and after an edit that removes a tag.
+  const taggedKey = mentionIdsIn(value, picked).join(',');
+  useEffect(() => {
+    announce.current?.(taggedKey ? taggedKey.split(',') : []);
+  }, [taggedKey]);
 
   const matches = useMemo(() => {
     if (!query) return [];
@@ -124,6 +153,7 @@ export function MentionTextarea({
     const caret = el?.selectionStart ?? value.length;
     const next = `${value.slice(0, query.start)}@${member.name} ${value.slice(caret)}`;
     onChange(next);
+    setPicked((l) => (l.some((p) => p.id === member.id) ? l : [...l, member]));
     setQuery(null);
     requestAnimationFrame(() => {
       const pos = query.start + member.name.length + 2;
@@ -197,10 +227,11 @@ export function MentionTextarea({
                 e.preventDefault();
                 applyMention(m);
               }}
-              className={`flex w-full items-center px-2.5 py-1.5 text-left text-[13px] ${
+              className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] ${
                 i === activeIndex ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-canvas'
               }`}
             >
+              <UserAvatar userId={m.id} name={m.name} size={20} />
               {m.name}
             </button>
           ))}

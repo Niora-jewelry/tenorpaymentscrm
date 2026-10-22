@@ -19,7 +19,12 @@ import { useRouter } from 'next/navigation';
 export function DrawerShell({ moduleSlug, children }: { moduleSlug: string; children: React.ReactNode }) {
   const router = useRouter();
 
-  const close = () => router.push(`/${moduleSlug}`, { scroll: false });
+  // Keeps the list where it was (its page); drops the record and any deep link.
+  const close = () => {
+    const params = new URLSearchParams(window.location.search);
+    for (const k of ['record', 'tab', 'subtab', 'n']) params.delete(k);
+    router.push(`/${moduleSlug}${params.toString() ? `?${params}` : ''}`, { scroll: false });
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();

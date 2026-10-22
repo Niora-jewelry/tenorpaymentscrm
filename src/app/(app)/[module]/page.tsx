@@ -25,7 +25,9 @@ import { listRecords, getRecord } from '@/lib/records/records';
 import { membershipsFor, membershipsForMany } from '@/lib/records/memberships';
 import { pipelineAssignment } from '@/lib/records/pipelines';
 import { entriesFor } from '@/lib/records/customEntries';
-import { casesFor, repliesForCases, managersForCases, caseHandlingNote } from '@/lib/records/cases';
+import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor } from '@/lib/records/cases';
+import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
+import { RecordHeaderMenu } from './RecordHeaderMenu';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
@@ -54,10 +56,13 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string }>;
+  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string }>;
 }) {
   const { module: slug } = await params;
-  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey } = await searchParams;
+  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam } = await searchParams;
+  // `?n=<notification id>` is a deep link to one mention; `n=first` is the
+  // list row's badge: whichever of my unread mentions here is oldest.
+  const mentionKey = mentionParam && /^(first|[0-9a-f-]{36})$/.test(mentionParam) ? mentionParam : null;
 
   // `page` was never read, so `listRecords` always returned page 0 and every
   // record past the first 50 (ordered by Deal Name) was unreachable from any
@@ -175,14 +180,19 @@ export default async function ModulePage({
     filters: Object.values(savedFilters),
     page: requestedPage,
   });
-  const membershipsByRecord = await membershipsForMany(ctx, dbRows.map((r) => r.id));
+  const [membershipsByRecord, mentionCounts] = await Promise.all([
+    membershipsForMany(ctx, dbRows.map((r) => r.id)),
+    // The viewer's own unread @mentions per row — the "@ 3" badge.
+    unreadMentionCounts(ctx, dbRows.map((r) => r.id)),
+  ]);
   const moduleSlugById = new Map(config.modules.map((m) => [m.id, m.slug]));
-  const rows = dbRows.map((r) =>
-    adaptRecordRow(
+  const rows = dbRows.map((r) => ({
+    ...adaptRecordRow(
       r,
       (membershipsByRecord[r.id] ?? []).map((id) => moduleSlugById.get(id)).filter((s): s is string => Boolean(s)),
     ),
-  );
+    mentions: mentionCounts[r.id] ?? 0,
+  }));
 
   return (
     <div className="flex h-full flex-col p-6">
@@ -292,7 +302,9 @@ export default async function ModulePage({
       */}
       {recordId ? (
         <DrawerShell moduleSlug={slug}>
-          <Suspense key={recordId} fallback={<DrawerSkeleton />}>
+          {/* Keyed on the mention too, so a second notification link to the
+              same record re-renders and lands on the new item. */}
+          <Suspense key={`${recordId}:${mentionKey ?? ''}`} fallback={<DrawerSkeleton />}>
             <RecordDrawer
               moduleSlug={slug}
               moduleId={mod.id}
@@ -300,6 +312,7 @@ export default async function ModulePage({
               grant={grant}
               openTabKey={tabKey ?? null}
               openSubtabKey={subtabKey ?? null}
+              mentionKey={mentionKey}
             />
           </Suspense>
         </DrawerShell>
@@ -412,6 +425,7 @@ async function RecordDrawer({
   grant,
   openTabKey,
   openSubtabKey,
+  mentionKey = null,
 }: {
   moduleSlug: string;
   moduleId: string;
@@ -422,6 +436,8 @@ async function RecordDrawer({
    *  already-filtered `dbTabs` rather than against config. */
   openTabKey?: string | null;
   openSubtabKey?: string | null;
+  /** `?n=` — a notification id, or 'first' for the oldest unread mention here. */
+  mentionKey?: string | null;
   /** Started by `ModulePage` before it awaited its own queries, so this read
    *  overlaps the dashboard's instead of queueing behind it. Awaited here, so
    *  a failure lands inside the Suspense boundary and takes only the drawer. */
@@ -429,6 +445,23 @@ async function RecordDrawer({
   grant: 'view' | 'edit';
 }) {
   const [ctx, config, record] = await Promise.all([authorize(), loadConfig(), recordPromise]);
+
+  /*
+   * ── MENTIONS ON THIS RECORD ─────────────────────────────────────────────
+   * A link into one mention opens it (read + opened; the previous value of a
+   * field mention is returned this once and then gone) and overrides the
+   * tab/sub-tab to wherever it lives. The remaining unread ones feed the
+   * tab counts, the case dots and the field dots.
+   */
+  let openMention: Awaited<ReturnType<typeof openNotification>> = null;
+  if (record && mentionKey) {
+    const id = mentionKey === 'first' ? ((await recordMentions(ctx, record.id))[0]?.id ?? null) : mentionKey;
+    if (id) openMention = await openNotification(ctx, id);
+    if (openMention && openMention.recordId !== record.id) openMention = null;
+  }
+  // Where the drawer opens: the mention's home wins over `?tab=`/`?subtab=`.
+  const wantTabKey = openMention?.tabKey ?? openTabKey;
+  const wantSubtabKey = openMention?.tabKey ? (openMention.subtabKey ?? null) : openSubtabKey;
   // `getRecord` legitimately returns null: the record was deleted, or this
   // viewer was removed from its team. Returning `null` here rendered a
   // full-height blank white sheet with no title, no message and no close
@@ -514,7 +547,7 @@ async function RecordDrawer({
   const [
     memberships, entries, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
-    messages, notesByScope, teamRoster, phoneCalls, smsMessages, residuals,
+    messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('freeform') ? entriesFor(ctx, record.id) : [],
@@ -565,6 +598,9 @@ async function RecordDrawer({
     shows('communication') ? messagesFor(ctx, record.id) : [],
     allNotesFor(ctx, record.id),
     shows('updates') ? teamRosterFor(ctx, record.id) : [],
+    shows('cases') ? caseRosterFor(ctx, record.id) : [],
+    recordMentions(ctx, record.id),
+    isMuted(ctx, record.id),
     /*
      * Calls and texts ride along with the same parallel wave as everything
      * else, and are skipped entirely when Communication is hidden — the same
@@ -644,6 +680,9 @@ async function RecordDrawer({
 
   const authorNameMap = await profileNamesFor(ctx, Array.from(authorIds));
   const authorNames = Object.fromEntries(authorNameMap) as Record<string, string>;
+
+  const headerMentions: Record<string, typeof mentions> = {};
+  for (const m of mentions) if (m.fieldKey) (headerMentions[m.fieldKey] ??= []).push(m);
 
   const allDisplayModules = config.modules.filter((m) => m.kind === 'display');
   const displayModuleGrants = await Promise.all(
@@ -948,12 +987,15 @@ async function RecordDrawer({
             viewerId={ctx.userId}
             viewerIsAdmin={ctx.isAdmin}
             visibilityFieldKey={VISIBILITY_FIELD_KEY}
+            mentionsByField={headerMentions}
+            openMention={openMention?.fieldKey ? openMention : null}
           />
         </div>
         <div className="flex items-center gap-3">
           {grant === 'edit' && memberships.length > 0 ? (
             <ArchiveButton moduleSlug={moduleSlug} recordId={record.id} />
           ) : null}
+          <RecordHeaderMenu recordId={record.id} muted={muted} />
           <Link
             href={`/${moduleSlug}`}
             title="Close"
@@ -1005,11 +1047,11 @@ async function RecordDrawer({
          * shell — and the server is the only place that knows which tabs
          * survived the grant chain.
          */
-        openTabId={tabs.find((t) => t.key === openTabKey)?.id ?? null}
+        openTabId={tabs.find((t) => t.key === wantTabKey)?.id ?? null}
         openSubtabId={
           tabs
-            .find((t) => t.key === openTabKey)
-            ?.subtabs.find((sub) => sub.key === openSubtabKey)?.id ?? null
+            .find((t) => t.key === wantTabKey)
+            ?.subtabs.find((sub) => sub.key === wantSubtabKey)?.id ?? null
         }
         grantByKey={grantByKey}
         values={record.values}
@@ -1035,6 +1077,9 @@ async function RecordDrawer({
         authorNames={authorNames}
         viewerId={ctx.userId}
         isAdmin={ctx.isAdmin}
+        caseRoster={caseRoster}
+        mentions={mentions}
+        openMention={openMention}
       />
     </section>
   );

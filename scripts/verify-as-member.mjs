@@ -109,6 +109,15 @@ const look = async (label) => {
   return !c;
 };
 
+/*
+ * The app signs out anyone idle for 24 h on their next request — including a
+ * borrowed session. The test member is always idle, so without this the
+ * impersonation starts and is immediately signed out again ("the banner
+ * never appeared"). Mark them seen now; their real stamp goes back at the end.
+ */
+const [{ last_seen_at: seenBefore }] = await q(`select last_seen_at from profiles where id = $1`, [target.id]);
+await db.query(`update profiles set last_seen_at = now() where id = $1`, [target.id]);
+
 let started = false;
 try {
   /* ── borrow the session through the app's own feature ──────────────── */
@@ -181,6 +190,7 @@ try {
       : `⚠ the audit log's last impersonation event is ${last?.e ?? 'missing'} — check Users.`);
   }
   await browser.close();
+  await db.query(`update profiles set last_seen_at = $2 where id = $1`, [target.id, seenBefore]).catch(() => {});
   for (const [id, hash] of savedHashes) {
     if (hash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
   }

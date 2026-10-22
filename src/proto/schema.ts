@@ -399,6 +399,8 @@ export type RecordRow = {
   updatedAt?: string;
   /** Soft-deleted to the Recycle Bin. Only reachable from the Records List. */
   deleted?: boolean;
+  /** Unread @mentions for the VIEWER on this record (nobody else's). */
+  mentions?: number;
   createdAt: string;
 };
 

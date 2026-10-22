@@ -111,8 +111,10 @@ async function connect(userId: string, identityId: string, mailboxId: string) {
 
 async function visible(userId: string): Promise<string[]> {
   await as(userId);
-  const { rows } = await db.query(`select m.address::text a from mail_mailboxes m order by 1`);
-  const { rows: msgs } = await db.query(`select count(*)::int n from mail_messages`);
+  // Only this test's rows: the database is shared with production, so real
+  // mailboxes (with real messages) are visible to admins as well.
+  const { rows } = await db.query(`select m.address::text a from mail_mailboxes m where m.address like '%@zz.test' order by 1`);
+  const { rows: msgs } = await db.query(`select count(*)::int n from mail_messages where subject = 'probe'`);
   await asSuper();
   // Messages must follow mailboxes exactly — one probe message each.
   expect(msgs[0].n, `${userId}: message visibility disagrees with mailbox visibility`).toBe(rows.length);

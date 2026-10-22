@@ -9,6 +9,7 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { requireTabEdit, requireTabEditVia } from './tabAccess';
+import { mentionCandidates, reconcileMentions, type Candidate } from './notifications';
 
 export type CaseThread = {
   id: string;
@@ -26,7 +27,7 @@ export type CaseThread = {
   createdAt: string;
 };
 
-export type CaseReply = { id: string; caseId: string; authorId: string; body: string; createdAt: string };
+export type CaseReply = { id: string; caseId: string; authorId: string; body: string; createdAt: string; mentionedUserIds: string[] };
 
 function mapCase(r: Record<string, unknown>): CaseThread {
   return {
@@ -62,13 +63,14 @@ export async function repliesFor(_ctx: AuthContext, caseId: string): Promise<Cas
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('case_replies')
-    .select('*')
+    .select('*, case_reply_mentions (user_id)')
     .eq('case_id', caseId)
     .is('deleted_at', null)
     .order('created_at');
   if (error) throw error;
   return (data ?? []).map((r) => ({
     id: r.id, caseId: r.case_id, authorId: r.author_id, body: r.body, createdAt: r.created_at,
+    mentionedUserIds: ((r.case_reply_mentions ?? []) as { user_id: string }[]).map((m) => m.user_id),
   }));
 }
 
@@ -99,7 +101,7 @@ export async function repliesForCases(
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from('case_replies')
-    .select('*')
+    .select('*, case_reply_mentions (user_id)')
     .in('case_id', caseIds)
     .is('deleted_at', null)
     .order('created_at');
@@ -108,6 +110,7 @@ export async function repliesForCases(
   for (const r of data ?? []) {
     (out[r.case_id as string] ??= []).push({
       id: r.id, caseId: r.case_id, authorId: r.author_id, body: r.body, createdAt: r.created_at,
+      mentionedUserIds: ((r.case_reply_mentions ?? []) as { user_id: string }[]).map((m) => m.user_id),
     });
   }
   return out;
@@ -156,12 +159,31 @@ export async function createCase(
   return data as string;
 }
 
-export async function addReply(ctx: AuthContext, caseId: string, body: string): Promise<string> {
+/** Who may be @mentioned on this record's cases. */
+export async function caseRosterFor(ctx: AuthContext, recordId: string): Promise<Candidate[]> {
+  return mentionCandidates(ctx, recordId, 'cases');
+}
+
+export async function addReply(
+  ctx: AuthContext,
+  caseId: string,
+  body: string,
+  mentionedUserIds: string[] = [],
+): Promise<{ id: string; mentioned: string[] }> {
   await requireTabEditVia(ctx, 'cases', caseId, 'cases');
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('add_case_reply', { p_case_id: caseId, p_body: body });
+  const { data: row, error: readErr } = await supabase.from('cases').select('record_id').eq('id', caseId).maybeSingle();
+  if (readErr) throw readErr;
+  if (!row) throw new Error('not found');
+  const roster = await caseRosterFor(ctx, row.record_id as string);
+  const mentioned = reconcileMentions(body, mentionedUserIds, roster);
+  const { data, error } = await supabase.rpc('add_case_reply_with_mentions', {
+    p_case_id: caseId,
+    p_body: body,
+    p_mentioned_user_ids: mentioned,
+  });
   if (error) throw error;
-  return data as string;
+  return { id: data as string, mentioned };
 }
 
 /** "Only a manager toggles state" — enforced INSIDE `toggle_case_state()`

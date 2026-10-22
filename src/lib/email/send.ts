@@ -676,3 +676,90 @@ export function sendVoicemailEmail(
     opts.attachment ? [opts.attachment] : undefined,
   );
 }
+
+/**
+ * "<Actor> mentioned you on <Record>" — one per mention, sent right away.
+ *
+ * The button goes to `/n/<id>`, which signs the person in if needed and then
+ * lands them on the exact update, reply or field. The old value of a field is
+ * included only when the sender chose to; opening the email does not mark the
+ * mention read — clicking through does.
+ */
+export function sendMentionEmail(
+  to: string,
+  opts: {
+    actorName: string;
+    recordName: string;
+    /** "an update", "case #10012", "the Chargeback Fee field (Pricing)". */
+    where: string;
+    /** The update or reply text, or the field note; may be empty. */
+    text: string;
+    currentValue?: string | null;
+    previousValue?: string | null;
+    href: string;
+  },
+): Promise<SendResult> {
+  const stamp = sendStamp();
+  const subject = `${opts.actorName} mentioned you on ${opts.recordName}`;
+  const text = opts.text.trim();
+
+  const values: [string, string][] = [];
+  if (opts.currentValue != null) values.push(['Current value', opts.currentValue || '—']);
+  if (opts.previousValue != null) values.push(['Previous value', opts.previousValue || '—']);
+
+  const body = `
+    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">${esc(opts.actorName)} mentioned you</h1>
+
+    <p style="margin:0 0 20px;font-family:${FONT};font-size:15px;line-height:1.65;color:${BRAND.muted};">
+      On <strong style="color:${BRAND.ink};">${esc(opts.recordName)}</strong>, in ${esc(opts.where)}, ${esc(stamp)}.
+    </p>
+
+    ${
+      text
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+      <tr><td bgcolor="${BRAND.panel}" style="background:${BRAND.panel};border:1px solid ${BRAND.line};border-left:3px solid ${BRAND.accent};border-radius:10px;padding:14px 18px;font-family:${FONT};font-size:14.5px;line-height:1.7;color:${BRAND.ink};white-space:pre-wrap;">${esc(text)}</td></tr>
+    </table>`
+        : ''
+    }
+
+    ${
+      values.length
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+      <tr><td style="border:1px solid ${BRAND.line};border-radius:10px;padding:12px 18px;font-family:${FONT};font-size:13.5px;line-height:1.8;color:${BRAND.muted};">
+        ${values.map(([k, v]) => `${esc(k)}: <strong style="color:${BRAND.ink};">${esc(v)}</strong>`).join('<br>')}
+      </td></tr>
+    </table>`
+        : ''
+    }
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr><td align="center" bgcolor="${BRAND.accent}" style="background:${BRAND.accent};border-radius:10px;">
+        <a href="${esc(opts.href)}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1;color:${BRAND.accentInk};text-decoration:none;border-radius:10px;">View in CRM</a>
+      </td></tr>
+    </table>
+
+    <p style="margin:16px 0 0;font-family:${FONT};font-size:12.5px;line-height:1.6;color:${BRAND.muted};">
+      This is for your information only — nothing needs approving. Mute the record in TapDash to stop these for it.
+    </p>`;
+
+  const plain = [
+    `${opts.actorName} mentioned you on ${opts.recordName}`,
+    `In ${opts.where}, ${stamp}.`,
+    '',
+    ...(text ? [text, ''] : []),
+    ...values.map(([k, v]) => `${k}: ${v || '-'}`),
+    ...(values.length ? [''] : []),
+    `View in CRM: ${opts.href}`,
+    '',
+    'For your information only. Mute the record in TapDash to stop these for it.',
+    `Automated message, sent ${stamp}. Replies are not monitored.`,
+  ].join('\n');
+
+  return send(
+    to,
+    subject,
+    emailShell({ title: subject, preheader: text ? text.slice(0, 120) : `In ${opts.where}`, bodyHtml: body, stamp }),
+    plain,
+    { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
+  );
+}

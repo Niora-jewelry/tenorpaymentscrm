@@ -109,7 +109,9 @@ async function main() {
     ok('add_update_with_mentions created the update', Boolean(selfMention.id));
 
     const { rows: mentionRows } = await client.query(`select user_id from update_mentions where update_id = $1`, [selfMention.id]);
-    ok('update_mentions recorded the mention even though it is a self-mention', mentionRows.some((m) => m.user_id === userId));
+    // Since the @mentions build (Oct 2026): you are never a candidate for your
+    // own mention, so nothing is recorded for a self-tag either.
+    ok('a self-mention is not recorded in update_mentions', !mentionRows.some((m) => m.user_id === userId));
 
     const { rows: notifsAfterSelf } = await client.query(
       `select id from notifications where recipient_id = $1 and record_id = $2 and created_at > now() - interval '1 minute'`,
@@ -167,10 +169,21 @@ async function main() {
         [userId],
       );
       ok('unread count includes the bootstrapped notification', before.n >= 1, JSON.stringify(before));
+      await client.query('savepoint before_direct');
 
-      await client.query(`update notifications set read_at = now() where id = $1 and recipient_id = $2`, [notifId, userId]);
+      // Since the @mentions build (Oct 2026) the client has NO update grant on
+      // notifications — every state change goes through an RPC, so that
+      // opening one can also clear its one-time previous value.
+      const direct = await client
+        .query(`update notifications set read_at = now() where id = $1 and recipient_id = $2`, [notifId, userId])
+        .then(() => 'allowed', (e) => e.code);
+      ok('a direct update on notifications is refused (42501)', direct === '42501', String(direct));
+      // ...but the savepoint-free session is now aborted; recover it.
+      await client.query('rollback to savepoint before_direct').catch(() => {});
+      const { rows: [marked] } = await client.query(`select notifications_mark(array[$1]::uuid[], true) as n`, [notifId]);
+      ok('notifications_mark marks it read', marked.n === 1, JSON.stringify(marked));
       const { rows: [afterRead] } = await client.query(`select read_at from notifications where id = $1`, [notifId]);
-      ok('marking a notification read persists (column-restricted update grant works)', afterRead.read_at !== null);
+      ok('marking a notification read persists', afterRead.read_at !== null);
     });
 
     console.log(`\n${pass} passed, ${fail} failed.`);

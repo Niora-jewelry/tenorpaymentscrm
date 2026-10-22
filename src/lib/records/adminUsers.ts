@@ -736,8 +736,21 @@ export async function softDeleteUser(ctx: AuthContext, userId: string): Promise<
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('soft_delete_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
+  await disconnectMail(userId);
   invalidateGrants();
   return { ok: true };
+}
+
+/**
+ * A removed person's Outlook connections end with their account: their stored
+ * Microsoft sign-ins are destroyed at once, mailboxes only they connected stop
+ * syncing (and leave admins' view), and shared mailboxes pass to another
+ * connector. Restoring the account does not reconnect anything — they
+ * reconnect themselves. Service role: the RPC is not callable by users.
+ */
+async function disconnectMail(userId: string): Promise<void> {
+  const { error } = await supabaseAdmin().rpc('mail_purge_user_connections', { p_user_id: userId });
+  if (error) throw new Error(`mail_purge_user_connections failed: ${error.code ?? 'db'}`);
 }
 
 /** Back out of the bin — SUSPENDED, never straight to active. Restoring an
@@ -775,6 +788,8 @@ export async function purgeUser(
 ): Promise<OffboardResult & { outcome?: PurgeOutcome }> {
   assertAdmin(ctx);
   const supabase = await createSupabaseServerClient();
+  // Before the account goes: its mail sign-ins must not outlive it.
+  await disconnectMail(userId);
   const { data, error } = await supabase.rpc('purge_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
   invalidateGrants();

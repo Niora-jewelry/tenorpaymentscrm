@@ -247,7 +247,10 @@ export function EmailShell({
       writeUrl(live.current.sel, o, 'replace');
       void loadThread(o, { reset: true });
       if (dwell.current) clearTimeout(dwell.current);
-      if (canEdit && row.unread > 0 && opts.autoRead !== false) {
+      // Only in the person's OWN mailboxes: an admin looking at a member's mail
+      // must not mark it read in that member's Outlook just by opening it.
+      const own = live.current.boxes.find((b) => b.id === row.mailboxId)?.own === true;
+      if (canEdit && own && row.unread > 0 && opts.autoRead !== false) {
         dwell.current = setTimeout(() => {
           const cur = live.current.open;
           if (cur && cur.mailboxId === o.mailboxId && cur.key === o.key) void runOpRef.current('read', [row], { quiet: true });

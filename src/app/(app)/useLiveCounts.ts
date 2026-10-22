@@ -17,6 +17,7 @@
  * open drawer or the Notifications list refetches its own view).
  */
 import { useEffect, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import { unreadCountsAction } from './actions';
 import type { UnreadCounts } from '@/lib/records/notifications';
@@ -51,14 +52,36 @@ export function useLiveCounts(userId: string, initial: UnreadCounts): UnreadCoun
       return inFlight;
     };
 
+    /*
+     * ── THE TOKEN GOES ON THE SOCKET BEFORE THE JOIN ───────────────────────
+     * The browser client loads its session from cookies asynchronously.
+     * Subscribing straight away sent the join as `anon`, which has no SELECT
+     * on notifications, and Realtime answered "Unable to subscribe to changes
+     * with given parameters" — silently, so the 60 s poll carried every count
+     * and nothing looked broken. Measured 64 s in the browser against 200 ms
+     * once the token is set first. Later refreshes are re-applied by the
+     * client itself (TOKEN_REFRESHED → realtime.setAuth).
+     */
     const supabase = createSupabaseBrowserClient();
-    const channel = supabase
-      .channel(`notifications:${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, () => {
-        void refetch();
-        window.dispatchEvent(new CustomEvent(CHANGED_EVENT));
+    let channel: RealtimeChannel | null = null;
+    void supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        const token = data.session?.access_token;
+        if (token) await supabase.realtime.setAuth(token);
+        if (!live) return;
+        channel = supabase
+          .channel(`notifications:${userId}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, () => {
+            void refetch();
+            window.dispatchEvent(new CustomEvent(CHANGED_EVENT));
+          })
+          .subscribe((status) => {
+            // Anything that may have happened while the socket was down.
+            if (status === 'SUBSCRIBED') void refetch();
+          });
       })
-      .subscribe();
+      .catch(() => undefined);
 
     const poll = setInterval(() => void refetch(), POLL_MS);
     const onVisible = () => {
@@ -73,7 +96,7 @@ export function useLiveCounts(userId: string, initial: UnreadCounts): UnreadCoun
       clearInterval(poll);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener(CHANGED_EVENT, onChanged);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [userId]);
 

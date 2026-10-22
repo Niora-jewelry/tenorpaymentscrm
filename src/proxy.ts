@@ -83,6 +83,8 @@ const PUBLIC_API_PATHS = new Set([
    * every other /api/mail path stays session-gated.
    */
   '/api/mail/tick',
+  /* Nightly retention (notifications older than 90 days). Same bearer check. */
+  '/api/housekeeping/tick',
 
   /*
    * ── Microsoft Graph webhooks ──────────────────────────────────────────

@@ -20,6 +20,7 @@ import { contactsForUser } from '@/lib/phone/contacts';
 import { DialPad, CallHistory } from './Dialer';
 import { Threads } from './Threads';
 import { Contacts } from './Contacts';
+import { MarkPhoneRead } from './MarkPhoneRead';
 
 export default async function PhonePage() {
   const ctx = await authorize();
@@ -35,6 +36,7 @@ export default async function PhonePage() {
 
   return (
     <div className="space-y-6 p-6">
+      <MarkPhoneRead />
       <div>
         <h1 className="text-xl font-semibold text-ink-900">Phone</h1>
         <p className="text-[13px] text-ink-500">

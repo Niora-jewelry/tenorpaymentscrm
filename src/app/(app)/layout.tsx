@@ -11,7 +11,7 @@ import { PostHogProvider, PostHogPageviews } from './PostHogProvider';
 import { loadConfig } from '@/lib/records/config';
 import { moduleRecordCounts, deletedRecordCount } from '@/lib/records/records';
 import { getSessionUser } from '@/lib/auth/session';
-import { notificationsFor, unreadNotificationCount } from '@/lib/records/notifications';
+import { unreadCounts } from '@/lib/records/notifications';
 import { teamDirectory } from '@/lib/records/directory';
 import { PeopleProvider } from '@/proto/ui/people';
 import { Sidebar } from './Sidebar';
@@ -44,9 +44,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // picker and the create dialog are all Client Components several levels down.
   // Added to this existing batch rather than awaited separately, so it costs one
   // more round trip in parallel and no extra latency.
-  const [notifications, unreadCount, people, emailUnread] = await Promise.all([
-    notificationsFor(ctx),
-    unreadNotificationCount(ctx),
+  const [counts0, people, emailUnread] = await Promise.all([
+    unreadCounts(ctx),
     teamDirectory(ctx),
     emailUnreadFor(ctx),
   ]);
@@ -117,8 +116,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userName={user?.name ?? user?.email ?? 'You'}
         userEmail={user?.email ?? ''}
         isAdmin={ctx.isAdmin}
-        initialNotifications={notifications}
-        initialUnreadCount={unreadCount}
+        userId={ctx.userId}
+        initialCounts={counts0}
         emailUnread={emailUnread}
       />
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>

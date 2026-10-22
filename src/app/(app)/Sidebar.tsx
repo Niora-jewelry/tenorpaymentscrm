@@ -68,8 +68,8 @@ import { usePathname } from 'next/navigation';
 import { Icon, MODULE_ICON, type IconName } from '@/proto/ui/icons';
 import { logoutAction } from '@/app/(auth)/actions';
 import type { Module } from '@/lib/records/config';
-import { NotificationBell } from './NotificationBell';
-import type { NotificationRow } from '@/lib/records/notifications';
+import type { UnreadCounts } from '@/lib/records/notifications';
+import { useLiveCounts } from './useLiveCounts';
 
 /** The identity in the sidebar header. Two constants, one place to change them
  *  for a rebrand or a white-label deployment. */
@@ -84,8 +84,8 @@ export function Sidebar({
   userName,
   userEmail,
   isAdmin,
-  initialNotifications,
-  initialUnreadCount,
+  userId,
+  initialCounts,
   emailUnread,
 }: {
   storageModules: Module[];
@@ -95,8 +95,9 @@ export function Sidebar({
   userName: string;
   userEmail: string;
   isAdmin: boolean;
-  initialNotifications: NotificationRow[];
-  initialUnreadCount: number;
+  /** For the live-count subscription: a person only ever receives their own rows. */
+  userId: string;
+  initialCounts: UnreadCounts;
   /** null = Email is not available to this person (no nav item at all). */
   emailUnread: number | null;
 }) {
@@ -104,6 +105,9 @@ export function Sidebar({
   // Starts from the server's count; the Email page's polls keep it current
   // while it is open (`tapdash:email-unread`).
   const [mailUnread, setMailUnread] = useState(emailUnread ?? 0);
+  // Mentions and phone alerts: pushed by the database the moment one lands,
+  // polled as a fallback — see `useLiveCounts`.
+  const alerts = useLiveCounts(userId, initialCounts);
   useEffect(() => {
     const on = (e: Event) => {
       const n = (e as CustomEvent<number>).detail;
@@ -178,10 +182,6 @@ export function Sidebar({
                 {BRAND_TAGLINE}
               </span>
             </span>
-            <NotificationBell
-              initialNotifications={initialNotifications}
-              initialUnreadCount={initialUnreadCount}
-            />
           </>
         ) : null}
       </div>
@@ -255,6 +255,17 @@ export function Sidebar({
           when this person may use it: the module can be switched off
           entirely, and a link that always bounces would be noise.
         */}
+        {/* Every @mention this person received, newest first — and the live
+            count the client asked for. Replaces the bell that used to sit in
+            the brand row. */}
+        <NavItem
+          href="/notifications"
+          icon="bell"
+          label="Notifications"
+          count={alerts.mentions > 0 ? alerts.mentions : undefined}
+          active={pathname === '/notifications'}
+          collapsed={collapsed}
+        />
         {emailUnread !== null ? (
           <NavItem
             href="/email"
@@ -265,10 +276,13 @@ export function Sidebar({
             collapsed={collapsed}
           />
         ) : null}
+        {/* Missed calls, voicemails and recordings not yet looked at. The bell
+            used to carry these; opening the Phone page clears them. */}
         <NavItem
           href="/phone"
           icon="phone"
           label="Phone"
+          count={alerts.phone > 0 ? alerts.phone : undefined}
           active={pathname === '/phone'}
           collapsed={collapsed}
         />
@@ -500,7 +514,7 @@ function NavItem({
                 active ? 'font-semibold text-accent-ink/70' : 'text-white/45'
               }`}
             >
-              {count}
+              {count > 99 ? '99+' : count}
             </span>
           ) : null}
         </>

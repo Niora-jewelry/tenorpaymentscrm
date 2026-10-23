@@ -43,7 +43,7 @@ import {
   reorderColumnsAction, resetColumnOrderAction, setFiltersAction, clearFiltersAction,
   setValueAction,
   setPipelineStepAction,
-  bulkEditAction, bulkArchiveAction, bulkRemoveFromModuleAction, bulkDeleteAction, bulkRestoreToModuleAction,
+  bulkEditAction, bulkArchiveAction, bulkRemoveFromModuleAction, bulkDeleteAction, bulkRestoreToModuleAction, bulkCloseCasesAction,
 } from './actions';
 
 type Grant = 'hidden' | 'view' | 'edit';
@@ -69,12 +69,16 @@ export function RecordsTable({
   pipelineStatusFields,
   canEdit,
   canMoveRecords,
+  closesCases = false,
   page,
   pageCount,
   total,
 }: {
   moduleSlug: string;
   moduleId: string;
+  /** This module shows records while they have an open case (migration 9764):
+   *  membership is automatic, so the bulk Remove becomes "Close cases". */
+  closesCases?: boolean;
   rows: RecordRow[];
   columns: Field[];
   grantByKey: Record<string, Grant>;
@@ -106,7 +110,10 @@ export function RecordsTable({
   const [, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkEditing, setBulkEditing] = useState(false);
-  const [confirmBulk, setConfirmBulk] = useState<null | 'archive' | 'delete' | 'restore'>(null);
+  const [confirmBulk, setConfirmBulk] = useState<null | 'archive' | 'delete' | 'restore' | 'closeCases'>(null);
+  // "Close cases" — what resolved them, written to every open case that has
+  // no solution yet (a case cannot close without one).
+  const [closeSolution, setCloseSolution] = useState('Resolved');
   const [report, setReport] = useState<ProtoSkipReport>(null);
   const [pending, setPending] = useState(false);
   /*
@@ -294,6 +301,31 @@ export function RecordsTable({
       }
     } catch {
       bulkFailed('archived', ids);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const runBulkCloseCases = async () => {
+    const solution = closeSolution.trim();
+    if (!solution) return;
+    setPending(true);
+    const ids = [...selected];
+    const idSet = new Set(ids);
+    // Optimistic, like Remove: a record with no open case left leaves this
+    // module, so its row goes now; skipped rows come back with the report.
+    setLocalRows((prev) => prev.filter((r) => !idSet.has(r.id)));
+    setSelected(new Set());
+    setConfirmBulk(null);
+    try {
+      const result = await bulkCloseCasesAction(moduleSlug, ids, solution);
+      setReport(toProtoReport(result, rows));
+      if (result.skipped.length) {
+        const skippedIds = new Set(result.skipped.map((s) => s.id));
+        setLocalRows((prev) => restoreSkipped(skippedIds, prev));
+      }
+    } catch {
+      bulkFailed('closed', ids);
     } finally {
       setPending(false);
     }
@@ -626,10 +658,47 @@ export function RecordsTable({
           moduleSlug={moduleSlug}
           onClear={() => setSelected(new Set())}
           onBulkEdit={() => setBulkEditing(true)}
-          onArchive={canMoveRecords ? () => setConfirmBulk(allSelectedArchived ? 'restore' : 'archive') : undefined}
+          onArchive={
+            closesCases
+              ? () => setConfirmBulk('closeCases')
+              : canMoveRecords
+                ? () => setConfirmBulk(allSelectedArchived ? 'restore' : 'archive')
+                : undefined
+          }
           onDelete={moduleSlug === 'records' ? () => setConfirmBulk('delete') : undefined}
           allSelectedArchived={allSelectedArchived}
+          removeAs={
+            closesCases
+              ? { label: 'Close cases', icon: 'check', title: 'Close every open case on the selected records. They leave this module the moment no case is open.' }
+              : undefined
+          }
         />
+      ) : null}
+
+      {confirmBulk === 'closeCases' ? (
+        <Dialog
+          title={`Close open cases on ${selected.size} record${selected.size === 1 ? '' : 's'}?`}
+          confirmLabel="Close cases"
+          confirmIcon="check"
+          onClose={() => setConfirmBulk(null)}
+          onConfirm={runBulkCloseCases}
+        >
+          <p>
+            A record is listed here while it has an open case, so closing the cases is what takes it out. Each case keeps
+            its own solution if one was written; the text below goes on the rest. Cases can be reopened from the record’s
+            Cases tab.
+          </p>
+          <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Solution</label>
+          <textarea
+            value={closeSolution}
+            onChange={(e) => setCloseSolution(e.target.value.slice(0, 2000))}
+            rows={2}
+            maxLength={2000}
+            aria-label="Solution for the cases being closed"
+            className="mt-1 w-full resize-none rounded-md border border-line px-3 py-2 text-[13.5px] text-ink-900 outline-none focus-field"
+          />
+          <p className="mt-2 text-ink-400">Records whose cases you cannot close are skipped and listed back to you.</p>
+        </Dialog>
       ) : null}
 
       <SkipReportPanel report={report} onClose={() => setReport(null)} />

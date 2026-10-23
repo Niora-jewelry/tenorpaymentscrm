@@ -38,7 +38,7 @@ import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { addEntry, updateEntry, deleteEntry } from '@/lib/records/customEntries';
-import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase } from '@/lib/records/cases';
+import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
@@ -593,6 +593,28 @@ export async function bulkRemoveFromModuleAction(
   }
   revalidatePath(`/${moduleSlug}`);
   return { applied, skipped };
+}
+
+const BulkCloseCases = z.object({
+  recordIds: z.array(z.uuid()).min(1).max(200),
+  solution: z.string().trim().min(1, 'Write what resolved the cases.').max(2000),
+});
+
+/**
+ * A module that shows open cases has no Remove: a record is there exactly
+ * while a case is open, so the way out is closing its cases. One solution
+ * text is written to every open case that lacks one, then each is closed;
+ * the trigger from migration 9764 takes the record out of the module.
+ */
+export async function bulkCloseCasesAction(moduleSlug: string, recordIds: string[], solution: string): Promise<SkipReport> {
+  const ctx = await authorize();
+  const parsed = BulkCloseCases.safeParse({ recordIds, solution });
+  if (!parsed.success) {
+    return { applied: [], skipped: recordIds.map((id) => ({ id, reason: parsed.error.issues[0]?.message ?? 'Invalid request' })) };
+  }
+  const result = await closeOpenCases(ctx, parsed.data.recordIds, parsed.data.solution);
+  revalidatePath(`/${moduleSlug}`);
+  return result;
 }
 
 export async function bulkDeleteAction(recordIds: string[]): Promise<SkipReport> {

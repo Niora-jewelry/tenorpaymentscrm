@@ -139,7 +139,7 @@ export function MoveTo({
   /** Creates a top-level folder and resolves to its id, or null when it failed (the caller has shown why). */
   onCreate?: (name: string) => Promise<string | null>;
   children: React.ReactNode;
-  side?: 'bottom' | 'right';
+  side?: 'bottom' | 'right' | 'top';
 }) {
   const [q, setQ] = useState('');
   const [naming, setNaming] = useState(false);

@@ -476,9 +476,10 @@ export function Popover({
   /**
    * `bottom` drops below the trigger. `right` opens beside it, anchored to its
    * bottom edge — for triggers that already sit at the bottom of the viewport,
-   * where dropping down would put the panel off-screen.
+   * where dropping down would put the panel off-screen. `top` opens above the
+   * trigger for the same reason (the floating bulk bar's Move picker).
    */
-  side?: 'bottom' | 'right';
+  side?: 'bottom' | 'right' | 'top';
   width?: number;
 }) {
   const [open, setOpen] = useState(false);
@@ -510,7 +511,9 @@ export function Popover({
           className={`absolute z-50 rounded-xl border border-line bg-white p-2 shadow-[0_12px_32px_-8px_rgba(8,32,47,.22)] ${
             side === 'right'
               ? 'bottom-0 left-[calc(100%+10px)] origin-bottom-left'
-              : `top-[calc(100%+6px)] origin-top ${align === 'right' ? 'right-0' : 'left-0'}`
+              : side === 'top'
+                ? `bottom-[calc(100%+6px)] origin-bottom ${align === 'right' ? 'right-0' : 'left-0'}`
+                : `top-[calc(100%+6px)] origin-top ${align === 'right' ? 'right-0' : 'left-0'}`
           } ${anim(state, 'animate-pop-in', 'animate-pop-out')}`}
         >
           {children(() => setOpen(false))}

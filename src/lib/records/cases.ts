@@ -195,6 +195,56 @@ export async function setCaseState(ctx: AuthContext, caseId: string, close: bool
   if (error) throw error;
 }
 
+/**
+ * Closes every open case on each of the given records — the way a record
+ * leaves a module that shows open cases (migration 9764: membership there
+ * is automatic while a case is open, and Remove/Archive leave it alone).
+ *
+ * A case cannot close without a Solution (`closed_requires_solution`), so
+ * `solution` is written first on any case that has none; a case that already
+ * has one keeps it. Each case goes through the same RPCs as the Cases tab,
+ * with the same gates (Cases tab edit; manager or admin inside
+ * `toggle_case_state`). A record is reported skipped the moment one of its
+ * cases is refused, with that reason — never silently.
+ */
+export async function closeOpenCases(
+  ctx: AuthContext,
+  recordIds: string[],
+  solution: string,
+): Promise<{ applied: string[]; skipped: { id: string; reason: string }[] }> {
+  const supabase = await createSupabaseServerClient();
+  const applied: string[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  const { data, error } = await supabase
+    .from('cases')
+    .select('id, record_id, solution')
+    .in('record_id', recordIds)
+    .eq('state', 'open')
+    .is('deleted_at', null);
+  if (error) throw error;
+  const byRecord = new Map<string, { id: string; solution: string | null }[]>();
+  for (const c of (data ?? []) as { id: string; record_id: string; solution: string | null }[]) {
+    (byRecord.get(c.record_id) ?? byRecord.set(c.record_id, []).get(c.record_id)!).push({ id: c.id, solution: c.solution });
+  }
+  for (const recordId of recordIds) {
+    const open = byRecord.get(recordId) ?? [];
+    if (!open.length) {
+      skipped.push({ id: recordId, reason: 'No open case' });
+      continue;
+    }
+    try {
+      for (const c of open) {
+        if (!c.solution) await setCaseSolution(ctx, c.id, solution);
+        await setCaseState(ctx, c.id, true);
+      }
+      applied.push(recordId);
+    } catch (e) {
+      skipped.push({ id: recordId, reason: e instanceof Error ? e.message : 'Could not close its cases' });
+    }
+  }
+  return { applied, skipped };
+}
+
 /** Manager-or-admin only — enforced inside `set_case_solution()` (migration
  * 30: this RPC didn't exist before, only the admin-only `admin_edit_case()`
  * could touch `solution`, leaving an assigned non-admin manager — exactly

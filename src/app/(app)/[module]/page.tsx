@@ -289,6 +289,7 @@ export default async function ModulePage({
           pipelines={pipelineFilterOptions}
           pipelineStatusFields={pipelineStatusFilterFields}
           canEdit={grant === 'edit'}
+          closesCases={Boolean(mod.showsOpenCases)}
           page={page}
           pageCount={pageCount}
           total={total}
@@ -1031,7 +1032,14 @@ async function RecordDrawer({
         </div>
         <div className="flex items-center gap-3">
           {grant === 'edit' && memberships.length > 0 ? (
-            <ArchiveButton moduleSlug={moduleSlug} recordId={record.id} />
+            <ArchiveButton
+              moduleSlug={moduleSlug}
+              recordId={record.id}
+              heldBy={{
+                labels: config.modules.filter((m) => m.showsOpenCases && memberships.includes(m.id)).map((m) => m.label),
+                openCases: cases.filter((c) => c.state === 'open').length,
+              }}
+            />
           ) : null}
           <RecordHeaderMenu recordId={record.id} muted={muted} />
           <Link

@@ -121,10 +121,22 @@ export function MembershipsForm({
   );
 }
 
-export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; recordId: string }) {
+export function ArchiveButton({
+  moduleSlug,
+  recordId,
+  heldBy,
+}: {
+  moduleSlug: string;
+  recordId: string;
+  /** Modules that keep this record while it has open cases (migration 9764),
+   *  with the open count: archiving cannot take it out of those, so the
+   *  button says so instead of pretending. */
+  heldBy?: { labels: string[]; openCases: number } | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [archiveError, setArchiveError] = useState<string | null>(null);
+  const held = heldBy && heldBy.openCases > 0 && heldBy.labels.length > 0 ? heldBy : null;
 
   return (
     <>
@@ -137,8 +149,18 @@ export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; re
       type="button"
       disabled={pending}
       aria-busy={pending || undefined}
-      title="Clear every display membership — stays in the Records List"
-      onClick={() =>
+      title={
+        held
+          ? `Stays in ${held.labels.join(' and ')} while ${held.openCases === 1 ? 'a case is' : `${held.openCases} cases are`} open — close ${held.openCases === 1 ? 'it' : 'them'} on the Cases tab first.`
+          : 'Clear every display membership — stays in the Records List'
+      }
+      onClick={() => {
+        if (held) {
+          setArchiveError(
+            `Stays in ${held.labels.join(' and ')} while ${held.openCases === 1 ? 'a case is' : `${held.openCases} cases are`} open. Close ${held.openCases === 1 ? 'it' : 'them'} on the Cases tab first.`,
+          );
+          return;
+        }
         startTransition(async () => {
           try {
             setArchiveError(null);
@@ -147,8 +169,8 @@ export function ArchiveButton({ moduleSlug, recordId }: { moduleSlug: string; re
           } catch {
             setArchiveError('Could not archive this record.');
           }
-        })
-      }
+        });
+      }}
       className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] font-semibold text-ink-500 transition-colors duration-150 hover:border-warn/40 hover:bg-warn-bg hover:text-warn disabled:cursor-wait disabled:opacity-60"
     >
       {/* Archiving removes the record from every display module and then

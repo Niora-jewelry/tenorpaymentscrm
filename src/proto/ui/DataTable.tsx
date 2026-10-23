@@ -55,7 +55,7 @@ import {
   Spinner,
   StatusPill,
 } from './kit';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { PersonAvatar, resolvePerson, usePeopleById } from './people';
 import { formatDate } from './tokens';
 
@@ -1742,6 +1742,7 @@ export function BulkBar({
    * memberships) — "Archive" again would be a no-op, so the same button slot
    * offers restoring them into a module instead. */
   allSelectedArchived,
+  removeAs,
 }: {
   count: number;
   moduleSlug: string;
@@ -1753,6 +1754,9 @@ export function BulkBar({
   onArchive?: () => void;
   onDelete?: () => void;
   allSelectedArchived?: boolean;
+  /** A module where membership is automatic (a record is there while a case
+   *  is open) offers "Close cases" in the Remove slot; the caller names it. */
+  removeAs?: { label: string; title: string; icon: IconName };
 }) {
   const isStore = moduleSlug === 'records';
   const showRestore = isStore && allSelectedArchived;
@@ -1766,15 +1770,15 @@ export function BulkBar({
       {/* "Delete" appears in exactly one module. Everywhere else it is Archive. */}
       {onArchive ? (
         <BarAction
-          icon={showRestore ? 'rotate-ccw' : 'archive'}
-          label={showRestore ? 'Restore to module' : isStore ? 'Archive' : 'Remove'}
+          icon={showRestore ? 'rotate-ccw' : removeAs && !isStore ? removeAs.icon : 'archive'}
+          label={showRestore ? 'Restore to module' : isStore ? 'Archive' : (removeAs?.label ?? 'Remove')}
           trailing={showRestore ? 'chevron-down' : undefined}
           title={
             showRestore
               ? 'Add these archived records back into a display module.'
               : isStore
                 ? 'Clear every display membership. The records stay in the Records List.'
-                : 'Remove from this module only. Clearing a record’s last membership archives it.'
+                : (removeAs?.title ?? 'Remove from this module only. Clearing a record’s last membership archives it.')
           }
           onClick={onArchive}
         />

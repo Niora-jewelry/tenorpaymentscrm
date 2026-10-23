@@ -1006,6 +1006,7 @@ export function EmailShell({
         <BarAction icon="archive" label="Archive" onClick={() => void runOp('archive', picked)} disabled={pickedWellKnown === 'archive'} />
         {pickedBox ? (
           <MoveTo
+            side="top"
             folders={pickedBox.folders.filter((f) => !currentFolderIds.has(f.id))}
             exclude={null}
             onPick={(id) => void runOp('move', picked, { dest: id })}

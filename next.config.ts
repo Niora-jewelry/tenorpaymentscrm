@@ -148,6 +148,15 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   experimental: {
+    /*
+     * How many workers `next build` forks to collect page data and prerender.
+     * Default: one per CPU, each a full Node process — on a 16 GB laptop with
+     * a browser open that is where a local build dies (worker exit 134, after
+     * "Compiled successfully"). `NEXT_BUILD_CPUS=1 npm run build` makes it
+     * finish; unset (Vercel, CI) keeps Next's default.
+     */
+    ...(process.env.NEXT_BUILD_CPUS ? { cpus: Number(process.env.NEXT_BUILD_CPUS) } : {}),
+
     // Server Actions are only accepted from these origins — the Origin/Host
     // check that closes CSRF alongside SameSite=Lax cookies.
     serverActions: {

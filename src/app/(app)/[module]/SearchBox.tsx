@@ -57,7 +57,7 @@ export function SearchBox({ moduleSlug, initial, placeholder = 'Search by name, 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   return (
-    <div role="search" className="relative flex min-w-[260px] max-w-[420px] flex-1 items-center">
+    <div role="search" className="relative flex w-[360px] max-w-[48vw] items-center">
       <Icon name="search" size={14} className="pointer-events-none absolute left-3 text-ink-400" />
       <input
         ref={input}

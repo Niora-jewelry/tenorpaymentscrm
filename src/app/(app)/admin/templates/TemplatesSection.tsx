@@ -22,10 +22,10 @@
  */
 import { useEffect, useRef, useState, useTransition, useActionState } from 'react';
 import Link from 'next/link';
-import { Button, OutlineChip } from '@/proto/ui/kit';
+import { Button, Dialog, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { formatDate } from '@/proto/ui/tokens';
-import { createTemplateAction, renameTemplateAction, type TemplateFormState } from './actions';
+import { createTemplateAction, renameTemplateAction, deleteTemplateAction, type TemplateFormState } from './actions';
 import type { AdminTemplateRow } from '@/lib/records/adminTemplates';
 
 export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] }) {
@@ -150,7 +150,18 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(template.label);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  /* Only a template nobody is on can go; the server refuses the rest too. */
+  const deletable = template.attachedUsers === 0;
+  const remove = () => {
+    startTransition(async () => {
+      const result = await deleteTemplateAction(template.id);
+      setConfirmingDelete(false);
+      if (!result.ok) setMessage(result.message ?? 'That template could not be deleted.');
+    });
+  };
 
   const save = () => {
     const next = label.trim();
@@ -245,9 +256,36 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
               <Icon name="key" size={12} />
               Permissions
             </Link>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="trash"
+              disabled={!deletable || pending}
+              title={deletable ? 'Delete this template' : `${template.attachedUsers} user${template.attachedUsers === 1 ? ' is' : 's are'} on this template — move them to another template first.`}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete
+            </Button>
           </div>
         )}
       </div>
+
+      {confirmingDelete ? (
+        <Dialog
+          title={`Delete “${template.label}”?`}
+          tone="danger"
+          confirmLabel="Delete template"
+          onConfirm={remove}
+          onClose={() => setConfirmingDelete(false)}
+        >
+          <p>
+            {template.grantCount === 0
+              ? 'It grants nothing yet, and nobody is on it.'
+              : `Its ${template.grantCount} grant${template.grantCount === 1 ? '' : 's'} go with it, and nobody is on it.`}{' '}
+            This can’t be undone.
+          </p>
+        </Dialog>
+      ) : null}
 
       {message ? (
         <p className="mt-1.5 flex items-center gap-1.5 text-[12.5px] text-bad">

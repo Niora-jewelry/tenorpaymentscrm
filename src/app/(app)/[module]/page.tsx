@@ -29,6 +29,7 @@ import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRost
 import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
 import { RecordHeaderMenu } from './RecordHeaderMenu';
 import { SEARCH_MAX } from '@/lib/records/search';
+import { SearchBox } from './SearchBox';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
@@ -252,11 +253,14 @@ export default async function ModulePage({
           here would have nowhere to be. Records arrive by opening a case on
           them, and the subtitle says so.
         */}
-        {grant === 'edit' && !mod.showsOpenCases ? (
-          <span className="shrink-0">
+        {/* The list search sits on the title row (the client's placement),
+            keyed on the current search so a navigation resets what it shows. */}
+        <div className="flex shrink-0 items-center gap-3">
+          <SearchBox key={search} moduleSlug={slug} initial={search} />
+          {grant === 'edit' && !mod.showsOpenCases ? (
             <CreateRecordDialog moduleSlug={slug} moduleLabel={mod.label} viewerId={ctx.userId} />
-          </span>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {/* Bounded + flex-col so DataTable's own `min-h-0 flex-1` grid actually
@@ -285,7 +289,6 @@ export default async function ModulePage({
           pipelines={pipelineFilterOptions}
           pipelineStatusFields={pipelineStatusFilterFields}
           canEdit={grant === 'edit'}
-          search={search}
           page={page}
           pageCount={pageCount}
           total={total}

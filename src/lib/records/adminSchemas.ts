@@ -489,9 +489,11 @@ export type SetPipelineOrderInput = z.infer<typeof setPipelineOrderSchema>;
 export const createTemplateSchema = z.object({ label: labelSchema });
 
 export const renameTemplateSchema = z.object({ templateId: uuid, label: labelSchema });
+export const deleteTemplateSchema = z.object({ templateId: uuid });
 
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type RenameTemplateInput = z.infer<typeof renameTemplateSchema>;
+export type DeleteTemplateInput = z.infer<typeof deleteTemplateSchema>;
 
 /* -------------------------------------------------------------------------- */
 /* Grants — Phase 6c                                                          */

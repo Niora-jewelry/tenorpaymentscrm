@@ -29,6 +29,13 @@
  * no recovery path, at a moment when 6c has only just made building one
  * expensive. Retiring a template belongs with the other deferred deletion work.
  *
+ * ── UPDATE, 23 Oct 2026: A GUARDED DELETE ────────────────────────────────
+ * The client asked for a Delete button. `deleteTemplate` below keeps both
+ * protections above: it refuses while any user is attached (and the FK
+ * refuses again underneath it, so a race cannot slip through), and the
+ * confirm dialog on the screen states how many grants go with the template
+ * before the admin agrees. An unattached, confirmed delete is what remains.
+ *
  * ── WHERE `listTemplates` WENT ───────────────────────────────────────────
  * It used to live in `adminUsers.ts` (the assign dropdown's only reader).
  * `remaining-plan.md` § Phase 6 asks for it to be moved rather than copied —
@@ -40,7 +47,10 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
 import { assertAdmin, UNIQUE_VIOLATION, type Result } from './adminConfig';
-import type { CreateTemplateInput, RenameTemplateInput } from './adminSchemas';
+import type { CreateTemplateInput, RenameTemplateInput, DeleteTemplateInput } from './adminSchemas';
+
+/** Postgres foreign-key violation: a user attached between the check and the delete. */
+const FK_VIOLATION = '23503';
 
 /** The assign dropdown's shape — id and label, nothing more. */
 export type TemplateOption = { id: string; label: string };
@@ -163,6 +173,41 @@ export async function renameTemplate(ctx: AuthContext, input: RenameTemplateInpu
   // No row came back: the template was removed between this screen loading and
   // the save. An UPDATE matching nothing is not an error in Postgres, so
   // without this the form would report success for a write that did not happen.
+  if (!data) return { ok: false, message: 'That template no longer exists — reload the page.' };
+
+  return { ok: true, id: data.id };
+}
+
+/**
+ * Deletes a template nobody is attached to. Its grants go with it
+ * (`template_grants` cascades); the screen has said how many before this is
+ * called. A template with users is refused by name of the count, and the
+ * foreign key from `user_templates` refuses again if someone was attached in
+ * between — so no user can ever be left pointing at a template that is gone.
+ */
+export async function deleteTemplate(ctx: AuthContext, input: DeleteTemplateInput): Promise<Result> {
+  assertAdmin(ctx);
+  const admin = supabaseAdmin();
+
+  const { count, error: countErr } = await admin
+    .from('user_templates')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('template_id', input.templateId);
+  if (countErr) return { ok: false, message: countErr.message };
+  if (count && count > 0) {
+    return { ok: false, message: `${count} user${count === 1 ? ' is' : 's are'} on this template. Move them to another template first.` };
+  }
+
+  const { data, error } = await admin
+    .from('permission_templates')
+    .delete()
+    .eq('id', input.templateId)
+    .select('id')
+    .maybeSingle();
+  if (error) {
+    if (error.code === FK_VIOLATION) return { ok: false, message: 'A user was just attached to this template. Move them first, then try again.' };
+    return { ok: false, message: error.message };
+  }
   if (!data) return { ok: false, message: 'That template no longer exists — reload the page.' };
 
   return { ok: true, id: data.id };

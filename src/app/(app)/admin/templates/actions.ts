@@ -34,7 +34,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
-import { createTemplate, renameTemplate } from '@/lib/records/adminTemplates';
+import { createTemplate, renameTemplate, deleteTemplate } from '@/lib/records/adminTemplates';
 import {
   clearTemplateGrant,
   setTemplateGrant,
@@ -45,6 +45,7 @@ import {
 import {
   createTemplateSchema,
   renameTemplateSchema,
+  deleteTemplateSchema,
   setTemplateGrantSchema,
   setTemplateGrantsSchema,
   clearTemplateGrantSchema,
@@ -87,6 +88,20 @@ export async function renameTemplateAction(templateId: string, label: string): P
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await renameTemplate(ctx, parsed.data);
+  if (!result.ok) return result;
+
+  revalidateTemplateScreens();
+  return { ok: true };
+}
+
+/** Deletes a template nobody is attached to; see `deleteTemplate` for the guards. */
+export async function deleteTemplateAction(templateId: string): Promise<TemplateFormState> {
+  const ctx = await authorize();
+
+  const parsed = deleteTemplateSchema.safeParse({ templateId });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await deleteTemplate(ctx, parsed.data);
   if (!result.ok) return result;
 
   revalidateTemplateScreens();

@@ -1681,7 +1681,7 @@ function Pagination({
   return (
     <div className="flex shrink-0 items-center justify-between gap-4 border-t border-line bg-canvas/70 px-4 py-2.5">
       <p className="text-[12.5px] text-ink-500 tabular">
-        <span className="font-semibold text-ink-700">{total.toLocaleString()}</span> records
+        <span className="font-semibold text-ink-700">{total.toLocaleString()}</span> {total === 1 ? 'record' : 'records'}
         <span className="mx-1.5 text-line">·</span>
         50 per page
       </p>

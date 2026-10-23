@@ -28,6 +28,7 @@ import { entriesFor } from '@/lib/records/customEntries';
 import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor } from '@/lib/records/cases';
 import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
 import { RecordHeaderMenu } from './RecordHeaderMenu';
+import { SEARCH_MAX } from '@/lib/records/search';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
@@ -56,10 +57,12 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string }>;
+  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string; q?: string }>;
 }) {
   const { module: slug } = await params;
-  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam } = await searchParams;
+  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam, q: qParam } = await searchParams;
+  // The list search; bounded like the box that writes it.
+  const search = typeof qParam === 'string' ? qParam.trim().slice(0, SEARCH_MAX) : '';
   // `?n=<notification id>` is a deep link to one mention; `n=first` is the
   // list row's badge: whichever of my unread mentions here is oldest.
   const mentionKey = mentionParam && /^(first|[0-9a-f-]{36})$/.test(mentionParam) ? mentionParam : null;
@@ -179,6 +182,7 @@ export default async function ModulePage({
   const { rows: dbRows, total, page, pageCount } = await listRecords(ctx, mod.id, {
     filters: Object.values(savedFilters),
     page: requestedPage,
+    q: search,
   });
   const [membershipsByRecord, mentionCounts] = await Promise.all([
     membershipsForMany(ctx, dbRows.map((r) => r.id)),
@@ -217,6 +221,14 @@ export default async function ModulePage({
             <span>
               Page {page + 1} of {pageCount}
             </span>
+            {search ? (
+              <>
+                <span aria-hidden className="text-line">·</span>
+                <span>
+                  {total === 0 ? 'Nothing matches' : total === 1 ? '1 match for' : `${total.toLocaleString()} matches for`} “{search}”
+                </span>
+              </>
+            ) : null}
             {/* Configured column count vs. what this viewer may see — the gap
                 IS the permission system, visible at a glance (prototype
                 parity). Demoted from the top-right, where it sat with the same
@@ -273,6 +285,7 @@ export default async function ModulePage({
           pipelines={pipelineFilterOptions}
           pipelineStatusFields={pipelineStatusFilterFields}
           canEdit={grant === 'edit'}
+          search={search}
           page={page}
           pageCount={pageCount}
           total={total}

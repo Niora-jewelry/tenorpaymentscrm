@@ -37,6 +37,7 @@ import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from '@/proto/u
 import { Icon } from '@/proto/ui/icons';
 import type { Field, RecordRow, Filter, FieldValue, Swatch } from '@/proto/schema';
 import { PipelineFilter, type PipelineFilterOption } from './PipelineFilter';
+import { SearchBox } from './SearchBox';
 import { choicesFor, choiceKey } from '@/proto/fields';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import {
@@ -69,12 +70,15 @@ export function RecordsTable({
   pipelineStatusFields,
   canEdit,
   canMoveRecords,
+  search,
   page,
   pageCount,
   total,
 }: {
   moduleSlug: string;
   moduleId: string;
+  /** The `?q=` the page was rendered with — what the search box shows. */
+  search: string;
   rows: RecordRow[];
   columns: Field[];
   grantByKey: Record<string, Grant>;
@@ -535,11 +539,10 @@ export function RecordsTable({
 
   return (
     <>
-      {pipelines.length ? (
-        <div className="mb-2.5 flex shrink-0 flex-wrap items-center gap-2">
-          <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} />
-        </div>
-      ) : null}
+      <div className="mb-2.5 flex shrink-0 flex-wrap items-center gap-2">
+        <SearchBox key={search} moduleSlug={moduleSlug} initial={search} />
+        {pipelines.length ? <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} /> : null}
+      </div>
 
       {prefError ? (
         <p role="status" className="mb-1.5 shrink-0 text-[11px] text-ink-500">

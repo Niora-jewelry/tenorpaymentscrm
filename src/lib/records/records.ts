@@ -13,6 +13,7 @@
  * export, regardless of how the server-side fetch itself was shaped.
  */
 import 'server-only';
+import { likePattern } from './search';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
@@ -196,7 +197,7 @@ const PAGE_SIZE = 50;
 export async function listRecords(
   ctx: AuthContext,
   moduleId: string,
-  opts: { page?: number; filters?: ListFilter[] } = {},
+  opts: { page?: number; filters?: ListFilter[]; q?: string } = {},
 ): Promise<{ rows: RecordRow[]; total: number; page: number; pageCount: number }> {
   const supabase = await createSupabaseServerClient();
   const config = await loadConfig();
@@ -251,6 +252,15 @@ export async function listRecords(
   if (!isRecordsList) {
     query = query.contains('module_ids', [moduleId]);
   }
+
+  /*
+   * The list search (every module): a case-insensitive substring of
+   * `search_text` — the name plus every string value the viewer may see,
+   * computed by the view from the same stripped `values`, so a hidden
+   * field's content can never match (migration 9797).
+   */
+  const q = opts.q?.trim();
+  if (q) query = query.ilike('search_text', likePattern(q));
 
   // Layer 3 of "admin default → user override → permission filter" happens
   // above this call (columnsForModule already excludes fields the caller

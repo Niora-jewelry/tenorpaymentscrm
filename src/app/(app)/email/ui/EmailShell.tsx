@@ -41,6 +41,7 @@ import {
   searchAction,
   syncStateAction,
 } from '../actions';
+import { MailboxBar } from './MailboxBar';
 import { FolderPane, type FolderOp } from './FolderPane';
 import { ConversationToolbar, MoveTo, deleteOp, type Op, type ReplyKind } from './Actions';
 import { Composer, type SentResult } from './Composer';
@@ -48,7 +49,7 @@ import { ScheduledList } from './ScheduledList';
 import { composeStartAction, releaseOutboxAction, undoSendAction } from '../composeActions';
 import { fullStamp } from '@/lib/mail/dates';
 import type { ComposeInit, ComposeKind } from '@/lib/mail/viewTypes';
-import { folderIdsFor, parseOpen, type Open, type Selection } from './selection';
+import { inboxOf, folderIdsFor, parseOpen, type Open, type Selection } from './selection';
 import { ConversationList, LoadOlder, type ListFilter } from './ConversationList';
 import { ReadingPane, type Thread } from './ReadingPane';
 
@@ -163,6 +164,15 @@ export function EmailShell({
   const folderById = useMemo(() => new Map(boxes.flatMap((b) => b.folders.map((f) => [f.id, { ...f, box: b }] as const))), [boxes]);
   const current = sel.kind === 'folder' ? folderById.get(sel.folderId) : undefined;
   const ownBoxes = boxes.filter((b) => b.own);
+  /*
+   * The mailbox the left pane shows. Derived from the selected folder — a
+   * folder id already names its mailbox, so there is no second URL param to
+   * keep in step. "Scheduled" belongs to no mailbox, so the pane keeps the
+   * last one it showed rather than emptying.
+   */
+  const [lastPaneBoxId, setLastPaneBoxId] = useState<string | null>(null);
+  if (current && current.box.id !== lastPaneBoxId) setLastPaneBoxId(current.box.id);
+  const paneBox = current?.box ?? boxes.find((b) => b.id === lastPaneBoxId) ?? ownBoxes[0] ?? boxes[0];
   const scopeBoxes = sel.kind === 'all' ? ownBoxes : current ? [current.box] : [];
   const troubled = scopeBoxes.filter((b) => b.health === 'needs_reconnect' || b.health === 'needs_permission' || b.health === 'stalled');
   const addressOf = useCallback((id: string) => boxes.find((b) => b.id === id)?.address ?? '', [boxes]);
@@ -362,6 +372,16 @@ export function EmailShell({
       void touchFolder(s);
     },
     [loadList, touchFolder, changeSel, changeOpen],
+  );
+
+  /** A chip in the bar: that mailbox's Inbox. */
+  const pickMailbox = useCallback(
+    (id: string) => {
+      const box = live.current.boxes.find((b) => b.id === id);
+      const inbox = box ? inboxOf(box) : undefined;
+      if (inbox) select({ kind: 'folder', folderId: inbox.id });
+    },
+    [select],
   );
 
   // First paint: the server rendered the list. Open the conversation from the
@@ -681,14 +701,17 @@ export function EmailShell({
   const pickedWellKnown = searching ? (new Set(picked.map((r) => wellKnownOf(r.folderId))).size === 1 ? wellKnownOf(picked[0]?.folderId ?? null) : null) : viewWellKnown;
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-[248px_minmax(330px,400px)_minmax(0,1fr)] bg-white">
+    <div className="flex h-full min-h-0 flex-col bg-white">
+    <MailboxBar mailboxes={boxes} selection={sel} onPickMailbox={pickMailbox} onPickAll={() => select({ kind: 'all' })} />
+    <div className="grid min-h-0 flex-1 grid-cols-[248px_minmax(330px,400px)_minmax(0,1fr)] bg-white">
       <FolderPane
         mailboxes={boxes}
         selection={sel}
+        paneMailbox={paneBox}
         onSelect={select}
         canEdit={canEdit}
         onFolderOp={(f) => void onFolderOp(f)}
-        onNewMail={canEdit && ownBoxes.length ? () => void openCompose('new', sel.kind === 'folder' && current?.box.own ? { mailboxId: current.box.id } : {}) : undefined}
+        onNewMail={canEdit && ownBoxes.length ? () => void openCompose('new', paneBox?.own ? { mailboxId: paneBox.id } : {}) : undefined}
         scheduledCount={scheduledCount}
       />
 
@@ -914,6 +937,9 @@ export function EmailShell({
         mailbox={openAddress}
         onRetry={() => open && void loadThread(open, { reset: true })}
         now={now}
+        // Reply / Reply all / Forward on THIS message, not the newest one —
+        // the composer builds recipients and the quote from the id it gets.
+        onMessageAction={canEdit && openBox?.own ? (kind, id) => void openCompose(kind, { sourceMessageId: id }) : undefined}
         toolbar={
           canEdit && openRowData && openBox && thread.status === 'ready' ? (
             <ConversationToolbar
@@ -989,6 +1015,7 @@ export function EmailShell({
           <p>They are removed from Outlook too, and can’t be recovered from Deleted Items.</p>
         </Dialog>
       ) : null}
+    </div>
     </div>
   );
 }

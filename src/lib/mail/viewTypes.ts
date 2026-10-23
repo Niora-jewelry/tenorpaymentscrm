@@ -26,6 +26,8 @@ export type MailboxView = {
   kind: 'personal' | 'shared';
   /** Connected by this person (false = an admin seeing a member's personal mailbox). */
   own: boolean;
+  /** Who connected it — only on mailboxes this person did NOT connect (admins). */
+  owners?: { id: string; name: string }[];
   health: Health;
   folders: FolderView[];
 };

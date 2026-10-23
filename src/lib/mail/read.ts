@@ -8,6 +8,7 @@
  * on the way through, and not stored.
  */
 import 'server-only';
+import { profileNamesFor } from '@/lib/records/users';
 import { moduleNotice } from './health';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from '@/lib/records/permissions';
@@ -132,6 +133,29 @@ export async function loadMailboxes(ctx: AuthContext): Promise<MailboxView[]> {
     }
   }
   if (boxes.length === 0) return boxes;
+
+  /*
+   * Who connected each team mailbox, for the bar's "other mailboxes" menu.
+   * Admins only reach here with team boxes; `mail_connections_select` lets an
+   * admin read connections of mailboxes they can see, and a mailbox whose
+   * owners hid it from admins is not in `boxes` at all.
+   */
+  const teamIds = boxes.filter((b) => !b.own).map((b) => b.id);
+  if (teamIds.length) {
+    const { data: owners } = await supabase
+      .from('mail_connections')
+      .select('mailbox_id, user_id')
+      .in('mailbox_id', teamIds)
+      .is('disconnected_at', null)
+      .returns<Array<{ mailbox_id: string; user_id: string }>>();
+    const names = await profileNamesFor(ctx, (owners ?? []).map((o) => o.user_id));
+    for (const b of boxes) {
+      if (b.own) continue;
+      b.owners = (owners ?? [])
+        .filter((o) => o.mailbox_id === b.id)
+        .map((o) => ({ id: o.user_id, name: names.get(o.user_id) ?? 'Unknown user' }));
+    }
+  }
 
   const { data: folders, error: fErr } = await supabase
     .from('mail_folders')

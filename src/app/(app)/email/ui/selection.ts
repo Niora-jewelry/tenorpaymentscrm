@@ -2,7 +2,7 @@
  * What the Email page is looking at, shared by the server page (first paint)
  * and the client shell. Plain functions — no React, no server imports.
  */
-import type { MailboxView } from '@/lib/mail/viewTypes';
+import type { FolderView, MailboxView } from '@/lib/mail/viewTypes';
 
 export type Selection = { kind: 'all' } | { kind: 'folder'; folderId: string } | { kind: 'scheduled' };
 export type Open = { mailboxId: string; key: string };
@@ -38,4 +38,15 @@ export function resolveSelection(f: string | null | undefined, boxes: MailboxVie
   const box = own[0] ?? boxes[0];
   const inbox = box?.folders.find((x) => x.wellKnown === 'inbox') ?? box?.folders[0];
   return inbox ? { kind: 'folder', folderId: inbox.id } : { kind: 'all' };
+}
+
+/** The mailbox a selection lives in: a folder's owner; none for All inboxes or Scheduled. */
+export function mailboxFor(sel: Selection, boxes: MailboxView[]): MailboxView | null {
+  if (sel.kind !== 'folder') return null;
+  return boxes.find((b) => b.folders.some((f) => f.id === sel.folderId)) ?? null;
+}
+
+/** A mailbox's Inbox — the folder a chip in the bar opens; the first folder when Outlook has not named one. */
+export function inboxOf(box: MailboxView): FolderView | undefined {
+  return box.folders.find((f) => f.wellKnown === 'inbox') ?? box.folders[0];
 }

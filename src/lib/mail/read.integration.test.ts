@@ -142,6 +142,29 @@ suite('mail read RPCs (live schema, rolled back)', () => {
     });
   });
 
+  it('an admin can read who connected a mailbox; a member cannot; a hidden mailbox hides its owner too', async () => {
+    await inTransaction(async () => {
+      const [owner, other] = await members();
+      const { rows: admins } = await db.query(
+        `select p.id from profiles p join roles r on r.id = p.role_id
+          where r.is_admin and p.deleted_at is null and p.status = 'active' and p.email::text like '%@tapdash.test' limit 1`);
+      const admin = admins[0]?.id as string | undefined;
+      if (!admin) throw new Error('needs an active admin test account');
+      const { mailbox } = await fixture(owner);
+      const who = async () => (await db.query(`select user_id from mail_connections where mailbox_id = $1 and disconnected_at is null`, [mailbox])).rows.map((r) => r.user_id);
+      await as(admin);
+      expect(await who()).toEqual([owner]);
+      await as(other);
+      expect(await who()).toEqual([]);
+      await asSuper();
+      await db.query(`insert into mail_user_settings (user_id, hide_my_mailboxes_from_admins) values ($1, true)`, [owner]);
+      await as(admin);
+      // A standard user's hide flag does nothing (spec): the owner stays readable.
+      expect(await who()).toEqual([owner]);
+      await asSuper();
+    });
+  });
+
   it('opening a stale folder queues it at top priority; a fresh one does not', async () => {
     await inTransaction(async () => {
       const [owner] = await members();

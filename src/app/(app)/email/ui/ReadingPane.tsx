@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Spinner } from '@/proto/ui/kit';
+import { Spinner, IconButton } from '@/proto/ui/kit';
 import { fileSize, fullStamp, rowStamp } from '@/lib/mail/dates';
 import { frameDocument, rewriteForFrame } from '@/lib/mail/content/frame';
 import type { Addr, AttachmentView, MessageBody, MessageView } from '@/lib/mail/viewTypes';
@@ -24,6 +24,8 @@ export type Thread = { status: 'idle' | 'loading' | 'ready' | 'error'; messages:
 
 type BodyState = { status: 'loading' } | { status: 'ready'; body: MessageBody } | { status: 'error' };
 
+export type MessageActionKind = 'reply' | 'replyAll' | 'forward';
+
 export function ReadingPane({
   thread,
   currentFolderIds,
@@ -31,7 +33,10 @@ export function ReadingPane({
   onRetry,
   now,
   toolbar,
+  onMessageAction,
 }: {
+  /** Reply / Reply all / Forward on one message; omitted for people who can only read. */
+  onMessageAction?: (kind: MessageActionKind, messageId: string) => void;
   thread: Thread;
   /** The folder(s) being viewed; a message living elsewhere gets a folder chip. */
   currentFolderIds: ReadonlySet<string>;
@@ -174,6 +179,7 @@ export function ReadingPane({
               onRetryBody={() => retryBody(m.id)}
               otherFolder={m.folderId && !currentFolderIds.has(m.folderId) ? m.folderName : null}
               now={now}
+              onAction={onMessageAction && !m.isDraft ? (kind) => onMessageAction(kind, m.id) : undefined}
             />
           </li>
         ))}
@@ -207,6 +213,7 @@ function MessageCard({
   onRetryBody,
   otherFolder,
   now,
+  onAction,
 }: {
   message: MessageView;
   expanded: boolean;
@@ -215,6 +222,8 @@ function MessageCard({
   onRetryBody: () => void;
   otherFolder: string | null;
   now: Date;
+  /** Reply / Reply all / Forward THIS message (not the newest one). */
+  onAction?: (kind: MessageActionKind) => void;
 }) {
   const [details, setDetails] = useState(false);
   const name = displayName(m.fromName, m.fromAddress);
@@ -237,7 +246,7 @@ function MessageCard({
 
   const toLine = [...m.to, ...m.cc];
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(8,32,47,.05)]">
+    <div className="group/msg overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(8,32,47,.05)]">
       <div className="flex items-start gap-3 px-5 pt-4">
         <Avatar name={m.fromName} address={m.fromAddress} size={36} />
         <div className="min-w-0 flex-1">
@@ -262,6 +271,19 @@ function MessageCard({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
+          {onAction ? (
+            /* The client's "reply, reply all and forward on each individual
+               message": shown on hover, always on touch. */
+            <div
+              role="group"
+              aria-label="Message actions"
+              className="flex gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/msg:opacity-100 [@media(hover:none)]:opacity-100"
+            >
+              <IconButton icon="reply" size={26} title="Reply to this message" onClick={() => onAction('reply')} />
+              <IconButton icon="reply-all" size={26} title="Reply all to this message" onClick={() => onAction('replyAll')} />
+              <IconButton icon="forward" size={26} title="Forward this message" onClick={() => onAction('forward')} />
+            </div>
+          ) : null}
           <time dateTime={m.at} className="text-[11.5px] tabular text-ink-400">
             {m.at ? fullStamp(m.at) : ''}
           </time>

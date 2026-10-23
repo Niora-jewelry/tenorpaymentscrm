@@ -1,8 +1,10 @@
 'use client';
 
 /**
- * Left pane: All inboxes, then each mailbox as a collapsible section with its
- * Outlook folder tree. Subfolder collapse state is remembered per browser.
+ * Left pane: "New email", "All inboxes", then the folders of ONE mailbox —
+ * the one picked in the bar across the top (its name and address head the
+ * list). With All inboxes selected, every own mailbox is listed as a
+ * collapsible section. Subfolder collapse state is remembered per browser.
  *
  * The selected folder is a raised white tile on the pane's canvas — the same
  * "lifted" language as the rest of the CRM's surfaces — rather than a tinted
@@ -47,7 +49,7 @@ function parseCollapsed(raw: string): Set<string> {
   }
 }
 
-const HEALTH_HINT: Partial<Record<Health, { tone: string; label: string }>> = {
+export const HEALTH_HINT: Partial<Record<Health, { tone: string; label: string }>> = {
   setting_up: { tone: 'bg-brand-500', label: 'Setting up — first sync in progress' },
   throttled: { tone: 'bg-[#c07714]', label: 'Outlook is busy; syncing shortly' },
   needs_reconnect: { tone: 'bg-[#c07714]', label: 'Needs reconnect' },
@@ -68,6 +70,7 @@ type DialogState =
 export function FolderPane({
   mailboxes,
   selection,
+  paneMailbox,
   onSelect,
   canEdit,
   onFolderOp,
@@ -78,6 +81,8 @@ export function FolderPane({
   scheduledCount?: number;
   mailboxes: MailboxView[];
   selection: Selection;
+  /** The one mailbox to show folders for (picked in the bar); ignored for All inboxes. */
+  paneMailbox?: MailboxView;
   onSelect: (s: Selection) => void;
   /** Edit grant: folder menus appear. */
   canEdit: boolean;
@@ -117,7 +122,6 @@ export function FolderPane({
   };
 
   const own = mailboxes.filter((m) => m.own);
-  const team = mailboxes.filter((m) => !m.own);
   const allUnread = useMemo(
     () => own.reduce((n, m) => n + (m.folders.find((f) => f.wellKnown === 'inbox')?.unread ?? 0), 0),
     [own],
@@ -145,13 +149,13 @@ export function FolderPane({
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim"
           >
             <Icon name="pencil" size={14} />
-            New mail
+            New email
           </button>
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        {own.length > 1 ? (
+        {own.length ? (
           <Row
             icon="inbox"
             label="All inboxes"
@@ -174,38 +178,33 @@ export function FolderPane({
           />
         ) : null}
 
-        {own.map((m) => (
-          <MailboxSection
-            key={m.id}
-            mailbox={m}
-            selection={selection}
-            onSelect={onSelect}
-            collapsed={collapsed}
-            toggle={toggle}
-            menus={menus}
-          />
-        ))}
-
-        {team.length ? (
+        {selection.kind === 'all' || !paneMailbox ? (
+          own.map((m) => (
+            <MailboxSection
+              key={m.id}
+              mailbox={m}
+              selection={selection}
+              onSelect={onSelect}
+              collapsed={collapsed}
+              toggle={toggle}
+              menus={menus}
+            />
+          ))
+        ) : (
           <>
-            <p className="mt-5 flex items-center gap-1.5 px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-[.12em] text-ink-400">
-              <Icon name="users-round" size={12} />
-              Team mailboxes
-            </p>
-            {team.map((m) => (
-              <MailboxSection
-                key={m.id}
-                mailbox={m}
-                selection={selection}
-                onSelect={onSelect}
-                collapsed={collapsed}
-                toggle={toggle}
-                startCollapsed
-                menus={menus}
-              />
-            ))}
+            <MailboxHeading mailbox={paneMailbox} />
+            <MailboxSection
+              key={paneMailbox.id}
+              mailbox={paneMailbox}
+              selection={selection}
+              onSelect={onSelect}
+              collapsed={collapsed}
+              toggle={toggle}
+              menus={menus}
+              headerless
+            />
           </>
-        ) : null}
+        )}
       </div>
 
       {dialog?.kind === 'create' || dialog?.kind === 'rename' ? (
@@ -253,13 +252,39 @@ export function FolderPane({
   );
 }
 
+/** The mailbox the pane is showing: name, address, kind, health, and who connected it. */
+function MailboxHeading({ mailbox }: { mailbox: MailboxView }) {
+  const hint = HEALTH_HINT[mailbox.health];
+  const title = mailbox.displayName || mailbox.address.split('@')[0];
+  return (
+    <div className="mt-3 flex items-start gap-2 px-2.5 pb-1" title={mailbox.address}>
+      <span aria-hidden className="mt-1.5 size-[7px] shrink-0 rounded-full" style={{ background: swatchFor(mailbox.address).dot }} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-semibold text-ink-900">{title}</span>
+          {mailbox.kind === 'shared' ? (
+            <span className="shrink-0 rounded-md border border-line bg-white px-1.5 py-px text-[10px] font-semibold uppercase tracking-[.06em] text-ink-500">
+              Shared
+            </span>
+          ) : null}
+          {hint ? <span title={hint.label} aria-label={hint.label} className={`size-2 shrink-0 rounded-full ${hint.tone}`} /> : null}
+        </span>
+        <span className="block truncate text-[11px] text-ink-400">{mailbox.address}</span>
+        {!mailbox.own && mailbox.owners?.length ? (
+          <span className="block truncate text-[11px] text-ink-400">Connected by {mailbox.owners.map((o) => o.name).join(', ')}</span>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
 function MailboxSection({
   mailbox,
   selection,
   onSelect,
   collapsed,
   toggle,
-  startCollapsed = false,
+  headerless = false,
   menus,
 }: {
   mailbox: MailboxView;
@@ -267,12 +292,12 @@ function MailboxSection({
   onSelect: (s: Selection) => void;
   collapsed: Set<string>;
   toggle: (id: string) => void;
-  startCollapsed?: boolean;
+  /** No collapsible mailbox row — the pane is showing this one mailbox and names it above. */
+  headerless?: boolean;
   menus: Menus | null;
 }) {
-  // Team mailboxes start closed; the stored set records the OPPOSITE of the default for them.
   const key = `mb:${mailbox.id}`;
-  const closed = startCollapsed ? !collapsed.has(key) : collapsed.has(key);
+  const closed = headerless ? false : collapsed.has(key);
   const hint = HEALTH_HINT[mailbox.health];
   const dot = swatchFor(mailbox.address).dot;
   const title = mailbox.displayName || mailbox.address.split('@')[0];
@@ -284,7 +309,7 @@ function MailboxSection({
   }
 
   return (
-    <section className="group/mb relative mt-3 first:mt-1">
+    <section className={`group/mb relative ${headerless ? '' : 'mt-3 first:mt-1'}`}>
       {menus ? (
         <button
           type="button"
@@ -296,6 +321,7 @@ function MailboxSection({
           <Icon name="plus" size={13} />
         </button>
       ) : null}
+      {headerless ? null : (
       <button
         type="button"
         onClick={() => toggle(key)}
@@ -322,6 +348,7 @@ function MailboxSection({
           <span title={hint.label} aria-label={hint.label} className={`size-2 shrink-0 rounded-full ${hint.tone}`} />
         ) : null}
       </button>
+      )}
 
       {closed ? null : mailbox.folders.length === 0 ? (
         <p className="px-3 py-2 pl-9 text-[12px] text-ink-400">

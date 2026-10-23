@@ -40,6 +40,12 @@ export function InviteForm({
   // Kept so step two can name the person without re-reading the form, which
   // has been replaced by then.
   const [submittedEmail, setSubmittedEmail] = useState('');
+  // The role picked so far. An admin role is exempt from every permission rule
+  // (the Permissions screen's own words), so offering a template with it only
+  // invites the question "why does nothing I set apply?" — seen 23 Oct 2026.
+  const [roleId, setRoleId] = useState(roles.find((r) => !r.isAdmin)?.id ?? '');
+  const pickedRole = roles.find((r) => r.id === roleId);
+  const adminRole = Boolean(pickedRole?.isAdmin);
 
   const onPermissions = Boolean(state.ok && state.inviteId);
   useEffect(() => {
@@ -118,13 +124,20 @@ export function InviteForm({
         name="roleId"
         required
         disabled={isPending}
-        defaultValue={roles.find((r) => !r.isAdmin)?.id ?? ''}
+        value={roleId}
+        onChange={(e) => setRoleId(e.target.value)}
         className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
       >
         {roles.map((r) => (
           <option key={r.id} value={r.id}>{r.name}</option>
         ))}
       </select>
+      {adminRole ? (
+        <p className="mt-1.5 rounded-lg bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-500">
+          A {pickedRole?.name} sees and can edit everything. Templates and permissions do not limit this role, so there is nothing to
+          pick here; choose {roles.find((r) => !r.isAdmin)?.name ?? 'the other role'} to invite someone whose access a template should set.
+        </p>
+      ) : null}
 
       {/*
         ── PERMISSIONS, AT INVITE TIME ──────────────────────────────────
@@ -143,6 +156,8 @@ export function InviteForm({
         A scope-by-scope matrix is deliberately NOT offered here: it would
         duplicate the Permissions screen and the two would drift.
       */}
+      {adminRole ? null : (
+      <>
       <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">
         Permissions
       </label>
@@ -165,6 +180,8 @@ export function InviteForm({
       <p className="mt-1 text-[11.5px] text-ink-400">
         Applied the moment they finish signing up. Editing the template later reaches them too.
       </p>
+      </>
+      )}
 
       {state.message ? (
         <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-bad">

@@ -11,7 +11,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Icon, type IconName } from '@/proto/ui/icons';
-import { Popover } from '@/proto/ui/kit';
+import { Popover, Button } from '@/proto/ui/kit';
 import type { FolderView } from '@/lib/mail/viewTypes';
 import { FOLDER_ICON } from './people';
 
@@ -67,11 +67,14 @@ export function ConversationToolbar({
   onOp,
   onPin,
   onReply,
+  onCreateFolder,
   isDraft,
 }: {
   ctx: ActionContext;
   folders: FolderView[];
   onOp: (op: Op, destFolderId?: string) => void;
+  /** "New folder" inside Move to; absent when folders cannot be created here. */
+  onCreateFolder?: (name: string) => Promise<string | null>;
   onPin: (pinned: boolean) => void;
   /** Absent when the person cannot write from this mailbox. */
   onReply?: (kind: ReplyKind) => void;
@@ -95,7 +98,7 @@ export function ConversationToolbar({
       {onReply ? <span aria-hidden className="mx-1 h-4 w-px bg-line" /> : null}
       {ctx.hasArchive && ctx.wellKnown !== 'archive' ? <ToolButton icon="archive" label="Archive" onClick={() => onOp('archive')} /> : null}
       <ToolButton icon="trash" label={del === 'purge' ? 'Delete forever' : 'Delete'} onClick={() => onOp(del)} danger />
-      <MoveTo folders={folders} exclude={null} onPick={(id) => onOp('move', id)}>
+      <MoveTo folders={folders} exclude={null} onPick={(id) => onOp('move', id)} onCreate={onCreateFolder}>
         <span className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-semibold text-ink-600 transition-colors hover:bg-white hover:text-ink-900">
           <Icon name="folder" size={14} />
           Move to
@@ -116,28 +119,62 @@ export function ConversationToolbar({
   );
 }
 
-/** A folder picker in a popover, with a filter once a tree gets long. */
+/**
+ * A folder picker in a popover, with a filter once a tree gets long — and,
+ * when the caller can create folders, a "New folder" row that makes the
+ * folder in Outlook and moves the mail into it in one step (the client's
+ * ask: "add the ability to create a new folder" from Move to).
+ */
 export function MoveTo({
   folders,
   exclude,
   onPick,
+  onCreate,
   children,
   side = 'bottom',
 }: {
   folders: FolderView[];
   exclude: string | null;
   onPick: (folderId: string) => void;
+  /** Creates a top-level folder and resolves to its id, or null when it failed (the caller has shown why). */
+  onCreate?: (name: string) => Promise<string | null>;
   children: React.ReactNode;
   side?: 'bottom' | 'right';
 }) {
   const [q, setQ] = useState('');
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return folders.filter((f) => f.id !== exclude && (!needle || f.name.toLowerCase().includes(needle)));
   }, [folders, exclude, q]);
+  const reset = () => {
+    setQ('');
+    setNaming(false);
+    setName('');
+    setError(null);
+  };
   return (
     <Popover width={260} side={side} trigger={() => children}>
-      {(close) => (
+      {(close) => {
+        const create = async (label: string) => {
+          const trimmed = label.trim();
+          if (!onCreate || !trimmed || busy) return;
+          setBusy(true);
+          setError(null);
+          const id = await onCreate(trimmed);
+          setBusy(false);
+          if (!id) {
+            setError('The folder was not created.');
+            return;
+          }
+          close();
+          reset();
+          onPick(id);
+        };
+        return (
         <div>
           {folders.length > 8 ? (
             <input
@@ -157,7 +194,7 @@ export function MoveTo({
                   role="menuitem"
                   onClick={() => {
                     close();
-                    setQ('');
+                    reset();
                     onPick(f.id);
                   }}
                   className="flex w-full items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-[13px] text-ink-700 hover:bg-canvas hover:text-ink-900"
@@ -168,10 +205,78 @@ export function MoveTo({
                 </button>
               </li>
             ))}
-            {shown.length === 0 ? <li className="px-2 py-2 text-[12.5px] text-ink-400">No folder matches.</li> : null}
+            {shown.length === 0 ? (
+              <li className="px-2 py-2 text-[12.5px] text-ink-400">
+                No folder matches.
+                {onCreate && q.trim() ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void create(q)}
+                    className="mt-1.5 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] font-semibold text-brand-700 hover:bg-canvas disabled:opacity-60"
+                  >
+                    <Icon name="plus" size={13} className="shrink-0" />
+                    <span className="truncate">{busy ? 'Creating…' : `Create “${q.trim()}” and move here`}</span>
+                  </button>
+                ) : null}
+              </li>
+            ) : null}
           </ul>
+
+          {onCreate ? (
+            <div className="mt-1 border-t border-line-faint pt-1">
+              {naming ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void create(name);
+                  }}
+                  className="px-1 pb-1 pt-1.5"
+                >
+                  <input
+                    autoFocus
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.stopPropagation();
+                        setNaming(false);
+                        setName('');
+                        setError(null);
+                      }
+                    }}
+                    maxLength={255}
+                    disabled={busy}
+                    placeholder="Folder name"
+                    aria-label="New folder name"
+                    className="w-full rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12.5px] text-ink-900 outline-none placeholder:text-ink-400 focus:border-brand-600"
+                  />
+                  {error ? <p role="alert" className="mt-1 text-[11.5px] text-danger">{error}</p> : null}
+                  <div className="mt-1.5 flex justify-end gap-1.5">
+                    <Button size="sm" variant="ghost" type="button" disabled={busy} onClick={() => { setNaming(false); setName(''); setError(null); }}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" variant="primary" type="submit" loading={busy} loadingLabel="Creating…" disabled={!name.trim()}>
+                      Create and move
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => setNaming(true)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] font-semibold text-brand-700 hover:bg-canvas"
+                >
+                  <Icon name="plus" size={14} className="shrink-0" />
+                  New folder…
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
-      )}
+        );
+      }}
     </Popover>
   );
 }

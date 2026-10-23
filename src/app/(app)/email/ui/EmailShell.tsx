@@ -524,6 +524,27 @@ export function EmailShell({
     }
   }, [select]);
 
+  /**
+   * "New folder" from inside Move to: create it at the top level of this
+   * mailbox (Outlook does the creating; `folderAction` refreshes the tree
+   * before it returns), then find it by name in the fresh tree so the move
+   * can go straight into it. Null means it failed and the banner says why.
+   */
+  const createFolderAndFind = useCallback(async (mailboxId: string, name: string): Promise<string | null> => {
+    const res = await folderAction({ op: 'create', mailboxId, parentId: null, name });
+    if (!res.ok) {
+      setBanner({ tone: 'error', text: res.message });
+      return null;
+    }
+    const fresh = await mailboxesAction();
+    if (!fresh.ok) return null;
+    setBoxes(fresh.data);
+    const wanted = name.trim().toLowerCase();
+    const made = fresh.data.find((b) => b.id === mailboxId)?.folders.find((f) => !f.parentId && f.name.trim().toLowerCase() === wanted);
+    setBanner({ tone: 'ok', text: made ? `Created “${name.trim()}”.` : `Created “${name.trim()}” — pick it from the list to move there.` });
+    return made?.id ?? null;
+  }, []);
+
   const onCheck = useCallback(
     (row: ConversationRow, range: boolean) => {
       const id = rowId(row);
@@ -953,6 +974,7 @@ export function EmailShell({
               folders={openBox.folders.filter((f) => !currentFolderIds.has(f.id))}
               onOp={(op, dest) => (op === 'delete' || op === 'purge' ? requestDelete([openRowData], openWellKnown) : void runOp(op, [openRowData], { dest }))}
               onPin={(p) => void togglePin(openRowData, p)}
+              onCreateFolder={openBox.own ? (name) => createFolderAndFind(openBox.id, name) : undefined}
               isDraft={Boolean(draftMsg) && (openWellKnown === 'drafts' || !replyTarget)}
               onReply={
                 openBox.own
@@ -983,7 +1005,12 @@ export function EmailShell({
         <BarAction icon="mail" label="Unread" onClick={() => void runOp('unread', picked)} />
         <BarAction icon="archive" label="Archive" onClick={() => void runOp('archive', picked)} disabled={pickedWellKnown === 'archive'} />
         {pickedBox ? (
-          <MoveTo folders={pickedBox.folders.filter((f) => !currentFolderIds.has(f.id))} exclude={null} onPick={(id) => void runOp('move', picked, { dest: id })}>
+          <MoveTo
+            folders={pickedBox.folders.filter((f) => !currentFolderIds.has(f.id))}
+            exclude={null}
+            onPick={(id) => void runOp('move', picked, { dest: id })}
+            onCreate={pickedBox.own ? (name) => createFolderAndFind(pickedBox.id, name) : undefined}
+          >
             <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-1.5 text-[13px] font-semibold text-ink-700 transition-colors hover:bg-canvas hover:text-ink-900">
               <Icon name="folder" size={14} />
               Move

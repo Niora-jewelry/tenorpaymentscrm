@@ -236,6 +236,8 @@ export type Field = {
   headerIn?: ModuleSlug[];
   /** Carries a per-record notes thread. */
   notes?: boolean;
+  /** Drawn in a named card under the sub-tab's main grid, with every field sharing the label. */
+  section?: string;
   /** Email/Phone only: inbound messages match against this value. */
   sync?: boolean;
   /** Locked system field: non-deletable, non-renamable. */

@@ -98,6 +98,8 @@ export type Field = {
    * must stay the same length as its siblings. */
   repeatGroupKey: string | null;
   gridColumns: { label: string; type: FieldType }[] | null;
+  /** Fields sharing a section label are drawn in their own card under the sub-tab's main grid. */
+  section: string | null;
   archivedAt: string | null;
 };
 
@@ -196,6 +198,7 @@ const loadConfigCached = unstable_cache(
         wide: f.wide, placeholder: f.placeholder, width: f.width, digits: f.digits,
         repeatMax: f.repeat_max, repeatSchema: f.repeat_schema, repeatGroupKey: f.repeat_group_key,
         gridColumns: f.grid_columns,
+        section: f.section ?? null,
         archivedAt: f.archived_at,
       })),
       moduleTabOrder: moduleTabOrder.data!.map((r) => ({ moduleId: r.module_id, tabId: r.tab_id, position: r.position })),

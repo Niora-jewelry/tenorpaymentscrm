@@ -331,6 +331,7 @@ function FieldRow({
     <PresetRow grid={FIELD_GRID} index={index} tone={archived ? 'bg-bad-bg' : undefined}>
       <NameCell label={field.label} itemKey={field.key} retired={archived}>
         {field.hint ? <p className="mt-0.5 text-[12px] text-ink-500">{field.hint}</p> : null}
+        {field.section ? <p className="mt-0.5 text-[11.5px] text-ink-400">Section: {field.section}</p> : null}
         {/* While the dialog is open it carries the failure itself — the row
             behind it is covered by the backdrop. */}
         {error && !confirming ? (
@@ -628,6 +629,11 @@ function CreateFieldForm({
       </label>
       <input name="hint" placeholder="Shown under the field in the drawer." className={inputClass} />
 
+      <label className={`mt-3 ${labelClass}`}>
+        Section <span className="font-normal normal-case text-ink-400">(optional)</span>
+      </label>
+      <input name="section" placeholder="e.g. TD Charged by Maverick — fields with the same section share a card under the grid." className={inputClass} />
+
       <FlagInputs />
 
       <FormError message={state.message} />
@@ -685,6 +691,11 @@ function EditFieldForm({
         Hint <span className="font-normal normal-case text-ink-400">(optional)</span>
       </label>
       <input name="hint" defaultValue={field.hint ?? ''} className={inputClass} />
+
+      <label className={`mt-3 ${labelClass}`}>
+        Section <span className="font-normal normal-case text-ink-400">(optional)</span>
+      </label>
+      <input name="section" defaultValue={field.section ?? ''} placeholder="Fields with the same section share a card under the grid." className={inputClass} />
 
       <FlagInputs field={field} />
 

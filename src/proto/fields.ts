@@ -559,12 +559,17 @@ export const FIELDS: Field[] = [
   f('td_amex_template_volume_fee', 'Amex Template Volume Fee', 'percentage', 'pricing/td_merchant', {
     width: 200,
   }),
-  f('td_gateway_provider_mav', 'Gateway Provider - Mav', 'text', 'pricing/td_merchant', { width: 190 }),
-  f('td_gateway_monthly_mav', 'Gateway Monthly - Mav', 'currency', 'pricing/td_merchant', { width: 180 }),
-  f('td_gateway_auth_fee_mav', 'Gateway Auth Fee - Mav', 'currency', 'pricing/td_merchant', { width: 190 }),
-  f('td_terminal_provider_mav', 'Terminal provider - Mav', 'text', 'pricing/td_merchant', { width: 190 }),
-  f('td_terminal_monthly_mav', 'Terminal Monthly - Mav', 'currency', 'pricing/td_merchant', { width: 190 }),
-  f('td_terminal_auth_fee_mav', 'Terminal Auth Fee - Mav', 'currency', 'pricing/td_merchant', {
+  f('td_gateway_provider_mav', 'Gateway provider', 'text', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_gateway_monthly_mav', 'Gateway Monthly', 'currency', 'pricing/td_merchant', { width: 180, section: 'TD Charged by Maverick' }),
+  f('td_gateway_auth_fee_mav', 'Gateway auth fee', 'currency', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_terminal_provider_mav', 'Terminal provider', 'text', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_terminal_monthly_mav', 'Terminal Monthly', 'currency', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_gateway_setup_mav', 'Gateway setup (one time)', 'currency', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_terminal_setup_mav', 'Terminal setup (one-time)', 'currency', 'pricing/td_merchant', { width: 190, section: 'TD Charged by Maverick' }),
+  f('td_gateway_per_item_mav', 'Gateway per item', 'currency', 'pricing/td_merchant', { width: 170, section: 'TD Charged by Maverick' }),
+  f('td_terminal_per_item_mav', 'Terminal per item', 'currency', 'pricing/td_merchant', { width: 170, section: 'TD Charged by Maverick' }),
+  f('td_terminal_auth_fee_mav', 'Terminal auth fee', 'currency', 'pricing/td_merchant', {
+    section: 'TD Charged by Maverick',
     width: 190,
   }),
   f('td_monthly_fee_tapdash', 'Monthly Fee - TapDash', 'currency', 'pricing/td_merchant', { width: 190 }),
@@ -581,6 +586,7 @@ export const FIELDS: Field[] = [
   f('vtd_gateway_monthly_fee', 'Gateway Monthly Fee', 'currency', 'pricing/vendor_to_td', { width: 180 }),
   f('vtd_gateway_auth_fee', 'Gateway Auth Fee', 'currency', 'pricing/vendor_to_td', { width: 160 }),
   f('vtd_gateway_per_update', 'Gateway Per Update', 'currency', 'pricing/vendor_to_td', { width: 170 }),
+  f('vtd_gateway_td_setup_fee', 'Gateway-TD setup fee', 'currency', 'pricing/vendor_to_td', { width: 180 }),
   f('vtd_terminal_provider', 'Terminal provider', 'text', 'pricing/vendor_to_td', { width: 170 }),
   f('vtd_terminal_monthly_fee', 'Terminal Monthly Fee', 'currency', 'pricing/vendor_to_td', {
     width: 180,
@@ -588,12 +594,20 @@ export const FIELDS: Field[] = [
   f('vtd_terminal_transaction_fee', 'Terminal Transaction Fee', 'currency', 'pricing/vendor_to_td', {
     width: 200,
   }),
+  f('vtd_terminal_td_setup_fee', 'Terminal-TD setup fee', 'currency', 'pricing/vendor_to_td', { width: 180 }),
   f('vtd_rewards_provider', 'Rewards Provider', 'text', 'pricing/vendor_to_td', { width: 170 }),
   f('vtd_rewards_volume_cost', 'Rewards Volume Cost', 'percentage', 'pricing/vendor_to_td', {
     width: 180,
   }),
   f('vtd_other_provider', 'Other Provider', 'text', 'pricing/vendor_to_td', { width: 160 }),
   f('vtd_other_monthly_fee', 'Other Monthly Fee', 'currency', 'pricing/vendor_to_td', { width: 170 }),
+  f('vtd_merchynt_monthly', 'Merchynt monthly', 'currency', 'pricing/vendor_to_td', { width: 170 }),
+  f('vtd_tuzo_monthly', 'Tuzo Monthly', 'currency', 'pricing/vendor_to_td', { width: 160 }),
+  f('vtd_tuzo_volume', 'Tuzo volume (percentage)', 'percentage', 'pricing/vendor_to_td', { width: 190 }),
+  f('vtd_pos_plus_monthly', 'POS+ monthly', 'currency', 'pricing/vendor_to_td', { width: 160 }),
+  f('vtd_pos_volume', 'POS volume', 'percentage', 'pricing/vendor_to_td', { width: 160 }),
+  f('vtd_support_agent', 'Support agent', 'currency', 'pricing/vendor_to_td', { width: 160 }),
+  f('vtd_tapdash_direct', 'TapDash direct', 'currency', 'pricing/vendor_to_td', { width: 160 }),
 
   /* ====================================================================== */
   /* Pricing → One Time Charges                                              */

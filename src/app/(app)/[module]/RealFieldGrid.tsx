@@ -135,6 +135,29 @@ function asInstanceArray(v: unknown, fallback: Record<string, unknown>[]): Recor
  * handle (a sibling of the field's own content, not an ancestor) is the
  * standard dnd-kit pattern for exactly this reason.
  */
+/**
+ * The cards a sub-tab draws: the unsectioned fields first (the main grid),
+ * then one card per section label in order of first appearance. A section is
+ * configuration (`fields.section`), so a new one needs no code.
+ */
+function sectionsOf(fields: ProtoField[]): { key: string; label: string | null; fields: ProtoField[] }[] {
+  const out: { key: string; label: string | null; fields: ProtoField[] }[] = [];
+  const index = new Map<string, number>();
+  for (const f of fields) {
+    const label = f.section?.trim() || null;
+    const k = label ?? '';
+    let i = index.get(k);
+    if (i === undefined) {
+      i = out.length;
+      index.set(k, i);
+      out.push({ key: k || '__main', label, fields: [] });
+    }
+    out[i].fields.push(f);
+  }
+  out.sort((x, y) => (x.label === null ? -1 : y.label === null ? 1 : 0));
+  return out;
+}
+
 type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes']; listeners: ReturnType<typeof useSortable>['listeners'] };
 
 /** `children` is a render prop so the caller can place the handle INLINE in
@@ -657,8 +680,22 @@ export function RealFieldGrid({
       </div>
 
       {fields.length ? (
-        <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.04)]">
-          {hasCustomFieldOrder ? (
+        <DndContext
+          id={`field-dnd-${tabId}-${subtabId ?? '_'}`}
+          sensors={fieldDndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleFieldDragEnd}
+        >
+        <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
+        {sectionsOf(fields).map((sec) => (
+        <section key={sec.key} className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.04)]">
+          {sec.label ? (
+            /* A named section: the same card, headed like a repeating group. */
+            <header className="flex items-center gap-2 border-b border-line-soft bg-canvas/60 px-3 py-2">
+              <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">{sec.label}</span>
+            </header>
+          ) : null}
+          {!sec.label && hasCustomFieldOrder ? (
             <div className="flex items-center gap-2 border-b border-line-soft bg-brand-50/60 px-3 py-1.5">
               <Icon name="shuffle" size={11} className="text-brand-600" />
               <span className="text-[11.5px] text-brand-700">
@@ -685,20 +722,13 @@ export function RealFieldGrid({
               </button>
             </div>
           ) : null}
-          {prefError ? (
+          {!sec.label && prefError ? (
             <p role="status" className="mt-1 text-[11px] text-ink-500">
               {prefError}
             </p>
           ) : null}
-          <DndContext
-            id={`field-dnd-${tabId}-${subtabId ?? '_'}`}
-            sensors={fieldDndSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleFieldDragEnd}
-          >
-            <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
               <div className={`${GRID_TRACKS} ${GRID_EDGE}`}>
-                {fields.map((f) => {
+                {sec.fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
                   const v = shownValue(f.id);
@@ -806,9 +836,10 @@ export function RealFieldGrid({
                   );
                 })}
               </div>
-            </SortableContext>
-          </DndContext>
         </section>
+        ))}
+        </SortableContext>
+        </DndContext>
       ) : null}
 
       {repeatGroups.map((group) => {

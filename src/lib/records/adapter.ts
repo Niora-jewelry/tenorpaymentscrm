@@ -146,6 +146,7 @@ export function adaptFieldForDrawer(config: Config, f: DbField): ProtoField {
   return {
     ...base,
     columns: (f.gridColumns as ProtoField['columns']) ?? undefined,
+    section: f.section ?? undefined,
   };
 }
 

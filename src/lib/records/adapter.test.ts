@@ -9,7 +9,7 @@ function field(overrides: Partial<Field> & Pick<Field, 'id' | 'key' | 'tabId'>):
     notesEnabled: false, syncEnabled: false, isSystem: false, readOnly: false,
     required: false, sensitive: false, wide: false, placeholder: false,
     width: null, digits: null, repeatMax: null, repeatSchema: null,
-    repeatGroupKey: null, gridColumns: null, archivedAt: null,
+    repeatGroupKey: null, gridColumns: null, section: null, archivedAt: null,
     ...overrides,
   };
 }

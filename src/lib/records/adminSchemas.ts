@@ -235,6 +235,7 @@ const repeatSchemaSchema = z.preprocess(
 );
 
 const hintSchema = z.string().trim().max(300, 'Hint must be 300 characters or fewer.').default('');
+const sectionSchema = z.string().trim().max(80, 'Section names must be 80 characters or fewer.').default('');
 
 /** Shared by create and update — the metadata that is safe to change at any
  * point in a field's life. `key` and `type` are absent from BOTH by design;
@@ -244,6 +245,7 @@ const fieldMetaShape = {
   tabId: uuid,
   subtabId: optionalUuid,
   hint: hintSchema,
+  section: sectionSchema,
   required: checkbox,
   sensitive: checkbox,
   wide: checkbox,

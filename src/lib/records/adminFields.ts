@@ -44,6 +44,7 @@ export type AdminFieldRow = {
   subtabId: string | null;
   position: number;
   hint: string | null;
+  section: string | null;
   required: boolean;
   sensitive: boolean;
   wide: boolean;
@@ -78,6 +79,7 @@ export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRo
     subtabId: f.subtab_id,
     position: f.position,
     hint: f.hint,
+    section: f.section ?? null,
     required: f.required,
     sensitive: f.sensitive,
     wide: f.wide,
@@ -175,6 +177,7 @@ export async function createField(ctx: AuthContext, input: CreateFieldInput): Pr
       subtab_id: input.subtabId,
       position,
       hint: input.hint.trim() || null,
+      section: input.section.trim() || null,
       required: input.required,
       sensitive: input.sensitive,
       wide: input.wide,
@@ -245,6 +248,7 @@ export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Pr
       tab_id: input.tabId,
       subtab_id: input.subtabId,
       hint: input.hint.trim() || null,
+      section: input.section.trim() || null,
       required: input.required,
       sensitive: input.sensitive,
       wide: input.wide,

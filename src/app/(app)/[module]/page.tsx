@@ -678,8 +678,30 @@ async function RecordDrawer({
   for (const managers of Object.values(managersByCase)) for (const m of managers) authorIds.add(m);
   for (const e of entries) authorIds.add(e.createdBy);
 
+  // The viewer too: their own name must be bold when a colleague tags them,
+  // and the roster never contains yourself.
+  authorIds.add(ctx.userId);
   const authorNameMap = await profileNamesFor(ctx, Array.from(authorIds));
   const authorNames = Object.fromEntries(authorNameMap) as Record<string, string>;
+
+  // Field-mention entries in the feed carry the field's home as labels. Global
+  // configuration, resolved here where the whole of it is known (a tab the
+  // viewer cannot see is still named — the entry itself is only delivered
+  // when the viewer may see the field).
+  const fieldByKey = new Map(config.fields.map((f) => [f.key.toLowerCase(), f]));
+  const tabById = new Map(config.tabs.map((t) => [t.id, t]));
+  const subtabById = new Map(config.subtabs.map((s) => [s.id, s]));
+  const fieldPathByUpdate: Record<string, { tab: string; subtab: string | null; field: string }> = {};
+  for (const u of updates) {
+    if (!u.fieldKey) continue;
+    const f = fieldByKey.get(u.fieldKey.toLowerCase());
+    if (!f) continue;
+    fieldPathByUpdate[u.id] = {
+      tab: tabById.get(f.tabId)?.label ?? '',
+      subtab: f.subtabId ? (subtabById.get(f.subtabId)?.label ?? null) : null,
+      field: f.label,
+    };
+  }
 
   const headerMentions: Record<string, typeof mentions> = {};
   for (const m of mentions) if (m.fieldKey) (headerMentions[m.fieldKey] ??= []).push(m);
@@ -1080,6 +1102,7 @@ async function RecordDrawer({
         caseRoster={caseRoster}
         mentions={mentions}
         openMention={openMention}
+        fieldPathByUpdate={fieldPathByUpdate}
       />
     </section>
   );

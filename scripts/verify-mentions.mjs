@@ -24,9 +24,42 @@ const A_EMAIL = 'admin@tapdash.test';
 const B_EMAIL = 'demo.rep@tapdash.test';
 if (!/@([a-z0-9-]+\.)*test$/i.test(A_EMAIL) || !/@([a-z0-9-]+\.)*test$/i.test(B_EMAIL)) process.exit(1);
 
-const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
-await db.connect();
-const q = (s, p = []) => db.query(s, p).then((r) => r.rows);
+/*
+ * The pooled connection has been cut mid-run more than once (a ten-minute
+ * browser suite with quiet stretches). A dead client must neither crash the
+ * process (an unhandled 'error' event skips the cleanup) nor fail the next
+ * query: every query goes through `q`, which reconnects once.
+ */
+const connect = async () => {
+  // DNS for the pooler has failed outright mid-run (a flapping network); a
+  // few tries with a pause cover that without hiding a real outage.
+  let lastErr;
+  for (let i = 0; i < 6; i += 1) {
+    const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+    c.on('error', () => { dead = true; });
+    try {
+      await c.connect();
+      return c;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+    }
+  }
+  throw lastErr;
+};
+let dead = false;
+let db = await connect();
+const q = async (s, p = []) => {
+  if (dead) { db = await connect(); dead = false; }
+  try {
+    return (await db.query(s, p)).rows;
+  } catch (e) {
+    if (!/terminated|not queryable|Connection|ECONNRESET|timeout/i.test(String(e?.message))) throw e;
+    db = await connect();
+    dead = false;
+    return (await db.query(s, p)).rows;
+  }
+};
 
 // Names as the app shows them (`profile_names()`): the full name, else the email's local part.
 const NAME = `coalesce(nullif(btrim(p.full_name), ''), split_part(p.email::text, '@', 1))`;
@@ -70,7 +103,7 @@ const grant = (kind, id, level, mod) =>
      on conflict (user_id, scope_kind, scope_id, module_id) do update set grant_level = excluded.grant_level`,
     [B.id, kind, id, level, mod],
   );
-await db.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'module', $2, 'edit')
+await q(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'module', $2, 'edit')
                 on conflict (user_id, scope_kind, scope_id, module_id) do update set grant_level = 'edit'`, [B.id, leads.id]);
 await grant('tab', dba.tab_id, 'edit', leads.id);
 if (dba.subtab_id) await grant('subtab', dba.subtab_id, 'edit', leads.id);
@@ -84,7 +117,7 @@ const [probe] = await q(
   `insert into records (deal_name, creator_kind, creator_user_id, "values")
    values ('ZZ mention probe', 'user', $1, jsonb_build_object('team_members_assigned', jsonb_build_array($2::text), 'dba', 'Probe Trading'))
    returning id`, [A.id, B.id]);
-await db.query(`insert into record_modules (record_id, module_id, added_by) values ($1, $2, $3)`, [probe.id, leads.id, A.id]);
+await q(`insert into record_modules (record_id, module_id, added_by) values ($1, $2, $3)`, [probe.id, leads.id, A.id]);
 const REC = `${BASE}/${leads.slug}?record=${probe.id}`;
 
 const notifs = (where = 'true', p = []) =>
@@ -99,10 +132,16 @@ await ctxB.addCookies(await cookiesFor(B.id, B_EMAIL));
 // The app signs out anyone idle for 24 h on their next request; the test
 // accounts always are. Mark both as just seen, and put B's stamp back later.
 const seenBefore = await q(`select id, last_seen_at from profiles where id = any($1::uuid[])`, [[A.id, B.id]]);
-await db.query(`update profiles set last_seen_at = now() where id = any($1::uuid[])`, [[A.id, B.id]]);
+await q(`update profiles set last_seen_at = now() where id = any($1::uuid[])`, [[A.id, B.id]]);
 const a = await ctxA.newPage();
 const b = await ctxB.newPage();
 const b2 = await ctxB.newPage();
+// What the Realtime socket said on B's second tab — the live-count step reports it.
+const socket = [];
+b2.on('websocket', (w) => {
+  if (!/realtime/.test(w.url())) return;
+  w.on('framereceived', (f) => { const s = String(f.payload); if (/"system"|phx_error|phx_close/.test(s) && socket.length < 6) socket.push(s.slice(0, 160)); });
+});
 const errors = [];
 for (const p of [a, b, b2]) {
   p.on('pageerror', (e) => errors.push(String(e)));
@@ -143,9 +182,15 @@ async function fieldMention(p, fieldId, label, who, note, { includePrevious } = 
   await box.getByText('Finding who can see this field').waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
   const offered = await box.locator('button').evaluateAll((bs) => bs.map((x) => x.textContent.trim()).filter((x) => x && !/Cancel|Send|Close|Remove/.test(x)));
   if (!who) { await box.getByRole('button', { name: 'Cancel' }).click(); await p.waitForTimeout(300); return { offered }; }
-  await box.getByLabel('Who to mention').type(who.slice(0, 6), { delay: 30 });
-  await p.waitForTimeout(300);
-  await p.keyboard.press('Enter');
+  // Wait for the person to be offered (the candidates load after the box
+  // opens), pick them, and only continue once their chip is in the box.
+  const whoInput = box.getByLabel('Who to mention');
+  await whoInput.type(who.slice(0, 6), { delay: 30 });
+  const option = box.getByRole('button', { name: who, exact: true });
+  await option.first().waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
+  if (await option.count()) await option.first().click();
+  else await p.keyboard.press('Enter');
+  await box.getByRole('button', { name: `Remove ${who}` }).waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
   if (note) await box.getByLabel('Note').fill(note);
   const cb = box.getByRole('checkbox');
   const hasPrevious = (await cb.count()) > 0;
@@ -199,7 +244,11 @@ try {
 
   await tab(a, 'Cases').click();
   await a.waitForTimeout(800);
-  await a.getByRole('button', { name: 'Open a case' }).click();
+  // The form is client state; a click that lands during a server refresh is lost — try again.
+  for (let i = 0; i < 3 && !(await a.getByPlaceholder('Short title').count()); i += 1) {
+    await a.getByRole('button', { name: 'Open a case' }).click().catch(() => {});
+    await a.getByPlaceholder('Short title').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
+  }
   await a.getByPlaceholder('Short title').fill('Probe case');
   await a.getByPlaceholder(/Describe the problem/).fill('Something to look at.');
   await a.getByRole('button', { name: 'Open case' }).click();
@@ -215,7 +264,7 @@ try {
 
   /* ── 3. field mentions, with and without the previous value ───────────── */
   // A's own change to DBA a moment ago, as the product records it.
-  await db.query(
+  await q(
     `insert into record_activity (record_id, actor_id, kind, field_key, summary, from_value, to_value)
      values ($1, $2, 'field', 'dba', 'DBA changed', 'Old Trading Name', 'Probe Trading')`, [probe.id, A.id]);
   await tab(a, dba.tab_label).click();
@@ -233,7 +282,8 @@ try {
   t('unticking withholds the previous value', rows.length === 1 && rows[0].previous_value === null && rows[0].current_value === 'Probe Trading', JSON.stringify(rows.map((r) => [r.current_value, r.previous_value])));
   ids.field2 = rows[0]?.id;
   void f2;
-  t('field mentions never post to Updates', (await q(`select count(*)::int n from updates where record_id = $1 and deleted_at is null`, [probe.id]))[0].n === 2);
+  t('field mentions post to Updates as entries marked with the field', (await q(`select count(*)::int n from updates where record_id = $1 and deleted_at is null and field_key is not null`, [probe.id]))[0].n === 2);
+  t('…and the ordinary updates are untouched', (await q(`select count(*)::int n from updates where record_id = $1 and deleted_at is null and field_key is null`, [probe.id]))[0].n === 2);
 
   const emailed = await q(`select count(*)::int n from notifications where recipient_id = $1 and record_id = $2 and email_sent_at is not null`, [B.id, probe.id]);
   notes.push(process.env.SMTP_HOST
@@ -276,6 +326,11 @@ try {
   await tab(b, 'Updates').click();
   await b.waitForTimeout(800);
   t('the thread and reply carry the "@ You" chip', (await b.getByText('You', { exact: true }).count()) >= 2, `${await b.getByText('You', { exact: true }).count()}`);
+  const chipText = `${dba.tab_label} → ${dba.subtab_label ? dba.subtab_label + ' → ' : ''}${dba.label}`;
+  t('the field mention shows in Updates with its note', (await b.getByText('Please confirm the trading name.', { exact: true }).count()) === 1);
+  t(`…with the chip "${chipText}" by the sender's name`, (await b.getByTitle('Mentioned from this field').filter({ hasText: chipText }).count()) === 2);
+  const strongs = await b.locator('strong').allTextContents();
+  t('only the name is bold in a mention', strongs.filter((x) => x === `@${B.name}`).length >= 2 && !strongs.some((x) => /please|review|reply/i.test(x)), strongs.join(' | '));
 
   /* ── 5. click-through via the row badge: lands on the oldest ──────────── */
   await goto(b, `${BASE}/${leads.slug}`);
@@ -343,9 +398,10 @@ try {
     waited = Date.now() - t0;
   }
   t('sidebar count rises in another tab without a refresh', after !== before, `${before} → ${after} after ${Math.round(waited / 1000)} s`);
-  notes.push(waited < 15000 ? `live count arrived in ${Math.round(waited / 1000)} s — Realtime is working on this project`
-    : waited < 75000 ? `live count took ${Math.round(waited / 1000)} s — that is the 60 s poll; enable Realtime for the notifications table in the Supabase dashboard`
+  notes.push(waited < 15000 ? `live count arrived in ${Math.round(waited / 1000)} s — over the Realtime socket`
+    : waited < 75000 ? `live count took ${Math.round(waited / 1000)} s — the 60 s poll carried it; the Realtime join was slow or refused this time (see useLiveCounts.ts)`
     : 'live count never changed');
+  if (socket.length) notes.push('realtime socket said: ' + socket.join(' ‖ '));
 
   /* ── 9. mute ───────────────────────────────────────────────────────────── */
   await openRecord(b);
@@ -366,38 +422,41 @@ try {
   /* ── 10. edit removes, delete removes ────────────────────────────────── */
   await tab(a, 'Updates').click();
   await a.waitForTimeout(800);
+  const fieldEntries = (await q(`select count(*)::int n from updates where record_id = $1 and deleted_at is null and field_key is not null`, [probe.id]))[0].n;
+  t('a field-mention entry can be removed but not edited', (await a.getByTitle('Edit your update').count()) === 1 && (await a.getByTitle('Remove your update').count()) === 1 + fieldEntries, `${await a.getByTitle('Edit your update').count()} edit, ${await a.getByTitle('Remove your update').count()} remove, ${fieldEntries} field entries`);
   const liveBefore = await unreadB();
-  await a.getByRole('button', { name: /Remove your update|Remove as admin/ }).first().click();
+  // The ORIGINAL update, not the newest entry (field mentions sit in the feed too, newest first).
+  await a.locator('li', { hasText: 'Please review this' }).first().getByRole('button', { name: /Remove your update|Remove as admin/ }).first().click();
   await a.getByRole('button', { name: /Remove|Confirm|Yes/ }).last().click().catch(() => {});
   await a.waitForTimeout(3000);
   const revoked = await q(`select count(*)::int n from notifications where id in ($1, $2) and revoked_at is not null`, [ids.update, ids.reply]);
   t('removing the update revokes its mentions (and its reply’s)', revoked[0].n === 2, `${revoked[0].n} of 2 revoked; unread ${liveBefore} → ${await unreadB()}`);
 
   /* ── 11. recycle bin hides, restore returns; lost access hides ───────── */
-  await db.query(`update records set deleted_at = now() where id = $1`, [probe.id]);
+  await q(`update records set deleted_at = now() where id = $1`, [probe.id]);
   await goto(b, `${BASE}/notifications`);
   t('nothing from a record in the Recycle Bin is listed', (await b.getByRole('listitem').count()) === 0 || !(await b.getByRole('list').textContent()).includes('ZZ mention probe'));
-  await db.query(`update records set deleted_at = null where id = $1`, [probe.id]);
-  await db.query(`update notifications set read_at = null where id = $1`, [ids.field2]);
+  await q(`update records set deleted_at = null where id = $1`, [probe.id]);
+  await q(`update notifications set read_at = null where id = $1`, [ids.field2]);
   await goto(b, `${BASE}/notifications`);
   t('restoring brings them back', (await b.getByRole('list').textContent()).includes('ZZ mention probe'));
-  await db.query(`update records set "values" = "values" || '{"team_members_assigned": []}'::jsonb where id = $1`, [probe.id]);
+  await q(`update records set "values" = "values" || '{"team_members_assigned": []}'::jsonb where id = $1`, [probe.id]);
   await goto(b, `${BASE}/n/${ids.field2}`);
   t('an old link after losing access says it is no longer available', (await b.getByText('no longer available').count()) > 0);
-  await db.query(`update records set "values" = "values" || jsonb_build_object('team_members_assigned', jsonb_build_array($2::text)) where id = $1`, [probe.id, B.id]);
+  await q(`update records set "values" = "values" || jsonb_build_object('team_members_assigned', jsonb_build_array($2::text)) where id = $1`, [probe.id, B.id]);
 
   /* ── 12. bulk edits create nothing ───────────────────────────────────── */
   const countBefore = (await notifs()).length;
-  await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
-  await db.query(`begin`);
-  await db.query(`set local role authenticated`);
-  await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
-  await db.query(`select bulk_set_values($1::uuid[], 'dba', to_jsonb('Bulk Name'::text), 'bulk')`, [[probe.id]]).catch((e) => notes.push('bulk_set_values: ' + e.message));
-  await db.query(`rollback`);
+  await q(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
+  await q(`begin`);
+  await q(`set local role authenticated`);
+  await q(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
+  await q(`select bulk_set_values($1::uuid[], 'dba', to_jsonb('Bulk Name'::text), 'bulk')`, [[probe.id]]).catch((e) => notes.push('bulk_set_values: ' + e.message));
+  await q(`rollback`);
   t('a bulk edit creates no mention', (await notifs()).length === countBefore);
 
   /* ── 13. phone alerts count on the Phone item and clear on open ──────── */
-  await db.query(`select notify($1, 'Missed call', $2, 'call')`, [B.id, probe.id]);
+  await q(`select notify($1, 'Missed call', $2, 'call')`, [B.id, probe.id]);
   await goto(b, `${BASE}/${leads.slug}`);
   t('a phone alert counts on the Phone sidebar item', (await sidebarCount(b, 'Phone')) !== '');
   await goto(b, `${BASE}/phone`);
@@ -412,31 +471,36 @@ try {
   fail.push(`crashed: ${e.stack || e}`);
 } finally {
   await browser.close().catch(() => {});
-  /* ── undo everything ── */
-  await db.query('reset role').catch(() => {});
-  await db.query(`delete from notification_mutes where user_id = $1 and record_id = $2`, [B.id, probe.id]).catch(() => {});
-  await db.query(`update records set deleted_at = now() where id = $1`, [probe.id]).catch(() => {});
+  /* ── undo everything — on a FRESH connection: the pooled one has dropped
+        mid-run twice, and a cleanup that dies leaves the probe and B's
+        grants behind. ── */
+  await db.end().catch(() => {});
+  const db2 = await connect();
+  await db2.query('reset role').catch(() => {});
+  await db2.query(`delete from notification_mutes where user_id = $1 and record_id = $2`, [B.id, probe.id]).catch(() => {});
+  await db2.query(`update records set deleted_at = now() where id = $1`, [probe.id]).catch(() => {});
   // purge_record is admin-only: run it as A, the way the Recycle Bin does.
-  await db.query('begin');
-  await db.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
-  await db.query('set local role authenticated');
-  await db.query(`select purge_record($1)`, [probe.id]).then(() => db.query('commit')).catch(async (e) => {
-    await db.query('rollback').catch(() => {});
+  await db2.query('begin');
+  await db2.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ sub: A.id, role: 'authenticated' })]);
+  await db2.query('set local role authenticated');
+  await db2.query(`select purge_record($1)`, [probe.id]).then(() => db2.query('commit')).catch(async (e) => {
+    await db2.query('rollback').catch(() => {});
     notes.push('purge_record failed: ' + e.message + ' — removing rows directly');
-    await db.query(`delete from notifications where record_id = $1`, [probe.id]).catch(() => {});
-    await db.query(`delete from records where id = $1`, [probe.id]).catch(() => {});
+    await db2.query(`delete from notifications where record_id = $1`, [probe.id]).catch(() => {});
+    await db2.query(`delete from records where id = $1`, [probe.id]).catch(() => {});
   });
-  await db.query(`delete from user_grants where user_id = $1`, [B.id]);
+  await db2.query(`delete from user_grants where user_id = $1`, [B.id]).catch(() => {});
   for (const g of grantsBefore) {
-    await db.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id) values ($1, $2, $3, $4, $5)`,
+    await db2.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id) values ($1, $2, $3, $4, $5)`,
       [B.id, g.scope_kind, g.scope_id, g.grant_level, g.module_id]).catch(() => {});
   }
-  for (const r of seenBefore) await db.query(`update profiles set last_seen_at = $2 where id = $1`, [r.id, r.last_seen_at]).catch(() => {});
-  for (const [id, hash] of savedHashes) if (hash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
-  const left = await q(`select count(*)::int n from records where deal_name = 'ZZ mention probe'`);
-  const grantsAfter = await q(`select count(*)::int n from user_grants where user_id = $1`, [B.id]);
+  for (const r of seenBefore) await db2.query(`update profiles set last_seen_at = $2 where id = $1`, [r.id, r.last_seen_at]).catch(() => {});
+  for (const [id, hash] of savedHashes) if (hash) await db2.query('update auth.users set encrypted_password = $2 where id = $1', [id, hash]).catch(() => {});
+  const q2 = (s, p = []) => db2.query(s, p).then((r) => r.rows);
+  const left = await q2(`select count(*)::int n from records where deal_name = 'ZZ mention probe'`);
+  const grantsAfter = await q2(`select count(*)::int n from user_grants where user_id = $1`, [B.id]);
   notes.push(`cleanup: probe records left ${left[0].n}; B's grants ${grantsBefore.length} → ${grantsAfter[0].n}`);
-  await db.end();
+  await db2.end();
 }
 
 console.log(`\n${pass.length} passed, ${fail.length} failed\n`);

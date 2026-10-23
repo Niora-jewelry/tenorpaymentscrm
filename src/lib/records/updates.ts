@@ -8,6 +8,9 @@
  * `teamMemberIdsFor`/`profile_names`), and this file's job is only to pass
  * those ids through to the one function that's allowed to write
  * `update_mentions` and call `notify()` (which has no client grant at all).
+ *
+ * A field mention (`mention_field`) also writes an entry here, marked by
+ * `field_key`; the body is the sender's note. Those entries are read-only.
  */
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -24,6 +27,8 @@ export type Update = {
   createdAt: string;
   editedAt: string | null;
   mentionedUserIds: string[];
+  /** Set when the entry is a field mention: the field it was sent from. */
+  fieldKey: string | null;
 };
 
 /** A person who may be @mentioned here (see `mention_candidates`). */
@@ -39,6 +44,7 @@ function mapUpdate(r: Record<string, unknown>, mentionedUserIds: string[]): Upda
     createdAt: r.created_at as string,
     editedAt: (r.edited_at as string | null) ?? null,
     mentionedUserIds,
+    fieldKey: (r.field_key as string | null) ?? null,
   };
 }
 

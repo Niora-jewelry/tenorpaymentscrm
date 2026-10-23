@@ -37,9 +37,21 @@
  *     1. numbered
  *     > quote
  *     [label](https://…)   and bare https://… links
- *     @Name              (highlighted, and what drives notifications)
+ *     @Name              (bold, and what drives notifications)
  *
  * Blank lines separate paragraphs; single newlines are line breaks.
+ *
+ * ── MENTIONS ARE MATCHED AGAINST KNOWN NAMES, NOT GUESSED ────────────────
+ * The first version guessed a name as "@" + one word + an optional second
+ * capitalised word. So "@Alex Please call" made "@Alex Please" the mention,
+ * a three-word name was cut in two, and "jane@Acme.com" lit up "@Acme.com".
+ * The client's words: "the user name should be bolded but not the rest".
+ *
+ * The caller passes the names that can be mentioned here (the roster plus
+ * the thread's authors). A mention is "@" followed by exactly one of them,
+ * longest first so "Alex Chen" wins over "Alex", not preceded or followed by
+ * a word character. Anything else that starts with "@" is plain text. The
+ * same rule the server uses to decide who was notified (`parseMentions`).
  */
 import type { ReactNode } from 'react';
 
@@ -62,25 +74,38 @@ function safeHref(url: string): string | null {
  * because a second pass over already-produced nodes is how a marker inside a
  * code span ends up being formatted anyway.
  */
-const INLINE = new RegExp(
-  [
-    '(?<code>`[^`\\n]+`)',
-    '(?<bold>\\*\\*[^*\\n]+\\*\\*)',
-    '(?<strike>~~[^~\\n]+~~)',
-    '(?<italic>\\*[^*\\n]+\\*|_[^_\\n]+_)',
-    '(?<link>\\[[^\\]\\n]+\\]\\([^)\\s]+\\))',
-    '(?<bare>(?:https?:\\/\\/|www\\.)[^\\s<>()]+)',
-    '(?<mention>@[A-Za-z][A-Za-z0-9._-]*(?: [A-Z][A-Za-z0-9._-]*)?)',
-  ].join('|'),
-  'g',
-);
+const INLINE_PARTS = [
+  '(?<code>`[^`\\n]+`)',
+  '(?<bold>\\*\\*[^*\\n]+\\*\\*)',
+  '(?<strike>~~[^~\\n]+~~)',
+  '(?<italic>\\*[^*\\n]+\\*|_[^_\\n]+_)',
+  '(?<link>\\[[^\\]\\n]+\\]\\([^)\\s]+\\))',
+  '(?<bare>(?:https?:\\/\\/|www\\.)[^\\s<>()]+)',
+];
 
-function inline(text: string, keyPrefix: string): ReactNode[] {
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** One compiled expression per distinct set of names; a drawer re-renders often. */
+const INLINE_CACHE = new Map<string, RegExp>();
+
+function inlineRegexFor(names: readonly string[]): RegExp {
+  const clean = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean))).sort((a, b) => b.length - a.length);
+  const key = clean.join('\0');
+  const hit = INLINE_CACHE.get(key);
+  if (hit) return hit;
+  const parts = [...INLINE_PARTS];
+  if (clean.length) parts.push(`(?<mention>(?<![A-Za-z0-9._-])@(?:${clean.map(escapeRe).join('|')})(?![A-Za-z0-9._-]))`);
+  const re = new RegExp(parts.join('|'), 'g');
+  INLINE_CACHE.set(key, re);
+  return re;
+}
+
+function inline(text: string, keyPrefix: string, re: RegExp): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
   let i = 0;
 
-  for (const m of text.matchAll(INLINE)) {
+  for (const m of text.matchAll(re)) {
     const at = m.index ?? 0;
     if (at > last) out.push(text.slice(last, at));
     const g = m.groups ?? {};
@@ -109,11 +134,8 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
       const href = safeHref(g.bare);
       out.push(href ? <Link key={key} href={href}>{g.bare}</Link> : <span key={key}>{g.bare}</span>);
     } else if (g.mention) {
-      out.push(
-        <span key={key} className="rounded bg-brand-50 px-1 font-semibold text-brand-700">
-          {g.mention}
-        </span>,
-      );
+      // Bold only — the name stands out, the sentence around it reads as text.
+      out.push(<strong key={key} className="font-semibold text-ink-900">{g.mention}</strong>);
     }
     last = at + m[0].length;
   }
@@ -147,7 +169,17 @@ const QUOTE = /^\s*>\s?(.*)$/;
  * `body` is whatever the user typed. Nothing here trusts it as markup — see the
  * file header.
  */
-export function RichText({ body, className = '' }: { body: string; className?: string }) {
+export function RichText({
+  body,
+  className = '',
+  names = [],
+}: {
+  body: string;
+  className?: string;
+  /** The people who can be mentioned here: `@` + one of these is a mention. */
+  names?: readonly string[];
+}) {
+  const re = inlineRegexFor(names);
   const lines = body.replace(/\r\n/g, '\n').split('\n');
   const blocks: ReactNode[] = [];
 
@@ -162,7 +194,7 @@ export function RichText({ body, className = '' }: { body: string; className?: s
     const text = paragraph.join('\n');
     blocks.push(
       <p key={`p${key++}`} className="whitespace-pre-wrap">
-        {inline(text, `p${key}`)}
+        {inline(text, `p${key}`, re)}
       </p>,
     );
     paragraph = [];
@@ -172,7 +204,7 @@ export function RichText({ body, className = '' }: { body: string; className?: s
     const items = bullets;
     blocks.push(
       <ul key={`u${key++}`} className="list-disc space-y-0.5 pl-5">
-        {items.map((t, n) => <li key={n}>{inline(t, `u${key}-${n}`)}</li>)}
+        {items.map((t, n) => <li key={n}>{inline(t, `u${key}-${n}`, re)}</li>)}
       </ul>,
     );
     bullets = [];
@@ -182,7 +214,7 @@ export function RichText({ body, className = '' }: { body: string; className?: s
     const items = numbers;
     blocks.push(
       <ol key={`o${key++}`} className="list-decimal space-y-0.5 pl-5">
-        {items.map((t, n) => <li key={n}>{inline(t, `o${key}-${n}`)}</li>)}
+        {items.map((t, n) => <li key={n}>{inline(t, `o${key}-${n}`, re)}</li>)}
       </ol>,
     );
     numbers = [];
@@ -192,7 +224,7 @@ export function RichText({ body, className = '' }: { body: string; className?: s
     const text = quote.join('\n');
     blocks.push(
       <blockquote key={`q${key++}`} className="border-l-2 border-line pl-3 italic text-ink-500">
-        <span className="whitespace-pre-wrap">{inline(text, `q${key}`)}</span>
+        <span className="whitespace-pre-wrap">{inline(text, `q${key}`, re)}</span>
       </blockquote>,
     );
     quote = [];

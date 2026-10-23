@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { recordMentionsAction } from './actions';
 import { CHANGED_EVENT } from '../useLiveCounts';
 import type { Candidate, NotificationView } from '@/lib/records/notifications';
+import type { FieldPath } from './UpdatesPanel';
 import { Icon } from '@/proto/ui/icons';
 import { CountPill, CompletenessBadge } from '@/proto/ui/kit';
 import type { Field as ProtoField } from '@/proto/schema';
@@ -116,7 +117,10 @@ export function DrawerTabs({
   caseRoster = [],
   mentions: initialMentions = [],
   openMention = null,
+  fieldPathByUpdate = {},
 }: {
+  /** Field-mention entries in Updates: the field's home, as labels. */
+  fieldPathByUpdate?: Record<string, FieldPath>;
   moduleSlug: string;
   recordId: string;
   tabs: TabPayload[];
@@ -190,7 +194,9 @@ export function DrawerTabs({
       if (m.tabKey) byTab[m.tabKey] = (byTab[m.tabKey] ?? 0) + 1;
       if (m.tabKey && m.subtabKey) bySubtab[`${m.tabKey}/${m.subtabKey}`] = (bySubtab[`${m.tabKey}/${m.subtabKey}`] ?? 0) + 1;
       if (m.fieldKey) (byField[m.fieldKey] ??= []).push(m);
-      if (m.updateId) byUpdate[m.updateId] = m;
+      // A field mention also has an update id (its feed entry), but it is
+      // read on the FIELD; the feed shows it without a dot.
+      if (m.updateId && m.sourceKind === 'mention_update') byUpdate[m.updateId] = m;
       if (m.caseId) (byCase[m.caseId] ??= []).push(m);
     }
     return { byTab, bySubtab, byField, byUpdate, byCase };
@@ -498,7 +504,8 @@ export function DrawerTabs({
             teamRoster={teamRoster}
             editable={activeTab.editable}
             mentionsByUpdate={mentionsByTab.byUpdate}
-            openMention={openMention?.updateId ? openMention : null}
+            openMention={openMention?.sourceKind === 'mention_update' ? openMention : null}
+            fieldPathByUpdate={fieldPathByUpdate}
           />
         ) : activeTab.kind === 'files' ? (
           <FilesPanel

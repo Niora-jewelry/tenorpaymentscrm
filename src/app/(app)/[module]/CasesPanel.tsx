@@ -6,7 +6,7 @@
  * server-side inside `set_case_solution()`/`toggle_case_state()` (migration
  * 30) — `isManager` here only decides what to show, same as the prototype.
  */
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useActionState } from 'react';
 import { Icon } from '@/proto/ui/icons';
@@ -246,6 +246,7 @@ function CaseCard({
   const [replyDraft, setReplyDraft] = useState('');
   const [replyMentionIds, setReplyMentionIds] = useState<string[]>([]);
   const mentionedReplies = new Set(mentions.map((m) => m.caseReplyId));
+  const knownNames = useMemo(() => Array.from(new Set([...roster.map((m) => m.name), ...Object.values(authorNames)])), [roster, authorNames]);
   const flashCard = useFlashTarget(targetId.case(c.id), Boolean(openMention) && !openMention?.caseReplyId);
   const [error, setError] = useState<string | null>(null);
   /*
@@ -570,7 +571,7 @@ function CaseCard({
                       >
                         <UserAvatar userId={r.authorId} name={name} size={20} />
                         <div className="min-w-0 flex-1">
-                          <RichText body={r.body} className="text-[13px] leading-relaxed text-ink-700" />
+                          <RichText body={r.body} names={knownNames} className="text-[13px] leading-relaxed text-ink-700" />
                           <p className="text-[11px] text-ink-400">
                             {name} · {relative(r.createdAt, now)} · not editable
                             {r.mentionedUserIds.length ? ` · ${r.mentionedUserIds.map((id) => `@${authorNames[id] ?? 'Unknown user'}`).join(', ')} notified` : ''}

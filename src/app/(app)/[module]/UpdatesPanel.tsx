@@ -18,6 +18,9 @@ import { MentionTextarea } from './MentionTextarea';
 import { RichText } from '@/proto/ui/richText';
 import { addUpdateAction, editUpdateAction, deleteUpdateAction } from './actions';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
+
+/** The home of a field, as labels, for the chip on a field-mention entry. */
+export type FieldPath = { tab: string; subtab: string | null; field: string };
 import type { NotificationView } from '@/lib/records/notifications';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 
@@ -32,10 +35,13 @@ export function UpdatesPanel({
   editable,
   mentionsByUpdate = {},
   openMention = null,
+  fieldPathByUpdate = {},
 }: {
   moduleSlug: string;
   recordId: string;
   updates: Update[];
+  /** For a field-mention entry: where the field lives, as labels. */
+  fieldPathByUpdate?: Record<string, FieldPath>;
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
@@ -54,6 +60,13 @@ export function UpdatesPanel({
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [postError, setPostError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Who can be bold: the roster plus everyone who wrote here (an author who
+  // has since left the team still has their name in the thread).
+  const knownNames = useMemo(
+    () => Array.from(new Set([...teamRoster.map((m) => m.name), ...Object.values(authorNames)])),
+    [teamRoster, authorNames],
+  );
 
   const threads = useMemo(() => {
     const roots = updates.filter((u) => !u.parentId).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
@@ -126,6 +139,8 @@ export function UpdatesPanel({
           {threads.map(({ root, replies }) => (
             <Thread
               key={root.id}
+              knownNames={knownNames}
+              fieldPath={fieldPathByUpdate[root.id] ?? null}
               moduleSlug={moduleSlug}
               root={root}
               replies={replies}
@@ -148,6 +163,8 @@ function Thread({
   moduleSlug,
   root,
   replies,
+  knownNames,
+  fieldPath,
   teamRoster,
   authorNames,
   viewerId,
@@ -159,6 +176,9 @@ function Thread({
   moduleSlug: string;
   root: Update;
   replies: Update[];
+  knownNames: string[];
+  /** Set for a field-mention entry. */
+  fieldPath: FieldPath | null;
   mentionsByUpdate: Record<string, NotificationView>;
   openMention: NotificationView | null;
   /** Needed down here too: editing an update keeps the same composer, and that
@@ -240,21 +260,34 @@ function Thread({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-[13px] font-semibold text-ink-900">{authorName}</span>
+            {fieldPath ? (
+              /* A field mention's trace in the feed: where it was sent from. */
+              <span
+                title="Mentioned from this field"
+                className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-600"
+              >
+                <Icon name="at-sign" size={9} strokeWidth={2.5} />
+                {fieldPath.tab} → {fieldPath.subtab ? `${fieldPath.subtab} → ` : ''}{fieldPath.field}
+              </span>
+            ) : null}
             <span className="text-[11.5px] text-ink-400">{relative(root.createdAt, now)}</span>
             {root.editedAt ? <span className="text-[11.5px] text-ink-400">(edited)</span> : null}
             {mentionedHere(root.id) ? <MentionedYou /> : null}
             {editable && (mine || isAdmin) ? (
               <span className="ml-auto flex gap-0.5">
-                <IconButton
-                  icon="pencil"
-                  size={22}
-                  title={mine ? 'Edit your update' : 'Edit as admin'}
-                  onClick={() => {
-                    setEditing(true);
-                    setEditDraft(root.body);
-                    setError(null);
-                  }}
-                />
+                {/* A field entry records what was sent; it can be removed, not rewritten. */}
+                {!root.fieldKey ? (
+                  <IconButton
+                    icon="pencil"
+                    size={22}
+                    title={mine ? 'Edit your update' : 'Edit as admin'}
+                    onClick={() => {
+                      setEditing(true);
+                      setEditDraft(root.body);
+                      setError(null);
+                    }}
+                  />
+                ) : null}
                 <IconButton icon="trash" size={22} tone="danger" title={mine ? 'Remove your update' : 'Remove as admin'} onClick={remove} />
               </span>
             ) : null}
@@ -286,7 +319,7 @@ function Thread({
               </div>
             </div>
           ) : (
-            <RichText body={root.body} className="mt-1 text-[13.5px] leading-relaxed text-ink-700" />
+            <RichText body={root.body} names={knownNames} className="mt-1 text-[13.5px] leading-relaxed text-ink-700" />
           )}
 
           {!editing && root.mentionedUserIds.length ? (
@@ -313,6 +346,7 @@ function Thread({
               {replies.map((r) => (
                 <Reply
                   key={r.id}
+                  knownNames={knownNames}
                   r={r}
                   now={now}
                   authorNames={authorNames}
@@ -353,12 +387,14 @@ function Reply({
   r,
   now,
   authorNames,
+  knownNames,
   mentioned,
   flash,
 }: {
   r: Update;
   now: Date;
   authorNames: Record<string, string>;
+  knownNames: string[];
   mentioned: boolean;
   flash: boolean;
 }) {
@@ -374,7 +410,7 @@ function Reply({
           replies", and a reply that shows its markers raw while the update
           above it renders would read as a bug in the update, not a limitation
           of the reply. */}
-      <RichText body={r.body} className="text-[13px] leading-relaxed text-ink-700" />
+      <RichText body={r.body} names={knownNames} className="text-[13px] leading-relaxed text-ink-700" />
       {r.mentionedUserIds.length ? (
         <p className="mt-1 inline-flex flex-wrap items-center gap-x-1 text-[11.5px] text-brand-700">
           <Icon name="bell" size={10} />

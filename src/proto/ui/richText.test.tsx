@@ -104,12 +104,43 @@ describe('RichText — formatting', () => {
     expect((out.match(/<p /g) ?? []).length).toBe(1);
   });
 
-  it('highlights a mention', () => {
-    // Mentions must still read as plain "@Name" in the stored body — that is
-    // what `parseMentions` scans for — so this only styles what is already
-    // there.
-    const out = html('thanks @Jane Doe');
-    expect(out).toContain('@Jane Doe');
+  describe('mentions — the name is bold, nothing else', () => {
+    const strongOf = (out: string) => Array.from(out.matchAll(/<strong[^>]*>(.*?)<\/strong>/g)).map((m) => m[1]);
+    const withNames = (body: string, names: string[]) => renderToStaticMarkup(<RichText body={body} names={names} />);
+
+    it('bolds exactly the known name and keeps the stored text intact', () => {
+      const out = withNames('thanks @Jane Doe', ['Jane Doe']);
+      expect(strongOf(out)).toEqual(['@Jane Doe']);
+      expect(out).toContain('thanks ');
+    });
+
+    it('does not swallow the word after a one-word name', () => {
+      const out = withNames('@Alex Please call them', ['Alex']);
+      expect(strongOf(out)).toEqual(['@Alex']);
+      expect(out).toContain('</strong> Please call them');
+    });
+
+    it('leaves an email address alone', () => {
+      expect(strongOf(withNames('write to jane@Acme.com today', ['Acme', 'Acme.com']))).toEqual([]);
+    });
+
+    it('handles a three-word name', () => {
+      expect(strongOf(withNames('cc @Mary Ann Lee on this', ['Mary Ann Lee']))).toEqual(['@Mary Ann Lee']);
+    });
+
+    it('prefers the longest name', () => {
+      expect(strongOf(withNames('@Alex Chen and @Alex', ['Alex', 'Alex Chen']))).toEqual(['@Alex Chen', '@Alex']);
+    });
+
+    it('leaves an unknown @word as plain text', () => {
+      const out = withNames('ping @nobody and @Jane', ['Jane Doe']);
+      expect(strongOf(out)).toEqual([]);
+      expect(out).toContain('@nobody');
+    });
+
+    it('with no names, nothing is a mention', () => {
+      expect(strongOf(html('thanks @Jane Doe'))).toEqual([]);
+    });
   });
 
   it('renders an empty body without throwing', () => {

@@ -296,9 +296,36 @@ suite('@mentions — who, what and when', () => {
     await owner(`update fields set sensitive = false where id = $1`, [einField]);
   });
 
-  it('a field mention is not an update', async () => {
-    const rows = await owner(`select 1 from updates where record_id = $1 and deleted_at is null`, [rec]);
-    expect(rows).toHaveLength(0);
+  it('a field mention is posted to Updates as a read-only entry by the sender, with the field on it', async () => {
+    const rows = await owner(`select * from updates where record_id = $1 and deleted_at is null and field_key is not null order by created_at`, [rec]);
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    const first = rows[0];
+    expect(first.body).toBe('Please verify');
+    expect(first.author_id).toBe(admin);
+    expect(String(first.field_key).toLowerCase()).toBe('ein');
+    expect((await owner(`select user_id from update_mentions where update_id = $1`, [first.id])).map((r) => r.user_id)).toEqual([member]);
+    const [n] = await owner(`select update_id from notifications where id = $1`, [fieldNotif]);
+    expect(n.update_id).toBe(first.id);
+    // The alert still lands on the FIELD, not on the Updates tab.
+    const mine = await as<{ update_id: string; tab_key: string }>(member, `select update_id, tab_key from my_record_mentions($1) where id = $2`, [rec, fieldNotif]);
+    expect(mine[0].update_id).toBe(first.id);
+    expect(mine[0].tab_key).not.toBe('updates');
+    // The member can read the entry (they may see the field)…
+    expect(await as(member, `select 1 from updates where id = $1`, [first.id])).toHaveLength(1);
+    // …and it cannot be edited, only removed.
+    await expect(as(admin, `select edit_update_with_mentions($1, 'rewritten', '{}'::uuid[])`, [first.id])).rejects.toMatchObject({ code: '42501' });
+    const [unticked] = await owner(`select n.id, n.update_id from notifications n where n.recipient_id = $1 and n.record_id = $2 and n.note = 'unticked'`, [member, rec]);
+    await as(admin, `select delete_update($1)`, [unticked.update_id]);
+    const [after] = await owner(`select revoked_at from notifications where id = $1`, [unticked.id]);
+    expect(after.revoked_at).not.toBeNull();
+    expect(await as(member, `select 1 from my_record_mentions($1) where id = $2`, [rec, unticked.id])).toHaveLength(0);
+  });
+
+  it('a field-mention entry is absent for a viewer whose grant hides the field', async () => {
+    await owner(`update user_grants set grant_level = 'hidden' where user_id = $1 and scope_kind = 'field' and scope_id = $2`, [member, einField]);
+    expect(await as(member, `select 1 from updates where record_id = $1 and field_key is not null`, [rec])).toHaveLength(0);
+    await owner(`update user_grants set grant_level = 'edit' where user_id = $1 and scope_kind = 'field' and scope_id = $2`, [member, einField]);
+    expect((await as(member, `select 1 from updates where record_id = $1 and field_key is not null`, [rec])).length).toBeGreaterThanOrEqual(1);
   });
 
   it('a note over 500 characters and a hidden field are refused', async () => {
@@ -375,6 +402,8 @@ suite('@mentions — who, what and when', () => {
     const [{ n }] = await as<{ n: number }>(admin, `select mention_field($1, 'ein', $2::uuid[], 'while muted', false) as n`, [rec, [member]]);
     expect(n).toBe(0);
     expect(await notifsFor(member, `note = 'while muted'`)).toHaveLength(0);
+    // …and no feed entry either: nobody was alerted, so there is nothing to record.
+    expect(await owner(`select 1 from updates where record_id = $1 and body = 'while muted'`, [rec])).toHaveLength(0);
     await as(member, `delete from notification_mutes where user_id = auth.uid() and record_id = $1`, [rec]);
     expect(await notifsFor(member, `note = 'while muted'`)).toHaveLength(0);
   });

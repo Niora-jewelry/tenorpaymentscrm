@@ -6,8 +6,9 @@
  * `FieldMentionButton` — the small @ beside a field's label. Opens a box with
  * a people picker (only people who can see this exact field), an optional
  * note, and "Include previous value" when the sender changed the field in
- * the last ten minutes. Sending creates one notification per person — and
- * nothing in the Updates feed.
+ * the last ten minutes. Sending creates one notification per person, and an
+ * entry in the Updates feed that names the field (the client's "sync the @
+ * on fields to the Updates section").
  *
  * `FieldMentionNote` — what the mentioned person sees: a dot on the label,
  * and a small panel beside the field with who, when, the note and the
@@ -19,6 +20,7 @@
  * the card's edge and let the next card paint over it. No z-index fixes that.
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, Spinner } from '@/proto/ui/kit';
 import { MenuSurface } from '@/proto/ui/MenuSurface';
@@ -58,6 +60,7 @@ export function FieldMentionButton({
   const [sent, setSent] = useState<string | null>(null);
   const anchor = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
+  const router = useRouter();
 
   useEffect(() => {
     if (!sent) return;
@@ -96,6 +99,8 @@ export function FieldMentionButton({
           onSent={(names) => {
             setOpen(false);
             setSent(`Sent to ${names.length <= 2 ? names.join(' and ') : `${names[0]} +${names.length - 1}`}`);
+            // The feed entry: an open Updates tab shows it without a reload.
+            router.refresh();
           }}
         />
       ) : null}

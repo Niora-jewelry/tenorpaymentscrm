@@ -34,7 +34,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
-import { createTemplate, renameTemplate, deleteTemplate } from '@/lib/records/adminTemplates';
+import { createTemplate, renameTemplate, deleteTemplate, templateMembers, type TemplateMember } from '@/lib/records/adminTemplates';
 import {
   clearTemplateGrant,
   setTemplateGrant,
@@ -46,6 +46,7 @@ import {
   createTemplateSchema,
   renameTemplateSchema,
   deleteTemplateSchema,
+  templateIdSchema,
   setTemplateGrantSchema,
   setTemplateGrantsSchema,
   clearTemplateGrantSchema,
@@ -94,11 +95,19 @@ export async function renameTemplateAction(templateId: string, label: string): P
   return { ok: true };
 }
 
-/** Deletes a template nobody is attached to; see `deleteTemplate` for the guards. */
-export async function deleteTemplateAction(templateId: string): Promise<TemplateFormState> {
+/** The people on a template — the delete dialog lists them before they are moved. */
+export async function templateMembersAction(templateId: string): Promise<{ ok: true; members: TemplateMember[] } | { ok: false; message: string }> {
+  const ctx = await authorize();
+  const parsed = templateIdSchema.safeParse({ templateId });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+  return { ok: true, members: await templateMembers(ctx, parsed.data.templateId) };
+}
+
+/** Deletes a template, moving anyone on it to `moveToTemplateId`; see `deleteTemplate` for the guards. */
+export async function deleteTemplateAction(templateId: string, moveToTemplateId: string | null = null): Promise<TemplateFormState> {
   const ctx = await authorize();
 
-  const parsed = deleteTemplateSchema.safeParse({ templateId });
+  const parsed = deleteTemplateSchema.safeParse({ templateId, moveToTemplateId });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await deleteTemplate(ctx, parsed.data);

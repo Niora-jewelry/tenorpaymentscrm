@@ -30,11 +30,12 @@
  * expensive. Retiring a template belongs with the other deferred deletion work.
  *
  * ── UPDATE, 23 Oct 2026: A GUARDED DELETE ────────────────────────────────
- * The client asked for a Delete button. `deleteTemplate` below keeps both
- * protections above: it refuses while any user is attached (and the FK
- * refuses again underneath it, so a race cannot slip through), and the
- * confirm dialog on the screen states how many grants go with the template
- * before the admin agrees. An unattached, confirmed delete is what remains.
+ * The client asked for a Delete button, then (24 Oct) for Delete to work on a
+ * template people are on, moving them to another template. `deleteTemplate`
+ * keeps both protections above: nobody is ever left on a template that is
+ * gone or moved to no template (the database function refuses both, in one
+ * transaction), and the dialog names the people and the grants before the
+ * admin agrees.
  *
  * ── WHERE `listTemplates` WENT ───────────────────────────────────────────
  * It used to live in `adminUsers.ts` (the assign dropdown's only reader).
@@ -45,12 +46,11 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { AuthContext } from './permissions';
+import { invalidateGrants, type AuthContext } from './permissions';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { assertAdmin, UNIQUE_VIOLATION, type Result } from './adminConfig';
 import type { CreateTemplateInput, RenameTemplateInput, DeleteTemplateInput } from './adminSchemas';
 
-/** Postgres foreign-key violation: a user attached between the check and the delete. */
-const FK_VIOLATION = '23503';
 
 /** The assign dropdown's shape — id and label, nothing more. */
 export type TemplateOption = { id: string; label: string };
@@ -178,37 +178,45 @@ export async function renameTemplate(ctx: AuthContext, input: RenameTemplateInpu
   return { ok: true, id: data.id };
 }
 
-/**
- * Deletes a template nobody is attached to. Its grants go with it
- * (`template_grants` cascades); the screen has said how many before this is
- * called. A template with users is refused by name of the count, and the
- * foreign key from `user_templates` refuses again if someone was attached in
- * between — so no user can ever be left pointing at a template that is gone.
- */
-export async function deleteTemplate(ctx: AuthContext, input: DeleteTemplateInput): Promise<Result> {
+/** One person on a template, for the delete dialog's list. */
+export type TemplateMember = { id: string; name: string; email: string; removed: boolean };
+
+/** The people resolving their permissions through this template. */
+export async function templateMembers(ctx: AuthContext, templateId: string): Promise<TemplateMember[]> {
   assertAdmin(ctx);
-  const admin = supabaseAdmin();
-
-  const { count, error: countErr } = await admin
+  const { data, error } = await supabaseAdmin()
     .from('user_templates')
-    .select('user_id', { count: 'exact', head: true })
-    .eq('template_id', input.templateId);
-  if (countErr) return { ok: false, message: countErr.message };
-  if (count && count > 0) {
-    return { ok: false, message: `${count} user${count === 1 ? ' is' : 's are'} on this template. Move them to another template first.` };
-  }
+    .select('user_id, profiles!inner(email, full_name, deleted_at)')
+    .eq('template_id', templateId)
+    .returns<Array<{ user_id: string; profiles: { email: string; full_name: string | null; deleted_at: string | null } }>>();
+  if (error) throw error;
+  return (data ?? [])
+    .map((r) => ({
+      id: r.user_id,
+      name: r.profiles.full_name?.trim() || r.profiles.email.split('@')[0],
+      email: r.profiles.email,
+      removed: Boolean(r.profiles.deleted_at),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
-  const { data, error } = await admin
-    .from('permission_templates')
-    .delete()
-    .eq('id', input.templateId)
-    .select('id')
-    .maybeSingle();
-  if (error) {
-    if (error.code === FK_VIOLATION) return { ok: false, message: 'A user was just attached to this template. Move them first, then try again.' };
-    return { ok: false, message: error.message };
-  }
-  if (!data) return { ok: false, message: 'That template no longer exists — reload the page.' };
-
-  return { ok: true, id: data.id };
+/**
+ * Deletes a template. Anyone on it is moved to `moveToTemplateId` first, in
+ * the same transaction (`delete_permission_template`, migration 9798): the
+ * database refuses to leave a person on a template that is gone, and refuses
+ * to move them to NO template, which would mean full access. Their own
+ * overrides stay as they are. Runs as the signed-in admin — the function
+ * checks `auth_is_admin()` itself.
+ */
+export async function deleteTemplate(ctx: AuthContext, input: DeleteTemplateInput): Promise<{ ok: true; moved: number } | { ok: false; message: string }> {
+  assertAdmin(ctx);
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('delete_permission_template', {
+    p_template_id: input.templateId,
+    p_move_to: input.moveToTemplateId,
+  });
+  if (error) return { ok: false, message: error.message };
+  // The moved people resolve permissions differently from this request on.
+  invalidateGrants();
+  return { ok: true, moved: Number(data ?? 0) };
 }

@@ -25,8 +25,8 @@ import Link from 'next/link';
 import { Button, Dialog, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { formatDate } from '@/proto/ui/tokens';
-import { createTemplateAction, renameTemplateAction, deleteTemplateAction, type TemplateFormState } from './actions';
-import type { AdminTemplateRow } from '@/lib/records/adminTemplates';
+import { createTemplateAction, renameTemplateAction, deleteTemplateAction, templateMembersAction, type TemplateFormState } from './actions';
+import type { AdminTemplateRow, TemplateMember } from '@/lib/records/adminTemplates';
 
 export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] }) {
   const [open, setOpen] = useState(false);
@@ -55,7 +55,7 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
 
         <div className="divide-y divide-line-faint">
           {templates.map((t) => (
-            <TemplateRow key={t.id} template={t} />
+            <TemplateRow key={t.id} template={t} others={templates.filter((o) => o.id !== t.id)} />
           ))}
           {templates.length === 0 ? (
             <p className="px-4 py-6 text-[13px] text-ink-400">
@@ -146,22 +146,44 @@ function CreateTemplateForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function TemplateRow({ template }: { template: AdminTemplateRow }) {
+function TemplateRow({ template, others }: { template: AdminTemplateRow; others: AdminTemplateRow[] }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(template.label);
   const [message, setMessage] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  /* Only a template nobody is on can go; the server refuses the rest too. */
-  const deletable = template.attachedUsers === 0;
+  /*
+   * Delete is always offered. With people on the template the dialog lists
+   * them and asks which template they move to; the database moves them and
+   * deletes the template in one transaction, and refuses to move them to no
+   * template (that would mean full access).
+   */
+  const hasUsers = template.attachedUsers > 0;
+  const [members, setMembers] = useState<TemplateMember[] | null>(null);
+  const [membersError, setMembersError] = useState<string | null>(null);
+  const [moveTo, setMoveTo] = useState<string>(others[0]?.id ?? '');
+  const openDelete = () => {
+    setMessage(null);
+    setConfirmingDelete(true);
+    if (!hasUsers) return;
+    setMembers(null);
+    setMembersError(null);
+    setMoveTo((cur) => (others.some((o) => o.id === cur) ? cur : (others[0]?.id ?? '')));
+    void templateMembersAction(template.id).then(
+      (r) => (r.ok ? setMembers(r.members) : setMembersError(r.message)),
+      () => setMembersError('The list of people could not be loaded.'),
+    );
+  };
   const remove = () => {
+    const target = hasUsers ? moveTo || null : null;
     startTransition(async () => {
-      const result = await deleteTemplateAction(template.id);
+      const result = await deleteTemplateAction(template.id, target);
       setConfirmingDelete(false);
       if (!result.ok) setMessage(result.message ?? 'That template could not be deleted.');
     });
   };
+  const targetLabel = others.find((o) => o.id === moveTo)?.label ?? '';
 
   const save = () => {
     const next = label.trim();
@@ -260,9 +282,9 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
               size="sm"
               variant="ghost"
               icon="trash"
-              disabled={!deletable || pending}
-              title={deletable ? 'Delete this template' : `${template.attachedUsers} user${template.attachedUsers === 1 ? ' is' : 's are'} on this template — move them to another template first.`}
-              onClick={() => setConfirmingDelete(true)}
+              disabled={pending}
+              title={hasUsers ? 'Delete this template and move its people to another one' : 'Delete this template'}
+              onClick={openDelete}
             >
               Delete
             </Button>
@@ -270,7 +292,7 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
         )}
       </div>
 
-      {confirmingDelete ? (
+      {confirmingDelete && !hasUsers ? (
         <Dialog
           title={`Delete “${template.label}”?`}
           tone="danger"
@@ -284,6 +306,71 @@ function TemplateRow({ template }: { template: AdminTemplateRow }) {
               : `Its ${template.grantCount} grant${template.grantCount === 1 ? '' : 's'} go with it, and nobody is on it.`}{' '}
             This can’t be undone.
           </p>
+        </Dialog>
+      ) : null}
+
+      {confirmingDelete && hasUsers ? (
+        <Dialog
+          title={`Delete “${template.label}”?`}
+          tone="danger"
+          width={480}
+          confirmLabel={others.length && moveTo ? `Move ${template.attachedUsers} and delete` : undefined}
+          onConfirm={remove}
+          onClose={() => setConfirmingDelete(false)}
+        >
+          <p>
+            {template.attachedUsers} {template.attachedUsers === 1 ? 'person is' : 'people are'} on this template. Pick the template{' '}
+            {template.attachedUsers === 1 ? 'they move' : 'they all move'} to; their own overrides stay as they are.
+          </p>
+          <ul className="max-h-48 overflow-y-auto rounded-lg border border-line-soft">
+            {members === null && !membersError ? (
+              <li className="px-3 py-2 text-[12.5px] text-ink-400">Loading the list…</li>
+            ) : membersError ? (
+              <li className="px-3 py-2 text-[12.5px] text-bad">{membersError}</li>
+            ) : (
+              (members ?? []).map((m) => (
+                <li key={m.id} className="flex items-center gap-2 border-b border-line-soft px-3 py-1.5 text-[13px] last:border-b-0">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-canvas text-[10.5px] font-semibold uppercase text-ink-500">
+                    {m.name.slice(0, 2)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-ink-800">{m.name}</span>
+                    <span className="block truncate text-[11.5px] text-ink-400">{m.email}</span>
+                  </span>
+                  {m.removed ? <OutlineChip>Removed user</OutlineChip> : null}
+                </li>
+              ))
+            )}
+          </ul>
+          {others.length ? (
+            <>
+              <label className="block text-[12px] font-semibold uppercase tracking-wide text-ink-400" htmlFor={`move-${template.id}`}>
+                Move them to
+              </label>
+              <select
+                id={`move-${template.id}`}
+                value={moveTo}
+                onChange={(e) => setMoveTo(e.target.value)}
+                className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-[13.5px] text-ink-900 outline-none focus-field"
+              >
+                {others.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label} — {o.grantCount === 0 ? 'grants nothing yet' : `${o.grantCount} grant${o.grantCount === 1 ? '' : 's'}`}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[12px] text-ink-400">
+                {targetLabel ? `They get “${targetLabel}” on their next page load. ` : ''}
+                {template.grantCount === 0
+                  ? 'This template grants nothing, so nothing else is lost.'
+                  : `This template’s ${template.grantCount} grant${template.grantCount === 1 ? '' : 's'} go with it. This can’t be undone.`}
+              </p>
+            </>
+          ) : (
+            <p className="rounded-lg bg-canvas px-3 py-2 text-[12.5px] text-ink-600">
+              There is no other template to move them to. Create one with New template first, then delete this one.
+            </p>
+          )}
         </Dialog>
       ) : null}
 

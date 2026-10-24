@@ -179,17 +179,15 @@ export function FolderPane({
         ) : null}
 
         {selection.kind === 'all' || !paneMailbox ? (
-          own.map((m) => (
-            <MailboxSection
-              key={m.id}
-              mailbox={m}
-              selection={selection}
-              onSelect={onSelect}
-              collapsed={collapsed}
-              toggle={toggle}
-              menus={menus}
-            />
-          ))
+          /* The pane follows the bar: All inboxes is one combined view, so no
+             mailbox's folders are listed under it (the client: "only show
+             what is in the active tab of the top bar"). Picking a mailbox in
+             the bar brings its folders here. */
+          own.length ? (
+            <p className="mx-1 mt-4 rounded-lg border border-dashed border-line px-3 py-2.5 text-[12px] leading-relaxed text-ink-400">
+              Showing every inbox together. Pick a mailbox in the bar above to see its folders.
+            </p>
+          ) : null
         ) : (
           <>
             <MailboxHeading mailbox={paneMailbox} />

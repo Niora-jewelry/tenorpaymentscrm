@@ -54,11 +54,19 @@ export function Composer({
   onClose,
   onSent,
   onDiscarded,
+  registerLeave,
 }: {
   init: ComposeInit;
   onClose: (draftSaved: boolean) => void;
   onSent: (r: SentResult) => void;
   onDiscarded: () => void;
+  /**
+   * Lets the shell ask the composer to step aside — save the draft and close —
+   * when the person opens another conversation (the client: "allow me to open
+   * Rachel's email and save this as a draft"). Resolves false, leaving the
+   * composer open, if the save failed, so nothing typed is lost.
+   */
+  registerLeave?: (leave: (() => Promise<boolean>) | null) => void;
 }) {
   const [mailboxId, setMailboxId] = useState(init.mailboxId);
   const [to, setTo] = useState<Chip[]>(init.to);
@@ -224,6 +232,19 @@ export function Composer({
     await saveNow();
     onClose(Boolean(draftRef.current));
   };
+
+  // Saves, then closes — but only when the save worked (`dirty` is set back
+  // on a failed save), so a network blip never discards what was typed.
+  const leave = useCallback(async (): Promise<boolean> => {
+    await saveNow();
+    if (dirty.current) return false;
+    onClose(Boolean(draftRef.current));
+    return true;
+  }, [saveNow, onClose]);
+  useEffect(() => {
+    registerLeave?.(leave);
+    return () => registerLeave?.(null);
+  }, [leave, registerLeave]);
 
   const discard = async () => {
     for (const u of uploads) if (u.path) void removeUploadAction({ path: u.path });

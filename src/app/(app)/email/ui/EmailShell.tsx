@@ -129,6 +129,11 @@ export function EmailShell({
   const [confirmPurge, setConfirmPurge] = useState<ConversationRow[] | null>(null);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [compose, setCompose] = useState<{ init: ComposeInit; key: string } | null>(null);
+  /** Set by the open composer: save the draft and close (see `Composer`'s registerLeave). */
+  const composeLeave = useRef<(() => Promise<boolean>) | null>(null);
+  const registerComposeLeave = useCallback((fn: (() => Promise<boolean>) | null) => {
+    composeLeave.current = fn;
+  }, []);
   const [pending, setPending] = useState<{ outboxId: string; releaseAt: string; subject: string } | null>(null);
   const [scheduledCount, setScheduledCount] = useState(0);
   const [scheduledKey, setScheduledKey] = useState(0);
@@ -250,7 +255,7 @@ export function EmailShell({
    * conversation that slides into place after an archive/delete is NOT a
    * deliberate open, so it stays unread until the person actually reads it.
    */
-  const openRow = useCallback(
+  const openRowNow = useCallback(
     (row: ConversationRow, opts: { autoRead?: boolean } = {}) => {
       const o = { mailboxId: row.mailboxId, key: row.key };
       changeOpen(o);
@@ -268,6 +273,28 @@ export function EmailShell({
       }
     },
     [loadThread, canEdit, changeOpen],
+  );
+
+  const openRow = useCallback(
+    (row: ConversationRow, opts: { autoRead?: boolean } = {}) => {
+      /*
+       * A draft open in the composer used to cover the reading pane, so a
+       * click on another conversation did nothing visible. A deliberate open
+       * now saves the draft (it stays in Drafts) and shows the conversation;
+       * if the save fails the composer stays, and says so. An automatic
+       * advance after archive/delete (`autoRead: false`) never closes it.
+       */
+      const leave = composeLeave.current;
+      if (leave && opts.autoRead !== false) {
+        void leave().then((left) => {
+          if (left) openRowNow(row, opts);
+          else setBanner({ tone: 'error', text: 'Your draft could not be saved, so it is still open. Try again in a moment.' });
+        });
+        return;
+      }
+      openRowNow(row, opts);
+    },
+    [openRowNow],
   );
 
   // ── staying current ─────────────────────────────────────────────────────
@@ -927,6 +954,7 @@ export function EmailShell({
         <Composer
           key={compose.key}
           init={compose.init}
+          registerLeave={registerComposeLeave}
           onSent={onSent}
           onClose={(saved) => {
             setCompose(null);

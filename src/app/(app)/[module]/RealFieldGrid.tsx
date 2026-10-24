@@ -687,7 +687,7 @@ export function RealFieldGrid({
           onDragEnd={handleFieldDragEnd}
         >
         <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-        {sectionsOf(fields).map((sec) => (
+        {sectionsOf(fields).map((sec, si) => (
         <section key={sec.key} className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.04)]">
           {sec.label ? (
             /* A named section: the same card, headed like a repeating group. */
@@ -695,7 +695,7 @@ export function RealFieldGrid({
               <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">{sec.label}</span>
             </header>
           ) : null}
-          {!sec.label && hasCustomFieldOrder ? (
+          {si === 0 && hasCustomFieldOrder ? (
             <div className="flex items-center gap-2 border-b border-line-soft bg-brand-50/60 px-3 py-1.5">
               <Icon name="shuffle" size={11} className="text-brand-600" />
               <span className="text-[11.5px] text-brand-700">
@@ -722,7 +722,7 @@ export function RealFieldGrid({
               </button>
             </div>
           ) : null}
-          {!sec.label && prefError ? (
+          {si === 0 && prefError ? (
             <p role="status" className="mt-1 text-[11px] text-ink-500">
               {prefError}
             </p>

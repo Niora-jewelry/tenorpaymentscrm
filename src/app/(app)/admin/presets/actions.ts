@@ -228,6 +228,10 @@ export async function createFieldAction(_prev: PresetFormState, formData: FormDa
     tabId: formData.get('tabId'),
     subtabId: formData.get('subtabId'),
     hint: formData.get('hint') ?? '',
+    // The drawer card this field sits in. Omitting it here made the schema
+    // default it to '' — and saving an existing field from the Edit dialog
+    // then cleared its section.
+    section: formData.get('section') ?? '',
     required: formData.get('required'),
     sensitive: formData.get('sensitive'),
     wide: formData.get('wide'),
@@ -258,6 +262,10 @@ export async function updateFieldAction(_prev: PresetFormState, formData: FormDa
     tabId: formData.get('tabId'),
     subtabId: formData.get('subtabId'),
     hint: formData.get('hint') ?? '',
+    // The drawer card this field sits in. Omitting it here made the schema
+    // default it to '' — and saving an existing field from the Edit dialog
+    // then cleared its section.
+    section: formData.get('section') ?? '',
     required: formData.get('required'),
     sensitive: formData.get('sensitive'),
     wide: formData.get('wide'),

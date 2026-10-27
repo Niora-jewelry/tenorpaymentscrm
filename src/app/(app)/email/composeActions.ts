@@ -130,6 +130,9 @@ const StartInput = z.object({
   mailboxId: z.uuid().optional(),
   sourceMessageId: z.uuid().optional(),
   draftMessageId: z.uuid().optional(),
+  /** A new message started from an Email field on a record (UI spec §4,
+   *  "click to compose"): the address goes straight into To. */
+  to: z.email().max(320).optional(),
 });
 
 export async function composeStartAction(input: z.input<typeof StartInput>): Promise<Result<ComposeInit>> {
@@ -212,7 +215,8 @@ export async function composeStartAction(input: z.input<typeof StartInput>): Pro
       const { data: settings } = await supabase.from('mail_user_settings').select('default_from_mailbox_id').maybeSingle();
       const preferred = parsed.data.mailboxId ?? (settings?.default_from_mailbox_id as string | undefined);
       const from = options.find((o) => o.mailboxId === preferred) ?? options[0];
-      return { ok: true, data: { kind, draftId: null, sourceMessageId: null, mailboxId: from.mailboxId, fromOptions: options, to: [], cc: [], bcc: [], subject: '', html: '', source: null } };
+      const to = parsed.data.to ? [{ name: '', address: parsed.data.to.toLowerCase() }] : [];
+      return { ok: true, data: { kind, draftId: null, sourceMessageId: null, mailboxId: from.mailboxId, fromOptions: options, to, cc: [], bcc: [], subject: '', html: '', source: null } };
     }
 
     if (!sourceMessageId) return { ok: false, message: 'Choose the message to answer.' };

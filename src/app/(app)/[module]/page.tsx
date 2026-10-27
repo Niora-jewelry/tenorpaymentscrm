@@ -13,6 +13,7 @@ import { Suspense } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
+import { DrawerFieldLinks } from './DrawerFieldLinks';
 import { HeaderFacts } from './HeaderFacts';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
@@ -954,7 +955,9 @@ async function RecordDrawer({
   }));
 
   return (
-    <section className="min-h-full bg-white px-6 py-5">
+    <section className="@container min-h-full bg-white px-6 py-5">
+      <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
+      {/* ── Band 1: title bar — record name, Archive, ••• menu, close. ── */}
       <div className="flex items-start justify-between gap-4">
         {/* `min-w-0 flex-1` plus `truncate` on the heading. Without both, a long
             business name pushed the Archive and Close controls off the sheet
@@ -967,68 +970,6 @@ async function RecordDrawer({
           >
             {record.dealName || '(untitled)'}
           </h2>
-          {/*
-            ── THE FACT GRID ──────────────────────────────────────────────
-            Was one inline run of `LABEL value · LABEL value · …` wrapping over
-            three lines. Three things were wrong with it and all three are
-            structural rather than cosmetic:
-
-              * label and value sat one step apart on the ink ramp and 1.5px
-                apart in size, so neither was clearly the data;
-              * the uppercase tracked labels were WIDER and more even-toned than
-                their values, so the captions outweighed the figures;
-              * wrapping put nothing above anything, so finding one fact meant
-                reading all three lines in order.
-
-            A grid of stacked pairs fixes all three at once: labels align into
-            bands, values align into columns, and the eye can scan. `auto-fill`
-            with a 168px floor resolves against the SHEET rather than the
-            viewport, so it needs no breakpoints and is correct at widths nobody
-            tested — six columns on a wide drawer, one on a phone.
-
-            ⚠️ The fixed `min-h` on the value row is load-bearing, not padding.
-            A cell holding a StatusPill and one holding plain text are then the
-            same height, so rows stay aligned and nothing jitters as records
-            change.
-          */}
-          {/*
-            Editable in place now — see `HeaderFacts`. These are the most-read
-            values on the record and were the only ones that forced you to go
-            and find a tab in order to change them. It writes through
-            `setValueAction`, the same path the field grid and the dashboard
-            cell use, so the permission chain, the compare-and-swap and the
-            activity entry are not reimplemented here.
-          */}
-          <HeaderFacts
-            moduleSlug={moduleSlug}
-            recordId={record.id}
-            updatedAt={record.updatedAt}
-            facts={headerFacts}
-            /*
-              Where the record stands on its pipeline, beside the other
-              header facts — the client asked for it "near Current Status".
-              It was only on the pipeline bar, which sits two blocks further
-              down past the module chips.
-              
-              Passed separately rather than pushed into `headerFacts`,
-              because it is NOT a field: a pipeline assignment lives in
-              `record_pipelines` at (record, module), not in `record.values`.
-              Dressing it as a field would have given it a grant it does not
-              have and a save path it cannot use. It is read-only here; the
-              bar below owns moving a record, where the whole step track is
-              visible to move it along.
-            */
-            pipeline={(() => {
-              const p = modulePipelines.find((x) => x.id === pipelineAssign?.pipelineId);
-              const step = p?.steps.find((st) => st.id === pipelineAssign?.stepId);
-              return p && step ? { pipelineLabel: p.label, stepLabel: step.label, swatch: step.swatch } : null;
-            })()}
-            viewerId={ctx.userId}
-            viewerIsAdmin={ctx.isAdmin}
-            visibilityFieldKey={VISIBILITY_FIELD_KEY}
-            mentionsByField={headerMentions}
-            openMention={openMention?.fieldKey ? openMention : null}
-          />
         </div>
         <div className="flex items-center gap-3">
           {grant === 'edit' && memberships.length > 0 ? (
@@ -1053,33 +994,61 @@ async function RecordDrawer({
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border border-line-soft bg-canvas/60 px-2.5 py-2">
-        <MembershipsForm
-          moduleSlug={moduleSlug}
-          recordId={record.id}
-          /* Only modules this viewer can actually open. It listed every display
-           * module regardless of grant, so a hidden module appeared as a
-           * toggle — offering a control the gate in `setMemberships` now
-           * refuses, and naming a module the viewer is not supposed to know
-           * exists. */
-          allModules={displayModules}
-          current={memberships}
-          allowed={membershipAllowedIds}
-        />
+      {/*
+        ── Band 2: Pipeline | In modules (UI spec §2) ──────────────────────
+        One row, two equal halves; on a narrower drawer they stack, Pipeline
+        first. The separate "Account Health: Onboarding" fact that used to sit
+        under the title is gone — the stepper already says where the record
+        stands, and saying it twice was the redundancy the spec removes.
+      */}
+      <div className="mt-4 grid grid-cols-1 gap-3 @[56rem]:grid-cols-2">
+        <div className="min-w-0 rounded-xl border border-line-soft bg-canvas/50 px-3.5 py-3">
+          <RealPipelineBar
+            moduleSlug={moduleSlug}
+            moduleId={moduleId}
+            recordId={record.id}
+            pipelines={modulePipelines}
+            assignment={pipelineAssign}
+          />
+        </div>
+        <div className="min-w-0 rounded-xl border border-line-soft bg-canvas/50 px-3.5 py-3">
+          <MembershipsForm
+            moduleSlug={moduleSlug}
+            recordId={record.id}
+            /* Only modules this viewer can actually open. It listed every display
+             * module regardless of grant, so a hidden module appeared as a
+             * toggle — offering a control the gate in `setMemberships` now
+             * refuses, and naming a module the viewer is not supposed to know
+             * exists. */
+            allModules={displayModules}
+            current={memberships}
+            allowed={membershipAllowedIds}
+          />
+          {memberships.length === 0 && grant === 'edit' ? (
+            <p className="mt-2 text-[12px] text-ink-400">
+              Archived — displayed in no module. Still in the Records List.
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      {memberships.length === 0 && grant === 'edit' ? (
-        <p className="mt-2 text-[12px] text-ink-400">
-          Archived — displayed in no module. Still in the Records List.
-        </p>
-      ) : null}
-
-      <RealPipelineBar
+      {/*
+        ── Band 3: Vital Info ───────────────────────────────────────────────
+        Editable in place — see `HeaderFacts`. It writes through
+        `setValueAction`, the same path the field grid and the dashboard cell
+        use, so the permission chain, the compare-and-swap and the activity
+        entry are not reimplemented here.
+      */}
+      <HeaderFacts
         moduleSlug={moduleSlug}
-        moduleId={moduleId}
         recordId={record.id}
-        pipelines={modulePipelines}
-        assignment={pipelineAssign}
+        updatedAt={record.updatedAt}
+        facts={headerFacts}
+        viewerId={ctx.userId}
+        viewerIsAdmin={ctx.isAdmin}
+        visibilityFieldKey={VISIBILITY_FIELD_KEY}
+        mentionsByField={headerMentions}
+        openMention={openMention?.fieldKey ? openMention : null}
       />
 
       <DrawerTabs
@@ -1128,6 +1097,7 @@ async function RecordDrawer({
         openMention={openMention}
         fieldPathByUpdate={fieldPathByUpdate}
       />
+      </DrawerFieldLinks>
     </section>
   );
 }

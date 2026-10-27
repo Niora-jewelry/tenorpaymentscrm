@@ -90,7 +90,7 @@ export type Field = {
   width: number | null;
   digits: number[] | null;
   repeatMax: number | null;
-  repeatSchema: { key: string; label: string; type: FieldType; sensitive?: boolean }[] | null;
+  repeatSchema: { key: string; label: string; type: FieldType; sensitive?: boolean; sync?: boolean; hint?: string; digits?: number[] }[] | null;
   /** The semantic group key ('owner'), distinct from `key` when a group spans
    * more than one tab/subtab location ('owner_private', 'owner_ownership') —
    * migration 27. Every `repeat_group` row that shares this value represents

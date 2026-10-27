@@ -52,61 +52,17 @@ import {
 } from './recordVersion';
 import type { RepeatGroupDef } from './DrawerTabs';
 import { NoteThread } from './NoteThread';
+import {
+  FIELD_GRID, FIELD_GRID_CONTAINER, FIELD_VALUE_SLOT, FieldLabelRow, SectionHeading,
+  fieldCardClass, isFullRow, spanFor,
+} from './FieldCard';
 import type { Note } from '@/lib/records/notes';
 
 type Grant = 'hidden' | 'view' | 'edit';
 
-/**
- * How many grid columns a field occupies.
- *
- * The drawer used `flex-wrap`, which lays every row out independently, so
- * column edges moved from row to row and nothing lined up. It is a grid with
- * one repeating track now, and a field asks for a number of tracks:
- *
- *   * repeat groups and the One Time Charges grid are tables in their own
- *     right, with column headers — the full row;
- *   * an address, long text, percent split, month picker, and a team-member
- *     list take two tracks. Two for the team list matters: in one track its
- *     chips stacked vertically and made the whole row three times taller,
- *     leaving every field beside it floating in empty space;
- *   * everything else takes one.
- *
- * Keyed by TYPE, so a field added in Presets is placed correctly with no
- * change here.
- */
-const FULL_WIDTH_TYPES = new Set<ProtoField['type']>(['repeat_group', 'grid']);
-const DOUBLE_WIDTH_TYPES = new Set<ProtoField['type']>([
-  'address', 'long_text', 'percent_split', 'months', 'team_member',
-]);
-
-function spanFor(field: ProtoField): string {
-  if (FULL_WIDTH_TYPES.has(field.type)) return '1 / -1';
-  if (DOUBLE_WIDTH_TYPES.has(field.type) || field.wide) return 'span 2';
-  return 'span 1';
-}
-
-/** One shared track for every field grid in the drawer, so tabs line up with
- *  each other as well as within themselves. `auto-fill` rather than
- *  `auto-fit`: `auto-fit` stretches a short tab's few fields across the whole
- *  width and brings the unevenness straight back. */
-const GRID_TRACKS = 'grid items-stretch [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))]';
-
-/**
- * Tucks a grid's outer cell borders under the card that contains it.
- *
- * Every cell draws its own bottom and right border. That is right between
- * cells and wrong at the edges: a short last row drew a bottom line that
- * stopped partway across (under Owner 1's Email and Percentage it ended at
- * column two), and every rightmost cell drew a second line against the card's
- * own border.
- *
- * Shifting the grid one pixel past the card's bottom and right edge puts
- * those outer lines exactly under the card border, where `overflow-hidden`
- * clips them — so the card's single full-width edge closes the box. Only ever
- * used inside an `overflow-hidden` parent; without one this would spill a
- * pixel.
- */
-const GRID_EDGE = '-mb-px -mr-px';
+/* Layout — columns, spans, the box — lives in `FieldCard.tsx`, shared with
+   the header's Vital Info section (UI spec §2: "the same 4-equal-column grid
+   as all tabs"). */
 
 /** A repeat group's stored value should always be an array of instances —
  * but a value written before the `setValueAction` JSON round-trip fix
@@ -191,23 +147,17 @@ function SortableFieldCell({
         transition,
       }}
       /*
-       * The focused cell TINTS. It does not draw a line, and it does not box.
+       * Each field is its own box now (UI spec §3), so the box — not a wash —
+       * says which one is live: its border warms and it gets a soft outer
+       * ring, while the CONTROL keeps the underline (`focus-field`). One
+       * indicator at each scale, so they cannot double up.
        *
-       * Originally a 2px brand rectangle around the whole cell, which in a grid
-       * where every cell already has borders on two sides reads as a box inside
-       * a box. Replacing that with a bottom line then collided with the input's
-       * own underline sitting a couple of pixels above it.
-       *
-       * So the division is: the CONTROL owns the line (`focus-field`), and
-       * the CELL owns the wash. One indicator each, at different scales, and
-       * they cannot double up.
-       *
-       * A required-but-empty cell keeps its warning stripe on the LEFT edge.
+       * A required-but-empty box is amber-bordered.
        */
       id={targetId.field(id)}
-      className={`group/cell relative border-b border-r border-line-soft px-3 py-2 transition-colors last:border-r-0 hover:bg-brand-50/30 focus-within:relative focus-within:z-10 focus-within:bg-brand-50/60 ${
-        requiredEmpty ? 'bg-warn-bg/45 shadow-[inset_2px_0_0_var(--color-warn)]' : 'bg-white'
-      } ${isDragging ? 'z-10 opacity-40' : ''} ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}
+      className={`${fieldCardClass({ requiredEmpty, fullRow: span === '1 / -1' })} ${
+        isDragging ? 'z-10 opacity-40' : ''
+      } ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}
     >
       {children({ attributes, listeners })}
     </div>
@@ -637,7 +587,7 @@ export function RealFieldGrid({
   };
 
   return (
-    <div className="relative space-y-4">
+    <div className={`relative space-y-6 ${FIELD_GRID_CONTAINER}`}>
       {/*
         Saving feedback. A field edit is a network round trip measured in
         hundreds of milliseconds against the live database, and it had NO
@@ -679,6 +629,41 @@ export function RealFieldGrid({
         ) : null}
       </div>
 
+      {/* "Reordered by you" sits above the first section, not inside a box:
+          it is about the whole tab's order. */}
+      {hasCustomFieldOrder && fields.length ? (
+        <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-1.5">
+          <Icon name="shuffle" size={11} className="text-brand-600" />
+          <span className="text-[11.5px] text-brand-700">
+            Reordered by you — applies to this tab in every module.
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              // No router.refresh(): resetFieldOrderAction already calls
+              // revalidatePath, which already refreshes this route as
+              // part of the action's own response.
+              startTransition(async () => {
+                try {
+                  setPrefError(null);
+                  await resetFieldOrderAction(moduleSlug, tabId, subtabId);
+                } catch {
+                  setPrefError('Could not reset the field order.');
+                }
+              })
+            }
+            className="ml-auto text-[11.5px] font-semibold text-brand-700 hover:underline"
+          >
+            Reset to default
+          </button>
+        </div>
+      ) : null}
+      {prefError ? (
+        <p role="status" className="text-[11px] text-ink-500">
+          {prefError}
+        </p>
+      ) : null}
+
       {fields.length ? (
         <DndContext
           id={`field-dnd-${tabId}-${subtabId ?? '_'}`}
@@ -687,47 +672,10 @@ export function RealFieldGrid({
           onDragEnd={handleFieldDragEnd}
         >
         <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
-        {sectionsOf(fields).map((sec, si) => (
-        <section key={sec.key} className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.04)]">
-          {sec.label ? (
-            /* A named section: the same card, headed like a repeating group. */
-            <header className="flex items-center gap-2 border-b border-line-soft bg-canvas/60 px-3 py-2">
-              <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">{sec.label}</span>
-            </header>
-          ) : null}
-          {si === 0 && hasCustomFieldOrder ? (
-            <div className="flex items-center gap-2 border-b border-line-soft bg-brand-50/60 px-3 py-1.5">
-              <Icon name="shuffle" size={11} className="text-brand-600" />
-              <span className="text-[11.5px] text-brand-700">
-                Reordered by you — applies to this tab in every module.
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  // No router.refresh(): resetFieldOrderAction already calls
-                  // revalidatePath, which already refreshes this route as
-                  // part of the action's own response.
-                  startTransition(async () => {
-                    try {
-                      setPrefError(null);
-                      await resetFieldOrderAction(moduleSlug, tabId, subtabId);
-                    } catch {
-                      setPrefError('Could not reset the field order.');
-                    }
-                  })
-                }
-                className="ml-auto text-[11.5px] font-semibold text-brand-700 hover:underline"
-              >
-                Reset to default
-              </button>
-            </div>
-          ) : null}
-          {si === 0 && prefError ? (
-            <p role="status" className="mt-1 text-[11px] text-ink-500">
-              {prefError}
-            </p>
-          ) : null}
-              <div className={`${GRID_TRACKS} ${GRID_EDGE}`}>
+        {sectionsOf(fields).map((sec) => (
+        <section key={sec.key}>
+          {sec.label ? <SectionHeading label={sec.label} /> : null}
+              <div className={FIELD_GRID}>
                 {sec.fields.map((f) => {
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
@@ -737,64 +685,63 @@ export function RealFieldGrid({
                     (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
                   const fieldMentions = mentionsByField[f.id] ?? [];
                   const landedHere = openMention?.fieldKey === f.id;
+                  const noteCount = (notesByField[`field:${f.id}`] ?? []).length;
+                  const requiredEmpty = Boolean(f.required && fieldEmpty);
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={f.required && fieldEmpty} flash={landedHere}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={requiredEmpty} flash={landedHere}>
                       {(handle) => (
                       <>
-                      <div className="flex min-h-[18px] items-center gap-1.5">
-                        <button
-                          type="button"
-                          aria-label={`Reorder ${f.label}`}
-                          {...handle.attributes}
-                          {...handle.listeners}
-                          className="flex shrink-0 cursor-grab items-center text-ink-300 opacity-0 transition-opacity group-hover/cell:opacity-100 active:cursor-grabbing"
-                        >
-                          <Icon name="shuffle" size={11} />
-                        </button>
-                        <span className="truncate text-[11px] font-semibold uppercase tracking-[.05em] text-ink-500">
-                          {f.label}
-                        </span>
-                        {f.system ? <Icon name="lock" size={10} className="text-ink-400" /> : null}
-                        {f.sync ? <Icon name="link" size={10} className="text-brand-600" aria-label="Sync-enabled" /> : null}
-                        {f.required && fieldEmpty ? (
-                          <Icon name="alert-triangle" size={10} className="text-warn" />
-                        ) : null}
+                      <FieldLabelRow
+                        field={f}
+                        requiredEmpty={requiredEmpty}
+                        handle={
+                          <button
+                            type="button"
+                            aria-label={`Reorder ${f.label}`}
+                            {...handle.attributes}
+                            {...handle.listeners}
+                            className="absolute left-[3px] top-2.5 flex h-[15px] w-2 cursor-grab items-center justify-center text-ink-300 opacity-0 transition-opacity focus-visible:opacity-100 group-hover/cell:opacity-100 active:cursor-grabbing"
+                          >
+                            <Icon name="shuffle" size={10} />
+                          </button>
+                        }
+                      >
                         {/* The client's "@ on any field": a mention arrives
                             with the dot; a mention leaves from the @. */}
                         <FieldMentionNote mentions={fieldMentions} autoOpen={landedHere ? openMention : null} onRead={onMentionRead} />
                         <FieldMentionButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} currentValue={valueText(v)} />
-
                         {f.notes ? (
-                          <span className="ml-auto flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setOpenNotes((s) => {
-                                  const next = new Set(s);
-                                  if (next.has(f.id)) next.delete(f.id);
-                                  else next.add(f.id);
-                                  return next;
-                                })
-                              }
-                              title={`${(notesByField[`field:${f.id}`] ?? []).length} note${(notesByField[`field:${f.id}`] ?? []).length === 1 ? '' : 's'} on this field`}
-                              className={`inline-flex items-center gap-0.5 rounded px-1 py-px text-[10.5px] font-semibold transition-colors ${
-                                (notesByField[`field:${f.id}`] ?? []).length
-                                  ? 'bg-brand-50 text-brand-700 hover:bg-brand-100'
-                                  : 'text-ink-400 hover:bg-canvas hover:text-ink-700'
-                              }`}
-                            >
-                              <Icon name="sticky-note" size={10} />
-                              {(notesByField[`field:${f.id}`] ?? []).length || ''}
-                            </button>
-                          </span>
+                          <button
+                            type="button"
+                            aria-expanded={openNotes.has(f.id)}
+                            onClick={() =>
+                              setOpenNotes((s) => {
+                                const next = new Set(s);
+                                if (next.has(f.id)) next.delete(f.id);
+                                else next.add(f.id);
+                                return next;
+                              })
+                            }
+                            title={`${noteCount} note${noteCount === 1 ? '' : 's'} on this field`}
+                            className={`inline-flex items-center gap-0.5 rounded px-1 py-px text-[10.5px] font-semibold transition-colors ${
+                              noteCount
+                                ? 'bg-brand-50 text-brand-700 hover:bg-brand-100'
+                                : 'text-ink-400 hover:bg-canvas hover:text-ink-700'
+                            }`}
+                          >
+                            <Icon name="sticky-note" size={10} />
+                            {noteCount || ''}
+                          </button>
                         ) : null}
-                      </div>
+                      </FieldLabelRow>
 
+                      <div className={FIELD_VALUE_SLOT}>
                       <FieldRenderer
                         field={f}
                         value={shownValue(f.id) as FieldValue}
                         grant={grant === 'edit' ? 'edit' : 'view'}
                         moduleSlug={moduleSlug}
+                        card={!isFullRow(f.type)}
                         // Only the `team_member` control reads these three.
                         // `f.id` IS the field key here (`adapter.ts` makes that
                         // identity deliberate), and of the three fields of that
@@ -805,14 +752,10 @@ export function RealFieldGrid({
                         viewerIsAdmin={isAdmin}
                         onChange={(v) => handleChange(f.id, v)}
                       />
+                      </div>
 
-                      {f.hint ? (
-                        <p title={f.hint} className="line-clamp-2 pt-0.5 text-[11px] leading-snug text-ink-400">
-                          {f.hint}
-                        </p>
-                      ) : null}
                       {conflicts[f.id] ? (
-                        <p className="mt-0.5 rounded border border-bad/25 bg-bad-bg px-1.5 py-1 text-[11px] text-bad">
+                        <p className="mt-1 rounded border border-bad/25 bg-bad-bg px-1.5 py-1 text-[11px] text-bad">
                           {conflicts[f.id]}
                         </p>
                       ) : null}
@@ -852,28 +795,24 @@ export function RealFieldGrid({
         const singular = group.label.replace(/s$/, '');
 
         return (
-          <section key={group.id} className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.04)]">
-            <header className="flex items-center gap-2 border-b border-line-soft bg-canvas/60 px-3 py-2">
-              <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">
-                {group.label}
-              </span>
+          <section key={group.id}>
+            <SectionHeading label={group.label}>
               <CountPill n={count} />
               {editable ? (
-                <span className="ml-auto">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    icon="plus"
-                    disabled={atMax}
-                    title={atMax ? `Up to ${group.max} ${singular.toLowerCase()}s` : `Add another ${singular.toLowerCase()}`}
-                    onClick={() => handleAddInstance(group)}
-                  >
-                    Add {singular.toLowerCase()}
-                  </Button>
-                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="plus"
+                  disabled={atMax}
+                  title={atMax ? `Up to ${group.max} ${singular.toLowerCase()}s` : `Add another ${singular.toLowerCase()}`}
+                  onClick={() => handleAddInstance(group)}
+                >
+                  Add {singular.toLowerCase()}
+                </Button>
               ) : null}
-            </header>
+            </SectionHeading>
 
+            <div className="space-y-3">
             {Array.from({ length: count }, (_, i) => i).map((index) => {
               const instance = arr[index] ?? {};
               return (
@@ -896,52 +835,51 @@ export function RealFieldGrid({
                  * are not remounted while merely typing, because `count` only
                  * moves when the shape does.
                  */
-                <div key={`${group.key}-${count}-${index}`} className="overflow-hidden border-b border-line-soft last:border-0">
-                  <div className="flex items-center gap-2 bg-canvas/70 px-3 py-1">
-                    <span className="grid size-4 place-items-center rounded-full bg-brand-950 text-[10px] font-bold text-accent tabular">
+                <div key={`${group.key}-${count}-${index}`} className="rounded-xl bg-canvas/70 p-3 ring-1 ring-inset ring-line-soft">
+                  <div className="mb-2.5 flex items-center gap-2">
+                    <span className="grid size-[18px] place-items-center rounded-full bg-brand-950 text-[10px] font-bold text-accent tabular">
                       {index + 1}
                     </span>
-                    <span className="text-[11px] font-semibold uppercase tracking-[.06em] text-ink-500">
+                    <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-600">
                       {singular} {index + 1}
                     </span>
+                    {index === 0 ? <span className="text-[10.5px] text-ink-400">Primary</span> : null}
                     <span className="ml-auto">
                       {index > 0 && editable ? (
                         <IconButton
                           icon="trash"
                           tone="danger"
-                          size={22}
+                          size={24}
                           title={`Remove ${singular.toLowerCase()} ${index + 1}`}
                           onClick={() => handleRemoveInstance(group, index)}
                         />
-                      ) : index === 0 ? (
-                        <span className="text-[10.5px] text-ink-400">Primary</span>
                       ) : null}
                     </span>
                   </div>
-                  <div className={`${GRID_TRACKS} ${GRID_EDGE}`}>
+                  <div className={FIELD_GRID}>
                     {group.schema.map((member) => {
                       const memberField: ProtoField = {
                         id: member.key, label: member.label, type: member.type,
-                        sensitive: member.sensitive, tab: '', columnIn: [],
+                        sensitive: member.sensitive, hint: member.hint, digits: member.digits,
+                        tab: '', columnIn: [],
                       };
                       return (
                         <div
                           key={`${index}-${member.key}`}
                           style={{ gridColumn: spanFor(memberField) }}
-                          className="border-b border-r border-line-soft bg-white px-3 py-2 last:border-r-0"
+                          className={fieldCardClass({ fullRow: isFullRow(memberField.type) })}
                         >
-                          <div className="flex min-h-[18px] items-center gap-1.5">
-                            <span className="truncate text-[11px] font-semibold uppercase tracking-[.06em] text-ink-400">
-                              {member.label}
-                            </span>
-                          </div>
+                          <FieldLabelRow field={memberField} tone="muted" />
+                          <div className={FIELD_VALUE_SLOT}>
                           <FieldRenderer
                             field={memberField}
                             value={instance[member.key] as FieldValue}
                             grant={editable ? 'edit' : 'view'}
                             moduleSlug={moduleSlug}
+                            card={!isFullRow(memberField.type)}
                             onChange={(v) => handleMemberChange(group, index, member.key, v)}
                           />
+                          </div>
                         </div>
                       );
                     })}
@@ -949,14 +887,15 @@ export function RealFieldGrid({
                 </div>
               );
             })}
+            </div>
 
             {atMax ? (
-              <p className="px-3 py-1.5 text-[11px] text-ink-400">
+              <p className="mt-1.5 text-[11px] text-ink-400">
                 The sheet caps this at {group.max} {singular.toLowerCase()}s.
               </p>
             ) : null}
             {conflicts[group.key] ? (
-              <p className="mx-3 mb-2 rounded border border-bad/25 bg-bad-bg px-1.5 py-1 text-[11px] text-bad">
+              <p className="mt-2 rounded border border-bad/25 bg-bad-bg px-1.5 py-1 text-[11px] text-bad">
                 {conflicts[group.key]}
               </p>
             ) : null}

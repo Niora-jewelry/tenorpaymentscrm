@@ -52,6 +52,7 @@ export function MenuSurface({
   label,
   role = 'menu',
   padded = true,
+  cover = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -64,6 +65,11 @@ export function MenuSurface({
   role?: 'menu' | 'dialog';
   /** The menu's own inner padding; off when the content brings its own. */
   padded?: boolean;
+  /**
+   * Open OVER the anchor instead of below it — a box that grows out of the
+   * field it edits (Long text, UI spec §4). Still clamped into the viewport.
+   */
+  cover?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -90,15 +96,15 @@ export function MenuSurface({
     /* Below by default; above when there is no room and more room up there. */
     const below = a.bottom + GAP;
     const flip = window.innerHeight - below < h && a.top - GAP - h > MARGIN;
-    const top = flip ? a.top - GAP - h : below;
+    const top = cover ? a.top - 4 : flip ? a.top - GAP - h : below;
 
-    const raw = align === 'right' ? a.right - w : a.left;
+    const raw = cover ? a.left - 4 : align === 'right' ? a.right - w : a.left;
     /* Clamp into the viewport rather than letting it hang off an edge. */
     const left = Math.max(MARGIN, Math.min(raw, window.innerWidth - w - MARGIN));
 
     panel.style.top = `${Math.max(MARGIN, Math.min(top, window.innerHeight - h - MARGIN))}px`;
     panel.style.left = `${left}px`;
-  }, [align, anchorRef, width]);
+  }, [align, anchorRef, width, cover]);
 
   /*
    * ── RE-PLACED AFTER EVERY RENDER, DELIBERATELY WITH NO DEPS ───────────

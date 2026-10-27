@@ -98,6 +98,7 @@ export function EmailShell({
   initialSelection,
   initialPage,
   initialOpen,
+  initialComposeTo = null,
   canEdit,
 }: {
   /** The Edit grant: actions, folder menus, multi-select. Without it the page is read-only. */
@@ -107,6 +108,9 @@ export function EmailShell({
   /** null = the server could not load it; the list shows its retry state. */
   initialPage: ListPage | null;
   initialOpen: Open | null;
+  /** `/email?to=…` — opened from an Email field on a record: start a new
+   *  message to that address. */
+  initialComposeTo?: string | null;
 }) {
   const [boxes, setBoxes] = useState(initialMailboxes);
   const [sel, setSel] = useState<Selection>(initialSelection);
@@ -619,7 +623,7 @@ export function EmailShell({
   }, [canEdit, requestDelete, visibleRows]);
 
   // ── writing ─────────────────────────────────────────────────────────────
-  const openCompose = useCallback(async (kind: ComposeKind | 'draft', opts: { sourceMessageId?: string; draftMessageId?: string; mailboxId?: string } = {}) => {
+  const openCompose = useCallback(async (kind: ComposeKind | 'draft', opts: { sourceMessageId?: string; draftMessageId?: string; mailboxId?: string; to?: string } = {}) => {
     const res = await composeStartAction({ kind: kind === 'draft' ? 'new' : kind, ...opts });
     if (!res.ok) {
       setBanner({ tone: 'error', text: res.message });
@@ -627,6 +631,20 @@ export function EmailShell({
     }
     setCompose({ init: res.data, key: crypto.randomUUID() });
   }, []);
+
+  /* Arrived from a record's Email field: open a new message to that address,
+     once, then take `to` out of the URL so a refresh does not open another. */
+  const composeToDone = useRef(false);
+  useEffect(() => {
+    if (composeToDone.current || !initialComposeTo) return;
+    composeToDone.current = true;
+    const u = new URL(window.location.href);
+    u.searchParams.delete('to');
+    window.history.replaceState(window.history.state, '', u);
+    // Started from the effect, finished in a callback — openCompose waits on
+    // the server before it sets any state.
+    if (canEdit && ownBoxes.length) void Promise.resolve().then(() => openCompose('new', { to: initialComposeTo }));
+  }, [initialComposeTo, canEdit, ownBoxes.length, openCompose]);
 
   const onSent = useCallback((r: SentResult) => {
     setCompose(null);

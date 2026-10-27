@@ -15,6 +15,7 @@ import { choicesFor, choiceKey, choiceLabel } from '../fields';
 import { formatCurrency, formatDate, formatDateTime, MONTH_NAMES, MONTHS_NONE, toggleMonth } from './tokens';
 import { StatusPill, OutlineChip, AvatarStack, Button, IconButton, NumberInput } from './kit';
 import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from './people';
+import { useFieldLinks, formatPhone, websiteHref, isValidEmail } from './fieldLinks';
 import { Icon } from './icons';
 
 /* -------------------------------------------------------------------------- */
@@ -26,8 +27,15 @@ export function isNumeric(type: Field['type']): boolean {
 }
 
 /** Field types with a real picker control (nothing to type, only something to
- * pick) — shown live when empty instead of a click-to-reveal placeholder. */
-const LIVE_PICKER_TYPES = new Set<FieldType>(['date', 'dropdown', 'status', 'checkbox']);
+ * pick) — shown live when empty instead of a click-to-reveal placeholder.
+ *
+ * Not `date` and not `dropdown` any more (UI spec §4). A date shows one display
+ * format whether filled or not and opens its picker on click — an empty date
+ * showing a bare mm/dd/yyyy box beside a filled one reading "13 Jun 2025" was
+ * the "two date styles" the spec calls out. A dropdown is ALWAYS the same
+ * select control, empty or filled, rather than a grey chip once it has a value
+ * — the "two dropdown styles". */
+const LIVE_PICKER_TYPES = new Set<FieldType>(['checkbox']);
 
 export function isEmpty(v: FieldValue): boolean {
   if (v == null || v === '') return true;
@@ -83,7 +91,7 @@ export function asChoiceArray(v: FieldValue): string[] {
  * five known strings, so joining them is exact — there is no nesting to miss
  * and no key order to depend on. */
 function addressKey(a: AddressValue): string {
-  return `${a.street}\u0000${a.city}\u0000${a.state}\u0000${a.zip}\u0000${a.country}`;
+  return `${a.street}\u0000${a.street2}\u0000${a.city}\u0000${a.state}\u0000${a.zip}\u0000${a.country}`;
 }
 
 /*
@@ -115,14 +123,15 @@ export function asAddress(v: FieldValue): AddressValue {
     const o = v as Record<string, unknown>;
     return {
       street: typeof o.street === 'string' ? o.street : '',
+      street2: typeof o.street2 === 'string' ? o.street2 : '',
       city: typeof o.city === 'string' ? o.city : '',
       state: typeof o.state === 'string' ? o.state : '',
       zip: typeof o.zip === 'string' ? o.zip : '',
       country: typeof o.country === 'string' ? o.country : '',
     };
   }
-  if (typeof v === 'string' && v) return { street: v, city: '', state: '', zip: '', country: '' };
-  return { street: '', city: '', state: '', zip: '', country: '' };
+  if (typeof v === 'string' && v) return { street: v, street2: '', city: '', state: '', zip: '', country: '' };
+  return { street: '', street2: '', city: '', state: '', zip: '', country: '' };
 }
 
 /** USPS state/territory codes — a fixed, small, always-correct list; no
@@ -157,8 +166,27 @@ const US_ZIP_PATTERN = /^\d{5}(-\d{4})?$/;
  * now, would just repeat on every row) unless it's the only part filled in. */
 export function formatAddress(a: AddressValue): string {
   const cityStateZip = [a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-  const line = [a.street, cityStateZip].filter(Boolean).join(', ');
+  const line = [a.street, a.street2, cityStateZip].filter(Boolean).join(', ');
   return line || a.country || '';
+}
+
+/** "Austin, TX" — how an address reads in ONE list column (UI spec §6). */
+export function addressCityState(a: AddressValue): string {
+  return [a.city, a.state].filter(Boolean).join(', ');
+}
+
+/** The largest part of a must-total-100% value — how it reads in one list
+ *  column (UI spec §6: "the largest part, e.g. Business 100%"). */
+export function splitLargest(
+  split: PercentSplit,
+  options: import('../schema').Choice[] = [],
+): { label: string; pct: number } | null {
+  let best: [string, number] | null = null;
+  for (const [k, v] of Object.entries(split)) {
+    const n = Number(v) || 0;
+    if (n > 0 && (!best || n > best[1])) best = [k, n];
+  }
+  return best ? { label: choiceLabel(options, best[0]), pct: best[1] } : null;
 }
 
 function splitTotal(split: PercentSplit): number {
@@ -167,7 +195,7 @@ function splitTotal(split: PercentSplit): number {
 
 /** "Business 60% · Gov 15% · Individual 25%" — the split is keyed by choice
  * key, so the options are needed to turn `business` back into "Business". */
-function splitSummary(split: PercentSplit, options: import('../schema').Choice[] = []): string {
+export function splitSummary(split: PercentSplit, options: import('../schema').Choice[] = []): string {
   return Object.entries(split)
     .filter(([, v]) => Number(v) > 0)
     .map(([k, v]) => `${choiceLabel(options, k)} ${v}%`)
@@ -286,15 +314,26 @@ export function CellValue({
         </span>
       );
     }
+    /* One Dropdown style everywhere (UI spec §4): the chosen option as text.
+       Status is the type that is a coloured pill. */
     case 'dropdown':
-      return <OutlineChip>{choiceLabel(choicesFor(field, moduleSlug ?? ''), value)}</OutlineChip>;
-    case 'address':
-      return <span className="truncate">{formatAddress(asAddress(value))}</span>;
+      return <span className="truncate">{choiceLabel(choicesFor(field, moduleSlug ?? ''), value)}</span>;
+    case 'phone':
+      return <span className="tabular">{formatPhone(String(value))}</span>;
+    /* A full-row type squeezed into one column (UI spec §6): "City, State",
+       with the whole address on hover. */
+    case 'address': {
+      const a = asAddress(value);
+      return <span className="truncate" title={formatAddress(a)}>{addressCityState(a) || formatAddress(a)}</span>;
+    }
+    /* …and the largest part, with the full breakdown on hover. */
     case 'percent_split': {
       const split = asSplit(value);
+      const top = split ? splitLargest(split, field.choices ?? []) : null;
+      if (!split || !top) return <span className="text-ink-400/70">—</span>;
       return (
-        <span className="tabular text-[12.5px]">
-          {split ? splitSummary(split, field.choices ?? []) : '—'}
+        <span className="tabular text-[12.5px]" title={splitSummary(split, field.choices ?? [])}>
+          {top.label} {top.pct}%
         </span>
       );
     }
@@ -351,6 +390,7 @@ export function FieldRenderer({
   viewerIsAdmin,
   autoEdit,
   compact,
+  card,
   onCancel,
   onChange,
 }: {
@@ -382,6 +422,14 @@ export function FieldRenderer({
   /** `team_member` only — see the prop of the same name on its control. Set
    *  by a dashboard cell, which cannot give the control room to wrap. */
   compact?: boolean;
+  /**
+   * Rendered inside a fixed-height field card (the drawer's 4-column grid and
+   * Vital Info, UI spec §3). Every standard field takes exactly one column
+   * and every box in a row is the same height, so a team list shows as one
+   * line — avatars and names — and opens its checklist on click, instead of
+   * wrapping chips onto as many rows as there are people.
+   */
+  card?: boolean;
   /**
    * Open straight into the editor, already focused.
    *
@@ -456,6 +504,18 @@ export function FieldRenderer({
     if (!editing) return;
     const el = ref.current;
     el?.focus();
+    // A date opens straight into its picker: clicking "13 Jun 2025" (or "Add
+    // date") is the request for a calendar, not for a box to type digits
+    // into. `showPicker` needs a user gesture and throws without one — a
+    // focus that arrived by Tab — in which case the input is simply focused.
+    if (el instanceof HTMLInputElement && el.type === 'date') {
+      try {
+        el.showPicker?.();
+      } catch {
+        /* keyboard focus: the input is open and focused, which is enough */
+      }
+      return;
+    }
     // Select what is already there, so typing REPLACES the old value rather
     // than appending to it. A cell opened to change "Restaurant" to "Retail"
     // should not need the old word deleted first.
@@ -522,7 +582,8 @@ export function FieldRenderer({
       <TeamMemberControl
         ids={asTeamMembers(value)}
         readOnly={readOnly}
-        compact={compact}
+        compact={compact || card}
+        showNames={card}
         // Three fields share this type and only one of them grants anything —
         // see `grantsVisibility` on the control. The caller decides, because
         // this component is also the prototype's, which has no such concept.
@@ -534,9 +595,61 @@ export function FieldRenderer({
     );
   }
 
+  /* One Dropdown style, empty or filled (UI spec §4). Always the live select,
+     controlled, so a refused save that rolls the value back also rolls the
+     control back — a `defaultValue` select would keep showing the pick the
+     database did not accept. */
+  /* An EMPTY status offers the same select, so the two pickers look alike
+     until a status is set — then it is the coloured pill the spec asks for. */
+  if (!readOnly && (field.type === 'dropdown' || (field.type === 'status' && isEmpty(value) && !editing))) {
+    return (
+      <DropdownSelect
+        label={field.label}
+        value={value == null ? '' : String(value)}
+        options={options}
+        orphan={orphanOption}
+        required={Boolean(field.required)}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
+
+  if (field.type === 'long_text') {
+    return (
+      <LongTextControl
+        label={field.label}
+        value={value == null ? '' : String(value)}
+        readOnly={readOnly}
+        required={Boolean(field.required)}
+        autoEdit={autoEdit}
+        onCancel={onCancel}
+        onCommit={(v) => onChange(v)}
+      />
+    );
+  }
+
+  /* Email, Phone and Website are links first (UI spec §4: "click to
+     compose", "click to call/text", "opens in new tab"), so their value is not
+     the edit button any more — a separate pencil is. Same split the masked
+     field below makes, for the same reason: an <a> cannot sit in a <button>. */
+  if (!editing && !isEmpty(value) && !field.sensitive && (field.type === 'email' || field.type === 'phone' || field.type === 'url')) {
+    return (
+      <LinkValue
+        type={field.type}
+        text={String(value)}
+        label={field.label}
+        readOnly={readOnly}
+        editRef={displayRef}
+        onEdit={() => setEditing(true)}
+        onEditFocus={openOnFocus}
+        saved={saved}
+      />
+    );
+  }
+
   const empty = isEmpty(value);
-  // An empty field with a real picker control (a date, a dropdown of known
-  // choices, a checkbox) shows that control directly rather than a plain
+  // An empty field with a real picker control (a status, a checkbox) shows
+  // that control directly rather than a plain
   // "Add value" placeholder behind an extra click — there's nothing to type,
   // only something to pick, so showing the picker IS the affordance. Free-
   // text-shaped fields (text, currency, …) keep the click-to-edit "Add
@@ -623,7 +736,10 @@ export function FieldRenderer({
                 field.required ? 'border-warn/60 bg-warn-bg/30 text-warn' : 'border-line text-ink-400'
               }`}
             >
-              {field.required ? 'Required' : 'Add value'}
+              {field.type === 'date' ? (
+                <Icon name="calendar" size={13} className="mr-1.5 shrink-0 opacity-70" />
+              ) : null}
+              {field.required ? 'Required' : field.type === 'date' ? 'Add date' : 'Add value'}
             </span>
           )
         ) : field.sensitive ? (
@@ -654,26 +770,8 @@ export function FieldRenderer({
     'w-full rounded-md border border-line bg-white px-2 py-1.5 text-[14px] text-ink-900 outline-none transition-[border-color,box-shadow] focus-field';
 
   switch (field.type) {
-    case 'long_text':
-      return (
-        <textarea
-          ref={ref as React.RefObject<HTMLTextAreaElement>}
-          defaultValue={String(value ?? '')}
-          rows={3}
-          className={inputClass}
-          // Enter is a newline here. Escape still abandons, and Ctrl/Cmd+Enter
-          // is the conventional "I am done" for a multi-line box.
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              commit(e.currentTarget.value);
-            }
-          }}
-          onBlur={(e) => commit(e.currentTarget.value)}
-        />
-      );
-
+    /* Status only — an editable Dropdown never reaches here (DropdownSelect
+       above), and Long text has its own overlay control. */
     case 'dropdown':
     case 'status':
       return (
@@ -828,7 +926,25 @@ export function FieldRenderer({
           defaultValue={String(value ?? '')}
           className={inputClass}
           onKeyDown={keyCommit}
-          onBlur={(e) => commit(e.currentTarget.value)}
+          /*
+           * A day picked in the calendar is the whole edit — it saves then,
+           * not on some later blur the user never makes. Typed digits fire
+           * this too, one segment at a time, and the year passes through
+           * "0002", "0020", "0202" on its way to "2024"; a value counts as
+           * finished only once its year is a real one.
+           */
+          onChange={(e) => {
+            const v = e.currentTarget.value;
+            if (/^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 1900 && v !== String(value ?? '')) {
+              // Marked on the node, so the blur that follows cannot save twice.
+              e.currentTarget.dataset.saved = '1';
+              commit(v);
+            }
+          }}
+          onBlur={(e) => {
+            if (e.currentTarget.dataset.saved) return;
+            commit(e.currentTarget.value);
+          }}
         />
       );
 
@@ -868,11 +984,54 @@ export function FieldRenderer({
       );
     }
 
+    /* Validated (UI spec §4). A malformed address is refused on the spot
+       rather than saved — every "click to compose" downstream depends on it. */
+    case 'email':
+      return (
+        <input
+          ref={ref as React.RefObject<HTMLInputElement>}
+          type="email"
+          inputMode="email"
+          autoComplete="off"
+          defaultValue={String(value ?? '')}
+          className={inputClass}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); cancel(); return; }
+            if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+          }}
+          onInput={(e) => e.currentTarget.setCustomValidity('')}
+          onBlur={(e) => {
+            const v = e.currentTarget.value.trim();
+            if (v && !isValidEmail(v)) {
+              e.currentTarget.setCustomValidity('Enter an email address like name@company.com.');
+              e.currentTarget.reportValidity();
+              return;
+            }
+            commit(v);
+          }}
+        />
+      );
+
+    case 'phone':
+      return (
+        <input
+          ref={ref as React.RefObject<HTMLInputElement>}
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          defaultValue={String(value ?? '')}
+          className={`${inputClass} tabular`}
+          onKeyDown={keyCommit}
+          onBlur={(e) => commit(e.currentTarget.value.trim())}
+        />
+      );
+
     default:
       return (
         <input
           ref={ref as React.RefObject<HTMLInputElement>}
           type="text"
+          inputMode={field.type === 'url' ? 'url' : undefined}
           defaultValue={String(value ?? '')}
           className={inputClass}
           onKeyDown={keyCommit}
@@ -880,6 +1039,280 @@ export function FieldRenderer({
         />
       );
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dropdown — the one style (UI spec §4)                                       */
+/* -------------------------------------------------------------------------- */
+
+function DropdownSelect({
+  label,
+  value,
+  options,
+  orphan,
+  required,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: import('../schema').Choice[];
+  /** The stored key when this module's list lacks it — kept visible, marked. */
+  orphan: string | null;
+  required: boolean;
+  onChange: (v: string) => void;
+}) {
+  const empty = value === '';
+  return (
+    <span className="relative block">
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        className={`w-full cursor-pointer appearance-none truncate rounded-md border bg-white py-1.5 pl-2 pr-7 text-[13.5px] outline-none transition-colors hover:border-ink-300 focus-field ${
+          empty
+            ? required
+              ? 'border-warn/60 bg-warn-bg/30 text-warn'
+              : 'border-line text-ink-400'
+            : 'border-line font-medium text-ink-900'
+        }`}
+      >
+        <option value="">{required ? 'Required — choose…' : 'Choose…'}</option>
+        {orphan ? <option value={orphan}>{orphan} (not an option here)</option> : null}
+        {options.map((c) => (
+          <option key={choiceKey(c)} value={choiceKey(c)}>
+            {c.value}
+          </option>
+        ))}
+      </select>
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-ink-400">
+        <Icon name="chevron-down" size={13} />
+      </span>
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Long text — one line in the grid, a larger box over it to read or edit      */
+/* -------------------------------------------------------------------------- */
+
+function LongTextControl({
+  label,
+  value,
+  readOnly,
+  required,
+  autoEdit,
+  onCancel,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  readOnly: boolean;
+  required: boolean;
+  autoEdit?: boolean;
+  onCancel?: () => void;
+  onCommit: (v: string) => void;
+}) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  // autoEdit is the caller's "open me" gesture (the dashboard pencil), so the
+  // box starts open rather than opening in an effect after the first paint.
+  const [open, setOpen] = useState(Boolean(autoEdit && !readOnly));
+  const [draft, setDraft] = useState(value);
+  const [width, setWidth] = useState(380);
+  /* Escape must CANCEL, and MenuSurface reports Escape and an outside click
+     through the same onClose. Its key listener is on `document` in the capture
+     phase, so the only listener guaranteed to run first is one on `window`. */
+  const escaped = useRef(false);
+  const empty = value.trim() === '';
+
+  const openBox = () => {
+    if (readOnly && empty) return;
+    setDraft(value);
+    setWidth(Math.max(380, (anchor.current?.offsetWidth ?? 0) + 8));
+    escaped.current = false;
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') escaped.current = true;
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    if (readOnly) return;
+    if (escaped.current) {
+      onCancel?.();
+      return;
+    }
+    if (draft !== value) onCommit(draft);
+    else onCancel?.();
+  };
+
+  const firstLine = value.split(/\r?\n/).find((l) => l.trim()) ?? value;
+
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        disabled={readOnly && empty}
+        onClick={openBox}
+        title={!empty ? value : undefined}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={`group w-full rounded-md px-1 py-1 text-left text-[13.5px] leading-snug transition-colors duration-150 ${
+          readOnly ? 'cursor-default text-ink-400 enabled:cursor-pointer' : 'font-medium text-ink-900 hover:bg-brand-50'
+        }`}
+      >
+        {empty ? (
+          readOnly ? (
+            <span className="text-ink-400/70">—</span>
+          ) : (
+            <span
+              className={`flex w-full items-center rounded-md border border-dashed px-2 py-1.5 text-[13px] transition-colors group-hover:border-brand-600/50 group-hover:bg-brand-50/40 group-hover:text-brand-700 ${
+                required ? 'border-warn/60 bg-warn-bg/30 text-warn' : 'border-line text-ink-400'
+              }`}
+            >
+              {required ? 'Required' : 'Add value'}
+            </span>
+          )
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate">{firstLine}</span>
+            <Icon name="file-text" size={11} className="shrink-0 text-ink-300 transition-colors group-hover:text-brand-600" />
+          </span>
+        )}
+      </button>
+      <MenuSurface open={open} onClose={close} anchorRef={anchor} cover width={width} role="dialog" label={label} padded={false}>
+        <div className="p-2">
+          <div className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-500">{label}</div>
+          {readOnly ? (
+            <p className="max-h-[340px] overflow-y-auto whitespace-pre-wrap rounded-md bg-canvas/60 px-2.5 py-2 text-[13.5px] leading-relaxed text-ink-800">
+              {value}
+            </p>
+          ) : (
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.currentTarget.value)}
+              rows={8}
+              className="block w-full resize-y rounded-md border border-line bg-white px-2.5 py-2 text-[13.5px] leading-relaxed text-ink-900 outline-none focus-field"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  close();
+                }
+              }}
+            />
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-2 border-t border-line-faint px-3 py-1.5 text-[11.5px] text-ink-400">
+          <span>{readOnly ? 'View only' : 'Ctrl+Enter or click outside to save · Esc to cancel'}</span>
+          <button
+            type="button"
+            onClick={close}
+            className="rounded px-1.5 py-0.5 font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+          >
+            {readOnly ? 'Close' : 'Save'}
+          </button>
+        </div>
+      </MenuSurface>
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Email / Phone / Website — a link, with its own edit control                 */
+/* -------------------------------------------------------------------------- */
+
+function LinkValue({
+  type,
+  text,
+  label,
+  readOnly,
+  editRef,
+  onEdit,
+  onEditFocus,
+  saved,
+}: {
+  type: 'email' | 'phone' | 'url';
+  text: string;
+  label: string;
+  readOnly: boolean;
+  editRef: React.RefObject<HTMLButtonElement | null>;
+  onEdit: () => void;
+  onEditFocus: () => void;
+  saved: boolean;
+}) {
+  const links = useFieldLinks();
+  const linkClass =
+    'inline-flex min-w-0 items-center gap-1.5 rounded text-brand-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30';
+
+  let main: React.ReactNode;
+  let extra: React.ReactNode = null;
+  if (type === 'email') {
+    main = (
+      <a href={links.emailHref(text)} className={linkClass} title={`Write to ${text}`}>
+        <Icon name="mail" size={13} className="shrink-0 opacity-70" />
+        <span className="truncate">{text}</span>
+      </a>
+    );
+  } else if (type === 'url') {
+    main = (
+      <a href={websiteHref(text)} target="_blank" rel="noopener noreferrer" className={linkClass} title={`Open ${text} in a new tab`}>
+        <Icon name="external-link" size={13} className="shrink-0 opacity-70" />
+        <span className="truncate">{text.replace(/^https?:\/\/(www\.)?/i, '')}</span>
+      </a>
+    );
+  } else {
+    const shown = formatPhone(text);
+    main = (
+      <a
+        href={`tel:${text.replace(/[^\d+]/g, '')}`}
+        onClick={links.call ? (e) => { e.preventDefault(); links.call!(text); } : undefined}
+        className={`${linkClass} tabular`}
+        title={`Call ${shown}`}
+      >
+        <Icon name="phone" size={13} className="shrink-0 opacity-70" />
+        <span className="truncate">{shown}</span>
+      </a>
+    );
+    extra = (
+      <a
+        href={links.textHref ? links.textHref(text) : `sms:${text.replace(/[^\d+]/g, '')}`}
+        aria-label={`Text ${shown}`}
+        title={`Text ${shown}`}
+        className="grid size-6 shrink-0 place-items-center rounded text-ink-400 transition-colors hover:bg-brand-50 hover:text-brand-700"
+      >
+        <Icon name="message-square" size={12} />
+      </a>
+    );
+  }
+
+  return (
+    <div className={`flex w-full min-w-0 items-center gap-1 px-1 py-1 text-[13.5px] font-medium leading-snug ${saved ? 'animate-saved' : ''}`}>
+      {main}
+      <span className="ml-auto flex shrink-0 items-center">
+        {extra}
+        {readOnly ? null : (
+          <button
+            ref={editRef}
+            type="button"
+            onClick={onEdit}
+            onFocus={onEditFocus}
+            aria-label={`Edit ${label}`}
+            title={`Edit ${label}`}
+            className="grid size-6 place-items-center rounded text-ink-300 transition-colors hover:bg-brand-50 hover:text-brand-700"
+          >
+            <Icon name="pencil" size={11} />
+          </button>
+        )}
+      </span>
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -915,6 +1348,7 @@ function TeamMemberControl({
   ids,
   readOnly,
   compact,
+  showNames,
   grantsVisibility,
   viewerId,
   viewerIsAdmin,
@@ -922,6 +1356,9 @@ function TeamMemberControl({
 }: {
   ids: string[];
   readOnly: boolean;
+  /** With `compact`: print the names after the avatars (a field card has
+   *  the width for them; a table cell does not). */
+  showNames?: boolean;
   /**
    * Render as ONE line that never grows: an avatar stack that opens the
    * panel, and no chips.
@@ -987,6 +1424,23 @@ function TeamMemberControl({
       )
     : roster;
 
+  const names = selected.map((p) => p.name).join(', ');
+
+  if (readOnly && compact && showNames) {
+    return selected.length ? (
+      <div className="flex min-w-0 items-center gap-1.5 px-1 py-1" title={names}>
+        <span className="flex shrink-0 -space-x-1.5">
+          {selected.slice(0, 3).map((pp) => (
+            <PersonAvatar key={pp.id} person={pp} size={18} />
+          ))}
+        </span>
+        <span className="min-w-0 truncate text-[13px] text-ink-500">{names}</span>
+      </div>
+    ) : (
+      <span className="px-1 text-ink-400/70">—</span>
+    );
+  }
+
   if (readOnly) {
     return selected.length ? (
       <div className="flex flex-wrap items-center gap-1.5 py-1">
@@ -1011,7 +1465,9 @@ function TeamMemberControl({
             : 'flex flex-wrap items-center gap-1.5'
         }
       >
-        {(compact ? [] : selected).map((p) => {
+        {/* Compact shows no chips — except the one asking "Remove yourself?",
+            which the checklist hands back here and which must be seen. */}
+        {(compact ? (confirmingSelf ? selected.filter((p) => p.id === viewerId) : []) : selected).map((p) => {
           const isSelf = Boolean(viewerId) && p.id === viewerId;
           // Only worth confirming where it actually costs something: this
           // field grants the visibility, and an admin keeps it regardless.
@@ -1163,7 +1619,9 @@ function TeamMemberControl({
               }}
               className={
                 compact
-                  ? 'group/team flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-canvas'
+                  ? `group/team flex min-w-0 items-center gap-1.5 rounded-md px-1 transition-colors ${
+                      showNames ? 'w-full py-1 hover:bg-brand-50' : 'py-0.5 hover:bg-canvas'
+                    }`
                   : `inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[12.5px] font-medium transition-colors ${
                       grantsVisibility
                         ? 'border-warn/60 text-warn hover:border-warn hover:bg-warn-bg/40'
@@ -1190,9 +1648,16 @@ function TeamMemberControl({
                   {selected.length > 3 ? (
                     <span className="shrink-0 text-[11.5px] text-ink-400">+{selected.length - 3}</span>
                   ) : null}
+                  {showNames && selected.length ? (
+                    <span className="min-w-0 truncate text-[13px] font-medium text-ink-800" title={names}>
+                      {names}
+                    </span>
+                  ) : null}
                   <span
                     aria-hidden
-                    className="shrink-0 text-ink-300 opacity-0 transition-opacity group-hover/team:opacity-100 group-focus-visible/team:opacity-100"
+                    className={`shrink-0 text-ink-300 transition-opacity ${
+                      showNames ? 'ml-auto' : 'opacity-0 group-hover/team:opacity-100 group-focus-visible/team:opacity-100'
+                    }`}
                   >
                     <Icon name="chevron-down" size={11} />
                   </span>
@@ -1363,11 +1828,41 @@ function PercentSplitControl({
   const total = splitTotal(split);
   const balanced = total === 100;
 
+  /* One bar for the whole value, a segment per part: the proportions read at a
+     glance across the full row without any arithmetic. */
+  const bar = (
+    <div aria-hidden className="mt-2.5 flex h-1.5 overflow-hidden rounded-full bg-canvas">
+      {parts.map((p, i) => {
+        const n = Math.min(100, Number(split[p.stored]) || 0);
+        return n > 0 ? (
+          <span
+            key={p.stored}
+            title={`${p.label} ${n}%`}
+            className="h-full transition-[width] duration-200 first:rounded-l-full last:rounded-r-full"
+            style={{ width: `${n}%`, background: SPLIT_TONES[i % SPLIT_TONES.length] }}
+          />
+        ) : null;
+      })}
+    </div>
+  );
+
   if (readOnly) {
-    return (
-      <div className="px-2 py-1.5 text-[13.5px] text-ink-400">
-        {value ? splitSummary(split, field.choices ?? []) : '—'}
+    return value ? (
+      <div className="px-1 py-1">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[13.5px] text-ink-500">
+          {parts.map((p, i) => (
+            <span key={p.stored} className="inline-flex items-center gap-1.5">
+              <span aria-hidden className="size-2 rounded-full" style={{ background: SPLIT_TONES[i % SPLIT_TONES.length] }} />
+              {p.label}
+              <span className="font-medium tabular text-ink-800">{Number(split[p.stored]) || 0}%</span>
+            </span>
+          ))}
+          <span className="ml-auto text-[12px] tabular text-ink-400">{total}% of 100%</span>
+        </div>
+        {bar}
       </div>
+    ) : (
+      <div className="px-1 py-1 text-[13.5px] text-ink-400/70">—</div>
     );
   }
 
@@ -1386,35 +1881,44 @@ function PercentSplitControl({
     onChange({ ...split, [target]: Math.max(0, (split[target] ?? 0) + diff) });
   };
 
+  /*
+   * UI spec §3: a full-row type — every part side by side across the row, the
+   * running "x% of 100%" at the right end. Wraps onto a second line only when
+   * the drawer is too narrow to hold them all.
+   */
   return (
-    <div className="rounded-lg border border-line bg-white p-2">
-      <div className="space-y-1">
-        {parts.map((p) => (
-          <div key={p.stored} className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-[13px] text-ink-700">{p.label}</span>
-            <div className="flex items-center gap-1">
+    <div className="px-1 py-1">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        {parts.map((p, i) => (
+          <label key={p.stored} className="inline-flex items-center gap-2">
+            <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: SPLIT_TONES[i % SPLIT_TONES.length] }} />
+            <span className="whitespace-nowrap text-[13px] text-ink-700">{p.label}</span>
+            <span className="relative">
               <NumberInput
                 min={0}
                 max={100}
                 align="right"
                 value={split[p.stored] ?? 0}
                 onLiveChange={(n) => set(p.stored, n ?? 0)}
-                className="w-16 rounded-md border border-line px-2 py-1 text-[13px] outline-none transition-colors focus-field"
+                className="w-[72px] rounded-md border border-line bg-white py-1.5 pl-2 pr-6 text-[13.5px] outline-none transition-colors hover:border-ink-300 focus-field"
               />
-              <span className="w-3 text-[12px] text-ink-400">%</span>
-            </div>
-            {/* A bar makes the proportions readable without doing arithmetic. */}
-            <span className="hidden h-1.5 w-20 overflow-hidden rounded-full bg-canvas sm:block">
-              <span
-                className="block h-full rounded-full bg-brand-600 transition-[width] duration-200"
-                style={{ width: `${Math.min(100, split[p.stored] ?? 0)}%` }}
-              />
+              <span aria-hidden className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] text-ink-400">
+                %
+              </span>
             </span>
-          </div>
+          </label>
         ))}
-      </div>
 
-      <div className="mt-2 flex items-center gap-2 border-t border-line-soft pt-2">
+        <span className="ml-auto flex items-center gap-2.5">
+        {!balanced ? (
+          <button
+            type="button"
+            onClick={balance}
+            className="text-[12px] font-semibold text-brand-700 hover:underline"
+          >
+            Balance to 100%
+          </button>
+        ) : null}
         <span
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-[2.5px] text-[11.5px] font-semibold tabular ${
             balanced
@@ -1425,19 +1929,16 @@ function PercentSplitControl({
           <Icon name={balanced ? 'check' : 'alert-triangle'} size={11} strokeWidth={2.2} />
           {total}% of 100%
         </span>
-        {!balanced ? (
-          <button
-            type="button"
-            onClick={balance}
-            className="text-[12px] font-semibold text-brand-700 hover:underline"
-          >
-            Balance to 100%
-          </button>
-        ) : null}
+        </span>
       </div>
+      {bar}
     </div>
   );
 }
+
+/** Segment colours for a must-total-100% bar: the brand blue stepping out,
+ *  then teal and amber — distinct side by side, calm on a white card. */
+const SPLIT_TONES = ['#1d4ed8', '#60a5fa', '#0b7466', '#5ec8b8', '#b7791f', '#94a3b8'];
 
 /* -------------------------------------------------------------------------- */
 /* Address control — structured street/city/state/zip/country                 */
@@ -1491,10 +1992,15 @@ function AddressControl({
     if (commitTimer.current) clearTimeout(commitTimer.current);
   }, []);
 
+  /* Address 2 is collapsed behind "+ Address 2" until it is wanted, and stays
+     open once it holds something (UI spec §3). */
+  const [line2Open, setLine2Open] = useState(Boolean(value.street2));
+  const showLine2 = line2Open || Boolean(local.street2);
+
   if (readOnly) {
-    const empty = !value.street && !value.city && !value.state && !value.zip;
+    const empty = !value.street && !value.street2 && !value.city && !value.state && !value.zip;
     return (
-      <div className="px-2 py-1.5 text-[13.5px] leading-relaxed text-ink-400">
+      <div className="px-1 py-1 text-[13.5px] leading-relaxed text-ink-400">
         {empty ? '—' : formatAddress(value)}
       </div>
     );
@@ -1512,27 +2018,62 @@ function AddressControl({
 
   const zipValid = !local.zip || US_ZIP_PATTERN.test(local.zip);
 
+  const box =
+    'min-w-0 rounded-md border bg-white px-2 py-1.5 text-[13.5px] outline-none transition-colors hover:border-ink-300 focus-field';
+
+  /*
+   * UI spec §3: Address 1 · Address 2 · City · State · Zip, left to right
+   * across the full row. Flex with growth ratios rather than fixed tracks, so
+   * a narrow drawer wraps the row instead of crushing the street line.
+   */
   return (
-    <div className="space-y-1.5 rounded-lg border border-line bg-white p-2">
-      <input
-        type="text"
-        placeholder="Street address"
-        value={local.street}
-        onChange={(e) => set({ street: e.currentTarget.value })}
-        className="w-full rounded-md border border-line px-2 py-1.5 text-[13.5px] outline-none transition-colors focus-field"
-      />
-      <div className="flex gap-1.5">
+    <div className="px-1 py-1">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="text"
+          aria-label="Address 1"
+          placeholder="Address 1"
+          autoComplete="off"
+          value={local.street}
+          onChange={(e) => set({ street: e.currentTarget.value })}
+          className={`${box} flex-[2_1_220px] border-line`}
+        />
+        {showLine2 ? (
+          <input
+            type="text"
+            aria-label="Address 2"
+            placeholder="Address 2 — suite, unit, floor"
+            autoComplete="off"
+            autoFocus={line2Open && !local.street2}
+            value={local.street2}
+            onChange={(e) => set({ street2: e.currentTarget.value })}
+            className={`${box} flex-[1.4_1_170px] border-line`}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLine2Open(true)}
+            className="inline-flex h-[34px] shrink-0 items-center gap-1 rounded-md px-2 text-[12.5px] font-semibold text-brand-700 transition-colors hover:bg-brand-50"
+          >
+            <Icon name="plus" size={11} strokeWidth={2.4} />
+            Address 2
+          </button>
+        )}
+        <input
+          type="text"
+          aria-label="City"
           placeholder="City"
+          autoComplete="off"
           value={local.city}
           onChange={(e) => set({ city: e.currentTarget.value })}
-          className="min-w-0 flex-1 rounded-md border border-line px-2 py-1.5 text-[13.5px] outline-none transition-colors focus-field"
+          className={`${box} flex-[1.2_1_140px] border-line`}
         />
         <select
+          aria-label="State"
+          title={`${local.country || 'United States'} — USA only, for now`}
           value={local.state}
           onChange={(e) => set({ state: e.target.value })}
-          className="w-[68px] shrink-0 rounded-md border border-line px-1 py-1.5 text-[13.5px] outline-none transition-colors focus-field"
+          className={`${box} w-[84px] shrink-0 cursor-pointer border-line px-1.5 ${local.state ? '' : 'text-ink-400'}`}
         >
           <option value="">State</option>
           {US_STATES.map((s) => (
@@ -1542,16 +2083,16 @@ function AddressControl({
         <input
           type="text"
           inputMode="numeric"
+          aria-label="ZIP"
+          aria-invalid={!zipValid || undefined}
           placeholder="ZIP"
+          autoComplete="off"
           value={local.zip}
           onChange={(e) => set({ zip: e.currentTarget.value })}
-          className={`w-[84px] shrink-0 rounded-md border px-2 py-1.5 text-[13.5px] outline-none transition-colors focus-field ${
-            zipValid ? 'border-line' : 'border-bad/50'
-          }`}
+          className={`${box} w-[104px] shrink-0 tabular ${zipValid ? 'border-line' : 'border-bad/50'}`}
         />
       </div>
-      {!zipValid ? <p className="text-[11px] text-bad">ZIP should be 5 digits, or 5+4 (12345-6789).</p> : null}
-      <p className="text-[11px] text-ink-400">{local.country || 'United States'} — USA only, for now</p>
+      {!zipValid ? <p className="mt-1 text-[11px] text-bad">ZIP should be 5 digits, or 5+4 (12345-6789).</p> : null}
     </div>
   );
 }
@@ -1857,7 +2398,7 @@ function ValueDisplay({
       return (
         <span className="inline-flex items-center gap-1.5 tabular">
           <Icon name="phone" size={13} className="text-ink-400" />
-          {String(value)}
+          {formatPhone(String(value))}
         </span>
       );
     case 'multi_select':
@@ -1870,9 +2411,9 @@ function ValueDisplay({
         </span>
       );
     case 'dropdown':
-      return <OutlineChip>{choiceLabel(options, value)}</OutlineChip>;
+      return <span className="block truncate">{choiceLabel(options, value)}</span>;
     case 'long_text':
-      return <span className="block whitespace-pre-wrap leading-relaxed">{String(value)}</span>;
+      return <span className="block truncate">{String(value)}</span>;
     default:
       return <span>{String(value)}</span>;
   }

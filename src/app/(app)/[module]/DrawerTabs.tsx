@@ -61,6 +61,10 @@ export type RepeatGroupDef = {
     sensitive?: boolean;
     /** Inbound texts match against this sub-field — see textableNumbers.ts. */
     sync?: boolean;
+    /** Shown in the (i) beside the member's label. */
+    hint?: string;
+    /** Allowed lengths for a digits-only member (an SSN is 9). */
+    digits?: number[];
   }[];
   values: Record<string, unknown>[];
   count: number;

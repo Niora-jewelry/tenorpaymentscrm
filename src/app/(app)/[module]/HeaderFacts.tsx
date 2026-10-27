@@ -1,11 +1,14 @@
 'use client';
 
 /**
- * The drawer's header strip, editable in place.
+ * Vital Info — the drawer header's field section, editable in place.
  *
- * These are the fields an admin put in the module's header strip — Current
- * Status, Team member(s) assigned, Relationship manager, MID, MCC code — and
- * they were read-only. They are the most-looked-at values on the record and
+ * UI spec §2: a titled section using the same 4-equal-column grid as every
+ * tab, holding the fields an admin configured for it (Current Status, Risk
+ * Level, Team member(s) assigned, Relationship manager, Pricing Model, MID,
+ * MCC code), collapsed to one row until expanded (7.5).
+ *
+ * These were once read-only. They are the most-looked-at values on the record and
  * the only ones you had to go and find a tab for in order to change, which is
  * what the client asked about: "any column item should also be able to be
  * changed in the drawer".
@@ -55,8 +58,9 @@
  * (CLAUDE.md §3).
  */
 import { useCallback, useState, useSyncExternalStore } from 'react';
-import { FieldRenderer, HeaderValue } from '@/proto/ui/value';
-import type { Field as ProtoField, FieldValue, Swatch } from '@/proto/schema';
+import { FieldRenderer } from '@/proto/ui/value';
+import type { Field as ProtoField, FieldValue } from '@/proto/schema';
+import { Icon } from '@/proto/ui/icons';
 import { setValueAction } from './actions';
 import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
 import type { NotificationView } from '@/lib/records/notifications';
@@ -64,7 +68,39 @@ import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
   publishValue, publishedValue, subscribeToValues, valuesSnapshot,
 } from './recordVersion';
-import { SWATCHES } from '@/proto/ui/tokens';
+import { FIELD_GRID, FIELD_GRID_CONTAINER, FIELD_VALUE_SLOT, FieldLabelRow, SectionHeading, fieldCardClass } from './FieldCard';
+
+const VITAL_KEY = 'tapdash.vitalInfo.expanded';
+const VITAL_EVENT = 'tapdash:vital-info';
+/* Used only when storage throws, so the toggle still works for this page. */
+let fallbackVital = false;
+
+function readVital(): boolean {
+  try {
+    return window.localStorage.getItem(VITAL_KEY) === '1';
+  } catch {
+    return fallbackVital;
+  }
+}
+
+function writeVital(next: boolean): void {
+  try {
+    window.localStorage.setItem(VITAL_KEY, next ? '1' : '0');
+  } catch {
+    /* storage unavailable — the event below still updates this page */
+  }
+  fallbackVital = next;
+  window.dispatchEvent(new Event(VITAL_EVENT));
+}
+
+function subscribeVital(onChange: () => void): () => void {
+  window.addEventListener(VITAL_EVENT, onChange);
+  window.addEventListener('storage', onChange);
+  return () => {
+    window.removeEventListener(VITAL_EVENT, onChange);
+    window.removeEventListener('storage', onChange);
+  };
+}
 
 export type HeaderFact = {
   id: string;
@@ -81,7 +117,6 @@ export function HeaderFacts({
   recordId,
   updatedAt,
   facts,
-  pipeline,
   viewerId,
   viewerIsAdmin,
   visibilityFieldKey,
@@ -97,17 +132,6 @@ export function HeaderFacts({
   /** The record's compare-and-swap token as the server last rendered it. */
   updatedAt: string;
   facts: HeaderFact[];
-  /**
-   * Where the record stands on this module's pipeline, or null.
-   *
-   * Not a field, and deliberately not dressed as one — a pipeline assignment
-   * lives at (record, module) in `record_pipelines`, not in `record.values`,
-   * so it has no field grant and no `setValueAction` path to save through.
-   * It is shown here because it answers the same kind of question as the
-   * facts beside it, and changed on the pipeline bar below, where the whole
-   * step track is visible to move along.
-   */
-  pipeline?: { pipelineLabel: string; stepLabel: string; swatch: Swatch } | null;
   viewerId: string;
   viewerIsAdmin: boolean;
   /**
@@ -123,6 +147,12 @@ export function HeaderFacts({
   const [values, setValues] = useState<Record<string, FieldValue>>({});
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  /* Remembered per viewer, in this browser only — a convenience, never state
+     anyone else depends on. The server snapshot is "collapsed", so the server
+     render and the first client render agree. */
+  const expanded = useSyncExternalStore(subscribeVital, readVital, () => false);
+  const setExpanded = (next: boolean) => writeVital(next);
+
 
   /*
    * Register what the server just rendered. `seedRecordVersion` only ever
@@ -226,40 +256,46 @@ export function HeaderFacts({
     }
   };
 
-  if (facts.length === 0 && !pipeline) return null;
+  if (facts.length === 0) return null;
+
+  /*
+   * ── ONE ROW UNTIL ASKED (UI spec 7.5, approved) ─────────────────────────
+   * Collapsed, Vital Info shows exactly one row of the grid — four boxes on a
+   * wide drawer, two on a narrower one, one on a phone. The column count is
+   * decided by container width, so "the first row" is decided the same way:
+   * each box past the first row of the CURRENT layout is `display:none`,
+   * which also takes it out of the tab order instead of hiding it visually
+   * while a keyboard can still land in it.
+   */
+  const hiddenWhenCollapsed = (i: number): string =>
+    expanded ? '' : i >= 4 ? 'hidden' : i >= 2 ? '@max-[50rem]:hidden' : i === 1 ? '@max-[30rem]:hidden' : '';
+  /* The toggle exists only when something is actually folded away at this
+     width — same three thresholds. */
+  const toggleClass =
+    facts.length > 4 ? '' : facts.length > 2 ? '@[50rem]:hidden' : facts.length === 2 ? '@[30rem]:hidden' : 'hidden';
 
   return (
-    <>
+    <section aria-labelledby={`vital-${recordId}`} className={`mt-4 ${FIELD_GRID_CONTAINER}`}>
+      <SectionHeading label="Vital Info">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={`vital-grid-${recordId}`}
+          onClick={() => setExpanded(!expanded)}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold text-brand-700 transition-colors hover:bg-brand-50 ${toggleClass}`}
+        >
+          {expanded ? 'Show less' : `Show all ${facts.length}`}
+          <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
+        </button>
+      </SectionHeading>
+      <span id={`vital-${recordId}`} className="sr-only">Vital Info</span>
       {error ? (
-        <p role="alert" className="mt-3 text-[11.5px] text-danger">
+        <p role="alert" className="mb-2 text-[11.5px] text-danger">
           {error}
         </p>
       ) : null}
-      {/*
-        ⚠️ The fixed `min-h` on the value row is load-bearing, not padding.
-        A cell holding a StatusPill and one holding plain text are then the
-        same height, so rows stay aligned and nothing jitters as records
-        change.
-      */}
-      <dl className="mt-4 grid gap-x-6 gap-y-3.5 border-t border-line-soft pt-3.5 [grid-template-columns:repeat(auto-fill,minmax(168px,1fr))]">
-        {pipeline ? (
-          <div className="min-w-0">
-            <dt className="block truncate text-[11px] leading-none text-ink-400" title={pipeline.pipelineLabel}>
-              {pipeline.pipelineLabel}
-            </dt>
-            <dd className="mt-1.5 flex min-h-[22px] min-w-0 items-center gap-1.5 truncate text-[13.5px] font-medium">
-              <span
-                aria-hidden
-                className="size-[6px] shrink-0 rounded-full"
-                style={{ background: SWATCHES[pipeline.swatch].dot }}
-              />
-              <span className="truncate" style={{ color: SWATCHES[pipeline.swatch].text }}>
-                {pipeline.stepLabel}
-              </span>
-            </dd>
-          </div>
-        ) : null}
-        {facts.map((fact) => {
+      <div id={`vital-grid-${recordId}`} className={FIELD_GRID}>
+        {facts.map((fact, i) => {
           /* Our own in-flight edit wins, then anything the field grid (or
              any other surface) published for this record, then the value the
              server rendered. */
@@ -269,15 +305,10 @@ export function HeaderFacts({
              `fact.id` is the field's database UUID; `fact.field.id` is its
              KEY, which is what the adapter uses as the identity everywhere
              the client works (`adapter.ts`: "the prototype's own identity").
-             The field grid publishes under the key, and `setValueAction` on
-             line 178 is already called with the key.
-
-             This read, and the three publishes above, used the UUID. So the
-             two surfaces wrote to and read from different entries of the same
-             store and never saw each other — the sync was wired, connected to
-             nothing, and passed its own unit test because that test used one
-             key consistently. It took changing Pricing Model in the header and
-             watching the grid keep the old value to find it.
+             The field grid publishes under the key, and `setValueAction` is
+             called with the key. Reading by UUID once left the two surfaces
+             writing to different entries of the same store — changing Pricing
+             Model here and watching the grid keep the old value found it.
            */
           const shared = publishedValue(recordId, fact.field.id);
           const value = fact.id in values
@@ -285,83 +316,36 @@ export function HeaderFacts({
             : shared.has
               ? (shared.value as FieldValue)
               : fact.value;
-          const empty =
-            value == null
-            || value === ''
-            || (Array.isArray(value) && value.length === 0)
-            || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
 
           return (
-            /* `min-w-0` on every cell is mandatory: without it `truncate`
-               silently does nothing inside a grid track and one long value
-               blows its whole column out. */
             <div
               key={fact.id}
-              className="min-w-0"
-              /*
-                A team-member list takes two tracks, as it does in the field
-                grid below. In one 168px track its chips stacked vertically —
-                three people plus "Edit team" made the first row of the strip
-                three times taller than the rest and pushed MID, MCC code and
-                the affiliate name onto a second row with empty columns beside
-                them. With two tracks the chips sit side by side.
-              */
-              style={fact.field.type === 'team_member' ? { gridColumn: 'span 2' } : undefined}
+              className={`${fieldCardClass({})} ${hiddenWhenCollapsed(i)} ${savingId === fact.id ? 'opacity-70' : ''}`}
             >
-              <dt className="group/cell flex items-center gap-1 text-[11px] leading-none text-ink-400" title={fact.label}>
-                <span className="truncate">{fact.label}</span>
+              <FieldLabelRow field={fact.field}>
                 <FieldMentionNote mentions={mentionsByField[fact.field.id] ?? []} autoOpen={openMention?.fieldKey === fact.field.id ? openMention : null} onRead={onMentionRead} />
                 <FieldMentionButton recordId={recordId} fieldKey={fact.field.id} fieldLabel={fact.label} currentValue={valueText(value)} />
-              </dt>
-              {/*
-                ⚠️ `min-w-0` ON THE CHILD, NOT JUST ON THE CELL.
-                
-                A flex item will not shrink below its own content width unless
-                it is told to, and `min-w-0` here only applied to the <dd>. Its
-                child — the team-member picker, which lays its chips out in a
-                flex row of its own — kept its intrinsic width and ran straight
-                out of a 168px grid track into the next column. Reported as
-                Relationship manager overlapping MID, and it would have done it
-                to any long value, not just that one.
-                
-                `overflow-hidden` is the backstop for a control that cannot
-                wrap at all; the picker itself wraps once it is given a width
-                to wrap inside.
-              */}
-              <dd
-                className={`mt-1.5 flex min-h-[22px] min-w-0 items-center overflow-hidden text-[13.5px] font-medium text-ink-900 ${
-                  savingId === fact.id ? 'opacity-60' : ''
-                }`}
-              >
-                {fact.grant === 'edit' ? (
-                  <span className="w-full min-w-0">
-                  <FieldRenderer
-                    field={fact.field}
-                    value={value}
-                    grant="edit"
-                    moduleSlug={moduleSlug}
-                    grantsVisibility={fact.field.id === visibilityFieldKey}
-                    viewerId={viewerId}
-                    viewerIsAdmin={viewerIsAdmin}
-                    onChange={(next) => void commit(fact, next)}
-                  />
-                  </span>
-                ) : empty ? (
-                  /* Lighter than its own label, so it reads as "nothing here"
-                     and does not attract the eye. The label still shows:
-                     "this module tracks MCC code and this record has not got
-                     one" is information. */
-                  <span className="truncate text-ink-300">&mdash;</span>
-                ) : (
-                  <span className="truncate">
-                    <HeaderValue field={fact.field} value={value} moduleSlug={moduleSlug} />
-                  </span>
-                )}
-              </dd>
+              </FieldLabelRow>
+              {/* The same control the tab uses — "same behavior as on the
+                  tab" (UI spec §2). A view-only grant renders it read-only,
+                  exactly as the tab would. */}
+              <div className={FIELD_VALUE_SLOT}>
+                <FieldRenderer
+                  field={fact.field}
+                  value={value}
+                  grant={fact.grant}
+                  moduleSlug={moduleSlug}
+                  card
+                  grantsVisibility={fact.field.id === visibilityFieldKey}
+                  viewerId={viewerId}
+                  viewerIsAdmin={viewerIsAdmin}
+                  onChange={(next) => void commit(fact, next)}
+                />
+              </div>
             </div>
           );
         })}
-      </dl>
-    </>
+      </div>
+    </section>
   );
 }

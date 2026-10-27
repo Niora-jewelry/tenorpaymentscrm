@@ -191,7 +191,7 @@ export const PIPELINES: Pipeline[] = [
   },
   {
     id: 'pipe_account',
-    label: 'Account Health',
+    label: 'Pipeline',
     module: 'contacts',
     steps: [
       { id: 'onboarding', label: 'Onboarding', swatch: 'blue' },

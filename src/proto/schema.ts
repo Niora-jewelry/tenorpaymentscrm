@@ -356,7 +356,7 @@ export type GridRow = Record<string, string>;
  * as their own keys, rather than one freeform multi-line string, so each part
  * can have its own input (a state dropdown, a zip pattern) instead of parsing
  * a blob of text. */
-export type AddressValue = { street: string; city: string; state: string; zip: string; country: string };
+export type AddressValue = { street: string; street2: string; city: string; state: string; zip: string; country: string };
 
 export type FieldValue =
   | string | number | boolean | string[] | PercentSplit | GridRow[] | AddressValue | null;

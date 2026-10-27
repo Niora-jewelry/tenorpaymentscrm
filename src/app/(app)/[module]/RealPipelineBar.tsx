@@ -98,13 +98,20 @@ export function RealPipelineBar({
   // one created by direct SQL, or one whose steps were removed the same way,
   // is skipped rather than rendering a button that throws when clicked.
   const assignable = pipelines.filter((p) => p.steps.length > 0);
-  if (!assignable.length) return <div className="h-2" />;
+  if (!assignable.length) {
+    return (
+      <div className="flex items-center gap-2 text-[12px] text-ink-400">
+        <Icon name="route" size={13} className="text-ink-300" />
+        No pipeline in this module.
+      </div>
+    );
+  }
 
   const pipeline = assignable.find((p) => p.id === assignment?.pipelineId);
 
   if (!assignment || !pipeline) {
     return (
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 border-t border-line-soft py-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <Icon name="route" size={13} className="text-ink-300" />
         <span className="text-[12px] text-ink-400">Not on a pipeline in this module.</span>
         {error ? <span role="alert" className="text-[11.5px] text-danger">{error}</span> : null}
@@ -136,7 +143,7 @@ export function RealPipelineBar({
   const currentSwatch = SWATCHES[pipeline.steps[Math.max(0, index)]?.swatch ?? 'slate'];
 
   return (
-    <div className="border-t border-line-soft py-2.5">
+    <div>
       {error ? (
         <p role="alert" className="mb-1.5 text-[11.5px] text-danger">
           {error}

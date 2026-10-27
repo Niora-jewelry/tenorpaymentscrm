@@ -9,6 +9,7 @@
  * actions. Under "sign in as", only mailbox HEALTH is shown — never a
  * subject, sender or body of someone else's mail.
  */
+import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { authorize } from '@/lib/records/permissions';
@@ -23,6 +24,13 @@ import { folderIdsFor, parseOpen, resolveSelection } from './ui/selection';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** `?to=` from a record's Email field — parsed, never trusted; anything that
+ *  is not one plain address is ignored. */
+const composeTo = (v: string | undefined): string | null => {
+  const r = z.email().max(320).safeParse(v?.trim());
+  return r.success ? r.data : null;
+};
 
 export default async function EmailPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await authorize();
@@ -49,6 +57,7 @@ export default async function EmailPage({ searchParams }: { searchParams: Search
         initialSelection={selection}
         initialPage={initialPage}
         initialOpen={parseOpen(first(sp.c))}
+        initialComposeTo={composeTo(first(sp.to))}
         canEdit={access === 'edit'}
       />
     </div>

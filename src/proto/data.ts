@@ -272,6 +272,7 @@ function buildRecord(i: number): RecordRow {
   const affiliateName = pick(rng, AFFILIATES);
   const affCount = affiliateName ? 1 : 0;
   if (affCount) {
+    repeats.affiliate_business_name_1 = affiliateName;
     repeats.affiliate_name_1 = `${pick(rng, FIRST)} ${pick(rng, LAST)}`;
     repeats.affiliate_email_1 = `partners@${affiliateName.toLowerCase().replace(/[^a-z]/g, '')}.com`;
     repeats.affiliate_phone_1 = phone();
@@ -308,10 +309,7 @@ function buildRecord(i: number): RecordRow {
     merchant_website: `https://www.${domain}`,
 
     /* Contact */
-    affiliate_business_name: affiliateName,
     merchant_address: `${int(rng, 100, 4899)} ${pick(rng, STREETS)}, ${city}, ${state} ${zip}`,
-    affiliate_main_email: affiliateName ? `hello@${affiliateName.toLowerCase().replace(/[^a-z]/g, '')}.com` : '',
-    affiliate_main_phone: affiliateName ? phone() : '',
 
     /* Marketing */
     campaign: pick(rng, ['Q3 Restaurant Push', 'Ecom Outbound', 'Referral Partner Drive', 'Renewal Winback']),

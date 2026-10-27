@@ -297,7 +297,7 @@ export async function callDestination(ctx: AuthContext, callId: string): Promise
   for (const m of config.modules) {
     if (m.adminOnly || !inRecord.has(m.id)) continue;
     if ((await moduleGrant(ctx, m.id, m.adminOnly)) !== 'hidden') {
-      return `/${m.slug}?record=${recordId}&tab=communication&subtab=recordings`;
+      return `/${m.slug}?record=${recordId}&tab=communication&subtab=phone&view=recordings`;
     }
   }
   return FALLBACK;

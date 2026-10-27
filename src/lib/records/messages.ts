@@ -11,7 +11,9 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 
-export type MessageChannel = 'email' | 'instantly' | 'text';
+/* No 'instantly': that integration is off (UI spec §5) and the database
+   refuses the value (`messages_no_instantly`, migration 9802). */
+export type MessageChannel = 'email' | 'text';
 
 export type Message = {
   id: string;

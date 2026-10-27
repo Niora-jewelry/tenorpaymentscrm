@@ -413,7 +413,7 @@ export function SmsThread({
           */}
           No number on this record can be texted. A text can only go to a phone field with{' '}
           <strong>sync</strong> switched on — a contact&rsquo;s or an owner&rsquo;s — because that
-          is what an incoming reply is matched against. Fax and Affiliate main phone are not
+          is what an incoming reply is matched against. Fax and an affiliate&rsquo;s phone are not
           sync-enabled, so a reply to either would arrive attached to nothing.
         </SpecNote>
       )}

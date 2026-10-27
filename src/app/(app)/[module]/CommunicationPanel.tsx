@@ -1,26 +1,21 @@
 'use client';
 
 /**
- * Communication tab — layout ported from `src/proto/ui/tabs.tsx`'s
- * `CommunicationTab`/`LastMessageReceived`, reading the real `messages`
- * table.
+ * Communication tab — Email · Phone · Teams (UI spec §5).
  *
- * TEAMS is the only subtab still `ComingSoon`, and it is the client's own
- * spec rather than a cut corner: no provider is wired for it. Phone and Call
- * recordings USED to be listed here too — that stopped being true when
- * Twilio was wired and migration 70 cleared their flags, and they now render
- * live calls and audio through `PhonePanel`/`RecordingsPanel` below.
+ * Phone holds everything that travels over the phone line, behind one
+ * segmented control — Calls | Texts | Call recordings — and opens on Calls.
+ * Texts and Call recordings used to be sub-tabs of their own; their content
+ * moved here unchanged (nothing deleted). Instantly is gone, sub-tab and
+ * integration both.
  *
- * Which of them is a placeholder is read from `subtabs.coming_soon` rather
- * than decided here, so the next one to go live is a data change and this
- * comment cannot quietly drift out of date again (CLAUDE.md rule 1).
+ * TEAMS is still `ComingSoon`, by the client's own spec: no provider is wired
+ * for it. Which sub-tab is a placeholder is read from `subtabs.coming_soon`
+ * rather than decided here (CLAUDE.md rule 1).
  *
- * Email/Instantly/Text are real reads. There is no send path on THIS panel
- * because those messages only ever arrive through a provider webhook running
- * as the service role, which bypasses RLS entirely (`messages_select`'s own
- * policy comment) — the empty state you see is real absence of data, not a
- * stubbed screen. Texting a number does have a send path; it lives on the
- * phone page, which is where a number that matches no record can be reached.
+ * Email is a real read of `messages`; there is no send path on THIS panel
+ * because those rows only ever arrive through a provider running as the
+ * service role. Texting does have a send path — the composer on Texts.
  */
 import { useMemo, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
@@ -32,9 +27,9 @@ import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import type { TextableNumber } from '@/lib/phone/textableNumbers';
 import { PhonePanel, RecordingsPanel, SmsThread } from './PhonePanels';
+import { PHONE_VIEWS, phoneViewFrom, type PhoneView } from './phoneViews';
 
 function channelMeta(channel: MessageChannel) {
-  if (channel === 'instantly') return { label: 'Instantly', swatch: 'purple' as const };
   if (channel === 'text') return { label: 'SMS', swatch: 'teal' as const };
   return { label: 'Outlook', swatch: 'blue' as const };
 }
@@ -69,30 +64,121 @@ export function CommunicationPanel({
   recordPhones: TextableNumber[];
 }) {
   const [now] = useState(() => Date.now());
-  const channel: MessageChannel = subtabId === 'text' ? 'text' : subtabId === 'instantly' ? 'instantly' : 'email';
 
+  /*
+   * The flag decides, not this file: an admin can switch a sub-tab to
+   * "coming soon" and back in Presets (migration 70 cleared it for Phone).
+   */
+  if (comingSoon) {
+    return <ComingSoon what={subtabLabel} icon={subtabId === 'teams' ? 'video' : 'phone'} />;
+  }
+
+  if (subtabId === 'phone') {
+    return (
+      <PhoneViews
+        moduleSlug={moduleSlug}
+        calls={calls}
+        messages={messages}
+        smsMessages={smsMessages}
+        recordPhones={recordPhones}
+        now={now}
+      />
+    );
+  }
+
+  return <ChannelMessages channel="email" messages={messages} smsMessages={smsMessages} calls={calls} recordPhones={recordPhones} moduleSlug={moduleSlug} now={now} />;
+}
+
+/**
+ * Calls | Texts | Call recordings. The chosen view is kept in the URL
+ * (`view=`) without a navigation, so a notification about a text or a
+ * voicemail lands on the right one and a refresh stays put.
+ */
+function PhoneViews({
+  moduleSlug,
+  calls,
+  messages,
+  smsMessages,
+  recordPhones,
+  now,
+}: {
+  moduleSlug: string;
+  calls: PhoneCall[];
+  messages: Message[];
+  smsMessages: PhoneMessage[];
+  recordPhones: TextableNumber[];
+  now: number;
+}) {
+  const [view, setView] = useState<PhoneView>(() =>
+    typeof window === 'undefined' ? 'calls' : phoneViewFrom(new URL(window.location.href).searchParams.get('view')),
+  );
+  const pick = (next: PhoneView) => {
+    setView(next);
+    const u = new URL(window.location.href);
+    if (next === 'calls') u.searchParams.delete('view');
+    else u.searchParams.set('view', next);
+    window.history.replaceState(window.history.state, '', u);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div role="tablist" aria-label="Phone" className="inline-flex rounded-lg border border-line bg-canvas p-0.5">
+        {PHONE_VIEWS.map((v) => {
+          const on = v.key === view;
+          return (
+            <button
+              key={v.key}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => pick(v.key)}
+              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+                on ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(8,32,47,.10)] ring-1 ring-line' : 'text-ink-500 hover:text-ink-900'
+              }`}
+            >
+              <Icon name={v.icon} size={12} className={on ? 'text-brand-600' : 'text-ink-400'} />
+              {v.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div role="tabpanel">
+        {view === 'calls' ? (
+          <PhonePanel calls={calls} moduleSlug={moduleSlug} />
+        ) : view === 'recordings' ? (
+          <RecordingsPanel calls={calls} moduleSlug={moduleSlug} />
+        ) : (
+          <ChannelMessages channel="text" messages={messages} smsMessages={smsMessages} calls={calls} recordPhones={recordPhones} moduleSlug={moduleSlug} now={now} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Email, or Texts under Phone: the last inbound, then (texts only) the
+ *  composer, then the history. */
+function ChannelMessages({
+  channel,
+  messages,
+  smsMessages,
+  calls,
+  recordPhones,
+  moduleSlug,
+  now,
+}: {
+  channel: MessageChannel;
+  messages: Message[];
+  smsMessages: PhoneMessage[];
+  calls: PhoneCall[];
+  recordPhones: TextableNumber[];
+  moduleSlug: string;
+  now: number;
+}) {
   const channelMessages = useMemo(
     () => messages.filter((m) => m.channel === channel),
     [messages, channel],
   );
-
-  /*
-   * The flag decides, not this file.
-   *
-   * An earlier version checked the subtab key BEFORE `comingSoon` so the new
-   * Twilio panels would render regardless of what the database said. That
-   * worked and was wrong: it moved the decision into code, where an admin
-   * cannot reach it, and quietly removed their ability to switch Phone or Call
-   * recordings back off. Migration 70 clears the flag for those two instead —
-   * configuration, not code (CLAUDE.md rule 1).
-   */
-  if (comingSoon) {
-    const icon = subtabId === 'teams' ? 'video' : subtabId === 'recordings' ? 'mic' : 'phone';
-    return <ComingSoon what={subtabLabel} icon={icon} />;
-  }
-
-  if (subtabId === 'phone') return <PhonePanel calls={calls} moduleSlug={moduleSlug} />;
-  if (subtabId === 'recordings') return <RecordingsPanel calls={calls} moduleSlug={moduleSlug} />;
 
   return (
     <div className="space-y-3">
@@ -105,13 +191,9 @@ export function CommunicationPanel({
         Sync is forward-only — no historical backfill.
       </SpecNote>
 
-      {/*
-        ── ORDER ON THE TEXT SUBTAB: COMPOSER FIRST ───────────────────────
-        The send box comes straight after the info note, above any history —
-        the client's layout. SmsThread renders its own texts NEWEST-FIRST
-        beneath the box so the message being answered sits right under the
-        reply; see the note there for why oldest-first read backwards.
-      */}
+      {/* Texts: the composer comes straight after the note, above the history —
+          the client's layout. SmsThread renders newest-first beneath the box,
+          so the message being answered sits right under the reply. */}
       {channel === 'text' ? (
         <SmsThread
           moduleSlug={moduleSlug}
@@ -121,14 +203,9 @@ export function CommunicationPanel({
         />
       ) : null}
 
-      {/*
-
-        The empty state is also suppressed once live texts exist. Two sources
-        feed this tab — `messages` (arrived through a provider webhook) and
-        `phone_messages` (sent and received over Twilio by us) — and checking
-        only the first one printed "No messages yet. Nothing has arrived on
-        this channel." directly above a visible thread of real texts.
-      */}
+      {/* Two sources feed Texts — `messages` (provider webhook) and
+          `phone_messages` (our own Twilio traffic) — so the empty state is
+          suppressed once live texts exist. */}
       {channelMessages.length === 0 ? (
         channel === 'text' && smsMessages.length > 0 ? null : (
           <EmptyState icon={CHANNEL_ICON[channel]} title="No messages yet" body="Nothing has arrived on this channel." />
@@ -160,7 +237,6 @@ export function CommunicationPanel({
           })}
         </ul>
       )}
-
     </div>
   );
 }

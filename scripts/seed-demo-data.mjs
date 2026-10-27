@@ -669,20 +669,8 @@ log(`${messages} messages`);
 /* 10. Other-tab entries                                                      */
 /* -------------------------------------------------------------------------- */
 step('10. Other tab entries');
-
-let entries = 0;
-for (const [i, rec] of records.entries()) {
-  if (i % 5) continue;
-  const { rows: e } = await c.query(`select count(*) c from record_custom_entries where record_id = $1`, [rec.id]);
-  if (Number(e[0].c) > 0) continue;
-  await c.query(
-    `insert into record_custom_entries (record_id, label, value, created_by)
-     values ($1,'Warehouse gate code','#4417 — ring twice',$2), ($1,'Preferred install window','Tuesdays before 11am',$2)`,
-    [rec.id, admin.id],
-  );
-  entries += 2;
-}
-log(`${entries} entries`);
+/* The Other tab was removed (UI/UX Redesign spec §5, migration 9802). */
+log('skipped — the Other tab no longer exists');
 
 /* -------------------------------------------------------------------------- */
 /* 11. Permission templates                                                   */
@@ -729,7 +717,6 @@ const summary = await c.query(`
     (select count(*) from files where deleted_at is null) files,
     (select count(*) from statement_files where deleted_at is null) statements,
     (select count(*) from messages) messages,
-    (select count(*) from record_custom_entries) entries,
     (select count(*) from record_pipelines) pipelines,
     (select count(*) from notifications) notifications,
     (select count(*) from permission_templates) templates`);

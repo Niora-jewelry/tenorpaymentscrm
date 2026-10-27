@@ -23,11 +23,10 @@
  * the same way, and shows its health from the engine's own tables.
  *
  * ── WHAT IS STILL HONESTLY NOT BUILT ─────────────────────────────────────
- * Mail deposited onto RECORDS (the drawer's Email tab) and Instantly remain
- * real READS of the `messages` table with nothing writing it — the Email
- * module is deliberately standalone (spec). Teams has no provider.
- * DocuSign has never been specified. Those four keep the old, accurate framing,
- * and the notice at the bottom is narrowed to them rather than to the screen.
+ * Mail deposited onto RECORDS (the drawer's Email tab) remains a real READ
+ * of the `messages` table with nothing writing it — the Email module is
+ * deliberately standalone (spec). Teams has no provider. DocuSign has never
+ * been specified. Instantly was removed outright (UI/UX Redesign spec §5).
  */
 import { redirect } from 'next/navigation';
 import { authorize } from '@/lib/records/permissions';
@@ -121,12 +120,6 @@ function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
       state: 'read-only',
     },
     {
-      name: 'Instantly',
-      what: 'Campaign replies, labelled separately from Outlook',
-      where: 'Communication → Instantly',
-      state: 'read-only',
-    },
-    {
       name: 'Teams',
       what: 'Meetings surface',
       where: 'Communication → Teams',
@@ -207,13 +200,13 @@ export default async function AdminIntegrationsPage() {
         <p className="flex gap-2 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2 text-[12.5px] leading-relaxed text-brand-700">
           <Icon name="info" size={14} className="mt-0.5 shrink-0 opacity-70" />
           <span>
-            <strong>Email on records and Instantly read only.</strong> The drawer renders both from the real{' '}
+            <strong>Email on records is read only.</strong> The drawer renders it from the real{' '}
             <code>messages</code> table, so that read path is finished — what is missing is any
             provider that puts a message into it. The matching rules are settled even though nothing
             is wired: an inbound message matches against sync-enabled Email and Phone fields, a
             multi-match deposits into <strong>all</strong> matching records, a known sender never
             creates a new record, and sync is <strong>forward-only</strong> — no historical
-            backfill. An empty Email or Instantly tab is real absence of data, not a broken screen.
+            backfill. An empty Email tab is real absence of data, not a broken screen.
           </span>
         </p>
       </section>

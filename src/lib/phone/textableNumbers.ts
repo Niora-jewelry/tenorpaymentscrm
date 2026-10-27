@@ -18,7 +18,7 @@
  * conversation is worse than a blocked one, because nobody is told.
  *
  * So the rule here is the same rule the inbound side already uses. Today that
- * means a contact's or an owner's phone, and not Fax or Affiliate main phone
+ * means a contact's or an owner's phone, and not Fax or an affiliate's phone
  * — which is also what the empty-state text has always said, and is why the
  * fix is to find those numbers rather than to relax the rule.
  *

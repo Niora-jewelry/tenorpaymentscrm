@@ -25,7 +25,6 @@ import { repeatInstanceCount } from '@/lib/records/repeatGroups';
 import { listRecords, getRecord } from '@/lib/records/records';
 import { membershipsFor, membershipsForMany } from '@/lib/records/memberships';
 import { pipelineAssignment } from '@/lib/records/pipelines';
-import { entriesFor } from '@/lib/records/customEntries';
 import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor } from '@/lib/records/cases';
 import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
 import { RecordHeaderMenu } from './RecordHeaderMenu';
@@ -563,12 +562,11 @@ async function RecordDrawer({
   };
 
   const [
-    memberships, entries, cases, caseNote, updates, pipelineAssign,
+    memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
-    shows('freeform') ? entriesFor(ctx, record.id) : [],
     shows('cases') ? casesFor(ctx, record.id) : [],
     /* Fetched alongside the cases and skipped with them: a tab the viewer
        cannot see should not cost a query, and RLS would refuse this one
@@ -694,7 +692,6 @@ async function RecordDrawer({
   }
   for (const replies of Object.values(repliesByCase)) for (const r of replies) authorIds.add(r.authorId);
   for (const managers of Object.values(managersByCase)) for (const m of managers) authorIds.add(m);
-  for (const e of entries) authorIds.add(e.createdBy);
 
   // The viewer too: their own name must be bold when a colleague tags them,
   // and the roster never contains yourself.
@@ -1071,7 +1068,6 @@ async function RecordDrawer({
         grantByKey={grantByKey}
         values={record.values}
         updatedAt={record.updatedAt}
-        entries={entries}
         cases={cases}
         caseHandlingNote={caseNote}
         repliesByCase={repliesByCase}

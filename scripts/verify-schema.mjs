@@ -45,7 +45,7 @@ const MODULE2_TABLES = [
   'modules', 'tabs', 'subtabs', 'module_tab_order', 'module_subtab_order',
   'fields', 'module_columns', 'module_header_fields', 'field_choices',
   'pipelines', 'pipeline_steps',
-  'records', 'record_modules', 'record_pipelines', 'record_custom_entries',
+  'records', 'record_modules', 'record_pipelines',
   'notes', 'updates', 'update_mentions', 'notifications',
   'cases', 'case_managers', 'case_replies',
   'file_rows', 'files', 'statement_periods', 'statement_files',

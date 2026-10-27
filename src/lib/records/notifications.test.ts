@@ -48,8 +48,8 @@ describe('hrefFor — where a notification opens', () => {
   });
 
   it('a phone alert opens Communication at the matching sub-tab', () => {
-    expect(hrefFor({ id: 'n4', source_kind: 'voicemail', record_id: rec }, mod)).toBe(`/leads?record=${rec}&tab=communication&subtab=recordings`);
-    expect(hrefFor({ id: 'n5', source_kind: 'sms', record_id: rec }, mod)).toBe(`/leads?record=${rec}&tab=communication&subtab=text`);
+    expect(hrefFor({ id: 'n4', source_kind: 'voicemail', record_id: rec }, mod)).toBe(`/leads?record=${rec}&tab=communication&subtab=phone&view=recordings`);
+    expect(hrefFor({ id: 'n5', source_kind: 'sms', record_id: rec }, mod)).toBe(`/leads?record=${rec}&tab=communication&subtab=phone&view=texts`);
   });
 
   it('a phone alert without a record (or an unopenable one) falls back to the Phone page', () => {

@@ -37,7 +37,6 @@ import { addRepeatInstance, removeRepeatInstance, type RepeatMutationResult } fr
 import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/memberships';
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
-import { addEntry, updateEntry, deleteEntry } from '@/lib/records/customEntries';
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
@@ -333,28 +332,6 @@ export async function editNoteAction(moduleSlug: string, noteId: string, body: s
 export async function deleteNoteAction(moduleSlug: string, noteId: string): Promise<void> {
   const ctx = await authorize();
   await deleteNote(ctx, noteId);
-  revalidatePath(`/${moduleSlug}`);
-}
-
-export async function addCustomEntryAction(moduleSlug: string, recordId: string, formData: FormData): Promise<void> {
-  const ctx = await authorize();
-  const label = String(formData.get('label') ?? '').trim();
-  const value = String(formData.get('value') ?? '').trim();
-  if (label) await addEntry(ctx, recordId, label, value);
-  revalidatePath(`/${moduleSlug}`);
-}
-
-export async function updateCustomEntryAction(moduleSlug: string, entryId: string, formData: FormData): Promise<void> {
-  const ctx = await authorize();
-  const label = String(formData.get('label') ?? '').trim();
-  const value = String(formData.get('value') ?? '').trim();
-  await updateEntry(ctx, entryId, label, value);
-  revalidatePath(`/${moduleSlug}`);
-}
-
-export async function deleteCustomEntryAction(moduleSlug: string, entryId: string): Promise<void> {
-  const ctx = await authorize();
-  await deleteEntry(ctx, entryId);
   revalidatePath(`/${moduleSlug}`);
 }
 

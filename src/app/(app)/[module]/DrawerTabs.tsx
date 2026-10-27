@@ -18,7 +18,6 @@ import type { Field as ProtoField } from '@/proto/schema';
 import { RealFieldGrid } from './RealFieldGrid';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
 import { TabNotes } from './NoteThread';
-import { CustomEntries } from './CustomEntries';
 import { CasesPanel } from './CasesPanel';
 import { UpdatesPanel } from './UpdatesPanel';
 import { FilesPanel } from './FilesPanel';
@@ -26,7 +25,6 @@ import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
 import { ResidualsPanel } from './ResidualsPanel';
-import type { CustomEntry } from '@/lib/records/customEntries';
 import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
@@ -95,7 +93,6 @@ export function DrawerTabs({
   grantByKey,
   values,
   updatedAt,
-  entries,
   cases,
   caseHandlingNote,
   repliesByCase,
@@ -141,7 +138,6 @@ export function DrawerTabs({
   grantByKey: Record<string, Grant>;
   values: Record<string, unknown>;
   updatedAt: string;
-  entries: CustomEntry[];
   cases: CaseThread[];
   /** The record's standing "how to handle tickets here" instruction, shown
    *  at the top of Cases. Null when nobody has written one. */
@@ -472,14 +468,6 @@ export function DrawerTabs({
               </div>
             );
           })()
-        ) : activeTab.kind === 'freeform' ? (
-          <CustomEntries
-            moduleSlug={moduleSlug}
-            recordId={recordId}
-            entries={entries}
-            authorNames={authorNames}
-            editable={activeTab.editable}
-          />
         ) : activeTab.kind === 'cases' ? (
           <CasesPanel
             moduleSlug={moduleSlug}

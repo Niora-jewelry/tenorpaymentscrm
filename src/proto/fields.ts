@@ -193,12 +193,9 @@ export const FIELDS: Field[] = [
   /* ====================================================================== */
   /* Contact                                                                 */
   /* ====================================================================== */
-  f('affiliate_business_name', 'Affiliate business name', 'text', 'contact', {
-    headerIn: ALL_MODULES,
-    columnIn: ['records'],
-    columnOrder: 200,
-    width: 220,
-  }),
+  /* UI spec §5: Merchant address first, as one full-row Address field. The
+     top-line Affiliate business name / main email / main phone are gone —
+     the business name is the Affiliates section's first member now. */
   f('merchant_address', 'Merchant address', 'address', 'contact', {
     hint: 'City, State, Zip.',
     notes: true,
@@ -227,8 +224,10 @@ export const FIELDS: Field[] = [
     columnOrder: 180,
     width: 160,
   }),
-  f('affiliate_main_email', 'Affiliate main email', 'email', 'contact', { width: 230 }),
-  f('affiliate_main_phone', 'Affiliate main phone', 'phone', 'contact', { width: 160 }),
+  f('affiliate_business_name_1', 'Affiliate business name', 'text', 'contact', {
+    repeatGroup: { key: 'affiliate', max: 5 },
+    width: 220,
+  }),
   f('affiliate_name_1', 'Affiliate name 1', 'text', 'contact', {
     repeatGroup: { key: 'affiliate', max: 5 },
     width: 170,

@@ -59,11 +59,13 @@ export type NotificationRow = Pick<NotificationView, 'id' | 'body' | 'recordId' 
 
 type Raw = Record<string, unknown>;
 
-const TAB_FOR_PHONE: Record<string, { tab: string; subtab?: string }> = {
+/* Everything phone-borne lives under Communication → Phone, on one of its
+   three views (UI spec §5); `view` picks the one the notification is about. */
+const TAB_FOR_PHONE: Record<string, { tab: string; subtab?: string; view?: string }> = {
   call: { tab: 'communication', subtab: 'phone' },
-  voicemail: { tab: 'communication', subtab: 'recordings' },
-  recording: { tab: 'communication', subtab: 'recordings' },
-  sms: { tab: 'communication', subtab: 'text' },
+  voicemail: { tab: 'communication', subtab: 'phone', view: 'recordings' },
+  recording: { tab: 'communication', subtab: 'phone', view: 'recordings' },
+  sms: { tab: 'communication', subtab: 'phone', view: 'texts' },
 };
 
 /**
@@ -110,7 +112,7 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   }
   const target = TAB_FOR_PHONE[kind];
   if (!target) return base;
-  return `${base}&tab=${encodeURIComponent(target.tab)}${target.subtab ? `&subtab=${encodeURIComponent(target.subtab)}` : ''}`;
+  return `${base}&tab=${encodeURIComponent(target.tab)}${target.subtab ? `&subtab=${encodeURIComponent(target.subtab)}` : ''}${target.view ? `&view=${encodeURIComponent(target.view)}` : ''}`;
 }
 
 async function toViews(ctx: AuthContext, rows: Raw[]): Promise<NotificationView[]> {

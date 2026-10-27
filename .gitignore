@@ -58,3 +58,6 @@ HANDOVER/
 
 # Scratch
 .tmp-*
+
+# One-time data exports (merchant data) — never committed
+/backups/

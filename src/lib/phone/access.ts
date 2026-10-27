@@ -30,9 +30,10 @@ import 'server-only';
 import { loadConfig } from '@/lib/records/config';
 import { subtabGrant, capGrant, tabGrant, type AuthContext } from '@/lib/records/permissions';
 
-/** The subtab keys this module lives in. Looked up by key, never by id. */
+/** The sub-tab this module lives in. Looked up by key, never by id. Call
+ *  recordings and texts sit under it since the redesign (UI spec §5), so it
+ *  is the one sub-tab every phone grant reads. */
 const PHONE_SUBTAB_KEY = 'phone';
-const RECORDINGS_SUBTAB_KEY = 'recordings';
 
 async function subtabAccess(ctx: AuthContext, subtabKey: string) {
   if (ctx.isAdmin) return 'edit' as const;
@@ -60,7 +61,7 @@ export async function canSeePhone(ctx: AuthContext): Promise<boolean> {
 }
 
 /**
- * Hearing a recording needs View on Call recordings.
+ * Hearing a recording needs View on Phone, where Call recordings now live.
  *
  * ⚠ This is the APPLICATION half only. The real boundary is the
  * `phone_recordings` RLS policy and the `phone-recordings` bucket policy, both
@@ -69,5 +70,5 @@ export async function canSeePhone(ctx: AuthContext): Promise<boolean> {
  * never widen it.
  */
 export async function canHearRecordings(ctx: AuthContext): Promise<boolean> {
-  return (await subtabAccess(ctx, RECORDINGS_SUBTAB_KEY)) !== 'hidden';
+  return (await subtabAccess(ctx, PHONE_SUBTAB_KEY)) !== 'hidden';
 }

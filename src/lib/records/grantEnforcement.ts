@@ -58,12 +58,13 @@ export const ENFORCEMENT_NOTE: Record<GrantScope, { level: Enforcement; note: st
    * a time. Application → Private (EIN, account and routing numbers, owner
    * SSNs) is the case that made the gap worth closing.
    *
-   * Resolved UNDER the tab, never around it: `capGrant(tab, subtab)` at
-   * `[module]/page.tsx`, so a subtab cannot re-open what its tab closed.
+   * Permissions spec: "The most specific setting wins." A subtab with no
+   * setting follows its tab; with one, it wins — higher or lower than the
+   * tab (`subtabGrant`, and `user_record_scope_grant` since migration 9832).
    */
   subtab: {
     level: 'enforced',
-    note: 'Fully enforced. A Hidden subtab is dropped from the strip and its fields are never queried; View makes every field inside it read-only. Capped by its tab, so it can restrict further but never re-open.',
+    note: 'Fully enforced. A Hidden subtab is dropped from the strip and its fields are never queried; View makes every field inside it read-only. With no setting it follows its tab; a setting of its own wins, higher or lower than the tab.',
   },
   /**
    * Fully enforced. One precise caveat, because `records.ts`'s own header

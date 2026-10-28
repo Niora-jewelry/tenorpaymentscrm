@@ -179,7 +179,7 @@ export function resolveSubtabGrant(raw: Grant, isAdmin: boolean): Grant {
  * floor is the only rule in the model that *lifts* a grant, and an admin is
  * otherwise Edit everywhere before either floor runs.
  */
-function applyFieldFloors(
+export function applyFieldFloors(
   raw: Grant,
   caps: { readOnly: boolean; frozenColumn: boolean },
   isAdmin: boolean,

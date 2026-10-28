@@ -132,6 +132,9 @@ export type ScopeRow = {
    * them by handing this straight back to `resolveScope`, the same function
    * that produced them here, rather than by re-deriving the rules. */
   caps: ScopeCaps;
+  /** Set by the screen, not the server: what a row with no setting of its
+   * own follows ("tab" / "sub-tab"). Absent on a tab, whose unset is Edit. */
+  follows?: 'tab' | 'sub-tab';
 };
 
 export type SubtabGroup = {

@@ -11,9 +11,9 @@
  */
 import pg from 'pg';
 
-const MEMBER = 'itest-invited-1788631423689@tapdash.test';
+// Any active non-admin @tapdash.test account (the client tidies these away;
+// the script does not depend on a particular one).
 const OTHER = 'admin@tapdash.test';
-if (!/@([a-z0-9-]+\.)*test$/i.test(MEMBER)) process.exit(1);
 
 const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL });
 await c.connect();
@@ -50,7 +50,9 @@ const refuses = async (sql, params = []) => {
 
 await q('begin');
 try {
-  const [member] = await q(`select id from profiles where email = $1`, [MEMBER]);
+  const [member] = await q(`select p.id from profiles p join roles r on r.id = p.role_id
+      where not r.is_admin and p.deleted_at is null and p.status = 'active' and p.email like '%@tapdash.test'
+      order by p.email limit 1`);
   const [other] = await q(`select id from profiles where email = $1`, [OTHER]);
   if (!member || !other) throw new Error('test accounts missing');
   const mods = Object.fromEntries((await q(`select slug, id from modules`)).map((m) => [m.slug, m.id]));
@@ -102,6 +104,15 @@ try {
     t('sales agent: team field is view-only', g.g === 'view', g.g);
     const [pr] = await q(`select record_field_grant($1, 'td_amex_volume') g`, [onTeam]);
     t('sales agent: Pricing is view-only', pr.g === 'view', pr.g);
+    // "The most specific setting wins": one Pricing field Edit while Pricing is View.
+    await q('savepoint ms');
+    await q(`reset role`);
+    await q(`insert into template_grants (template_id, scope_kind, scope_id, grant_level)
+             select (select id from permission_templates where user_type = 'sales_agent'), 'field', id, 'edit' from fields where key = 'td_amex_volume'`);
+    await q(`select set_config('role', 'authenticated', true)`);
+    const [one] = await q(`select record_field_grant($1, 'td_amex_volume') g, record_field_grant($1, 'td_vmd_volume') o`, [onTeam]);
+    await q('rollback to savepoint ms');
+    t('sales agent: a Pricing field set to Edit beats Pricing = View', one.g === 'edit' && one.o === 'view', JSON.stringify(one));
     const [u] = await q(`select count(*)::int n from updates where id = any($1)`, [[upd.id, reply.id]]);
     t('sales agent: does not see someone else\'s update (Only mine)', u.n === 0, String(u.n));
   });

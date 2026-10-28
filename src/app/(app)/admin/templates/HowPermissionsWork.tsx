@@ -51,7 +51,7 @@ export function HowPermissionsWork() {
             {[
               ['1', "That person's own override", 'set on their Permissions page — always wins, and is marked as an override'],
               ['2', 'Their user type', 'change a type and everyone on it gets the change, except where they have an override'],
-              ['3', 'Otherwise the most restrictive value', 'for a setting; a tab or field nobody has set is Edit, inside what the module allows'],
+              ['3', 'Otherwise the default', 'a setting is its most restrictive value; a tab is Edit; a sub-tab or field follows its tab'],
             ].map(([n, title, note]) => (
               <li key={n} className="flex items-start gap-2.5 text-[13px]">
                 <span className="mt-[1px] grid size-[18px] shrink-0 place-items-center rounded-full bg-brand-50 text-[10.5px] font-bold text-brand-700">
@@ -115,8 +115,9 @@ export function HowPermissionsWork() {
               create a Super admin, and there is always at least one.
             </>,
             <>
-              <strong className="font-semibold text-ink-900">Narrower never widens.</strong> A sub-tab can only
-              restrict further than its tab, and a field further than its sub-tab.
+              <strong className="font-semibold text-ink-900">The most specific setting wins.</strong> A sub-tab or
+              field shows “Follows tab” until it is given a level of its own; then that level wins, higher or lower
+              than the tab — Pricing can be View while one Pricing field is Edit.
             </>,
             <>
               <strong className="font-semibold text-ink-900">Only mine</strong> means records they are a team

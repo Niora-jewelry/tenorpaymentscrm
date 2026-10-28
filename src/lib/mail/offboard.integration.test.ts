@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
+import { testAdmin, testMembers } from '@/test/testMembers';
 
 const DB_URL = process.env.SUPABASE_DB_URL;
 const suite = DB_URL ? describe : describe.skip;
@@ -35,15 +36,10 @@ async function as(userId: string) {
 const asSuper = () => db.query('reset role');
 
 async function people(): Promise<{ member: string; other: string; admin: string }> {
-  const { rows } = await db.query(`
-    select p.id, r.is_admin from profiles p join roles r on r.id = p.role_id
-     where p.deleted_at is null and p.status = 'active'
-       and (p.email::text like '%@tapdash.test' or p.email::text like 'itest-%')
-     order by p.email`);
-  const members = rows.filter((r) => !r.is_admin);
-  const admin = rows.find((r) => r.is_admin);
-  if (members.length < 2 || !admin) throw new Error('need two member test accounts and one admin test account');
-  return { member: members[0].id, other: members[1].id, admin: admin.id };
+  // Standing test accounts first; throwaway ones inside this transaction when
+  // there are too few (see src/test/testMembers.ts).
+  const [member, other] = await testMembers(db, 2);
+  return { member: member!, other: other!, admin: await testAdmin(db) };
 }
 
 async function connect(userId: string, oid: string, address: string, kind: 'personal' | 'shared', mailbox?: string) {

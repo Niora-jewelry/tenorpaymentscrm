@@ -407,27 +407,57 @@ export async function tabGrant(
 }
 
 /**
- * Subtab-level access. Same shape as `tabGrant`, resolved from the same
- * per-request grant set, and free for the same reason.
+ * A scope's OWN setting, or null when nothing is set on it — the "Not set"
+ * of the Permissions screen. Same lookup order as `rawGrant`, without the
+ * default, so a caller can fall back to the scope above instead.
+ */
+async function explicitGrant(
+  ctx: AuthContext,
+  kind: GrantScope,
+  scopeId: string,
+  moduleId?: string | null,
+): Promise<Grant | null> {
+  const grants = await allGrantsFor(ctx.userId);
+  if (moduleId) {
+    const specific = grants.get(`${kind}:${scopeId}:${moduleId}`);
+    if (specific) return specific;
+  }
+  return grants.get(`${kind}:${scopeId}`) ?? null;
+}
+
+/**
+ * Subtab-level access.
+ *
+ * Permissions spec: "Sub tabs and fields: by default these follow their tab
+ * … The most specific setting wins. A field or sub tab setting beats its tab
+ * setting." So with `tabId` given: the sub-tab's own setting if it has one —
+ * higher OR lower than the tab — otherwise the tab's. Without `tabId`, only
+ * the sub-tab's own scope (the old shape, for callers that have no tab).
+ * The module stays the outer limit; callers cap with `capGrant`.
  */
 export async function subtabGrant(
   ctx: AuthContext,
   subtabId: string,
   moduleId?: string | null,
+  tabId?: string | null,
 ): Promise<Grant> {
-  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'subtab', subtabId, moduleId);
-  return resolveSubtabGrant(raw, ctx.isAdmin);
+  if (ctx.isAdmin) return resolveSubtabGrant(GRANT_DEFAULT, true);
+  const raw =
+    (await explicitGrant(ctx, 'subtab', subtabId, moduleId)) ??
+    (tabId ? await explicitGrant(ctx, 'tab', tabId, moduleId) : null) ??
+    GRANT_DEFAULT;
+  return resolveSubtabGrant(raw, false);
 }
 
 /** Subtab grants for a whole tab's worth of subtabs, in no round trips beyond
  *  the one `allGrantsFor` already made. */
 export async function subtabGrants(
   ctx: AuthContext,
-  subtabIds: string[],
+  subtabs: { id: string; tabId: string }[],
   moduleId?: string | null,
 ): Promise<Map<string, Grant>> {
   const entries = await Promise.all(
-    subtabIds.map(async (id) => [id, await subtabGrant(ctx, id, moduleId)] as const),
+    subtabs.map(async (s) => [s.id, await subtabGrant(ctx, s.id, moduleId, s.tabId)] as const),
   );
   return new Map(entries);
 }
@@ -447,17 +477,32 @@ export async function tabGrants(
 }
 
 /**
- * Field-level access, with the two floors MODULE-2-PLAN §5.1 specifies:
+ * Field-level access.
+ *
+ * Permissions spec — "the most specific setting wins": the field's own
+ * setting if it has one (higher or lower than its tab: "Pricing can be View
+ * only for Sales agents while one Pricing field is Edit"), else its
+ * sub-tab's, else its tab's, else Edit. A config `Field` carries `tabId` and
+ * `subtabId`, so every caller holding one gets the whole chain; the module
+ * stays the outer limit (callers cap with `capGrant`). The SQL twin is
+ * `user_record_field_grant` (migration 9832) — the two must agree.
+ *
+ * Then the two floors MODULE-2-PLAN §5.1 specifies:
  *   - Deal Name is never Hidden, clamped to View minimum.
  *   - Record creator (any field flagged `read_only`) is View at most, for
  *     everyone, including admins — never Edit, no matter what a template says.
  */
 export async function fieldGrant(
   ctx: AuthContext,
-  field: { id: string; key: string; readOnly: boolean; type?: string },
+  field: { id: string; key: string; readOnly: boolean; type?: string; tabId?: string; subtabId?: string | null },
   moduleId?: string | null,
 ): Promise<Grant> {
-  const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'field', field.id, moduleId);
+  const raw = ctx.isAdmin
+    ? GRANT_DEFAULT
+    : (await explicitGrant(ctx, 'field', field.id, moduleId)) ??
+      (field.subtabId ? await explicitGrant(ctx, 'subtab', field.subtabId, moduleId) : null) ??
+      (field.tabId ? await explicitGrant(ctx, 'tab', field.tabId, moduleId) : null) ??
+      GRANT_DEFAULT;
   const resolved = resolveFieldGrant(raw, field, ctx.isAdmin);
   // Team pickers need "Add / remove team members" to change — the same cap
   // `user_record_field_grant` applies (migration 9811).
@@ -475,7 +520,7 @@ export async function fieldGrant(
  * map, so the map is fetched once and every field is resolved in memory. */
 export async function fieldGrants(
   ctx: AuthContext,
-  fields: { id: string; key: string; readOnly: boolean; type?: string }[],
+  fields: { id: string; key: string; readOnly: boolean; type?: string; tabId?: string; subtabId?: string | null }[],
   moduleId?: string | null,
 ): Promise<Map<string, Grant>> {
   const entries = await Promise.all(

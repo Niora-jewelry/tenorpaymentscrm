@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import pg from 'pg';
+import { testMembers } from '@/test/testMembers';
 
 const DB_URL = process.env.SUPABASE_DB_URL;
 const suite = DB_URL ? describe : describe.skip;
@@ -39,13 +40,10 @@ const asSuper = () => db.query('reset role');
 
 /** Two members (no admins involved): one owns the mailbox, the other must see nothing. */
 async function members(): Promise<[string, string]> {
-  const { rows } = await db.query(`
-    select p.id from profiles p join roles r on r.id = p.role_id
-     where p.deleted_at is null and p.status = 'active' and not r.is_admin
-       and (p.email::text like '%@tapdash.test' or p.email::text like 'itest-%')
-     order by p.email limit 2`);
-  if (rows.length < 2) throw new Error('need two active member test accounts');
-  return [rows[0].id, rows[1].id];
+  // Standing test accounts first; throwaway ones inside this transaction when
+  // there are too few (see src/test/testMembers.ts).
+  const [a, b] = await testMembers(db, 2);
+  return [a!, b!];
 }
 
 async function fixture(owner: string) {

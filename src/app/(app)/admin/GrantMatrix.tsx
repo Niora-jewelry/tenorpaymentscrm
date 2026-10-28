@@ -59,6 +59,7 @@ import {
   lockedGrantLevels,
   resolveScope,
   resolveMembership,
+  applyFieldFloors,
   capGrant,
   maxGrant,
   type Grant,
@@ -114,8 +115,15 @@ const variantOf = (row: ScopeRow): CellVariant => {
   return 'levels';
 };
 
-function GrantCell({ grant, muted, variant = 'levels' }: { grant: Grant | null; muted?: boolean; variant?: CellVariant }) {
-  const s = grant ? styleFor(variant, grant) : NOT_SET;
+/** "Not set", said as what it means for this row. */
+function unsetLabel(row: ScopeRow): string {
+  if (row.follows === 'sub-tab') return 'Follows sub-tab';
+  if (row.follows === 'tab') return 'Follows tab';
+  return row.kind === 'tab' ? 'Default' : 'Not set';
+}
+
+function GrantCell({ grant, muted, variant = 'levels', unsetText }: { grant: Grant | null; muted?: boolean; variant?: CellVariant; unsetText?: string }) {
+  const s = grant ? styleFor(variant, grant) : { ...NOT_SET, label: unsetText ?? NOT_SET.label };
   return <span className={`${CELL_BASE} ${s.className} ${muted ? 'opacity-55' : ''}`}>{s.label}</span>;
 }
 
@@ -153,6 +161,7 @@ function GrantToggle({
   busy,
   label,
   variant = 'levels',
+  unsetText = 'Not set',
   onChange,
 }: {
   value: Grant | null;
@@ -160,6 +169,8 @@ function GrantToggle({
   busy: boolean;
   label: string;
   variant?: CellVariant;
+  /** What "no setting" means on this row: "Follows tab" / "Default". */
+  unsetText?: string;
   onChange: (next: Grant | null) => void;
 }) {
   const locks = lockedGrantLevels(caps);
@@ -172,7 +183,7 @@ function GrantToggle({
   const levels: readonly Grant[] =
     variant === 'yesno' ? ['view', 'edit'] : variant === 'full' ? ['hidden', 'edit'] : GRANT_LEVELS;
   const options: { key: string; level: Grant | null; text: string }[] = [
-    { key: 'unset', level: null, text: 'Not set' },
+    { key: 'unset', level: null, text: unsetText },
     ...levels.map((g) => ({ key: g, level: g as Grant | null, text: styleFor(variant, g).label })),
   ];
 
@@ -228,12 +239,7 @@ function GrantToggle({
 type EditableColumn = 'template' | 'user' | null;
 
 const MODULE_CEILING_NOTE =
-  'Capped by the module. A module set to View or Hidden is the ceiling on every tab it shows, whatever this row says.';
-const TAB_CEILING_NOTE =
-  'Capped by its tab. A tab set to View or Hidden is the ceiling on every field in it, whatever this row says.';
-/** Why a field's level is capped by the subtab it sits in. A separate note
- *  from the tab's, so the padlock names the level that actually did it. */
-const SUBTAB_CEILING_NOTE = 'Capped by this subtab';
+  'Capped by the module. A module this person cannot open is the ceiling on every tab it shows, whatever this row says.';
 
 /**
  * The ceiling a set of modules puts on a tab: the MOST permissive of them,
@@ -261,6 +267,25 @@ function applyCeiling(row: ScopeRow, ceiling: Grant, note: string): ScopeRow {
   const effective = capGrant(ceiling, row.effective);
   if (effective === row.effective) return row;
   return { ...row, effective, lock: row.lock ? `${row.lock} ${note}` : note };
+}
+
+/**
+ * Permissions spec: "Sub tabs and fields: by default these follow their tab …
+ * The most specific setting wins" — and "An override can be higher or lower
+ * than the tab". A sub-tab or field row with a setting of its own keeps it
+ * (the module stays the outer limit); a row with none takes the level above,
+ * and its padlock says so. The same rule as `fieldGrant` / `subtabGrant` and
+ * `user_record_field_grant` (migration 9832).
+ */
+function follow(row: ScopeRow, above: Grant, moduleCeiling: Grant, follows: 'tab' | 'sub-tab', subjectIsAdmin: boolean): ScopeRow {
+  const tagged: ScopeRow = { ...row, follows };
+  if (row.userGrant !== null || row.templateGrant !== null) return applyCeiling(tagged, moduleCeiling, MODULE_CEILING_NOTE);
+  const inherited =
+    row.caps.kind === 'field'
+      ? applyFieldFloors(above, { readOnly: row.caps.readOnly, frozenColumn: row.caps.frozenColumn }, subjectIsAdmin)
+      : above;
+  const note = `Not set — follows its ${follows}.`;
+  return { ...tagged, effective: inherited, lock: inherited === row.resolved ? row.lock : row.lock ? `${note} ${row.lock}` : note };
 }
 
 function ScopeLine({
@@ -368,13 +393,14 @@ function ScopeLine({
               caps={row.caps}
               busy={busy}
               variant={variant}
+              unsetText={unsetLabel(row)}
               label={
                 editable === 'user' ? `Permission for ${row.label}` : `Type permission for ${row.label}`
               }
               onChange={(next) => onEdit(row, editable, next)}
             />
           ) : (
-            <GrantCell grant={ownValue} variant={variant} />
+            <GrantCell grant={ownValue} variant={variant} unsetText={unsetLabel(row)} />
           )}
         </span>
 
@@ -790,20 +816,17 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
             tab,
             groups: t.groups
               .map((g) => {
-                // The subtab's own row is capped by its tab, exactly as the
-                // fields are — and the FIELDS are then capped by the subtab
-                // rather than the tab, so the chain the server enforces
-                // (module → tab → subtab → field) is the chain shown here.
+                // Most specific wins: a sub-tab follows its tab unless set;
+                // a field follows its sub-tab (or tab) unless set. The module
+                // stays the outer limit on all of them.
                 const subtab = g.subtab
-                  ? applyCeiling(withEdits(g.subtab), tab.effective, TAB_CEILING_NOTE)
+                  ? follow(withEdits(g.subtab), tab.effective, ceiling, 'tab', matrix.subjectIsAdmin)
                   : null;
                 const above = subtab ? subtab.effective : tab.effective;
                 return {
                   ...g,
                   subtab,
-                  fields: visible(g.fields).map((f) =>
-                    applyCeiling(f, above, subtab ? SUBTAB_CEILING_NOTE : TAB_CEILING_NOTE),
-                  ),
+                  fields: visible(g.fields).map((f) => follow(f, above, ceiling, subtab ? 'sub-tab' : 'tab', matrix.subjectIsAdmin)),
                 };
               })
               .filter((g) => g.fields.length > 0 || (g.subtab != null && matches(g.subtab))),
@@ -846,15 +869,18 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       if (r.userGrant !== null) userSet++;
     }
     for (const t of matrix.tabs) {
-      const tab = applyCeiling(withEdits(t.tab), ceilingOf(t.moduleIds, moduleEffective), MODULE_CEILING_NOTE);
+      const ceiling = ceilingOf(t.moduleIds, moduleEffective);
+      const tab = applyCeiling(withEdits(t.tab), ceiling, MODULE_CEILING_NOTE);
       tally(tab);
       for (const g of t.groups) {
-        if (g.subtab) tally(applyCeiling(withEdits(g.subtab), tab.effective, TAB_CEILING_NOTE));
-        for (const f of g.fields) tally(applyCeiling(withEdits(f), tab.effective, TAB_CEILING_NOTE));
+        const sub = g.subtab ? follow(withEdits(g.subtab), tab.effective, ceiling, 'tab', matrix.subjectIsAdmin) : null;
+        if (sub) tally(sub);
+        const above = sub ? sub.effective : tab.effective;
+        for (const f of g.fields) tally(follow(withEdits(f), above, ceiling, sub ? 'sub-tab' : 'tab', matrix.subjectIsAdmin));
       }
     }
     return { ...matrix.counts, templateSet, userSet, restricted };
-  }, [matrix.counts, matrix.modules, matrix.memberships, matrix.tabs, withEdits]);
+  }, [matrix.counts, matrix.modules, matrix.memberships, matrix.tabs, matrix.subjectIsAdmin, withEdits]);
 
   /*
    * The rows on screen, in the order they are drawn — the same walk the JSX
@@ -925,9 +951,11 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       <p className="flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09]">
         <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
         <span>
-          <strong className="font-semibold">Not set means Edit, not none.</strong> A tab nobody has set
-          is Edit, inside what module access allows; a sub-tab or field follows its tab until it is set.
-          Communication, Updates and Cases are not here — their settings above decide them.
+          <strong className="font-semibold">Follows tab</strong> means no setting of its own: a sub-tab
+          or field gets whatever its tab gets. Give it its own level and that wins — higher or lower than
+          the tab (Pricing View, one Pricing field Edit). A tab left on <strong className="font-semibold">Default</strong>{' '}
+          is Edit, inside what module access allows. Communication, Updates and Cases are not here — their
+          settings above decide them.
           {writer ? ' Changes save as you click them.' : ' This screen is read-only.'}
         </span>
       </p>
@@ -1127,7 +1155,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
             setAnchor(null);
           }}
         >
-          <BarAction icon="x" label="Not set" disabled={bulkBusy} onClick={() => applyBulk(null)} title="Clear the grant on every selected row" />
+          <BarAction icon="x" label="Clear setting" disabled={bulkBusy} onClick={() => applyBulk(null)} title="Remove the setting on every selected row — each then follows its tab (a tab goes back to Default)" />
           {GRANT_LEVELS.map((g) => (
             <BarAction
               key={g}

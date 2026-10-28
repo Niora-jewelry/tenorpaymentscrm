@@ -35,7 +35,6 @@ import {
   capGrant,
   fieldGrant,
   moduleGrant,
-  subtabGrant,
   tabGrant,
   type AuthContext,
   type Grant,
@@ -236,17 +235,11 @@ export async function fieldCapsFor(
   recordIds: string[],
   field: Field | undefined,
 ): Promise<Map<string, Grant>> {
-  const levels: ((moduleId: string) => Promise<Grant>)[] = [];
-  // A field always has a tab. The empty chain only covers a field deleted from
-  // config between render and submit, where the module ceiling alone decides.
-  if (field) {
-    levels.push((moduleId) => tabGrant(ctx, field.tabId, moduleId));
-    if (field.subtabId) {
-      const subtabId = field.subtabId;
-      levels.push((moduleId) => subtabGrant(ctx, subtabId, moduleId));
-    }
-    levels.push((moduleId) => fieldGrant(ctx, field, moduleId));
-  }
+  // `fieldGrant` resolves the field's own setting → sub-tab's → tab's (the
+  // Permissions spec's "most specific wins"); the module is the ceiling. The
+  // empty chain only covers a field deleted from config between render and
+  // submit, where the module ceiling alone decides.
+  const levels: ((moduleId: string) => Promise<Grant>)[] = field ? [(moduleId) => fieldGrant(ctx, field, moduleId)] : [];
   return chainCapFor(ctx, recordIds, levels);
 }
 
@@ -289,8 +282,6 @@ export async function hiddenFieldKeysFor(
       await Promise.all(
         mods.map(async (m) => {
           let g = moduleCap.get(m.id) ?? 'hidden';
-          if (g !== 'hidden') g = capGrant(g, await tabGrant(ctx, f.tabId, m.id));
-          if (g !== 'hidden' && f.subtabId) g = capGrant(g, await subtabGrant(ctx, f.subtabId, m.id));
           if (g !== 'hidden') g = capGrant(g, await fieldGrant(ctx, f, m.id));
           capByModule.set(m.id, g);
         }),

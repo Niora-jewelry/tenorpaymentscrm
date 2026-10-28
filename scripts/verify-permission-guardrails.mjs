@@ -13,7 +13,9 @@ try {
   if (process.argv[2]) await q(readFileSync(process.argv[2], 'utf8'));
   const id = async (e) => (await q('select id from profiles where email=$1', [e]))[0].id;
   const tpl = async (t) => (await q('select id from permission_templates where user_type=$1', [t]))[0].id;
-  const admin = await id('admin@tapdash.test'), maylyn = await id('maylyn@tapdash.co'), member = await id('itest-invited-1788631423689@tapdash.test');
+  const admin = await id('admin@tapdash.test'), maylyn = await id('maylyn@tapdash.co'), member = (await q(`select p.id from profiles p join roles r on r.id = p.role_id
+      where not r.is_admin and p.deleted_at is null and p.status = 'active' and p.email like '%@tapdash.test'
+      order by p.email limit 1`))[0].id;
   // Make Maylyn an Admin type for the actor checks (rolled back).
   await q(`update user_templates set template_id=$2 where user_id=$1`, [maylyn, await tpl('admin')]);
   await expectErr('1. cannot edit own overrides', `select perm_set_setting($1,'user',$1,'action.archive','no')`, [maylyn]);

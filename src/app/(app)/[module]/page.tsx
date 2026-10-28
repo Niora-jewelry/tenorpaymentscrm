@@ -576,23 +576,15 @@ async function RecordDrawer({
   const dbTabs = allTabs.filter((t) => tabGrantById.get(t.id) !== 'hidden' && !(casesHidden && t.kind === 'cases'));
 
   /*
-   * Subtab grants, capped under their own tab. A scope only since migration
-   * 50 — the client's §8 always asked for "tab/subtab access", but there was
-   * no fourth `grant_scope` value, so nineteen subtabs could previously only
-   * be restricted by hiding their whole parent tab or by granting every field
-   * inside them one at a time. Application → Private (EIN, account and routing
-   * numbers, owner SSNs) is the case that made that worth closing.
-   *
-   * Capped, not independent: a subtab can restrict further than its tab, never
-   * re-open what the tab closed.
+   * Subtab grants. Permissions spec: a sub-tab follows its tab until it has a
+   * setting of its own, and then that setting wins — higher or lower than the
+   * tab ("the most specific setting wins"). `subtabGrant` resolves exactly
+   * that; the module stays the outer limit.
    */
   const allSubtabs = dbTabs.flatMap((t) => subtabsForModule(config, moduleId, t.id));
-  const rawSubtabGrants = await subtabGrants(ctx, allSubtabs.map((s) => s.id), moduleId);
+  const rawSubtabGrants = await subtabGrants(ctx, allSubtabs, moduleId);
   const subtabGrantById = new Map(
-    allSubtabs.map((s) => [
-      s.id,
-      capGrant(tabGrantById.get(s.tabId) ?? 'hidden', rawSubtabGrants.get(s.id) ?? 'edit'),
-    ] as const),
+    allSubtabs.map((s) => [s.id, capGrant(grant, rawSubtabGrants.get(s.id) ?? 'edit')] as const),
   );
 
   /** Is the tab of this kind visible to this viewer? System tabs are one per
@@ -786,22 +778,18 @@ async function RecordDrawer({
   // Files, Logins, Statements, Updates or Communication, none of which are
   // made of fields.
 
-  // One grant lookup for every field across every tab/subtab, keyed by the
-  // adapted (key-based) field id — the same shape RealFieldGrid consumes.
-  const allTabFields = dbTabs.flatMap((t) => fieldsInTab(config, t.id));
+  // One grant lookup for every field across every tab — a hidden tab's too,
+  // because a field set on its own can be shown where its tab is not (Vital
+  // Info, columns) — keyed by the adapted (key-based) field id, the shape
+  // RealFieldGrid consumes.
+  const allTabFields = allTabs.flatMap((t) => fieldsInTab(config, t.id));
   const grants = await fieldGrants(ctx, allTabFields, moduleId);
   const grantByKey: Record<string, 'hidden' | 'view' | 'edit'> = {};
-  // Capped by module THEN tab: without this a module or tab set to View still
-  // handed the drawer a page of Edit fields, because the three scopes resolve
-  // independently and an unset field is Edit.
   for (const f of allTabFields) {
-    // module → tab → SUBTAB → field. Each level can only narrow the one above
-    // it, which is what makes a View subtab hand the drawer read-only fields
-    // even where the field's own grant says Edit.
-    const above = f.subtabId
-      ? (subtabGrantById.get(f.subtabId) ?? 'hidden')
-      : (tabGrantById.get(f.tabId) ?? 'hidden');
-    grantByKey[f.key] = capGrant(above, grants.get(f.id) ?? 'hidden');
+    // field's own setting → sub-tab's → tab's → Edit (`fieldGrant`), with the
+    // module as the outer limit. Permissions spec: "The most specific setting
+    // wins. A field or sub tab setting beats its tab setting."
+    grantByKey[f.key] = capGrant(grant, grants.get(f.id) ?? 'hidden');
   }
 
   /* Files FIELDS — only fetched when this viewer can see at least one; RLS

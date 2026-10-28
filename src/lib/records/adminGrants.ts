@@ -69,7 +69,7 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { invalidateGrants, type AuthContext } from './permissions';
+import { authorize, invalidateGrants, type AuthContext } from './permissions';
 import {
   FROZEN_COLUMN_FIELD_KEY,
   grantWriteRefusal,
@@ -384,10 +384,18 @@ async function buildMatrix(
     fieldsByTab.set(f.tabId, list);
   }
 
+  // A tab whose access a setting decides (Communication, Updates, Cases) has
+  // no tab, sub-tab or field level to show (Permissions spec, Tab levels).
+  const accessOptions = await tabAccessOptions();
   const tabs: TabGroup[] = [...config.tabs]
+    .filter((t) => accessOptions.get(t.id) !== 'setting')
     .sort((a, b) => a.position - b.position)
     .map((t) => {
-      const tabRow = row('tab', t.id, t.label, t.key, { kind: 'tab' });
+      const tabRow = row('tab', t.id, t.label, t.key, {
+        kind: 'tab',
+        hiddenOrFull: accessOptions.get(t.id) === 'hidden_full',
+        viewCopies: t.kind === 'logins',
+      });
 
       const tabFields = (fieldsByTab.get(t.id) ?? []).sort((a, b) => a.position - b.position);
       const subtabs = (subtabsByTab.get(t.id) ?? []).sort((a, b) => a.position - b.position);
@@ -621,6 +629,14 @@ const scopeGone: GrantResult = {
  * proceed. See `grantWriteRefusal` for why the two field caps are refused here
  * while the admin-only module floor is not.
  */
+/** `tabs.access_options` (migration 9821) — which levels each tab offers. */
+type TabAccessOptions = 'levels' | 'hidden_full' | 'setting';
+async function tabAccessOptions(): Promise<Map<string, TabAccessOptions>> {
+  const { data, error } = await supabaseAdmin().from('tabs').select('id, access_options');
+  if (error) throw error;
+  return new Map((data ?? []).map((t) => [t.id as string, t.access_options as TabAccessOptions]));
+}
+
 async function refuseCappedGrant(
   scopeKind: GrantScope,
   scopeId: string,
@@ -631,6 +647,18 @@ async function refuseCappedGrant(
     const mod = config.modules.find((m) => m.id === scopeId);
     if (!mod) return null;
     const message = grantWriteRefusal({ kind: 'membership', adminOnly: mod.adminOnly }, level);
+    return message ? { ok: false, message } : null;
+  }
+  if (scopeKind === 'tab' || scopeKind === 'subtab') {
+    // Mirrors the `grants_respect_tab_access_options` trigger (migration 9821).
+    const config = await loadConfig();
+    const tabId = scopeKind === 'tab' ? scopeId : config.subtabs.find((st) => st.id === scopeId)?.tabId;
+    const opts = tabId ? (await tabAccessOptions()).get(tabId) : undefined;
+    if (opts === 'setting') {
+      return { ok: false, message: 'This tab has no tab or sub-tab level — its setting in the Settings panel decides it.' };
+    }
+    if (scopeKind === 'subtab') return null;
+    const message = grantWriteRefusal({ kind: 'tab', hiddenOrFull: opts === 'hidden_full' }, level);
     return message ? { ok: false, message } : null;
   }
   if (scopeKind !== 'field') return null;
@@ -662,98 +690,67 @@ async function refuseCappedGrant(
  * the client relies on (`CLIENT-SPEC-BY-MODULE.md` §8). A cache in front of this
  * would break it silently: a stale permission looks exactly like a correct one.
  */
-async function upsertGrant(
+const OWNER_KIND = { template_grants: 'template', user_grants: 'user', invite_grants: 'invite' } as const;
+
+/**
+ * Every grant write goes through `perm_set_grant` (migration 9818), which
+ * checks the Permissions spec's guardrails — not your own permissions, never
+ * above your own level, Super admins only by a Super admin — and writes the
+ * before/after audit row in the same transaction as the change.
+ */
+async function writeGrant(
   table: 'template_grants' | 'user_grants' | 'invite_grants',
-  column: 'template_id' | 'user_id' | 'invite_id',
   ownerId: string,
   scopeKind: GrantScope,
   scopeId: string,
-  level: Grant,
-  /** Null writes the GLOBAL row — the grant that applies in every module, and
-   *  what every grant was before Admin-Module-Plan §2.2's per-module
-   *  granularity was implemented. A module id writes an override for that
-   *  module alone. */
-  moduleId: string | null = null,
+  level: Grant | null,
+  moduleId: string | null,
 ): Promise<GrantResult> {
-  const capped = await refuseCappedGrant(scopeKind, scopeId, level);
-  if (capped) return capped;
-
-  const { error } = await supabaseAdmin()
-    .from(table)
-    .upsert(
-      {
-        [column]: ownerId,
-        scope_kind: scopeKind,
-        scope_id: scopeId,
-        // A module-scope grant already names its module in scope_id; carrying
-        // one here too is refused by a CHECK (migration 77). A membership
-        // grant is shaped the same way (migration 9766).
-        module_id: scopeKind === 'module' || scopeKind === 'membership' ? null : moduleId,
-        grant_level: level,
-      },
-      // The unique index, spelled out: PostgREST needs the conflict target to
-      // UPDATE rather than fail, and every one of these is a re-set of a cell
-      // that usually already has a row. It includes module_id now, so setting
-      // a Deals override does not overwrite the global row.
-      { onConflict: `${column},scope_kind,scope_id,module_id` },
-    );
+  const actor = await authorize();
+  const { error } = await supabaseAdmin().rpc('perm_set_grant', {
+    p_actor: actor.userId,
+    p_owner_kind: OWNER_KIND[table],
+    p_owner: ownerId,
+    p_scope_kind: scopeKind,
+    p_scope_id: scopeId,
+    p_module: scopeKind === 'module' || scopeKind === 'membership' ? null : moduleId,
+    p_level: level,
+  });
   if (error) {
     if (error.code === FOREIGN_KEY_VIOLATION) return scopeGone;
     return { ok: false, message: error.message };
   }
-  // The request-scoped grant cache in `permissions.ts` now holds a set that
-  // predates this write. Anything re-rendered inside this same Server Action
-  // response would otherwise show the OLD permission as though it were saved.
   invalidateGrants();
   return { ok: true };
 }
 
-/**
- * Deletes one grant row — "not set", which is not the same as Hidden and not
- * the same as Edit either. It means *inherit*: a cleared template grant falls
- * through to `GRANT_DEFAULT` (Edit), and a cleared user override falls back to
- * the template's value, which may be anything.
- *
- * A delete matching nothing is not an error in Postgres and is not one here: the
- * cell is already unset, which is the state the caller asked for.
- */
+async function upsertGrant(
+  table: 'template_grants' | 'user_grants' | 'invite_grants',
+  _column: 'template_id' | 'user_id' | 'invite_id',
+  ownerId: string,
+  scopeKind: GrantScope,
+  scopeId: string,
+  level: Grant,
+  moduleId: string | null = null,
+): Promise<GrantResult> {
+  void _column;
+  const capped = await refuseCappedGrant(scopeKind, scopeId, level);
+  if (capped) return capped;
+  return writeGrant(table, ownerId, scopeKind, scopeId, level, moduleId);
+}
+
 async function deleteGrant(
   table: 'template_grants' | 'user_grants' | 'invite_grants',
-  column: 'template_id' | 'user_id' | 'invite_id',
+  _column: 'template_id' | 'user_id' | 'invite_id',
   ownerId: string,
   scopeKind: GrantScope,
   scopeId: string,
   moduleId: string | null = null,
 ): Promise<GrantResult> {
-  let query = supabaseAdmin()
-    .from(table)
-    .delete()
-    .eq(column, ownerId)
-    .eq('scope_kind', scopeKind)
-    .eq('scope_id', scopeId);
-
-  /*
-   * `.is()` for the global row, `.eq()` for a module's. PostgREST renders
-   * `.eq('module_id', null)` as `module_id=eq.null`, which matches NOTHING in
-   * SQL — clearing a global grant would silently do nothing and the cell would
-   * keep its value with no error.
-   */
-  query = moduleId ? query.eq('module_id', moduleId) : query.is('module_id', null);
-
-  const { error } = await query;
-  if (error) return { ok: false, message: error.message };
-  invalidateGrants();
-  return { ok: true };
+  void _column;
+  return writeGrant(table, ownerId, scopeKind, scopeId, null, moduleId);
 }
 
-/**
- * Sets what a template grants on one scope.
- *
- * Live-linked, by design: every user attached to this template resolves the new
- * value on their next request, with no push step and nothing to propagate. The
- * template screen shows the attached-user count for exactly that reason — it is
- * the blast radius of this call.
- */
 export async function setTemplateGrant(ctx: AuthContext, input: SetTemplateGrantInput): Promise<GrantResult> {
   await assertAdminPage(ctx, 'permissions');
   return upsertGrant(

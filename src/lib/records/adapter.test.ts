@@ -16,8 +16,8 @@ function field(overrides: Partial<Field> & Pick<Field, 'id' | 'key' | 'tabId'>):
 
 const config: Config = {
   modules: [
-    { id: 'mod-1', slug: 'leads', label: 'Leads', kind: 'display', position: 0, adminOnly: false, frozen: false, showsOpenCases: false },
-    { id: 'mod-2', slug: 'deals', label: 'Deals', kind: 'display', position: 1, adminOnly: false, frozen: false, showsOpenCases: false },
+    { id: 'mod-1', slug: 'leads', label: 'Leads', kind: 'display', position: 0, adminOnly: false, fullAccessOnly: false, frozen: false, showsOpenCases: false },
+    { id: 'mod-2', slug: 'deals', label: 'Deals', kind: 'display', position: 1, adminOnly: false, fullAccessOnly: false, frozen: false, showsOpenCases: false },
   ],
   tabs: [{ id: 'tab-1', key: 'overview', label: 'Overview', kind: 'custom', isSystem: false, acceptsFields: true, position: 0 }],
   subtabs: [{ id: 'sub-1', tabId: 'tab-1', key: 'ownership', label: 'Ownership', description: null, position: 0, comingSoon: false }],

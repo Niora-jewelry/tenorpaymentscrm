@@ -1,19 +1,11 @@
 /**
- * `Admin → Templates → one template` — what it grants, across every scope, and
- * (Phase 6c) where it is changed.
+ * `Admin → Permissions → one user type` — its settings (Permissions spec), its
+ * tab / sub-tab / field levels, and its change history.
  *
- * The columns are described in `GrantMatrix.tsx`; the one thing to know before
- * reading the screen is that a scope with no row resolves to **Edit**, so a
- * template full of blanks restricts nothing at all.
- *
- * The matrix is framed as "a non-admin holding only this template", which is
- * why `templateGrantMatrix` passes `isAdmin: false`. A template describes a
- * role, not a person — rendering it against the admin shortcut would show Edit
- * on every row and say nothing about the template.
- *
- * Gated the way every admin route is: `authorize()`, redirect if not admin. The
- * actions passed down re-authorize on their own, because a Server Action is
- * reachable without ever loading this page.
+ * The matrix is framed as "a non-admin on only this type", which is why
+ * `templateGrantMatrix` passes `isAdmin: false`. The actions passed down
+ * re-authorize on their own, because a Server Action is reachable without
+ * ever loading this page.
  */
 import { notFound, redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
@@ -23,6 +15,9 @@ import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../GrantMatrix
 import { setTemplateGrantAction, clearTemplateGrantAction, setTemplateGrantsAction } from '../actions';
 import { ModuleScopePicker } from '../../ModuleScopePicker';
 import { loadConfig } from '@/lib/records/config';
+import { permissionHistory, settingGroups, templateSettings } from '@/lib/records/permissionSettings';
+import { SettingsPanel } from '../../SettingsPanel';
+import { PermissionHistory } from '../../PermissionHistory';
 
 export default async function TemplateGrantsPage({
   params,
@@ -45,6 +40,11 @@ export default async function TemplateGrantsPage({
   const matrix = await templateGrantMatrix(ctx, templateId, activeModuleId);
   if (!matrix || matrix.subject.kind !== 'template') notFound();
   const { subject } = matrix;
+  const [groups, settings, history] = await Promise.all([
+    settingGroups(),
+    templateSettings(ctx, templateId),
+    permissionHistory(ctx, 'template', templateId),
+  ]);
 
   // Bound to this template here rather than passed as an id the client sends
   // back with every write — the matrix never needs to know which template it is
@@ -68,23 +68,32 @@ export default async function TemplateGrantsPage({
   return (
     <div className="space-y-5 p-6">
       <div className="space-y-2">
-        <MatrixBackLink href="/admin/templates" label="All templates" />
+        <MatrixBackLink href="/admin/templates" label="All user types" />
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold text-ink-900">{subject.label}</h1>
-          <OutlineChip tone={matrix.counts.templateSet ? 'brand' : 'warn'}>
-            {matrix.counts.templateSet === 0
-              ? 'Grants nothing yet'
-              : `${matrix.counts.templateSet} grant${matrix.counts.templateSet === 1 ? '' : 's'}`}
-          </OutlineChip>
           <OutlineChip>
             {subject.attachedUsers} user{subject.attachedUsers === 1 ? '' : 's'}
           </OutlineChip>
         </div>
         <p className="text-[13px] text-ink-500">
-          What a non-admin holding only this template resolves to. Editing a template changes every
-          attached user on their next request — there is no push step, and there must never be a cache
-          in front of it.
+          Everyone of this type gets these settings, except where one person has their own override.
+          A change applies on their next request.
         </p>
+      </div>
+
+      <SettingsPanel
+        mode="template"
+        ownerId={templateId}
+        groups={groups}
+        values={settings.values}
+        ceiling={settings.ceiling}
+        actorIsSuper={settings.actorIsSuper}
+        locked={settings.locked}
+      />
+
+      <div>
+        <h2 className="text-[14px] font-semibold text-ink-900">Tabs, sub-tabs and fields</h2>
+        <p className="mt-0.5 text-[12.5px] text-ink-500">Hidden, View or Edit for each one. A sub-tab or field can differ from its tab.</p>
       </div>
 
       <ModuleScopePicker
@@ -96,6 +105,8 @@ export default async function TemplateGrantsPage({
       />
 
       <GrantMatrix matrix={matrix} writer={writer} />
+
+      <PermissionHistory entries={history} />
     </div>
   );
 }

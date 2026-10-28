@@ -9,18 +9,18 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
-import type { RoleOption } from '@/lib/records/adminUsers';
 import type { TemplateOption } from '@/lib/records/adminTemplates';
 import type { ModuleOption } from '../ModuleScopePicker';
 import { InviteForm } from './InviteForm';
 
 export function InviteUserDialog({
-  roles,
   templates,
+  canInviteSuper,
   modules,
 }: {
-  roles: RoleOption[];
   templates: TemplateOption[];
+  /** Guardrail 3: only a Super admin can make someone a Super admin. */
+  canInviteSuper: boolean;
   /** Non-admin-only modules, for the per-module picker in step two. */
   modules: ModuleOption[];
 }) {
@@ -130,8 +130,8 @@ export function InviteUserDialog({
 
             <InviteForm
               key={openCount}
-              roles={roles}
               templates={templates}
+              canInviteSuper={canInviteSuper}
               modules={modules}
               onClose={() => setOpen(false)}
               onStepChange={setStep}

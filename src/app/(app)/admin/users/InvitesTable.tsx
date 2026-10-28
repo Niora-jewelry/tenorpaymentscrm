@@ -121,7 +121,7 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
         <table className="w-full border-separate border-spacing-0 text-[13.5px]">
           <thead>
             <tr>
-              {['Email', 'Role', 'Invited by', 'Status', 'Expires', ''].map((h) => (
+              {['Email', 'User type', 'Invited by', 'Status', 'Expires', ''].map((h) => (
                 <th
                   key={h}
                   className="border-b border-line-soft bg-white px-3 py-2.5 text-left text-[12px] font-semibold uppercase tracking-[.04em] text-ink-400"
@@ -157,15 +157,12 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
                   </td>
                   <td className="border-b border-line-faint px-3 py-2.5">
                     <span className="flex flex-wrap items-center gap-1.5">
-                      <OutlineChip>{i.roleName}</OutlineChip>
-                      {/* The permissions this invite will apply. "No template"
-                          is stated rather than left blank, because it is not a
-                          missing value — it means the person will land on the
-                          default, and the default is Edit on everything unset. */}
+                      {/* The user type this invite will apply. An invite from
+                          before user types existed may have none. */}
                       {i.templateLabel ? (
                         <OutlineChip>{i.templateLabel}</OutlineChip>
                       ) : (
-                        <span className="text-[11.5px] text-ink-400">No template</span>
+                        <span className="text-[11.5px] text-ink-400">No user type</span>
                       )}
                     </span>
                   </td>

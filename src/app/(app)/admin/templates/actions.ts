@@ -1,4 +1,7 @@
 'use server';
+import { z } from 'zod';
+import { setPermissionSetting } from '@/lib/records/permissionSettings';
+import { resetUserToType } from '@/lib/records/adminUsers';
 
 /**
  * Admin → Templates server actions (Phase 6a).
@@ -201,4 +204,41 @@ export async function clearTemplateGrantAction(
 
   revalidateTemplateGrants(parsed.data.templateId);
   return { ok: true };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Permission settings (Permissions spec) — one setting on a type or a user   */
+/* -------------------------------------------------------------------------- */
+
+export async function setPermissionSettingAction(input: {
+  ownerKind: 'template' | 'user';
+  ownerId: string;
+  key: string;
+  value: string | null;
+}): Promise<{ ok: boolean; message?: string }> {
+  const parsed = z
+    .object({
+      ownerKind: z.enum(['template', 'user']),
+      ownerId: z.string().uuid(),
+      key: z.string().regex(/^(action|admin|items)\.[a-z_]+$|^(notifications|email|phone|communication)\.scope$|^module:[0-9a-f-]{36}$/),
+      value: z.string().regex(/^[a-z]+$/).max(10).nullable(),
+    })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That setting is not valid.' };
+  const ctx = await authorize();
+  const r = await setPermissionSetting(ctx, parsed.data);
+  if (!r.ok) return r;
+  revalidatePath('/admin/templates');
+  revalidatePath('/admin/users');
+  return { ok: true };
+}
+
+export async function resetUserToTypeAction(userId: string): Promise<{ ok: boolean; message?: string; removed?: number }> {
+  const parsed = z.string().uuid().safeParse(userId);
+  if (!parsed.success) return { ok: false, message: 'That user is not valid.' };
+  const ctx = await authorize();
+  const r = await resetUserToType(ctx, parsed.data);
+  if (!r.ok) return r;
+  revalidatePath(`/admin/users/${parsed.data}/permissions`);
+  return { ok: true, removed: r.removed };
 }

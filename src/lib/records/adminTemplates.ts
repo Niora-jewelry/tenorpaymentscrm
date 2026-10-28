@@ -46,14 +46,14 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { invalidateGrants, type AuthContext } from './permissions';
+import { canOpenAdminPage, invalidateGrants, type AuthContext } from './permissions';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { assertAdminPage, UNIQUE_VIOLATION, type Result } from './adminConfig';
 import type { CreateTemplateInput, RenameTemplateInput, DeleteTemplateInput } from './adminSchemas';
 
 
 /** The assign dropdown's shape — id and label, nothing more. */
-export type TemplateOption = { id: string; label: string };
+export type TemplateOption = { id: string; label: string; userType: string | null };
 
 export type AdminTemplateRow = {
   id: string;
@@ -68,13 +68,24 @@ export type AdminTemplateRow = {
    * Always zero until 6c ships, and shown anyway so it stops being zero
    * visibly rather than silently. */
   grantCount: number;
+  /** One of the six user types (Permissions spec) — cannot be deleted. */
+  isSystem: boolean;
+  userType: string | null;
 };
 
+/** The user types, in the spec's order (Super admin first). Read by the
+ * Users screen (assigning a type, inviting) as well as Permissions. */
 export async function listTemplates(ctx: AuthContext): Promise<TemplateOption[]> {
-  await assertAdminPage(ctx, 'permissions');
-  const { data, error } = await supabaseAdmin().from('permission_templates').select('id, label').order('label');
+  if (!(await canOpenAdminPage(ctx, 'users')) && !(await canOpenAdminPage(ctx, 'permissions'))) {
+    throw new Error('You do not have access to this admin page.');
+  }
+  const { data, error } = await supabaseAdmin()
+    .from('permission_templates')
+    .select('id, label, user_type')
+    .order('position')
+    .order('label');
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map((t) => ({ id: t.id, label: t.label, userType: (t.user_type as string | null) ?? null }));
 }
 
 /**
@@ -92,7 +103,7 @@ export async function listTemplatesForAdmin(ctx: AuthContext): Promise<AdminTemp
   const supabase = supabaseAdmin();
 
   const [templatesRes, userTemplatesRes, grantsRes] = await Promise.all([
-    supabase.from('permission_templates').select('id, label, created_at').order('label'),
+    supabase.from('permission_templates').select('id, label, created_at, is_system, user_type').order('position').order('label'),
     supabase.from('user_templates').select('template_id'),
     supabase.from('template_grants').select('template_id'),
   ]);
@@ -118,6 +129,8 @@ export async function listTemplatesForAdmin(ctx: AuthContext): Promise<AdminTemp
     createdAt: t.created_at,
     attachedUsers: usersByTemplate.get(t.id) ?? 0,
     grantCount: grantsByTemplate.get(t.id) ?? 0,
+    isSystem: Boolean(t.is_system),
+    userType: (t.user_type as string | null) ?? null,
   }));
 }
 

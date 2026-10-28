@@ -13,12 +13,9 @@
  * space, use an overflow menu instead of cramming" — and it is what lets the
  * table fit without a horizontal scrollbar.
  *
- * ── THE TEMPLATE CONTROL LIVES HERE TOO, AND KEEPS ITS TEETH ─────────────
- * Assigning a template DELETES every personal override that person has, which
- * is why it stages a choice and asks before writing rather than acting on
- * selection. All of that behaviour is unchanged; it has simply moved somewhere
- * it has room to explain itself, instead of being a 90px select wedged beside
- * a badge.
+ * ── USER TYPE ───────────────────────────────────────────────────────────
+ * Staged, then applied: a change of type is a big change to what someone can
+ * see, so it is never made by an accidental pick. Their own overrides stay.
  */
 import { useRef, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
@@ -32,7 +29,6 @@ export function UserRowMenu({
   busy,
   stagedId,
   notice,
-  noTemplateValue,
   onStage,
   onApply,
   onCancelStage,
@@ -47,9 +43,8 @@ export function UserRowMenu({
   /** `undefined` = nothing staged. Distinct from `''`, the select placeholder. */
   stagedId: string | undefined;
   notice: string | null;
-  noTemplateValue: string;
   onStage: (value: string | null) => void;
-  onApply: (staged: string, confirm: boolean) => void;
+  onApply: (staged: string) => void;
   onCancelStage: () => void;
   onImpersonate: () => void;
   onPause: () => void;
@@ -115,25 +110,30 @@ export function UserRowMenu({
 
           <div className="px-2.5 pb-1 pt-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">
-              Permission template
+              User type
             </p>
             <select
-              aria-label={`Assign template to ${user.email}`}
+              aria-label={`User type for ${user.email}`}
               disabled={busy}
-              value={stagedId ?? ''}
-              onChange={(e) => onStage(e.target.value || null)}
+              value={stagedId ?? templates.find((t) => t.label === user.templateLabel)?.id ?? ''}
+              onChange={(e) => {
+                const current = templates.find((t) => t.label === user.templateLabel)?.id;
+                onStage(e.target.value && e.target.value !== current ? e.target.value : null);
+              }}
               className="mt-1.5 w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink-700 outline-none focus-field"
             >
-              <option value="">Assign template…</option>
-              {/* Detaching is a real choice and needs its own value, because
-                  '' already means "nothing staged". */}
-              <option value={noTemplateValue}>No template</option>
+              {user.templateLabel ? null : <option value="">Choose a user type…</option>}
               {templates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.label}
                 </option>
               ))}
             </select>
+            {stagedId !== undefined ? (
+              <p className="mt-1.5 text-[11.5px] leading-snug text-ink-400">
+                Their own overrides stay as they are.
+              </p>
+            ) : null}
 
             {notice ? (
               <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-[#8a5a09]">
@@ -147,10 +147,10 @@ export function UserRowMenu({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onApply(stagedId, Boolean(notice))}
+                  onClick={() => onApply(stagedId)}
                   className="rounded-md bg-brand-600 px-2.5 py-1 text-[12px] font-semibold text-white transition-colors hover:bg-brand-700 disabled:opacity-60"
                 >
-                  {notice ? 'Confirm' : 'Apply'}
+                  Apply
                 </button>
                 <button
                   type="button"

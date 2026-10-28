@@ -93,15 +93,26 @@ const CELL_BASE = 'inline-flex items-center rounded-md border px-1.5 py-0.5 text
  * would be the wrong words. `hidden` is never stored for it; it shows as No
  * for a module the person cannot see at all.
  */
-type CellVariant = 'levels' | 'yesno';
+type CellVariant = 'levels' | 'yesno' | 'full' | 'copy';
 const MEMBERSHIP_STYLE: Record<Grant, { label: string; className: string }> = {
   hidden: { label: 'No', className: GRANT_STYLE.hidden.className },
   view: { label: 'No', className: GRANT_STYLE.view.className },
   edit: { label: 'Yes', className: GRANT_STYLE.edit.className },
 };
-const styleFor = (variant: CellVariant, grant: Grant) =>
-  variant === 'yesno' ? MEMBERSHIP_STYLE[grant] : GRANT_STYLE[grant];
-const variantOf = (row: ScopeRow): CellVariant => (row.kind === 'membership' ? 'yesno' : 'levels');
+/* The spec's own words for two tabs (Permissions spec, Tab levels): Marketing
+ * is "Hidden · Full access", and View on Logins is "View / copy only". */
+const styleFor = (variant: CellVariant, grant: Grant) => {
+  if (variant === 'yesno') return MEMBERSHIP_STYLE[grant];
+  if (variant === 'full' && grant === 'edit') return { ...GRANT_STYLE.edit, label: 'Full access' };
+  if (variant === 'copy' && grant === 'view') return { ...GRANT_STYLE.view, label: 'View / copy' };
+  return GRANT_STYLE[grant];
+};
+const variantOf = (row: ScopeRow): CellVariant => {
+  if (row.kind === 'membership') return 'yesno';
+  if (row.caps.kind === 'tab' && row.caps.hiddenOrFull) return 'full';
+  if (row.caps.kind === 'tab' && row.caps.viewCopies) return 'copy';
+  return 'levels';
+};
 
 function GrantCell({ grant, muted, variant = 'levels' }: { grant: Grant | null; muted?: boolean; variant?: CellVariant }) {
   const s = grant ? styleFor(variant, grant) : NOT_SET;
@@ -157,7 +168,9 @@ function GrantToggle({
   // The yes/no row offers its two answers only — Hidden is a level the writer
   // refuses for it (`grantWriteRefusal`), so it is not drawn at all rather
   // than drawn disabled with a tooltip explaining itself.
-  const levels: readonly Grant[] = variant === 'yesno' ? ['view', 'edit'] : GRANT_LEVELS;
+  // Likewise Marketing's View, which the spec does not offer.
+  const levels: readonly Grant[] =
+    variant === 'yesno' ? ['view', 'edit'] : variant === 'full' ? ['hidden', 'edit'] : GRANT_LEVELS;
   const options: { key: string; level: Grant | null; text: string }[] = [
     { key: 'unset', level: null, text: 'Not set' },
     ...levels.map((g) => ({ key: g, level: g as Grant | null, text: styleFor(variant, g).label })),
@@ -341,7 +354,7 @@ function ScopeLine({
           <span className="w-[150px] shrink-0 text-right text-[11.5px] text-ink-400">
             {inherited ? (
               <>
-                {templateName ?? 'Template'}:{' '}
+                {templateName ?? 'Their type'}:{' '}
                 <span className="font-medium text-ink-600">{styleFor(variant, inherited).label}</span>
               </>
             ) : null}
@@ -356,7 +369,7 @@ function ScopeLine({
               busy={busy}
               variant={variant}
               label={
-                editable === 'user' ? `Permission for ${row.label}` : `Template permission for ${row.label}`
+                editable === 'user' ? `Permission for ${row.label}` : `Type permission for ${row.label}`
               }
               onChange={(next) => onEdit(row, editable, next)}
             />
@@ -420,7 +433,7 @@ function HeaderRow({
   return (
     <div className="flex items-center gap-3 border-b border-line-soft bg-canvas px-3 py-1.5">
       <span className={`min-w-0 flex-1 text-left ${th}`}>{first}</span>
-      {showOverride && editable === 'user' ? <span className={`w-[150px] ${th}`}>From template</span> : null}
+      {showOverride && editable === 'user' ? <span className={`w-[150px] ${th}`}>From their type</span> : null}
       {/* Two headers now, matching the two things on a row. "Resolves" is gone
           as a column: it was an intermediate value that only matters when it
           disagrees with the result, and that case is exactly what the padlock
@@ -720,7 +733,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
   // declared in the component body would be a new function every render and
   // would have to be listed as a dependency of the memo below, which is a lint
   // fight for no benefit.
-  const { modules, memberships, tabs } = useMemo(() => {
+  const { tabs } = useMemo(() => {
     const matches = (row: ScopeRow) => {
       if (needle && !row.label.toLowerCase().includes(needle) && !row.detail.toLowerCase().includes(needle)) {
         return false;
@@ -843,11 +856,6 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
     return { ...matrix.counts, templateSet, userSet, restricted };
   }, [matrix.counts, matrix.modules, matrix.memberships, matrix.tabs, withEdits]);
 
-  const membershipByModule = useMemo(
-    () => new Map(memberships.map((r) => [r.id, r] as const)),
-    [memberships],
-  );
-
   /*
    * The rows on screen, in the order they are drawn — the same walk the JSX
    * below makes, so "every row between these two" for a shift-click and
@@ -856,11 +864,6 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
    */
   const { order, rowByKey } = useMemo(() => {
     const rows: ScopeRow[] = [];
-    for (const m of modules) {
-      rows.push(m);
-      const mem = membershipByModule.get(m.id);
-      if (mem) rows.push(mem);
-    }
     for (const t of tabs) {
       rows.push(t.tab);
       if (!isOpen(t.tab.id)) continue;
@@ -873,7 +876,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       order: rows.map(rowKey),
       rowByKey: new Map(rows.map((r) => [rowKey(r), r] as const)),
     };
-  }, [modules, membershipByModule, tabs, isOpen, rowKey]);
+  }, [tabs, isOpen, rowKey]);
 
   const allShownSelected = order.length > 0 && order.every((k) => selected.has(k));
   const toggleAllShown = () => {
@@ -922,9 +925,9 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       <p className="flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09]">
         <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
         <span>
-          <strong className="font-semibold">Not set means full access, not none.</strong> Access starts
-          open, so a template that sets nothing takes nothing away. To restrict a whole module, set the{' '}
-          <strong className="font-semibold">module</strong> row — everything inside it follows.
+          <strong className="font-semibold">Not set means Edit, not none.</strong> A tab nobody has set
+          is Edit, inside what module access allows; a sub-tab or field follows its tab until it is set.
+          Communication, Updates and Cases are not here — their settings above decide them.
           {writer ? ' Changes save as you click them.' : ' This screen is read-only.'}
         </span>
       </p>
@@ -950,11 +953,9 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
           <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
           <span>
             <strong className="font-semibold">
-              {subject.label} is an admin, so everything below resolves to Edit
+              {subject.label} is a Super admin, so everything below resolves to Edit
             </strong>{' '}
-            — including any row you set to Hidden or View. Admins are exempt from the permission
-            rules by design. These settings are still saved and take effect the moment the account
-            stops being an admin.
+            — including any row set to Hidden or View. To limit them, change their user type.
           </span>
         </p>
       ) : null}
@@ -994,7 +995,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         <span className="ml-auto flex items-center gap-2 text-[12px] text-ink-400">
           <OutlineChip>{counts.scopes} scopes</OutlineChip>
           <OutlineChip tone={counts.templateSet ? 'brand' : 'neutral'}>
-            {counts.templateSet} from the template
+            {counts.templateSet} from the type
           </OutlineChip>
           {showOverride ? (
             <OutlineChip tone={counts.userSet ? 'brand' : 'neutral'}>
@@ -1005,29 +1006,9 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         </span>
       </div>
 
-      {/* ---- modules ---- */}
-      <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
-        <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3">
-          <h2 className="text-[14px] font-semibold text-ink-900">Modules</h2>
-          <EnforcementChip kind="module" />
-        </div>
-        <HeaderRow showOverride={showOverride} first="Module" editable={writer?.column ?? null} />
-        {modules.map((m) => {
-          const membership = membershipByModule.get(m.id);
-          return (
-            <div key={m.id}>
-              {line(m, false)}
-              {/* "May they add records to / remove them from this module?" —
-                  the client's Addition 2, one yes/no row under its module. */}
-              {membership ? line(membership, true, true) : null}
-            </div>
-          );
-        })}
-        {modules.length === 0 ? (
-          <p className="px-3 py-4 text-[12.5px] text-ink-400">No module matches that.</p>
-        ) : null}
-      </section>
-
+      {/* Module access and "Display / remove from modules" are settings now
+          (Permissions spec), edited in the Settings panel above this matrix —
+          a module or membership grant row has no effect anywhere. */}
       {/* ---- tabs and their fields ---- */}
       <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
         <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3">

@@ -100,7 +100,8 @@ function CredentialRow({ row }: { row: LoginRow }) {
 
   const copy = () => {
     startTransition(async () => {
-      const result = revealed ? { ok: true, password: revealed } : await revealPasswordAction(row.id);
+      // Every copy is its own logged event — even of a password already shown.
+      const result = await revealPasswordAction(row.id, 'copy');
       if (result.ok && result.password != null) {
         /*
          * ⚠ AWAITED, AND ONLY THEN REPORTED AS COPIED.

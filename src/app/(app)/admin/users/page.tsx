@@ -13,7 +13,7 @@
  */
 import { redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
-import { listUsers, listRoles, listInvites, sweepExpiredInvites } from '@/lib/records/adminUsers';
+import { listUsers, listInvites, sweepExpiredInvites } from '@/lib/records/adminUsers';
 import { listTemplates } from '@/lib/records/adminTemplates';
 import { UsersTable } from './UsersTable';
 import { InviteUserDialog } from './InviteUserDialog';
@@ -35,9 +35,8 @@ export default async function AdminUsersPage() {
    */
   await sweepExpiredInvites(ctx);
 
-  const [users, roles, templates, invites, config] = await Promise.all([
+  const [users, templates, invites, config] = await Promise.all([
     listUsers(ctx),
-    listRoles(ctx),
     listTemplates(ctx),
     listInvites(ctx),
     loadConfig(),
@@ -59,7 +58,7 @@ export default async function AdminUsersPage() {
             {pendingInvites ? ` · ${pendingInvites} invite${pendingInvites === 1 ? '' : 's'} outstanding` : ''}
           </p>
         </div>
-        <InviteUserDialog roles={roles} templates={templates} modules={grantableModules} />
+        <InviteUserDialog templates={templates} canInviteSuper={ctx.isAdmin} modules={grantableModules} />
       </div>
 
       <UsersTable users={users} templates={templates} currentUserId={ctx.userId} />

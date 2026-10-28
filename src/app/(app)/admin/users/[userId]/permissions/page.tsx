@@ -15,23 +15,22 @@
  * same template, on a page whose entire framing is this one person; the link
  * above goes to the template, where that blast radius is stated.
  *
- * ⚠️ **`assignTemplate` deletes every row in the override column.**
- * `adminUsers.ts` clears `user_grants` before upserting `user_templates`, and
- * the reasoning is sound and predates this phase — "Template: X" without
- * "(edited)" has to mean no overrides. What 6c changed is that the clear now
- * destroys something: it refuses unless the caller confirms, and `UsersTable`
- * says how many overrides it is about to delete before doing it. The banner
- * below is the same fact stated on the screen showing the rows at stake.
+ * Changing a user's type (Users screen) KEEPS their overrides — Permissions
+ * spec: "Only the settings that were overridden for them stay as they are".
+ * "Reset to their type" in the Settings panel removes all of them, settings and
+ * grants alike, each one logged (`perm_reset_user`, migration 9818).
  */
 import { notFound, redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { userGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
-import { PlaceholderNotice } from '../../../PlaceholderNotice';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../../GrantMatrix';
 import { setUserGrantAction, clearUserGrantAction, setUserGrantsAction } from '../../actions';
 import { ModuleScopePicker } from '../../../ModuleScopePicker';
 import { loadConfig } from '@/lib/records/config';
+import { permissionHistory, settingGroups, userSettings } from '@/lib/records/permissionSettings';
+import { SettingsPanel } from '../../../SettingsPanel';
+import { PermissionHistory } from '../../../PermissionHistory';
 
 export default async function UserPermissionsPage({
   params,
@@ -57,6 +56,11 @@ export default async function UserPermissionsPage({
   const matrix = await userGrantMatrix(ctx, userId, activeModuleId);
   if (!matrix || matrix.subject.kind !== 'user') notFound();
   const { subject } = matrix;
+  const [groups, settings, history] = await Promise.all([
+    settingGroups(),
+    userSettings(ctx, userId),
+    permissionHistory(ctx, 'user', userId),
+  ]);
 
   // Bound to this person here, so the matrix never carries a user id the client
   // could send back changed.
@@ -84,32 +88,40 @@ export default async function UserPermissionsPage({
         <MatrixBackLink href="/admin/users" label="All users" />
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold text-ink-900">{subject.label}</h1>
-          <OutlineChip tone={subject.templateLabel ? 'brand' : 'neutral'}>{subject.permissionLabel}</OutlineChip>
-          <OutlineChip>{subject.roleName}</OutlineChip>
+          <OutlineChip tone={settings.typeLabel ? 'brand' : 'warn'}>{settings.typeLabel ?? 'No user type'}</OutlineChip>
         </div>
         <p className="text-[13px] text-ink-500">
-          {subject.email} — the template&rsquo;s grant, this person&rsquo;s own override, and what each
-          one resolves to. Every scope below is about a record this person can already see;{' '}
-          {/* Two different permissions, one page apart, so each says where the other
-              lives: this matrix decides what is shown OF a record, `record-access`
-              decides which records are in the query result at all. */}
+          {subject.email} — what their user type gives them, and where they differ. To let them see
+          one colleague&rsquo;s records as well, use{' '}
+          {/* Module access (Only mine / All records) is set here; a record
+              visibility grant adds one colleague's records on top of it. */}
           <a href={`/admin/users/${userId}/record-access`} className="text-brand-700 hover:underline">
             record access
-          </a>{' '}
-          decides which records those are.
+          </a>
+          .
         </p>
       </div>
 
-      {matrix.counts.userSet > 0 ? (
-        <PlaceholderNotice title="Assigning a template on the Users screen deletes every override below">
-          <p>
-            Attaching a template clears this person&rsquo;s {matrix.counts.userSet} override
-            {matrix.counts.userSet === 1 ? '' : 's'} first — that is what keeps &ldquo;Template: X&rdquo;
-            meaning &ldquo;no personal changes&rdquo;. The assign control now asks before it does,
-            naming the count, but there is no way back afterwards: rebuild them here.
-          </p>
-        </PlaceholderNotice>
-      ) : null}
+      <SettingsPanel
+        mode="user"
+        ownerId={userId}
+        groups={groups}
+        values={settings.values}
+        typeValues={settings.typeValues}
+        typeLabel={settings.typeLabel}
+        ceiling={settings.ceiling}
+        actorIsSuper={settings.actorIsSuper}
+        locked={settings.locked}
+        grantOverrides={settings.grantOverrides}
+      />
+
+      <div>
+        <h2 className="text-[14px] font-semibold text-ink-900">Tabs, sub-tabs and fields</h2>
+        <p className="mt-0.5 text-[12.5px] text-ink-500">
+          Their type&rsquo;s level, their own override, and what applies.
+          {settings.grantOverrides ? ' “Reset to their type” above removes these overrides too.' : ''}
+        </p>
+      </div>
 
       <ModuleScopePicker
         modules={config.modules
@@ -122,6 +134,8 @@ export default async function UserPermissionsPage({
       />
 
       <GrantMatrix matrix={matrix} writer={writer} />
+
+      <PermissionHistory entries={history} />
     </div>
   );
 }

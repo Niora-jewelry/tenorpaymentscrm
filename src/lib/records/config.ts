@@ -43,6 +43,8 @@ export type Module = {
   kind: 'storage' | 'display';
   position: number;
   adminOnly: boolean;
+  /** Access is Hidden or Full only (Permissions spec: Residuals). */
+  fullAccessOnly: boolean;
   frozen: boolean;
   /**
    * A record is a member of this module exactly while it has an open case
@@ -187,7 +189,7 @@ const loadConfigCached = unstable_cache(
     return {
       modules: modules.data!.map((m) => ({
         id: m.id, slug: m.slug, label: m.label, kind: m.kind,
-        position: m.position, adminOnly: m.admin_only, frozen: m.frozen,
+        position: m.position, adminOnly: m.admin_only, fullAccessOnly: m.full_access_only ?? false, frozen: m.frozen,
         showsOpenCases: m.shows_open_cases,
       })),
       tabs: tabs.data!.map((t) => ({

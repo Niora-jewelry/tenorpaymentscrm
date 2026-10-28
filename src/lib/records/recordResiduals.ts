@@ -34,7 +34,8 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { AuthContext } from './permissions';
+import { moduleScope, type AuthContext } from './permissions';
+import { loadConfig } from './config';
 
 /** One month's figures for this merchant. Money as text, always. */
 export type RecordResidualPeriod = {
@@ -88,7 +89,15 @@ export async function residualsForRecord(
    * functions would surface as an error page on a tab somebody has legitimate
    * View access to, which is a worse answer than the honest one.
    */
-  if (!ctx.isAdmin) return { kind: 'admin_only' };
+  /* Full access to Residuals (Permissions spec: "Full access means they can
+     edit and do anything in Residuals") — Super admin, Admin and Accounting
+     by default. The module is the one flagged Hidden/Full only. */
+  if (!ctx.isAdmin) {
+    const config = await loadConfig();
+    const fullModules = config.modules.filter((m) => m.fullAccessOnly);
+    const scopes = await Promise.all(fullModules.map((m) => moduleScope(ctx, m.id)));
+    if (!scopes.some((s) => s !== 'hidden')) return { kind: 'admin_only' };
+  }
 
   /*
    * The record's own MID. Read through the service role because this is the

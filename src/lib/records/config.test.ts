@@ -21,7 +21,7 @@ function field(overrides: Partial<Field> & Pick<Field, 'id' | 'key' | 'tabId'>):
  * group spanning two locations (mirrors the real 'owner' case), and both
  * global and per-module choices on one field. */
 const config: Config = {
-  modules: [{ id: 'mod-1', slug: 'leads', label: 'Leads', kind: 'display', position: 0, adminOnly: false, frozen: false, showsOpenCases: false }],
+  modules: [{ id: 'mod-1', slug: 'leads', label: 'Leads', kind: 'display', position: 0, adminOnly: false, fullAccessOnly: false, frozen: false, showsOpenCases: false }],
   tabs: [
     { id: 'tab-overview', key: 'overview', label: 'Overview', kind: 'custom', isSystem: false, acceptsFields: true, position: 0 },
     // A second tab, ALSO with its own subtab and its own module_subtab_order

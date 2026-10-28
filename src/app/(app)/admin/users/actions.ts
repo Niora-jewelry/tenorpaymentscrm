@@ -78,7 +78,6 @@ export async function inviteUserAction(_prev: InviteState, formData: FormData): 
 
   const parsed = inviteUserSchema.safeParse({
     email: formData.get('email'),
-    roleId: formData.get('roleId'),
     templateId: formData.get('templateId') ?? undefined,
   });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };

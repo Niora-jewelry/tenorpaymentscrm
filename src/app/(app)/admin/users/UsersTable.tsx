@@ -11,22 +11,16 @@
  * `router.refresh()`-free `revalidatePath` round trip (already how every
  * action here works) is the right amount of engineering for this screen.
  *
- * ── THE ASSIGN CONTROL IS DESTRUCTIVE, AS OF PHASE 6c ────────────────────
- * Attaching a template deletes every personal permission override that person
- * has — deliberately, because "Template: X" without "(edited)" has to mean they
- * have none (`adminUsers.ts` carries the full reasoning). That cost nothing
- * while nothing in the build could create an override; now the grant matrix can,
- * and a dozen hand-set grants can vanish behind a badge that simply changes.
- *
- * So the dropdown does not act on selection any more. It stages the choice, the
- * row states how many overrides the assignment will destroy, and the server
- * refuses the write until that has been acknowledged — the count coming from the
- * database at write time, not from this table's possibly-stale render.
+ * ── USER TYPE ───────────────────────────────────────────────────────────
+ * Everyone has exactly one user type (Permissions spec), and their role follows
+ * it (`perm_assign_type`). Changing it KEEPS their personal overrides — "Only
+ * the settings that were overridden for them stay as they are" — so the row
+ * menu stages the choice and applies it, with no destructive confirmation.
  */
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { StatusPill, OutlineChip, Button } from '@/proto/ui/kit';
+import { StatusPill, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { pauseUserAction, resumeUserAction, assignTemplateAction } from './actions';
@@ -36,92 +30,22 @@ import type { TemplateOption } from '@/lib/records/adminTemplates';
 import { startImpersonationAction } from './impersonateActions';
 import { UserRowMenu } from './UserRowMenu';
 
-/** The client's three labels, plus the state he did not name (no template and
- * no overrides). Computed from real rows every render, never stored. */
 /**
- * The three labels from the client's spec §8, as one chip.
- *
- * `max-w` + `truncate` because a template may be called anything — "Demo Rep
- * (permissions tour)" is real, and unconstrained it wrapped to three lines and
- * pushed the row's other cells out of shape. The full text stays available as
- * a tooltip rather than being lost.
+ * The user's type, as one chip, with their personal overrides counted beside
+ * it ("clearly mark which settings on a user are overrides"). A Super admin
+ * has everything whatever is set, so overrides are not counted on them.
  */
-function templateBadge(u: AdminUserRow) {
-  const hasOverrides = u.overrideCount > 0;
-  /*
-   * The truncation has to happen INSIDE the chip, not on a wrapper around it.
-   * Wrapping it clipped the chip's own border and cut the text mid-word with
-   * no ellipsis — "Template: Demo Rep (permissions tou" in the client's
-   * screenshot. The chip keeps its shape; only its label shortens.
-   */
-  const chip = (tone: 'brand' | 'warn', text: string) => (
-    <OutlineChip tone={tone}>
-      <span title={text} className="block max-w-[200px] truncate">
-        {text}
+function typeBadge(u: AdminUserRow) {
+  if (!u.templateLabel) return <OutlineChip tone="warn">No user type</OutlineChip>;
+  const n = u.isAdmin ? 0 : u.overrideCount;
+  return (
+    <OutlineChip tone={n ? 'warn' : 'brand'}>
+      <span title={u.templateLabel} className="block max-w-[200px] truncate">
+        {u.templateLabel}
+        {n ? ` · ${n} override${n === 1 ? '' : 's'}` : ''}
       </span>
     </OutlineChip>
   );
-  /*
-   * ⚠️ A TEMPLATE DOES NOT LIMIT AN ADMIN, SO DO NOT SAY THAT IT DOES.
-   *
-   * A Super Admin bypasses the permission chain entirely — `moduleGrant` and
-   * friends short-circuit on `ctx.isAdmin`, and `auth_is_admin()` does the
-   * same in RLS — so whatever template or overrides are attached to them
-   * describe nothing that is currently in force.
-   *
-   * Rendering "Template: P2 (edited)" on a Super Admin row is therefore a
-   * claim about their access that is not true, and it is the SAME confusion
-   * the client already reported once from the other direction: he set a field
-   * to View while inviting, saw Edit in the result, and asked why. The answer
-   * both times is "because they are an admin". `GrantMatrix` says so in a
-   * banner; this row said the opposite.
-   *
-   * The assignment is NOT hidden — it is real, it is editable from the menu on
-   * this row, and it takes effect the moment the role changes. So the chip
-   * names it in its tooltip and states plainly that it is not applied.
-   *
-   * Only when there is something to misread: an admin with no template and no
-   * overrides already reads "Default", which claims nothing.
-   */
-  if (u.isAdmin && (u.templateLabel || hasOverrides)) {
-    const assigned = u.templateLabel
-      ? `Template: ${u.templateLabel}${hasOverrides ? ' (edited)' : ''}`
-      : `${u.overrideCount} personal override${u.overrideCount === 1 ? '' : 's'}`;
-    return (
-      <OutlineChip tone="warn">
-        <span
-          title={`${assigned} — not in force. A Super Admin bypasses every module, tab, subtab and field permission, so this neither grants nor restricts anything today. It would apply if their role were changed to a non-admin one.`}
-          className="block max-w-[200px] truncate"
-        >
-          Not applied &mdash; admin
-        </span>
-      </OutlineChip>
-    );
-  }
-
-  if (u.templateLabel && hasOverrides) return chip('brand', `Template: ${u.templateLabel} (edited)`);
-  if (u.templateLabel) return chip('brand', `Template: ${u.templateLabel}`);
-  if (hasOverrides) return chip('warn', 'Custom');
-  return <span className="text-ink-400">Default</span>;
-}
-
-/**
- * "Detach whatever template this person has" — 6a's finding, that the dropdown
- * could never un-assign even though `assignTemplate` has always accepted null.
- *
- * A sentinel rather than `''`, because the select's empty value already means
- * "nothing staged"; the action takes `''` and `adminUsers.ts` turns that into
- * NULL. Not a uuid, so a stray one reaching the server is rejected by
- * `assignTemplateSchema` rather than looked up.
- */
-const NO_TEMPLATE = '__none__';
-
-const toTemplateId = (staged: string): string => (staged === NO_TEMPLATE ? '' : staged);
-
-/** The template a staged assignment names, for the confirmation sentence. */
-function templateName(templates: TemplateOption[], staged: string): string {
-  if (staged === NO_TEMPLATE) return 'no template';
-  return templates.find((t) => t.id === staged)?.label ?? 'that template';
 }
 
 export function UsersTable({
@@ -191,17 +115,11 @@ export function UsersTable({
     });
   };
 
-  /**
-   * Two calls, not one. The first is unconfirmed and comes back refused if the
-   * person has overrides, carrying the count; the second is the admin's answer.
-   * The confirmation therefore quotes a number read from the database at that
-   * moment rather than one this table rendered minutes ago.
-   */
-  const runAssign = (id: string, staged: string, confirm: boolean) => {
+  const runAssign = (id: string, staged: string) => {
     setBusyId(id);
     setFor(setNotice, id, null);
     startTransition(async () => {
-      const result = await assignTemplateAction(id, toTemplateId(staged), confirm);
+      const result = await assignTemplateAction(id, staged);
       setBusyId(null);
       if (result.ok) {
         setFor(setStaged, id, null);
@@ -298,23 +216,15 @@ export function UsersTable({
                 </td>
 
                 <td className="border-b border-line-faint px-4 py-3">
-                  <div className="flex flex-col items-start gap-1.5">
-                    <span className="text-[12.5px] text-ink-600">
-                      {u.roleName}
-                      {u.isAdmin ? (
-                        <span className="ml-1.5 text-[11px] font-medium text-brand-600">admin</span>
-                      ) : null}
-                    </span>
-                    {/* The badge is the summary; the link is the scopes behind
-                        it, template grant and override side by side. */}
-                    <Link
-                      href={`/admin/users/${u.id}/permissions`}
-                      title={`Permissions for ${u.email}`}
-                      className="rounded transition-opacity hover:opacity-80"
-                    >
-                      {templateBadge(u)}
-                    </Link>
-                  </div>
+                  {/* The type is the summary; the link is everything behind it —
+                      settings, tabs and fields, and their own overrides. */}
+                  <Link
+                    href={`/admin/users/${u.id}/permissions`}
+                    title={`Permissions for ${u.email}`}
+                    className="inline-block rounded transition-opacity hover:opacity-80"
+                  >
+                    {typeBadge(u)}
+                  </Link>
                 </td>
 
                 <td className="border-b border-line-faint px-4 py-3">
@@ -352,12 +262,11 @@ export function UsersTable({
                       busy={busy}
                       stagedId={stagedId}
                       notice={rowNotice}
-                      noTemplateValue={NO_TEMPLATE}
                       onStage={(value) => {
                         setFor(setStaged, u.id, value);
                         setFor(setNotice, u.id, null);
                       }}
-                      onApply={(sel, confirm) => runAssign(u.id, sel, confirm)}
+                      onApply={(sel) => runAssign(u.id, sel)}
                       onCancelStage={() => {
                         setFor(setStaged, u.id, null);
                         setFor(setNotice, u.id, null);

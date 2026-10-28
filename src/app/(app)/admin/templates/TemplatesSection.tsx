@@ -38,7 +38,7 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
       <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
         <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink-900">
-            Templates <span className="ml-1 font-normal text-ink-400">({templates.length})</span>
+            User types <span className="ml-1 font-normal text-ink-400">({templates.length})</span>
           </h2>
           <Button
             size="sm"
@@ -49,7 +49,7 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
               setOpen(true);
             }}
           >
-            New template
+            New user type
           </Button>
         </div>
 
@@ -59,8 +59,7 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
           ))}
           {templates.length === 0 ? (
             <p className="px-4 py-6 text-[13px] text-ink-400">
-              No templates yet. Users with none resolve every permission to Edit, which is this build&rsquo;s
-              default for anything not listed.
+              No user types yet.
             </p>
           ) : null}
         </div>
@@ -76,9 +75,9 @@ export function TemplatesSection({ templates }: { templates: AdminTemplateRow[] 
               aria-modal="true"
               className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
             >
-              <h2 className="text-[16px] font-semibold text-ink-900">New template</h2>
+              <h2 className="text-[16px] font-semibold text-ink-900">New user type</h2>
               <p className="mt-0.5 text-[12.5px] text-ink-400">
-                Name it for the role it describes — the label is what identifies it when assigning a user.
+                It starts with nothing allowed. Set what it may do on its Permissions page.
               </p>
               <CreateTemplateForm key={openCount} onClose={() => setOpen(false)} />
             </div>
@@ -104,7 +103,7 @@ function CreateTemplateForm({ onClose }: { onClose: () => void }) {
       <div className="mt-4">
         <p className="flex items-center gap-1.5 text-[13px] text-ok">
           <Icon name="check" size={14} strokeWidth={2.5} />
-          Template created.
+          User type created.
         </p>
         <div className="mt-5 flex justify-end">
           <Button type="button" variant="primary" onClick={onClose}>
@@ -122,10 +121,10 @@ function CreateTemplateForm({ onClose }: { onClose: () => void }) {
         ref={inputRef}
         name="label"
         required
-        placeholder="e.g. Sales rep"
+        placeholder="e.g. Partner manager"
         className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
       />
-      <p className="mt-1 text-[11.5px] text-ink-400">Must be unique — two templates cannot share a name.</p>
+      <p className="mt-1 text-[11.5px] text-ink-400">Must be unique — two user types cannot share a name.</p>
 
       {state.message ? (
         <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-bad">
@@ -139,7 +138,7 @@ function CreateTemplateForm({ onClose }: { onClose: () => void }) {
           Cancel
         </Button>
         <Button type="submit" variant="primary" icon="check">
-          Create template
+          Create user type
         </Button>
       </div>
     </form>
@@ -180,7 +179,7 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
     startTransition(async () => {
       const result = await deleteTemplateAction(template.id, target);
       setConfirmingDelete(false);
-      if (!result.ok) setMessage(result.message ?? 'That template could not be deleted.');
+      if (!result.ok) setMessage(result.message ?? 'That user type could not be deleted.');
     });
   };
   const targetLabel = others.find((o) => o.id === moveTo)?.label ?? '';
@@ -229,19 +228,20 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium text-ink-900">{template.label}</span>
-              {template.grantCount === 0 ? (
-                <OutlineChip tone="warn">Grants nothing yet</OutlineChip>
-              ) : (
-                <OutlineChip tone="brand">
-                  {template.grantCount} grant{template.grantCount === 1 ? '' : 's'}
-                </OutlineChip>
-              )}
+              {template.isSystem ? null : <OutlineChip tone="warn">Custom</OutlineChip>}
               <OutlineChip>
                 {template.attachedUsers} user{template.attachedUsers === 1 ? '' : 's'}
               </OutlineChip>
             </div>
           )}
-          <p className="mt-1 text-[11.5px] text-ink-400">Created {formatDate(template.createdAt)}</p>
+          <p className="mt-1 text-[11.5px] text-ink-400">
+            {template.userType === 'super_admin'
+              ? 'Everything, always'
+              : template.grantCount
+                ? `${template.grantCount} tab, sub-tab or field level${template.grantCount === 1 ? '' : 's'} set`
+                : 'Every tab and field at Edit'}
+            {template.isSystem ? '' : ` · created ${formatDate(template.createdAt)}`}
+          </p>
         </div>
 
         {editing ? (
@@ -278,16 +278,19 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
               <Icon name="key" size={12} />
               Permissions
             </Link>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon="trash"
-              disabled={pending}
-              title={hasUsers ? 'Delete this template and move its people to another one' : 'Delete this template'}
-              onClick={openDelete}
-            >
-              Delete
-            </Button>
+            {/* The six user types are permanent (migration 9820). */}
+            {template.isSystem ? null : (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="trash"
+                disabled={pending}
+                title={hasUsers ? 'Delete this user type and move its people to another one' : 'Delete this user type'}
+                onClick={openDelete}
+              >
+                Delete
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -296,15 +299,12 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
         <Dialog
           title={`Delete “${template.label}”?`}
           tone="danger"
-          confirmLabel="Delete template"
+          confirmLabel="Delete user type"
           onConfirm={remove}
           onClose={() => setConfirmingDelete(false)}
         >
           <p>
-            {template.grantCount === 0
-              ? 'It grants nothing yet, and nobody is on it.'
-              : `Its ${template.grantCount} grant${template.grantCount === 1 ? '' : 's'} go with it, and nobody is on it.`}{' '}
-            This can’t be undone.
+            Nobody is on it. This can’t be undone.
           </p>
         </Dialog>
       ) : null}
@@ -319,7 +319,7 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
           onClose={() => setConfirmingDelete(false)}
         >
           <p>
-            {template.attachedUsers} {template.attachedUsers === 1 ? 'person is' : 'people are'} on this template. Pick the template{' '}
+            {template.attachedUsers} {template.attachedUsers === 1 ? 'person is' : 'people are'} on this user type. Pick the type{' '}
             {template.attachedUsers === 1 ? 'they move' : 'they all move'} to; their own overrides stay as they are.
           </p>
           <ul className="max-h-48 overflow-y-auto rounded-lg border border-line-soft">
@@ -355,20 +355,18 @@ function TemplateRow({ template, others }: { template: AdminTemplateRow; others:
               >
                 {others.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.label} — {o.grantCount === 0 ? 'grants nothing yet' : `${o.grantCount} grant${o.grantCount === 1 ? '' : 's'}`}
+                    {o.label}
                   </option>
                 ))}
               </select>
               <p className="text-[12px] text-ink-400">
                 {targetLabel ? `They get “${targetLabel}” on their next page load. ` : ''}
-                {template.grantCount === 0
-                  ? 'This template grants nothing, so nothing else is lost.'
-                  : `This template’s ${template.grantCount} grant${template.grantCount === 1 ? '' : 's'} go with it. This can’t be undone.`}
+                This can’t be undone.
               </p>
             </>
           ) : (
             <p className="rounded-lg bg-canvas px-3 py-2 text-[12.5px] text-ink-600">
-              There is no other template to move them to. Create one with New template first, then delete this one.
+              There is no other user type to move them to.
             </p>
           )}
         </Dialog>

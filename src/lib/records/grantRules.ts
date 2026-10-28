@@ -267,7 +267,9 @@ export function maxGrant(a: Grant, b: Grant): Grant {
  */
 export type ScopeCaps =
   | { kind: 'module'; adminOnly: boolean }
-  | { kind: 'tab' }
+  /** `hiddenOrFull`: a tab offering Hidden · Full access only (`tabs.access_options`,
+   *  migration 9821). `viewCopies`: View on this tab is "View / copy only". */
+  | { kind: 'tab'; hiddenOrFull?: boolean; viewCopies?: boolean }
   | { kind: 'field'; readOnly: boolean; frozenColumn: boolean }
   /** The add/remove-records setting for one module. Resolved by
    *  `resolveMembership` against that module's own effective grant. */
@@ -401,6 +403,11 @@ export function grantWriteRefusal(caps: ScopeCaps, level: Grant): string | null 
   if (caps.kind === 'membership') {
     return level === 'hidden'
       ? 'Adding and removing records is either allowed (Yes) or not (No). To hide the module itself, set its module row to Hidden.'
+      : null;
+  }
+  if (caps.kind === 'tab') {
+    return caps.hiddenOrFull && level === 'view'
+      ? 'This tab is Hidden or Full access — there is no View only.'
       : null;
   }
   if (caps.kind !== 'field') return null;

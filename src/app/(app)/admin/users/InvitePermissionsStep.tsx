@@ -123,7 +123,7 @@ export function InvitePermissionsStep({
     clear: async (scopeKind, scopeId) =>
       announce(
         await clearInviteGrantAction(inviteId, scopeKind, scopeId, moduleId),
-        'Saved \u2014 back to the template value.',
+        'Saved \u2014 back to their user type.',
       ),
     setMany: async (items) => {
       const result = await setInviteGrantsAction(inviteId, items, moduleId);
@@ -278,7 +278,7 @@ export function InvitePermissionsStep({
 
       <div className="flex items-center justify-between gap-3 border-t border-line-soft pt-3">
         <p className="text-[12px] text-ink-400">
-          Leaving this as it is invites them on the template alone, which is the usual case.
+          Leaving this as it is invites them on their user type alone, which is the usual case.
         </p>
         <div className="flex shrink-0 items-center gap-2">
           {/* Closing without sending is a real choice: the invite exists and

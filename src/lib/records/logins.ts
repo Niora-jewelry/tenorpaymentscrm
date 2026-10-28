@@ -82,7 +82,7 @@ export async function setPassword(ctx: AuthContext, loginId: string, plaintext: 
  * logged. Excluded from every export by construction: nothing in
  * `lib/records/*` ever writes a plaintext password anywhere but the return
  * value of this one call. */
-export async function revealPassword(ctx: AuthContext, loginId: string): Promise<string> {
+export async function revealPassword(ctx: AuthContext, loginId: string, kind: 'view' | 'copy' = 'view'): Promise<string> {
   // A reveal is a READ, so View is enough — but a Hidden Logins tab must not
   // stay reachable by id as a decryption oracle.
   await requireTabView(ctx, await recordIdOf('logins', loginId), 'logins');
@@ -90,6 +90,8 @@ export async function revealPassword(ctx: AuthContext, loginId: string): Promise
   const { data, error } = await supabase.rpc('reveal_password', {
     p_login_id: loginId,
     p_key: serverEnv.LOGIN_ENC_KEY,
+    // Logged as what it was: Logins "View / copy" (Permissions spec).
+    p_kind: kind,
   });
   if (error) throw error;
   return data as string;

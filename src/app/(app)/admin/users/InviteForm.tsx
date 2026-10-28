@@ -6,7 +6,6 @@ import type { ModuleOption } from '../ModuleScopePicker';
 import { Button } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { inviteUserAction, type InviteState } from './actions';
-import type { RoleOption } from '@/lib/records/adminUsers';
 import type { TemplateOption } from '@/lib/records/adminTemplates';
 
 const initial: InviteState = { ok: false };
@@ -16,14 +15,14 @@ const initial: InviteState = { ok: false };
  * naturally resets to `initial` on remount, without needing an effect that
  * sets state in response to state (`react-hooks/set-state-in-effect`). */
 export function InviteForm({
-  roles,
   templates,
+  canInviteSuper,
   modules,
   onClose,
   onStepChange,
 }: {
-  roles: RoleOption[];
   templates: TemplateOption[];
+  canInviteSuper: boolean;
   /** Non-admin-only modules, for step two's per-module picker. */
   modules: ModuleOption[];
   onClose: () => void;
@@ -40,12 +39,13 @@ export function InviteForm({
   // Kept so step two can name the person without re-reading the form, which
   // has been replaced by then.
   const [submittedEmail, setSubmittedEmail] = useState('');
-  // The role picked so far. An admin role is exempt from every permission rule
-  // (the Permissions screen's own words), so offering a template with it only
-  // invites the question "why does nothing I set apply?" — seen 23 Oct 2026.
-  const [roleId, setRoleId] = useState(roles.find((r) => !r.isAdmin)?.id ?? '');
-  const pickedRole = roles.find((r) => r.id === roleId);
-  const adminRole = Boolean(pickedRole?.isAdmin);
+  // Everyone has one user type, and their role follows it (Permissions spec).
+  // The default is the least-privileged type.
+  const offered = templates.filter((t) => t.userType !== 'super_admin' || canInviteSuper);
+  const [typeId, setTypeId] = useState(
+    offered.find((t) => t.userType === 'sales_agent')?.id ?? offered[offered.length - 1]?.id ?? '',
+  );
+  const superPicked = templates.find((t) => t.id === typeId)?.userType === 'super_admin';
 
   const onPermissions = Boolean(state.ok && state.inviteId);
   useEffect(() => {
@@ -110,78 +110,33 @@ export function InviteForm({
         className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
       />
 
-      <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">Role</label>
       {/*
-        The default is the least-privileged role, chosen by the DATA rather than
-        by name. This used to look up the slug 'member' and fall back to the
-        first role in the list, which is sorted alphabetically — so deleting or
-        renaming that one row would silently have made Super Admin the default
-        selection on the invite form. Reading `is_admin` cannot fail that way,
-        and it stops this being the one place in the codebase that types a role
-        name, which the specification forbids outright.
-      */}
-      <select
-        name="roleId"
-        required
-        disabled={isPending}
-        value={roleId}
-        onChange={(e) => setRoleId(e.target.value)}
-        className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
-      >
-        {roles.map((r) => (
-          <option key={r.id} value={r.id}>{r.name}</option>
-        ))}
-      </select>
-      {adminRole ? (
-        <p className="mt-1.5 rounded-lg bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-500">
-          A {pickedRole?.name} sees and can edit everything. Templates and permissions do not limit this role, so there is nothing to
-          pick here; choose {roles.find((r) => !r.isAdmin)?.name ?? 'the other role'} to invite someone whose access a template should set.
-        </p>
-      ) : null}
-
-      {/*
-        ── PERMISSIONS, AT INVITE TIME ──────────────────────────────────
         The client's request: "when inviting a user I should be able to
-        immediately assign permissions". A template IS a named set of
-        permissions, so picking one here is the whole answer — and it is
-        applied by `complete_signup` in the same transaction that creates the
-        profile, so there is never a moment where the account exists
-        unconfigured.
-
-        That moment is the reason this matters. An unset scope resolves to
-        EDIT, not Hidden — the rule the Permissions screen warns about in its
-        own words — so the gap between someone accepting an invite and an admin
-        getting round to them was a window of full access.
-
-        A scope-by-scope matrix is deliberately NOT offered here: it would
-        duplicate the Permissions screen and the two would drift.
+        immediately assign permissions". The user type is applied by
+        `complete_signup` in the same transaction that creates the profile, so
+        the account never exists without one. Step two can then adjust single
+        tabs and fields for this one person.
       */}
-      {adminRole ? null : (
-      <>
-      <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">
-        Permissions
-      </label>
+      <label className="mt-3 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">User type</label>
       <select
         name="templateId"
+        required
         disabled={isPending}
-        defaultValue=""
+        value={typeId}
+        onChange={(e) => setTypeId(e.target.value)}
         className="mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field"
       >
-        {/* Not a template is a real choice, not an empty state — an admin may
-            intend to configure someone by hand. It is named accordingly, and
-            says what it means rather than leaving a blank row. */}
-        <option value="">No template — full access until configured</option>
-        {templates.map((t) => (
+        {offered.map((t) => (
           <option key={t.id} value={t.id}>
             {t.label}
           </option>
         ))}
       </select>
       <p className="mt-1 text-[11.5px] text-ink-400">
-        Applied the moment they finish signing up. Editing the template later reaches them too.
+        {superPicked
+          ? 'A Super admin sees and can change everything, including other Super admins.'
+          : 'Applied the moment they finish signing up. Changes to the type later reach them too.'}
       </p>
-      </>
-      )}
 
       {state.message ? (
         <p className="mt-2 flex items-center gap-1.5 text-[12.5px] text-bad">

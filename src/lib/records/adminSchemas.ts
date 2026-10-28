@@ -754,20 +754,11 @@ export type SetInviteGrantsInput = z.infer<typeof setInviteGrantsSchema>;
  */
 export const inviteUserSchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address.').max(254),
-  roleId: uuid,
   /*
-   * Permissions chosen at invite time — the client's own request: "when
-   * inviting a user I should be able to immediately assign permissions".
-   *
-   * Optional, because "configure them by hand later" stays a legitimate
-   * choice. A `<select>` submits '' for its empty option and cannot submit
-   * null, so the empty string is normalised here at the boundary rather than
-   * being special-cased by every caller downstream.
+   * The user type (Permissions spec) — required: everyone has exactly one,
+   * and the role is derived from it on the server, never sent by the form.
    */
-  templateId: z
-    .union([uuid, z.literal('')])
-    .optional()
-    .transform((v) => (v ? v : null)),
+  templateId: z.string({ error: 'Choose a user type.' }).uuid('Choose a user type.'),
 });
 
 export const userIdSchema = z.object({ userId: uuid });

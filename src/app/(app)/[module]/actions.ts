@@ -972,10 +972,11 @@ export async function addLoginAction(
   return { ok: true };
 }
 
-export async function revealPasswordAction(loginId: string): Promise<{ ok: boolean; password?: string }> {
+export async function revealPasswordAction(loginId: string, kind: 'view' | 'copy' = 'view'): Promise<{ ok: boolean; password?: string }> {
   const ctx = await authorize();
+  if (kind !== 'view' && kind !== 'copy') return { ok: false };
   try {
-    const password = await revealPassword(ctx, loginId);
+    const password = await revealPassword(ctx, loginId, kind);
     return { ok: true, password };
   } catch {
     return { ok: false };

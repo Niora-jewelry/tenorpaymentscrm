@@ -15,7 +15,7 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { invalidateGrants, type AuthContext } from './permissions';
+import { invalidateGrants, invalidatePermissions, type AuthContext } from './permissions';
 import { sendInviteEmail } from '@/lib/email/send';
 import type { AssignTemplateInput, InviteUserInput } from './adminSchemas';
 import { assertAdminPage } from './adminConfig';
@@ -66,7 +66,7 @@ export async function listUsers(ctx: AuthContext): Promise<AdminUserRow[]> {
   await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
-  const [profilesRes, rolesRes, userTemplatesRes, templatesRes, grantsRes, visibilityRes] = await Promise.all([
+  const [profilesRes, rolesRes, userTemplatesRes, templatesRes, grantsRes, visibilityRes, settingsRes] = await Promise.all([
     supabase.from('profiles').select('id, email, full_name, role_id, status, last_login_at').is('deleted_at', null).order('created_at'),
     supabase.from('roles').select('id, slug, name, is_admin'),
     supabase.from('user_templates').select('user_id, template_id'),
@@ -76,16 +76,17 @@ export async function listUsers(ctx: AuthContext): Promise<AdminUserRow[]> {
     // row per (owner, viewer) pair and is small by nature, so a second query
     // per direction would buy nothing.
     supabase.from('record_visibility_grants').select('owner_id, viewer_id'),
+    // A user's own settings (Permissions spec) are overrides too.
+    supabase.from('permission_settings').select('owner_id').eq('owner_kind', 'user'),
   ]);
-  for (const r of [profilesRes, rolesRes, userTemplatesRes, templatesRes, grantsRes, visibilityRes]) if (r.error) throw r.error;
+  for (const r of [profilesRes, rolesRes, userTemplatesRes, templatesRes, grantsRes, visibilityRes, settingsRes]) if (r.error) throw r.error;
 
   const roleById = new Map((rolesRes.data ?? []).map((r) => [r.id, r]));
   const templateById = new Map((templatesRes.data ?? []).map((t) => [t.id, t]));
   const templateIdByUser = new Map((userTemplatesRes.data ?? []).map((ut) => [ut.user_id, ut.template_id as string | null]));
 
   const overridesByUser = new Map<string, number>();
-  for (const g of grantsRes.data ?? []) {
-    const id = g.user_id as string;
+  for (const id of [...(grantsRes.data ?? []).map((g) => g.user_id as string), ...(settingsRes.data ?? []).map((s) => s.owner_id as string)]) {
     overridesByUser.set(id, (overridesByUser.get(id) ?? 0) + 1);
   }
 
@@ -163,12 +164,33 @@ export async function inviteUser(
     .eq('status', 'pending');
   if (revokeErr) throw revokeErr;
 
+  // The role follows the type (as in `perm_assign_type`), and only a Super
+  // admin can make someone a Super admin (guardrail 3).
+  const { data: type, error: typeErr } = await supabase
+    .from('permission_templates')
+    .select('user_type')
+    .eq('id', input.templateId)
+    .maybeSingle();
+  if (typeErr) throw typeErr;
+  if (!type) return { ok: false, message: 'Choose a user type.' };
+  const isSuper = type.user_type === 'super_admin';
+  if (isSuper && !ctx.isAdmin) return { ok: false, message: 'Only a Super admin can make someone a Super admin.' };
+  const { data: role, error: roleErr } = await supabase
+    .from('roles')
+    .select('id')
+    .eq('is_admin', isSuper)
+    .order('slug')
+    .limit(1)
+    .maybeSingle();
+  if (roleErr) throw roleErr;
+  if (!role) return { ok: false, message: 'No role is set up for that user type.' };
+
   const { data: inserted, error: insertErr } = await supabase
     .from('invites')
     .insert({
       email: normalizedEmail,
       invited_by: ctx.userId,
-      role_id: input.roleId,
+      role_id: role.id,
       /*
        * Carried on the invite and applied by `complete_signup` in the SAME
        * transaction as the profile insert (migration 71). Applying it from
@@ -176,7 +198,7 @@ export async function inviteUser(
        * no template — and an unset scope resolves to EDIT, so that gap is a
        * window of full access. Closing it is the entire point.
        */
-      template_id: input.templateId ?? null,
+      template_id: input.templateId,
       status: 'pending',
     })
     // Returned so the caller can offer "adjust permissions" immediately — the
@@ -193,8 +215,27 @@ export async function inviteUser(
  * instant on every request, so this takes effect immediately, not just on
  * the paused user's next login attempt. Both columns and their enforcement
  * already existed (Phase 1); this is the first thing that ever sets them. */
+/**
+ * Guardrail 3 (Permissions spec): "Nobody can edit or remove a Super admin
+ * except another Super admin." Pausing, resuming, deleting, restoring and
+ * purging an account all pass through here; the database keeps guardrail 4
+ * (at least one Super admin) on its own.
+ */
+async function guardSuperAdminTarget(ctx: AuthContext, userId: string): Promise<void> {
+  if (ctx.isAdmin) return;
+  const { data, error } = await supabaseAdmin()
+    .from('profiles')
+    .select('roles!inner(is_admin)')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  const isSuper = Boolean((data as { roles: { is_admin: boolean } } | null)?.roles?.is_admin);
+  if (isSuper) throw new Error('Only a Super admin can change or remove a Super admin.');
+}
+
 export async function pauseUser(ctx: AuthContext, userId: string): Promise<void> {
   await assertAdminPage(ctx, 'users');
+  await guardSuperAdminTarget(ctx, userId);
   if (userId === ctx.userId) throw new Error('You cannot pause your own account.');
   const { error } = await supabaseAdmin()
     .from('profiles')
@@ -205,6 +246,7 @@ export async function pauseUser(ctx: AuthContext, userId: string): Promise<void>
 
 export async function resumeUser(ctx: AuthContext, userId: string): Promise<void> {
   await assertAdminPage(ctx, 'users');
+  await guardSuperAdminTarget(ctx, userId);
   const { error } = await supabaseAdmin().from('profiles').update({ status: 'active' }).eq('id', userId);
   if (error) throw error;
 }
@@ -247,41 +289,35 @@ export async function assignTemplate(
   input: AssignTemplateInput,
 ): Promise<{ ok: true } | { ok: false; message: string; overrideCount?: number }> {
   await assertAdminPage(ctx, 'users');
-  const supabase = supabaseAdmin();
-  const templateId = input.templateId || null;
+  if (!input.templateId) return { ok: false, message: 'Choose a user type — everyone has one.' };
 
-  // Counted server-side, never taken from the request: the number the UI
-  // rendered may be minutes old, and it is the number in the DATABASE that is
-  // about to be deleted.
-  const { count, error: countErr } = await supabase
-    .from('user_grants')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', input.userId);
-  if (countErr) throw countErr;
-  const overrideCount = count ?? 0;
-
-  if (overrideCount > 0 && !input.confirmClearOverrides) {
-    return {
-      ok: false,
-      overrideCount,
-      message: `This person has ${overrideCount} personal permission override${
-        overrideCount === 1 ? '' : 's'
-      }. Assigning a template deletes ${overrideCount === 1 ? 'it' : 'them all'} — that is what keeps "Template: X" meaning "no personal changes". Confirm to continue.`,
-    };
-  }
-
-  if (overrideCount > 0) {
-    const { error: clearErr } = await supabase.from('user_grants').delete().eq('user_id', input.userId);
-    if (clearErr) throw clearErr;
-  }
-
-  const { error } = await supabase.from('user_templates').upsert({ user_id: input.userId, template_id: templateId });
-  if (error) throw error;
-  // Both writes above change what `effective_grants()` returns for this user.
-  // Drop the request-scoped grant cache so nothing re-rendered inside this
-  // action's own response resolves permissions from before the change.
+  /*
+   * A user's type (Permissions spec). Through `perm_assign_type` (migration
+   * 9818): not yourself, a Super admin only by a Super admin, the Super admin
+   * type IS the Super Admin role, at least one Super admin always — and the
+   * change is in the audit log. Personal overrides are KEPT: "Only the
+   * settings that were overridden for them stay as they are". Resetting a user
+   * to their type is its own action.
+   */
+  const { error } = await supabaseAdmin().rpc('perm_assign_type', {
+    p_actor: ctx.userId,
+    p_user: input.userId,
+    p_template: input.templateId,
+  });
+  if (error) return { ok: false, message: error.message };
   invalidateGrants();
+  invalidatePermissions();
   return { ok: true };
+}
+
+/** Back to their user type: every personal override removed, each one logged. */
+export async function resetUserToType(ctx: AuthContext, userId: string): Promise<{ ok: true; removed: number } | { ok: false; message: string }> {
+  await assertAdminPage(ctx, 'permissions');
+  const { data, error } = await supabaseAdmin().rpc('perm_reset_user', { p_actor: ctx.userId, p_user: userId });
+  if (error) return { ok: false, message: error.message };
+  invalidateGrants();
+  invalidatePermissions();
+  return { ok: true, removed: Number(data ?? 0) };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -731,6 +767,7 @@ export async function reassignUserRecords(
  *  records; the message names how many. */
 export async function softDeleteUser(ctx: AuthContext, userId: string): Promise<OffboardResult> {
   await assertAdminPage(ctx, 'users');
+  await guardSuperAdminTarget(ctx, userId);
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('soft_delete_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
@@ -756,6 +793,7 @@ async function disconnectMail(userId: string): Promise<void> {
  *  Resume. */
 export async function restoreUser(ctx: AuthContext, userId: string): Promise<OffboardResult> {
   await assertAdminPage(ctx, 'users');
+  await guardSuperAdminTarget(ctx, userId);
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('restore_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
@@ -785,6 +823,7 @@ export async function purgeUser(
   userId: string,
 ): Promise<OffboardResult & { outcome?: PurgeOutcome }> {
   await assertAdminPage(ctx, 'users');
+  await guardSuperAdminTarget(ctx, userId);
   const supabase = await createSupabaseServerClient();
   // Before the account goes: its mail sign-ins must not outlive it.
   await disconnectMail(userId);

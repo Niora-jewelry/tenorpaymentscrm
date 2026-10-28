@@ -30,7 +30,8 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type AuthContext, FROZEN_COLUMN_FIELD_KEY } from './permissions';
 import { loadConfig, type FieldType } from './config';
 import { assertAdmin, slugifyKey, UNIQUE_VIOLATION, CHECK_VIOLATION, type Result } from './adminConfig';
-import type { CreateFieldInput, UpdateFieldInput } from './adminSchemas';
+import type { ChangeFieldTypeInput, CreateFieldInput, FieldSetupInput, UpdateFieldInput } from './adminSchemas';
+import { normaliseChoices } from './adminChoices';
 
 export type GridColumn = { label: string; type: FieldType };
 export type RepeatMember = { key: string; label: string; type: FieldType; sensitive?: boolean };
@@ -55,6 +56,13 @@ export type AdminFieldRow = {
   repeatSchema: RepeatMember[] | null;
   repeatGroupKey: string | null;
   gridColumns: GridColumn[] | null;
+  digits: number[] | null;
+  autoSource: string | null;
+  autoSourceField: string | null;
+  /** In Vital Info (any module). */
+  inVital: boolean;
+  /** Modules whose record list shows it as a column. */
+  columnModuleIds: string[];
   archivedAt: string | null;
 };
 
@@ -67,8 +75,21 @@ export type AdminFieldRow = {
 export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRow[]> {
   assertAdmin(ctx);
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase.from('fields').select('*').order('position');
+  const [{ data, error }, header, columns] = await Promise.all([
+    supabase.from('fields').select('*').order('position'),
+    supabase.from('module_header_fields').select('field_id'),
+    supabase.from('module_columns').select('field_id, module_id'),
+  ]);
   if (error) throw error;
+  if (header.error) throw header.error;
+  if (columns.error) throw columns.error;
+  const inVital = new Set((header.data ?? []).map((h) => h.field_id as string));
+  const columnsOf = new Map<string, string[]>();
+  for (const c of columns.data ?? []) {
+    const list = columnsOf.get(c.field_id as string);
+    if (list) list.push(c.module_id as string);
+    else columnsOf.set(c.field_id as string, [c.module_id as string]);
+  }
 
   return (data ?? []).map((f) => ({
     id: f.id,
@@ -90,8 +111,109 @@ export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRo
     repeatSchema: f.repeat_schema,
     repeatGroupKey: f.repeat_group_key,
     gridColumns: f.grid_columns,
+    digits: f.digits ?? null,
+    autoSource: f.auto_source ?? null,
+    autoSourceField: f.auto_source_field ?? null,
+    inVital: inVital.has(f.id),
+    columnModuleIds: columnsOf.get(f.id) ?? [],
     archivedAt: f.archived_at,
   }));
+}
+
+/** A key not yet taken — "gateway_provider", then "gateway_provider_2"… —
+ *  counting archived fields, which keep theirs. */
+async function freeKey(base: string): Promise<string> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.from('fields').select('key').ilike('key', `${base}%`);
+  if (error) throw error;
+  const taken = new Set((data ?? []).map((r) => String(r.key).toLowerCase()));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}_${n}`)) n += 1;
+  return `${base}_${n}`;
+}
+
+/**
+ * The New field form (UI/UX spec §6), saved in ONE transaction by
+ * `create_field_with_setup` (migration 9805): the field, its options, its
+ * place in the tab, Vital Info and list-column membership. A failure anywhere
+ * leaves nothing behind.
+ */
+export async function createFieldWithSetup(ctx: AuthContext, input: FieldSetupInput): Promise<Result> {
+  assertAdmin(ctx);
+  const label = input.label.trim();
+  const base = slugifyKey(input.key || label);
+  if (!base || !label) return { ok: false, message: 'Give the field a label.' };
+
+  const config = await loadConfig();
+  const tab = config.tabs.find((t) => t.id === input.tabId);
+  if (!tab) return { ok: false, message: 'That tab no longer exists.' };
+  if (!tab.acceptsFields) return { ok: false, message: `The ${tab.label} tab does not hold fields.` };
+  if (input.subtabId && !config.subtabs.some((s) => s.id === input.subtabId && s.tabId === input.tabId)) {
+    return { ok: false, message: 'That sub-tab is not part of the chosen tab.' };
+  }
+  if (input.autoSource === 'mcc_lookup' && !config.fields.some((f) => f.key === input.autoSourceField)) {
+    return { ok: false, message: 'The MCC code field no longer exists.' };
+  }
+
+  // Digits-only Text is stored as `identifier` (leading zeros kept, length rule).
+  const type = input.type === 'text' && input.digitsOnly ? 'identifier' : input.type;
+  const digits = type === 'identifier' && input.digits
+    ? input.digits.split(',').map((d) => Number(d.trim())).filter((n) => n > 0)
+    : null;
+  const key = input.key ? slugifyKey(input.key) : await freeKey(base);
+  const choices = normaliseChoices(input.choices.map((c) => ({ key: '', value: c.value, swatch: c.swatch })));
+
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.rpc('create_field_with_setup', {
+    p_field: {
+      key, label, type,
+      tab_id: input.tabId,
+      subtab_id: input.subtabId ?? '',
+      hint: input.hint,
+      section: input.section,
+      required: input.required,
+      sensitive: input.sensitive,
+      notes_enabled: input.notesEnabled,
+      digits,
+      auto_source: type === 'auto' ? input.autoSource : null,
+      auto_source_field: type === 'auto' && input.autoSource === 'mcc_lookup' ? input.autoSourceField : null,
+    },
+    p_choices: choices,
+    p_after: input.afterFieldId,
+    p_vital: input.showInVital,
+    p_column_modules: input.columnModuleIds,
+  });
+  if (error) return await writeFailure(error, key);
+  return { ok: true, id: data as string };
+}
+
+/**
+ * Type change (spec §6): free while no record holds a value; with values,
+ * only between types that store the same shape, and only once confirmed.
+ * `needsConfirm` carries how many records hold one.
+ */
+export async function changeFieldType(
+  ctx: AuthContext,
+  input: ChangeFieldTypeInput,
+): Promise<Result | { ok: false; message: string; needsConfirm: number }> {
+  assertAdmin(ctx);
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.rpc('change_field_type', {
+    p_field_id: input.fieldId,
+    p_type: input.type,
+    p_confirm: input.confirm,
+  });
+  if (error) return { ok: false, message: error.message };
+  const held = Number(data ?? 0);
+  if (held > 0) {
+    return {
+      ok: false,
+      needsConfirm: held,
+      message: `${held} record${held === 1 ? ' holds' : 's hold'} a value. They keep it, read as the new type. Change anyway?`,
+    };
+  }
+  return { ok: true, id: input.fieldId };
 }
 
 /**
@@ -258,6 +380,19 @@ export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Pr
     .eq('id', input.fieldId);
 
   if (error) return await writeFailure(error, current.key);
+
+  // Where it sits (dragged on the preview) and where it shows (Vital Info,
+  // list columns) — the same functions the New field form uses.
+  if (input.placeIt) {
+    const placed = await supabase.rpc('place_field', { p_field_id: input.fieldId, p_after: input.afterFieldId });
+    if (placed.error) return { ok: false, message: placed.error.message };
+  }
+  const surfaces = await supabase.rpc('set_field_surfaces', {
+    p_field_id: input.fieldId,
+    p_vital: input.showInVital,
+    p_column_modules: input.columnModuleIds,
+  });
+  if (surfaces.error) return { ok: false, message: surfaces.error.message };
   return { ok: true, id: input.fieldId };
 }
 

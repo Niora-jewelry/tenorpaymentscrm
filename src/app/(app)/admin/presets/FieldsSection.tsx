@@ -16,19 +16,14 @@
  *      is the first thing anyone asks.
  */
 
-import { useEffect, useMemo, useRef, useState, useTransition, useActionState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { Button, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
-import {
-  createFieldAction,
-  updateFieldAction,
-  archiveFieldAction,
-  restoreFieldAction,
-  type PresetFormState,
-} from './actions';
+import { archiveFieldAction, restoreFieldAction, type PresetFormState } from './actions';
+import { CreateFieldForm, EditFieldForm, type ModuleChoice } from './FieldForm';
 import { ActionCell, ChipCell, FIELD_GRID, ListHeader, NameCell, PresetRow } from './PresetRow';
-import { FIELD_TYPES, GRID_COLUMN_TYPES, REPEAT_MEMBER_TYPES, CHOICE_FIELD_TYPES } from '@/lib/records/adminSchemas';
-import type { AdminFieldRow, GridColumn, RepeatMember } from '@/lib/records/adminFields';
+import { FIELD_TYPES } from '@/lib/records/adminSchemas';
+import type { AdminFieldRow } from '@/lib/records/adminFields';
 import type { AdminTabRow, AdminSubtabRow } from '@/lib/records/adminPresets';
 
 type FieldTypeName = (typeof FIELD_TYPES)[number];
@@ -42,44 +37,37 @@ const TYPE_LABELS: Record<FieldTypeName, string> = {
   number: 'Number',
   currency: 'Currency',
   percentage: 'Percentage',
-  checkbox: 'Checkbox',
+  checkbox: 'Checkbox (retired)',
   email: 'Email',
   phone: 'Phone',
-  url: 'URL',
-  address: 'Address (street/city/state/ZIP)',
+  url: 'Website',
+  address: 'Address',
   date: 'Date',
   datetime: 'Date and time',
-  months: 'Months (multi-select)',
+  months: 'Multiple picker (months)',
   dropdown: 'Dropdown',
   status: 'Status',
-  multi_select: 'Multi-select',
-  team_member: 'Team member',
-  identifier: 'Identifier (digits, leading zeros kept)',
-  file: 'File',
-  percent_split: 'Percent split (must total 100%)',
+  multi_select: 'Multiple picker',
+  team_member: 'Team picker',
+  identifier: 'Text — digits only',
+  file: 'Files',
+  percent_split: 'Percentage = 100%',
   grid: 'Grid (rows the user adds)',
   repeat_group: 'Repeating group',
   auto: 'Auto-populated (locked)',
 };
 
-/** Shared with the choices editor and the data layer rather than restated —
- * this list decided which types the editor offers, so a local copy drifting
- * would mean a field promising options it can never be given (`percent_split`
- * was missing from the copy this replaced). */
-const CHOICE_TYPES: readonly FieldTypeName[] = CHOICE_FIELD_TYPES;
-
-const inputClass =
-  'mt-1 w-full rounded-md border border-line px-3 py-2 text-[13.5px] outline-none focus-field';
-const labelClass = 'block text-[12px] font-semibold uppercase tracking-wide text-ink-400';
-
 export function FieldsSection({
   fields,
   tabs,
   subtabs,
+  modules,
 }: {
   fields: AdminFieldRow[];
   tabs: AdminTabRow[];
   subtabs: AdminSubtabRow[];
+  /** For "Show as list column" — which modules' lists show it. */
+  modules: ModuleChoice[];
 }) {
   const [creating, setCreating] = useState(false);
   const [openCount, setOpenCount] = useState(0);
@@ -192,12 +180,12 @@ export function FieldsSection({
             archivedCount === 0
               ? 'No archived fields'
               : showArchived
-                ? 'Hide archived fields'
-                : 'Show archived fields so they can be restored'
+                ? 'Hide the hidden fields again'
+                : 'List hidden fields so they can be shown again'
           }
           onClick={() => setShowArchived((v) => !v)}
         >
-          Archived ({archivedCount})
+          Hidden ({archivedCount})
         </Button>
       </div>
 
@@ -254,17 +242,26 @@ export function FieldsSection({
 
       {creating ? (
         <Dialog
+          wide
           title="New field"
-          blurb="A field lives in exactly one tab, the same one in every module. Key and type are permanent once created."
+          blurb="One definition, shown in every module. Set where it lives, how it behaves and where it shows."
           onClose={() => setCreating(false)}
         >
-          <CreateFieldForm key={openCount} tabs={fieldTabs} subtabs={subtabs} onClose={() => setCreating(false)} />
+          <CreateFieldForm key={openCount} tabs={fieldTabs} subtabs={subtabs} fields={fields} modules={modules} onClose={() => setCreating(false)} />
         </Dialog>
       ) : null}
 
       {editing ? (
-        <Dialog title={`Edit ${editing.label}`} onClose={() => setEditing(null)}>
-          <EditFieldForm field={editing} tabs={fieldTabs} subtabs={subtabs} onClose={() => setEditing(null)} />
+        <Dialog wide title={`Edit ${editing.label}`} onClose={() => setEditing(null)}>
+          <EditFieldForm
+            field={editing}
+            tabs={fieldTabs}
+            subtabs={subtabs}
+            fields={fields}
+            modules={modules}
+            typeLabel={TYPE_LABELS[editing.type as FieldTypeName] ?? editing.type}
+            onClose={() => setEditing(null)}
+          />
         </Dialog>
       ) : null}
     </section>
@@ -274,11 +271,14 @@ export function FieldsSection({
 function Dialog({
   title,
   blurb,
+  wide = false,
   onClose,
   children,
 }: {
   title: string;
   blurb?: string;
+  /** The field forms: two columns, the position preview on the right. */
+  wide?: boolean;
   onClose: () => void;
   children: React.ReactNode;
 }) {
@@ -288,7 +288,7 @@ function Dialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative my-8 w-full max-w-[520px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+        className={`relative my-8 w-full ${wide ? 'max-w-[960px]' : 'max-w-[520px]'} animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]`}
       >
         <h2 className="text-[16px] font-semibold text-ink-900">{title}</h2>
         {blurb ? <p className="mt-0.5 text-[12.5px] text-ink-400">{blurb}</p> : null}
@@ -355,7 +355,9 @@ function FieldRow({
         {field.readOnly ? <OutlineChip>Read only</OutlineChip> : null}
         {field.sensitive ? <OutlineChip>Sensitive</OutlineChip> : null}
         {field.required ? <OutlineChip>Required</OutlineChip> : null}
-        {archived ? <OutlineChip tone="danger" icon="archive">Archived</OutlineChip> : null}
+        {field.inVital ? <OutlineChip tone="brand">Vital Info</OutlineChip> : null}
+        {field.columnModuleIds.length ? <OutlineChip>List column</OutlineChip> : null}
+        {archived ? <OutlineChip tone="danger" icon="eye-off">Hidden</OutlineChip> : null}
       </ChipCell>
 
       <ActionCell>
@@ -373,12 +375,12 @@ function FieldRow({
         <Button
           size="sm"
           variant={archived ? 'secondary' : 'danger'}
-          icon={archived ? 'rotate-ccw' : 'archive'}
+          icon={archived ? 'eye' : 'eye-off'}
           disabled={pending}
           onClick={archived ? () => run(() => restoreFieldAction(field.id)) : () => setConfirming(true)}
-          title={archived ? 'Bring this field back where it was' : 'Remove from every drawer and dashboard; values are kept'}
+          title={archived ? 'Show this field again, where it was' : 'Hide from every drawer and list; values are kept'}
         >
-          {archived ? 'Restore' : 'Archive'}
+          {archived ? 'Show again' : 'Hide'}
         </Button>
       </ActionCell>
 
@@ -418,7 +420,7 @@ function ConfirmArchive({
   onClose: () => void;
 }) {
   return (
-    <Dialog title={`Archive ${field.label}?`} onClose={onClose}>
+    <Dialog title={`Hide ${field.label}?`} onClose={onClose}>
       <ul className="mt-3 space-y-2 text-[13px] text-ink-700">
         <li className="flex gap-2">
           <Icon name="eye-off" size={14} className="mt-0.5 shrink-0 text-ink-400" />
@@ -437,8 +439,8 @@ function ConfirmArchive({
         <li className="flex gap-2">
           <Icon name="rotate-ccw" size={14} className="mt-0.5 shrink-0 text-ink-400" />
           <span>
-            You can bring it back at any time with the{' '}
-            <strong className="font-medium text-ink-900">Archived</strong> button at the top of this list,
+            You can show it again at any time from the{' '}
+            <strong className="font-medium text-ink-900">Hidden</strong> button at the top of this list,
             and it returns with its values intact.
           </span>
         </li>
@@ -450,85 +452,11 @@ function ConfirmArchive({
         <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
           Cancel
         </Button>
-        <Button type="button" variant="danger" icon="archive" disabled={pending} onClick={onConfirm}>
-          {pending ? 'Archiving…' : 'Archive field'}
+        <Button type="button" variant="danger" icon="eye-off" disabled={pending} onClick={onConfirm}>
+          {pending ? 'Hiding…' : 'Hide field'}
         </Button>
       </div>
     </Dialog>
-  );
-}
-
-const initial: PresetFormState = { ok: false };
-
-/** Tab + subtab, kept together because the subtab list depends on the tab and
- * the two must never be submitted out of step — that combination is exactly
- * what `fields_placement_guard` rejects. */
-function PlacementInputs({
-  tabs,
-  subtabs,
-  defaultTabId,
-  defaultSubtabId,
-}: {
-  tabs: AdminTabRow[];
-  subtabs: AdminSubtabRow[];
-  defaultTabId: string;
-  defaultSubtabId: string | null;
-}) {
-  const [tabId, setTabId] = useState(defaultTabId);
-  const available = subtabs.filter((s) => s.tabId === tabId);
-
-  return (
-    <>
-      <label className={`mt-3 ${labelClass}`}>Tab</label>
-      <select name="tabId" required value={tabId} onChange={(e) => setTabId(e.target.value)} className={inputClass}>
-        {tabs.map((t) => (
-          <option key={t.id} value={t.id}>{t.label}</option>
-        ))}
-      </select>
-
-      <label className={`mt-3 ${labelClass}`}>Subtab</label>
-      <select
-        name="subtabId"
-        key={tabId}
-        defaultValue={tabId === defaultTabId ? (defaultSubtabId ?? '') : ''}
-        disabled={available.length === 0}
-        className={inputClass}
-      >
-        <option value="">— none, directly on the tab —</option>
-        {available.map((s) => (
-          <option key={s.id} value={s.id}>{s.label}</option>
-        ))}
-      </select>
-      {available.length === 0 ? <p className="mt-1 text-[11.5px] text-ink-400">This tab has no subtabs.</p> : null}
-    </>
-  );
-}
-
-function FlagInputs({ field }: { field?: AdminFieldRow }) {
-  const flags = [
-    { name: 'required', label: 'Required', hint: 'Must be filled in before the record is complete.', on: field?.required },
-    { name: 'wide', label: 'Full width', hint: 'Takes a whole row in the drawer instead of half.', on: field?.wide },
-    { name: 'notesEnabled', label: 'Notes thread', hint: 'Adds a per-record notes thread to this field.', on: field?.notesEnabled },
-    {
-      name: 'sensitive',
-      label: 'Sensitive',
-      hint: 'Flags it for encryption at rest — SSN, EIN, account and routing numbers.',
-      on: field?.sensitive,
-    },
-  ];
-
-  return (
-    <div className="mt-3 space-y-2 rounded-md border border-line p-2.5">
-      {flags.map((f) => (
-        <label key={f.name} className="flex gap-2 text-[13px] text-ink-700">
-          <input type="checkbox" name={f.name} defaultChecked={f.on} className="mt-0.5 size-3.5 accent-[#1d4ed8]" />
-          <span>
-            {f.label}
-            <span className="block text-[11.5px] text-ink-400">{f.hint}</span>
-          </span>
-        </label>
-      ))}
-    </div>
   );
 }
 
@@ -539,318 +467,5 @@ function FormError({ message }: { message?: string }) {
       <Icon name="alert-triangle" size={12} />
       {message}
     </p>
-  );
-}
-
-function Done({ what, onClose }: { what: string; onClose: () => void }) {
-  return (
-    <div className="mt-4">
-      <p className="flex items-center gap-1.5 text-[13px] text-ok">
-        <Icon name="check" size={14} strokeWidth={2.5} />
-        {what}
-      </p>
-      <div className="mt-5 flex justify-end">
-        <Button type="button" variant="primary" onClick={onClose}>Done</Button>
-      </div>
-    </div>
-  );
-}
-
-function CreateFieldForm({
-  tabs,
-  subtabs,
-  onClose,
-}: {
-  tabs: AdminTabRow[];
-  subtabs: AdminSubtabRow[];
-  onClose: () => void;
-}) {
-  const [state, action] = useActionState(createFieldAction, initial);
-  const [type, setType] = useState<FieldTypeName>('text');
-  const [gridColumns, setGridColumns] = useState<GridColumn[]>([{ label: '', type: 'text' }]);
-  const [repeatSchema, setRepeatSchema] = useState<RepeatMember[]>([{ key: '', label: '', type: 'text' }]);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  if (state.ok) return <Done what="Field created." onClose={onClose} />;
-
-  return (
-    <form action={action} className="mt-4">
-      <label className={labelClass}>Label</label>
-      <input ref={inputRef} name="label" required placeholder="e.g. Gateway Provider" className={inputClass} />
-
-      <label className={`mt-3 ${labelClass}`}>Key</label>
-      <input name="key" required placeholder="e.g. gateway_provider" className={inputClass} />
-      <p className="mt-1 text-[11.5px] text-ink-400">
-        Permanent — every record&apos;s stored value is filed under it, so it can never be renamed.
-      </p>
-
-      <label className={`mt-3 ${labelClass}`}>Type</label>
-      <select
-        name="type"
-        required
-        value={type}
-        onChange={(e) => setType(e.target.value as FieldTypeName)}
-        className={inputClass}
-      >
-        {FIELD_TYPES.map((t) => (
-          <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-        ))}
-      </select>
-      <p className="mt-1 text-[11.5px] text-ink-400">
-        Also permanent — changing it would reinterpret every value already stored. To change a type, archive this field
-        and create a new one.
-      </p>
-      {CHOICE_TYPES.includes(type) ? (
-        <p className="mt-1 text-[11.5px] text-ink-500">
-          Its options are added separately, in the choices editor — it will have none until then.
-        </p>
-      ) : null}
-
-      {type === 'grid' ? <GridColumnsEditor columns={gridColumns} onChange={setGridColumns} /> : null}
-      {type === 'repeat_group' ? <RepeatSchemaEditor members={repeatSchema} onChange={setRepeatSchema} /> : null}
-
-      {/* Only the active one is submitted; the other stays '[]' so the server
-          writes NULL, which is what `grid_shape` / `repeat_group_shape` require
-          for every other type. */}
-      <input type="hidden" name="gridColumns" value={type === 'grid' ? JSON.stringify(gridColumns) : '[]'} />
-      <input
-        type="hidden"
-        name="repeatSchema"
-        value={type === 'repeat_group' ? JSON.stringify(repeatSchema) : '[]'}
-      />
-
-      <PlacementInputs tabs={tabs} subtabs={subtabs} defaultTabId={tabs[0]?.id ?? ''} defaultSubtabId={null} />
-
-      <label className={`mt-3 ${labelClass}`}>
-        Hint <span className="font-normal normal-case text-ink-400">(optional)</span>
-      </label>
-      <input name="hint" placeholder="Shown under the field in the drawer." className={inputClass} />
-
-      <label className={`mt-3 ${labelClass}`}>
-        Section <span className="font-normal normal-case text-ink-400">(optional)</span>
-      </label>
-      <input name="section" placeholder="e.g. TD Charged by Maverick — fields with the same section share a card under the grid." className={inputClass} />
-
-      <FlagInputs />
-
-      <FormError message={state.message} />
-
-      <div className="mt-5 flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" icon="check">Create field</Button>
-      </div>
-    </form>
-  );
-}
-
-function EditFieldForm({
-  field,
-  tabs,
-  subtabs,
-  onClose,
-}: {
-  field: AdminFieldRow;
-  tabs: AdminTabRow[];
-  subtabs: AdminSubtabRow[];
-  onClose: () => void;
-}) {
-  const [state, action] = useActionState(updateFieldAction, initial);
-
-  if (state.ok) return <Done what="Field updated." onClose={onClose} />;
-
-  return (
-    <form action={action} className="mt-4">
-      <input type="hidden" name="fieldId" value={field.id} />
-
-      <div className="rounded-md border border-line bg-canvas px-3 py-2 text-[12.5px] text-ink-500">
-        <p className="flex items-center gap-1.5 font-medium text-ink-700">
-          <Icon name="lock" size={12} />
-          {field.key} · {TYPE_LABELS[field.type as FieldTypeName] ?? field.type}
-        </p>
-        <p className="mt-0.5">
-          Key and type are permanent. Records store their values under the key and interpret them by the type, so
-          changing either would silently reinterpret data already saved on every record.
-          {field.type === 'grid' || field.type === 'repeat_group'
-            ? ' Its columns are fixed for the same reason — existing rows are stored under the column labels.'
-            : ''}
-        </p>
-      </div>
-
-      <label className={`mt-3 ${labelClass}`}>Label</label>
-      <input name="label" required defaultValue={field.label} className={inputClass} />
-
-      <PlacementInputs tabs={tabs} subtabs={subtabs} defaultTabId={field.tabId} defaultSubtabId={field.subtabId} />
-      <p className="mt-1 text-[11.5px] text-ink-400">
-        Moving a field puts it at the end of its new tab or subtab.
-      </p>
-
-      <label className={`mt-3 ${labelClass}`}>
-        Hint <span className="font-normal normal-case text-ink-400">(optional)</span>
-      </label>
-      <input name="hint" defaultValue={field.hint ?? ''} className={inputClass} />
-
-      <label className={`mt-3 ${labelClass}`}>
-        Section <span className="font-normal normal-case text-ink-400">(optional)</span>
-      </label>
-      <input name="section" defaultValue={field.section ?? ''} placeholder="Fields with the same section share a card under the grid." className={inputClass} />
-
-      <FlagInputs field={field} />
-
-      <FormError message={state.message} />
-
-      <div className="mt-5 flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" icon="check">Save changes</Button>
-      </div>
-    </form>
-  );
-}
-
-function GridColumnsEditor({
-  columns,
-  onChange,
-}: {
-  columns: GridColumn[];
-  onChange: (next: GridColumn[]) => void;
-}) {
-  const set = (i: number, patch: Partial<GridColumn>) =>
-    onChange(columns.map((c, k) => (k === i ? { ...c, ...patch } : c)));
-
-  return (
-    <div className="mt-3 rounded-md border border-line p-2.5">
-      <p className={labelClass}>Columns</p>
-      <p className="mt-0.5 text-[11.5px] text-ink-400">
-        Users add rows themselves. Only these three types render differently — everything else is a text box.
-      </p>
-
-      <div className="mt-2 space-y-1.5">
-        {columns.map((c, i) => (
-          <div key={i} className="flex gap-1.5">
-            <input
-              value={c.label}
-              onChange={(e) => set(i, { label: e.target.value })}
-              placeholder="Column name"
-              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-field"
-            />
-            <select
-              value={c.type}
-              onChange={(e) => set(i, { type: e.target.value as GridColumn['type'] })}
-              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-field"
-            >
-              {GRID_COLUMN_TYPES.map((t) => (
-                <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              icon="trash"
-              disabled={columns.length === 1}
-              onClick={() => onChange(columns.filter((_, k) => k !== i))}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-1.5">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          icon="plus"
-          disabled={columns.length >= 12}
-          onClick={() => onChange([...columns, { label: '', type: 'text' }])}
-        >
-          Add a column
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function RepeatSchemaEditor({
-  members,
-  onChange,
-}: {
-  members: RepeatMember[];
-  onChange: (next: RepeatMember[]) => void;
-}) {
-  const set = (i: number, patch: Partial<RepeatMember>) =>
-    onChange(members.map((m, k) => (k === i ? { ...m, ...patch } : m)));
-
-  return (
-    <div className="mt-3 rounded-md border border-line p-2.5">
-      <p className={labelClass}>Member fields</p>
-      <p className="mt-0.5 text-[11.5px] text-ink-400">
-        One set of these per instance — the shape the client means by &ldquo;add up to 5 owners&rdquo;.
-      </p>
-
-      <div className="mt-2 space-y-1.5">
-        {members.map((m, i) => (
-          <div key={i} className="flex gap-1.5">
-            <input
-              value={m.label}
-              onChange={(e) => set(i, { label: e.target.value })}
-              placeholder="Label"
-              className="flex-1 rounded border border-line px-2 py-1 text-[13px] outline-none focus-field"
-            />
-            <input
-              value={m.key}
-              onChange={(e) => set(i, { key: e.target.value })}
-              placeholder="key"
-              className="w-[92px] rounded border border-line px-2 py-1 text-[13px] outline-none focus-field"
-            />
-            <select
-              value={m.type}
-              onChange={(e) => set(i, { type: e.target.value as RepeatMember['type'] })}
-              className="rounded border border-line px-2 py-1 text-[12.5px] outline-none focus-field"
-            >
-              {REPEAT_MEMBER_TYPES.map((t) => (
-                <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              icon="trash"
-              disabled={members.length === 1}
-              onClick={() => onChange(members.filter((_, k) => k !== i))}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-1.5">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          icon="plus"
-          disabled={members.length >= 20}
-          onClick={() => onChange([...members, { key: '', label: '', type: 'text' }])}
-        >
-          Add a member field
-        </Button>
-      </div>
-
-      <label className={`mt-3 ${labelClass}`}>Maximum instances</label>
-      <input name="repeatMax" type="number" min={1} max={20} defaultValue={5} className={inputClass} />
-
-      <label className={`mt-3 ${labelClass}`}>
-        Group key <span className="font-normal normal-case text-ink-400">(optional)</span>
-      </label>
-      <input name="repeatGroupKey" placeholder="defaults to this field's own key" className={inputClass} />
-      <p className="mt-1 text-[11.5px] text-ink-400">
-        Only needed when one set of instances is split across two tabs — the way Owners keeps SSN on Application →
-        Private and everything else on Application → Ownership. Give both fields the same group key and they stay one
-        set of people.
-      </p>
-    </div>
   );
 }

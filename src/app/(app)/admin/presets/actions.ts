@@ -28,7 +28,8 @@ import {
   createSubtabSchema,
   assignTabSchema,
   assignSubtabSchema,
-  createFieldSchema,
+  fieldSetupSchema,
+  changeFieldTypeSchema,
   updateFieldSchema,
   fieldIdSchema,
   setModuleFieldListSchema,
@@ -46,7 +47,7 @@ import {
   createTab, createSubtab, assignTabToModules, assignSubtabToModules,
   renameTab, renameSubtab, setModuleTabOrder, setModuleSubtabOrder, setTabModules,
 } from '@/lib/records/adminPresets';
-import { createField, updateField, archiveField, restoreField } from '@/lib/records/adminFields';
+import { createFieldWithSetup, updateField, archiveField, restoreField, changeFieldType } from '@/lib/records/adminFields';
 import { setModuleColumns, setModuleHeaderFields } from '@/lib/records/adminColumns';
 import {
   setFieldChoices,
@@ -221,32 +222,31 @@ export async function assignSubtabToModulesAction(subtabId: string, moduleIds: s
 export async function createFieldAction(_prev: PresetFormState, formData: FormData): Promise<PresetFormState> {
   const ctx = await authorize();
 
-  const parsed = createFieldSchema.safeParse({
-    key: formData.get('key'),
+  // The whole New field form (UI/UX spec §6). Options and module lists arrive
+  // as JSON strings the client built from its own state — see `parseJsonList`.
+  const parsed = fieldSetupSchema.safeParse({
     label: formData.get('label'),
+    key: formData.get('key') ?? '',
     type: formData.get('type'),
+    digitsOnly: formData.get('digitsOnly'),
+    digits: formData.get('digits') ?? '',
     tabId: formData.get('tabId'),
     subtabId: formData.get('subtabId'),
-    hint: formData.get('hint') ?? '',
-    // The drawer card this field sits in. Omitting it here made the schema
-    // default it to '' — and saving an existing field from the Edit dialog
-    // then cleared its section.
     section: formData.get('section') ?? '',
+    hint: formData.get('hint') ?? '',
     required: formData.get('required'),
-    sensitive: formData.get('sensitive'),
-    wide: formData.get('wide'),
     notesEnabled: formData.get('notesEnabled'),
-    repeatMax: formData.get('repeatMax') ?? 5,
-    repeatGroupKey: formData.get('repeatGroupKey') ?? '',
-    // Both are JSON strings the client component built from its own state —
-    // see `parseJsonList` in adminSchemas.ts for why they aren't parallel
-    // getAll() arrays.
-    repeatSchema: formData.get('repeatSchema'),
-    gridColumns: formData.get('gridColumns'),
+    sensitive: formData.get('sensitive'),
+    choices: formData.get('choices'),
+    autoSource: formData.get('autoSource'),
+    autoSourceField: formData.get('autoSourceField') ?? '',
+    showInVital: formData.get('showInVital'),
+    columnModuleIds: formData.get('columnModuleIds'),
+    afterFieldId: formData.get('afterFieldId'),
   });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
-  const result = await createField(ctx, parsed.data);
+  const result = await createFieldWithSetup(ctx, parsed.data);
   if (!result.ok) return result;
 
   revalidateConfig();
@@ -270,10 +270,31 @@ export async function updateFieldAction(_prev: PresetFormState, formData: FormDa
     sensitive: formData.get('sensitive'),
     wide: formData.get('wide'),
     notesEnabled: formData.get('notesEnabled'),
+    // Same rule as section: the form always sends these, so a save never
+    // quietly takes a field out of Vital Info or off a list.
+    showInVital: formData.get('showInVital'),
+    columnModuleIds: formData.get('columnModuleIds'),
+    afterFieldId: formData.get('afterFieldId'),
+    placeIt: formData.get('placeIt'),
   });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
   const result = await updateField(ctx, parsed.data);
+  if (!result.ok) return result;
+
+  revalidateConfig();
+  return { ok: true };
+}
+
+/** Type change: refused, or asks once, when records already hold values. */
+export async function changeFieldTypeAction(
+  input: { fieldId: string; type: string; confirm: boolean },
+): Promise<PresetFormState & { needsConfirm?: number }> {
+  const ctx = await authorize();
+  const parsed = changeFieldTypeSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await changeFieldType(ctx, parsed.data);
   if (!result.ok) return result;
 
   revalidateConfig();

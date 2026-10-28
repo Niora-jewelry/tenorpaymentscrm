@@ -281,7 +281,7 @@ export const createFieldSchema = z
     }
   });
 
-export const updateFieldSchema = z.object({ ...fieldMetaShape, fieldId: uuid });
+
 
 /** Archive and restore carry nothing but the id — every other decision
  * (is it a system field? is it `deal_name`?) is read from the row itself, not
@@ -408,6 +408,118 @@ export const removeFieldChoiceSchema = z.object({
 });
 
 export type SetFieldChoicesInput = z.infer<typeof setFieldChoicesSchema>;
+
+/* -------------------------------------------------------------------------- */
+/* The New field form — UI/UX Redesign spec §6                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The types an admin may give a NEW field: the spec's list of 17 allowed
+ * types, by their spec names (§4). Text has a "digits only" variant, which is
+ * stored as `identifier` — the spec's "Text restricted to digits" for MCC/MID.
+ * Checkbox, Date and time, Grid and Repeating group are not offered: none is
+ * one of the 17 (the audit keeps the two that exist).
+ */
+export const NEW_FIELD_TYPES = [
+  'text', 'long_text', 'percentage', 'currency', 'dropdown', 'multi_select',
+  'percent_split', 'email', 'phone', 'address', 'team_member', 'date',
+  'number', 'url', 'status', 'file', 'auto',
+] as const satisfies readonly FieldType[];
+
+export const NEW_FIELD_TYPE_LABELS: Record<(typeof NEW_FIELD_TYPES)[number], string> = {
+  text: 'Text',
+  long_text: 'Long text',
+  percentage: 'Percentage',
+  currency: 'Currency',
+  dropdown: 'Dropdown',
+  multi_select: 'Multiple picker',
+  percent_split: 'Percentage = 100%',
+  email: 'Email',
+  phone: 'Phone',
+  address: 'Address',
+  team_member: 'Team picker',
+  date: 'Date',
+  number: 'Number',
+  url: 'Website',
+  status: 'Status',
+  file: 'Files',
+  auto: 'Auto-populated (locked)',
+};
+
+/** What an Auto-populated field can be filled from (migration 9804). */
+export const AUTO_SOURCES = ['record_creator', 'created_at', 'mcc_lookup'] as const;
+export const AUTO_SOURCE_LABELS: Record<(typeof AUTO_SOURCES)[number], string> = {
+  record_creator: 'Record creator — who created the record',
+  created_at: 'Created date — the day the record was created',
+  mcc_lookup: 'Merchant category — looked up from an MCC code field',
+};
+
+const setupChoiceSchema = z.object({
+  value: z.string().trim().min(1, 'Every option needs a label.').max(120, 'An option label must be 120 characters or fewer.'),
+  swatch: swatchSchema.default(''),
+});
+
+const uuidList = z.preprocess(parseJsonList, z.array(uuid).max(20));
+
+/** "Show in Vital Info" and "Show as list column" — shared by create and edit. */
+const surfacesShape = {
+  showInVital: checkbox,
+  columnModuleIds: uuidList,
+  /** Placed right after this field; empty = first in its section. */
+  afterFieldId: optionalUuid,
+};
+
+export const fieldSetupSchema = z
+  .object({
+    label: labelSchema,
+    /** Optional: derived from the label when blank. */
+    key: z.string().trim().max(60).default(''),
+    type: z.enum(NEW_FIELD_TYPES),
+    digitsOnly: checkbox,
+    /** "4" or "9" or "4, 6" — allowed lengths for digits-only text. */
+    digits: z.string().trim().max(30).default(''),
+    tabId: uuid,
+    subtabId: optionalUuid,
+    section: sectionSchema,
+    hint: hintSchema,
+    required: checkbox,
+    notesEnabled: checkbox,
+    sensitive: checkbox,
+    choices: z.preprocess(parseJsonList, z.array(setupChoiceSchema).max(100, 'That is more options than one field can offer.')),
+    autoSource: z.preprocess((v) => (v === '' || v == null ? null : v), z.enum(AUTO_SOURCES).nullable()),
+    autoSourceField: z.string().trim().max(60).default(''),
+    ...surfacesShape,
+  })
+  .superRefine((v, ctx) => {
+    const needsOptions = (CHOICE_FIELD_TYPES as readonly string[]).includes(v.type);
+    if (needsOptions && v.choices.length < (v.type === 'percent_split' ? 2 : 1)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['choices'],
+        message: v.type === 'percent_split' ? 'A Percentage = 100% field needs at least two parts.' : 'Add at least one option.',
+      });
+    }
+    if (v.type === 'auto' && !v.autoSource) {
+      ctx.addIssue({ code: 'custom', path: ['autoSource'], message: 'Choose where an auto-populated field gets its value.' });
+    }
+    if (v.type === 'auto' && v.autoSource === 'mcc_lookup' && !v.autoSourceField) {
+      ctx.addIssue({ code: 'custom', path: ['autoSourceField'], message: 'Choose the field that holds the MCC code.' });
+    }
+    if (v.digits && !/^\s*\d{1,2}(\s*,\s*\d{1,2})*\s*$/.test(v.digits)) {
+      ctx.addIssue({ code: 'custom', path: ['digits'], message: 'Digit lengths look like "4" or "4, 9".' });
+    }
+  });
+
+export type FieldSetupInput = z.infer<typeof fieldSetupSchema>;
+
+export const updateFieldSchema = z.object({ ...fieldMetaShape, ...surfacesShape, fieldId: uuid, placeIt: checkbox });
+
+export const changeFieldTypeSchema = z.object({
+  fieldId: uuid,
+  type: z.enum(NEW_FIELD_TYPES),
+  confirm: checkbox,
+});
+export type ChangeFieldTypeInput = z.infer<typeof changeFieldTypeSchema>;
 export type ModuleOverrideInput = z.infer<typeof moduleOverrideSchema>;
 export type RemoveFieldChoiceInput = z.infer<typeof removeFieldChoiceSchema>;
 

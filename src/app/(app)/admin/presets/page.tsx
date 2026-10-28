@@ -71,7 +71,7 @@ export default async function AdminPresetsPage() {
       description:
         'The drawer’s top-level tabs. One shared definition across every module; each module chooses which of them it shows, and in what order. A tab needs at least one module to exist anywhere — use Edit modules to add or remove them, and drag a tab to reorder it.',
       content: (
-        <div className="space-y-4">
+        <div key="tabs" className="space-y-4">
           <TabsSection tabs={tabs} modules={modules} />
           {/* ORDER is a separate concern from which tabs exist: tab order and
               subtab order are two of the six per-module settings, and were the
@@ -95,7 +95,7 @@ export default async function AdminPresetsPage() {
       count: subtabs.length,
       description:
         'Sections within a tab — Application’s seven steps, Pricing’s four. A tab with no subtabs simply shows its fields directly. Click a name to rename it or edit the description shown at the top of it; the order they appear in is set per module under Tabs.',
-      content: <SubtabsSection subtabs={subtabs} tabs={tabs} modules={modules} />,
+      content: <SubtabsSection key="subtabs" subtabs={subtabs} tabs={tabs} modules={modules} />,
     },
     {
       key: 'fields',
@@ -104,7 +104,7 @@ export default async function AdminPresetsPage() {
       count: fields.length,
       description:
         'Every field in the CRM, and where it sits. Fields are archived, never deleted — a retirement keeps the history and the permissions attached to it intact.',
-      content: <FieldsSection fields={fields} tabs={tabs} subtabs={subtabs} />,
+      content: <FieldsSection key="fields" fields={fields} tabs={tabs} subtabs={subtabs} modules={modules} />,
     },
     {
       key: 'columns',
@@ -113,7 +113,7 @@ export default async function AdminPresetsPage() {
       count: modules.length,
       description:
         'Which fields appear as columns on each module’s dashboard, and which few make up the drawer’s header strip.',
-      content: <ColumnsSection modules={modules} fields={assignable} selections={selections} />,
+      content: <ColumnsSection key="columns" modules={modules} fields={assignable} selections={selections} />,
     },
     {
       key: 'choices',
@@ -122,7 +122,7 @@ export default async function AdminPresetsPage() {
       count: choiceFields.length,
       description:
         'The options behind every dropdown, status and multi-select. Choices can differ per module, so Leads and Deals need not share a status list.',
-      content: <ChoicesSection fields={choiceFields} modules={modules} />,
+      content: <ChoicesSection key="choices" fields={choiceFields} modules={modules} />,
     },
     {
       key: 'pipelines',
@@ -131,7 +131,7 @@ export default async function AdminPresetsPage() {
       count: pipelines.length,
       description:
         'The stage bars at the top of a record, and the steps within each one.',
-      content: <PipelinesSection pipelines={pipelines} modules={modules} />,
+      content: <PipelinesSection key="pipelines" pipelines={pipelines} modules={modules} />,
     },
     {
       // Last in the strip because it is the one section that configures a
@@ -144,7 +144,7 @@ export default async function AdminPresetsPage() {
       count: statements.years.length,
       description:
         'The month grid behind the Statements tab — one global calendar shared by every record. It can be extended forward by whole years; July 2024 is fixed and nothing is ever removed.',
-      content: <StatementsSection grid={statements} />,
+      content: <StatementsSection key="statements" grid={statements} />,
     },
   ];
 

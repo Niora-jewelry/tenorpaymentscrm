@@ -27,6 +27,7 @@
  */
 
 import { useMemo, useState, useTransition } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   DndContext,
   KeyboardSensor,
@@ -64,8 +65,19 @@ const sameRows = (a: Row[], b: Row[]) =>
   a.length === b.length && a.every((r, i) => r.key === b[i]!.key && r.value === b[i]!.value && r.swatch === b[i]!.swatch);
 
 export function ChoicesSection({ fields, modules }: { fields: ChoiceFieldRow[]; modules: ModuleOption[] }) {
-  const [fieldId, setFieldId] = useState(fields[0]?.id ?? '');
+  /* `?field=` — the Edit field form's "Edit its options" link lands here. */
+  const requested = useSearchParams().get('field');
+  const known = (id: string | null) => Boolean(id && fields.some((f) => f.id === id));
+  const [fieldId, setFieldId] = useState(known(requested) ? requested! : (fields[0]?.id ?? ''));
   const [scope, setScope] = useState<Scope>(null);
+  const [lastRequested, setLastRequested] = useState(requested);
+  if (requested !== lastRequested) {
+    setLastRequested(requested);
+    if (known(requested)) {
+      setFieldId(requested!);
+      setScope(null);
+    }
+  }
   const field = fields.find((f) => f.id === fieldId);
 
   /** Drafts and their saved counterparts are both keyed by field+scope, so

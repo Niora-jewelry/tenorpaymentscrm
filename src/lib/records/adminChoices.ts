@@ -155,7 +155,7 @@ export async function listChoiceFields(ctx: AuthContext): Promise<ChoiceFieldRow
  * shape the admin can correct from the form (they typed two different labels),
  * so it is normalised rather than rejected with a message nobody can act on.
  */
-function normalise(input: SetFieldChoicesInput['choices']): { key: string; value: string; swatch: string }[] {
+export function normaliseChoices(input: SetFieldChoicesInput['choices']): { key: string; value: string; swatch: string }[] {
   const taken = new Set<string>();
   const out: { key: string; value: string; swatch: string }[] = [];
 
@@ -198,7 +198,7 @@ export async function setFieldChoices(ctx: AuthContext, input: SetFieldChoicesIn
     return { ok: false, message: 'That module no longer exists.' };
   }
 
-  const choices = normalise(input.choices);
+  const choices = normaliseChoices(input.choices);
   if (!choices.length) {
     // Not a database rule: the writer has no DELETE, so an empty list would
     // simply do nothing, leaving the old options in place while the admin

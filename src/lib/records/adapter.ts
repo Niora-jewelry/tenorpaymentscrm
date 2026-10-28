@@ -95,6 +95,7 @@ export function adaptFieldForDashboard(config: Config, f: DbField): ProtoField {
     digits: f.digits ?? undefined,
     hint: f.hint ?? undefined,
     placeholder: f.placeholder,
+    autoSource: f.autoSource ?? undefined,
   };
 }
 

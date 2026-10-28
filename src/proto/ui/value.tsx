@@ -259,6 +259,8 @@ export function CellValue({
 }) {
   if (isEmpty(value)) return <span className="text-ink-400/70">—</span>;
 
+  if (field.type === 'auto') return <AutoValue field={field} value={value} />;
+
   switch (field.type) {
     // A record stores a choice's KEY, so both of these resolve key → label
     // rather than printing the stored value. Print it raw only when nothing
@@ -560,6 +562,16 @@ export function FieldRenderer({
    * multi-part controls where a read-only summary followed by an edit click
    * would just be an extra step before every change.
    */
+  /* Auto-populated (locked): the database fills it and nobody edits it, admin
+     included — so there is no edit state at all, whatever the grant. */
+  if (field.type === 'auto') {
+    return (
+      <div className="flex min-h-[30px] items-center px-1 py-1 text-[13.5px] text-ink-700">
+        {isEmpty(value) ? <span className="text-ink-400/70">—</span> : <AutoValue field={field} value={value} />}
+      </div>
+    );
+  }
+
   if (field.type === 'percent_split') {
     return <PercentSplitControl field={field} value={asSplit(value)} readOnly={readOnly} onChange={onChange} />;
   }
@@ -2417,4 +2429,30 @@ function ValueDisplay({
     default:
       return <span>{String(value)}</span>;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Auto-populated (locked) — shown by where the value comes from               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A person for Record creator, a date for Created, plain text for a lookup.
+ * Keyed by SOURCE, not by field — an admin can add another auto field with
+ * any of these sources and it renders correctly with no change here.
+ */
+function AutoValue({ field, value }: { field: Field; value: FieldValue }) {
+  const byId = usePeopleById();
+  if (field.autoSource === 'record_creator') {
+    const person = resolvePerson(String(value), byId);
+    return (
+      <span className="inline-flex min-w-0 items-center gap-1.5" title={person.email ?? person.name}>
+        <PersonAvatar person={person} size={18} />
+        <span className="truncate">{person.name}</span>
+      </span>
+    );
+  }
+  if (field.autoSource === 'created_at') {
+    return <span className="tabular">{formatDate(String(value))}</span>;
+  }
+  return <span className="truncate" title={String(value)}>{String(value)}</span>;
 }

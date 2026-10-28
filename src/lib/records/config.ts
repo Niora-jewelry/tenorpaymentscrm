@@ -31,7 +31,10 @@ export type FieldType =
   | 'text' | 'long_text' | 'number' | 'currency' | 'date' | 'datetime'
   | 'dropdown' | 'status' | 'multi_select' | 'team_member' | 'email' | 'phone'
   | 'url' | 'checkbox' | 'file' | 'percentage' | 'address' | 'percent_split'
-  | 'months' | 'grid' | 'identifier' | 'repeat_group';
+  | 'months' | 'grid' | 'identifier' | 'repeat_group' | 'auto';
+
+/** Where an `auto` field's value comes from (migration 9804). */
+export type AutoSource = 'record_creator' | 'created_at' | 'mcc_lookup';
 
 export type Module = {
   id: string;
@@ -100,6 +103,10 @@ export type Field = {
   gridColumns: { label: string; type: FieldType }[] | null;
   /** Fields sharing a section label are drawn in their own card under the sub-tab's main grid. */
   section: string | null;
+  /** For type `auto`: where the database takes the value from. */
+  autoSource: AutoSource | null;
+  /** For `mcc_lookup`: the field holding the MCC code. */
+  autoSourceField: string | null;
   archivedAt: string | null;
 };
 
@@ -199,6 +206,8 @@ const loadConfigCached = unstable_cache(
         repeatMax: f.repeat_max, repeatSchema: f.repeat_schema, repeatGroupKey: f.repeat_group_key,
         gridColumns: f.grid_columns,
         section: f.section ?? null,
+        autoSource: f.auto_source ?? null,
+        autoSourceField: f.auto_source_field ?? null,
         archivedAt: f.archived_at,
       })),
       moduleTabOrder: moduleTabOrder.data!.map((r) => ({ moduleId: r.module_id, tabId: r.tab_id, position: r.position })),

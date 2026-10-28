@@ -40,6 +40,7 @@ import { JSON_VALUED_FIELD_TYPES } from './fieldValueCodec';
 /** Types whose stored value is a single JSON scalar — string, number or bool. */
 const SCALAR_FIELD_TYPES: FieldType[] = [
   'text',
+  'auto',
   'long_text',
   'number',
   'currency',
@@ -113,6 +114,7 @@ describe('JSON_VALUED_FIELD_TYPES', () => {
       months: 'json',
       grid: 'json',
       repeat_group: 'json',
+      auto: 'scalar',
     };
 
     for (const [type, kind] of Object.entries(classified) as [FieldType, 'scalar' | 'json'][]) {

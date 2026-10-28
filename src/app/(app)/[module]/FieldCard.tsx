@@ -64,7 +64,7 @@ export function FieldLabelRow({
   children,
   tone = 'default',
 }: {
-  field: Pick<ProtoField, 'label' | 'hint' | 'system' | 'sync' | 'required'>;
+  field: Pick<ProtoField, 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type'>;
   requiredEmpty?: boolean;
   /** The reorder handle, when the grid is sortable. */
   handle?: ReactNode;
@@ -85,7 +85,9 @@ export function FieldLabelRow({
         {field.required ? <span className="ml-0.5 text-warn" aria-label="required">*</span> : null}
       </span>
       <span className="flex shrink-0 items-center gap-1 pt-px">
-        {field.system ? <Icon name="lock" size={10} className="text-ink-400" aria-label="Filled in by the system" /> : null}
+        {field.system || field.type === 'auto' ? (
+          <Icon name="lock" size={10} className="text-ink-400" aria-label="Filled in automatically — not editable" />
+        ) : null}
         {field.sync ? <Icon name="link" size={10} className="text-brand-600" aria-label="Sync-enabled" /> : null}
         {requiredEmpty ? <Icon name="alert-triangle" size={10} className="text-warn" aria-label="Required and empty" /> : null}
         {field.hint ? <InfoTip text={field.hint} label={field.label} /> : null}

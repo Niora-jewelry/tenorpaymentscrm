@@ -59,6 +59,7 @@ const TYPE_LABELS: Record<FieldTypeName, string> = {
   percent_split: 'Percent split (must total 100%)',
   grid: 'Grid (rows the user adds)',
   repeat_group: 'Repeating group',
+  auto: 'Auto-populated (locked)',
 };
 
 /** Shared with the choices editor and the data layer rather than restated —

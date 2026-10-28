@@ -144,7 +144,7 @@ export const FIELD_TYPES = [
   'email', 'phone', 'url', 'address',
   'date', 'datetime', 'months',
   'dropdown', 'status', 'multi_select', 'team_member',
-  'identifier', 'file', 'percent_split', 'grid', 'repeat_group',
+  'identifier', 'file', 'percent_split', 'grid', 'repeat_group', 'auto',
 ] as const satisfies readonly FieldType[];
 
 /** Compile error if a `FieldType` exists that `FIELD_TYPES` doesn't list. The

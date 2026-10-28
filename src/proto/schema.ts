@@ -68,7 +68,12 @@ export type FieldType =
    * adapter (`lib/records/adapter.ts`) can type-check against the same
    * `Field` contract without a second, parallel type.
    */
-  | 'repeat_group';
+  | 'repeat_group'
+  /**
+   * "Auto-populated (locked)" (UI/UX spec §4): filled by the database from
+   * `autoSource`, never typed. Shown as a person, a date or text by source.
+   */
+  | 'auto';
 
 /** The five the specification does not list, surfaced as a gap in Presets. */
 export const UNSPECIFIED_TYPES: FieldType[] = [
@@ -242,6 +247,8 @@ export type Field = {
   sync?: boolean;
   /** Locked system field: non-deletable, non-renamable. */
   system?: boolean;
+  /** Type `auto` only: where its value comes from. */
+  autoSource?: 'record_creator' | 'created_at' | 'mcc_lookup';
   /** Never editable by anyone, including admins (Record creator). */
   readOnly?: boolean;
   required?: boolean;

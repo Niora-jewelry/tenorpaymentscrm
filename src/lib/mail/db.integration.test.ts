@@ -80,7 +80,19 @@ async function pickPeople(): Promise<People> {
      where p.deleted_at is null and p.status = 'active'
        and (p.email::text like '%@tapdash.test' or p.email::text like 'itest-%' or p.email::text like 'test-member@%')
      order by p.email limit 4`);
-  if (rows.length < 4) throw new Error('need four active test accounts');
+  // Too few test accounts on this database: make the rest here. This runs
+  // inside the test's own transaction, so they vanish with its ROLLBACK.
+  while (rows.length < 4) {
+    const email = `itest-mail-tmp-${rows.length}@tapdash.test`;
+    const { rows: u } = await db.query(
+      `insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+       values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $1, now(), now())
+       returning id`, [email]);
+    await db.query(
+      `insert into profiles (id, email, role_id, status)
+       values ($1, $2, (select id from roles where not is_admin order by slug limit 1), 'active')`, [u[0].id, email]);
+    rows.push({ id: u[0].id });
+  }
   const [A1, A2, M1, M2] = rows.map((r) => r.id as string);
   // Inside the rolled-back transaction: A1/A2 admins, M1/M2 members.
   const { rows: roles } = await db.query(`select id, is_admin from roles order by is_admin desc, name`);

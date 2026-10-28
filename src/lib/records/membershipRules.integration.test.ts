@@ -5,8 +5,9 @@
  *   Addition 3 — a record with an open case is in the module that shows open
  *                cases; with none, it is not; and nobody can set that by hand.
  *   Addition 2 — adding a record to / removing it from a module is governed
- *                by the `membership` grant, which falls back to the module
- *                grant when unset.
+ *                by the Permissions spec's "Display / remove records from
+ *                modules" setting (`action.modules`), and only in a module
+ *                the person can open at all.
  *
  * ── WHY SQL-LEVEL, AS A MEMBER ───────────────────────────────────────────
  * `set_record_memberships` is the one writer every chip, Archive and bulk
@@ -14,7 +15,7 @@
  * Running them here as a real non-admin profile is the only way to exercise
  * the refusal path at all: an admin short-circuits both.
  *
- * Everything written here — the probe record, its case, the member's grants —
+ * Everything written here — the probe record, its case, the member's settings —
  * is created inside the transaction and discarded with it. The live data is
  * read, never changed.
  */
@@ -122,8 +123,8 @@ suite('open cases place the record (Addition 3)', () => {
   }, 120_000);
 });
 
-suite('the membership grant governs add / remove (Addition 2)', () => {
-  it('follows the module grant when unset, and the explicit row when set — both ways', async () => {
+suite('Display / remove from modules governs add / remove (Addition 2)', () => {
+  it('needs the setting and a module the person can open — both ways', async () => {
     await db.query('BEGIN');
     try {
       const member = await one<{ id: string }>(
@@ -134,12 +135,19 @@ suite('the membership grant governs add / remove (Addition 2)', () => {
         `select id, label from modules where kind = 'display' and not admin_only and not shows_open_cases order by position limit 2`)).rows as { id: string; label: string }[];
       expect(b, 'two ordinary display modules are needed').toBeTruthy();
 
-      // The member's own grants, built from scratch for this test.
-      await db.query(`delete from user_grants where user_id = $1`, [member.id]);
-      await db.query(`delete from user_templates where user_id = $1`, [member.id]);
-      await db.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'module', $2, 'edit'), ($1, 'module', $3, 'edit')`, [member.id, a.id, b.id]);
+      // The member's own settings, built from scratch for this test: both
+      // modules at All records, and allowed to move records between them.
+      const setting = async (key: string, value: string | null) => {
+        await db.query(`delete from permission_settings where owner_kind = 'user' and owner_id = $1 and key = $2`, [member.id, key]);
+        if (value !== null) {
+          await db.query(`insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, $2, $3)`, [member.id, key, value]);
+        }
+      };
+      await setting(`module:${a.id}`, 'all');
+      await setting(`module:${b.id}`, 'all');
+      await setting('action.modules', 'yes');
+      await setting('action.create', 'yes');
 
-      // A record the member can see and edit, in module A.
       const rec = await one<{ id: string }>(
         `insert into records (deal_name, creator_kind, creator_user_id, "values")
          values ('ZZ membership probe 2', 'user', $1, jsonb_build_object('team_members_assigned', jsonb_build_array($2::text)))
@@ -149,42 +157,39 @@ suite('the membership grant governs add / remove (Addition 2)', () => {
 
       const allowed = async (m: string) => (await one<{ ok: boolean }>(`select module_membership_allowed($1) ok`, [m])).ok;
 
-      // Unset → follows Edit on the module.
+      // Setting Yes, both modules open → both allowed.
       expect(await allowed(a.id)).toBe(true);
       expect(await allowed(b.id)).toBe(true);
       await db.query(`select set_record_memberships($1, $2::uuid[])`, [rec.id, [a.id, b.id]]);
 
-      // An explicit No on B refuses adding to / removing from B only.
+      // Setting No → refused everywhere.
       await actAsSuperuser();
-      await db.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'membership', $2, 'view')`, [member.id, b.id]);
+      await setting('action.modules', 'no');
       await actAs(member.id);
+      expect(await allowed(a.id)).toBe(false);
       expect(await allowed(b.id)).toBe(false);
-      expect(await allowed(a.id), 'A is untouched').toBe(true);
       await expectRefusal(`select set_record_memberships($1, $2::uuid[])`, [rec.id, [a.id]], /cannot add records to or remove them from/);
-      await actAs(member.id);
-      // Still may change A: dropping A while leaving B alone is allowed.
-      await db.query(`select set_record_memberships($1, $2::uuid[])`, [rec.id, [b.id]]);
 
-      // Module View + explicit Yes: may move records even without Edit.
+      // Setting Yes but module B Hidden → B refused, A still allowed.
       await actAsSuperuser();
-      await db.query(`update user_grants set grant_level = 'view' where user_id = $1 and scope_kind = 'module' and scope_id = $2`, [member.id, a.id]);
-      await db.query(`delete from user_grants where user_id = $1 and scope_kind = 'membership'`, [member.id]);
+      await setting('action.modules', 'yes');
+      await setting(`module:${b.id}`, 'hidden');
       await actAs(member.id);
-      expect(await allowed(a.id), 'View + unset → No').toBe(false);
-      await actAsSuperuser();
-      await db.query(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'membership', $2, 'edit')`, [member.id, a.id]);
-      await actAs(member.id);
-      expect(await allowed(a.id), 'View + explicit Yes → Yes').toBe(true);
+      expect(await allowed(b.id), 'a Hidden module → No even with the setting').toBe(false);
+      expect(await allowed(a.id), 'A is untouched').toBe(true);
 
-      // Hidden module: never, whatever the row says.
+      // Only mine is still a module they can open.
       await actAsSuperuser();
-      await db.query(`update user_grants set grant_level = 'hidden' where user_id = $1 and scope_kind = 'module' and scope_id = $2`, [member.id, a.id]);
+      await setting(`module:${b.id}`, 'mine');
       await actAs(member.id);
-      expect(await allowed(a.id), 'Hidden module → No even with an explicit Yes').toBe(false);
+      expect(await allowed(b.id), 'Only mine → allowed').toBe(true);
 
-      // The writer refuses Hidden as a membership level.
+      // The settings table refuses a value the setting does not take.
       await actAsSuperuser();
-      await expectRefusal(`insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id) values ($1, 'membership', $2, 'edit', $2)`, [member.id, b.id], /module_scope_shape/);
+      await expectRefusal(
+        `insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, 'action.modules', 'maybe')
+         on conflict (owner_kind, owner_id, key) do update set value = excluded.value`,
+        [member.id], /permission_settings|check|valid/i);
     } finally {
       await db.query('ROLLBACK');
     }

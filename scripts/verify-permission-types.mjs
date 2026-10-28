@@ -83,6 +83,20 @@ try {
     t('sales agent: does not see an archived record (Records List hidden)', !(await see(archived)));
     t('sales agent: cannot archive', await refuses(`select set_record_memberships($1, '{}')`, [onTeam]));
     t('sales agent: cannot change In modules', await refuses(`select set_record_memberships($1, $2)`, [onTeam, [mods.leads, mods.deals]]));
+    // The app's own create flow: insert (no RETURNING), then place it.
+    const create = async () => {
+      const id = (await q(`select gen_random_uuid() id`))[0].id;
+      const ok = !(await refuses(
+        `insert into records (id, deal_name, creator_kind, creator_user_id, "values")
+         values ($1::uuid, 'ZZ perm create ' || $1::text, 'user', $2::uuid, jsonb_build_object('team_members_assigned', jsonb_build_array($3::text)))`,
+        [id, member.id, member.id]));
+      return ok ? id : null;
+    };
+    const fresh = await create();
+    t('sales agent: can create a record', Boolean(fresh), lastError);
+    t('sales agent: can place their new record in Leads', Boolean(fresh) && !(await refuses(`select set_record_memberships($1, $2)`, [fresh, [mods.leads]])), lastError);
+    const fresh2 = await create();
+    t('sales agent: cannot create into a Hidden module', Boolean(fresh2) && (await refuses(`select set_record_memberships($1, $2)`, [fresh2, [mods.residuals]])), lastError);
     t('sales agent: can move the pipeline', !(await refuses(`select set_pipeline_step($1, $2, $3, $4)`, [onTeam, mods.leads, pipe.id, pipe.step])), lastError);
     const [g] = await q(`select record_field_grant($1, 'team_members_assigned') g`, [onTeam]);
     t('sales agent: team field is view-only', g.g === 'view', g.g);

@@ -10,7 +10,8 @@
  * all vanish with the ROLLBACK.
  *
  * Actors are borrowed, not made: `admin@tapdash.test`, a second active admin,
- * and `demo.rep@tapdash.test` (the non-admin, which is the whole point — an
+ * and `demo.rep@tapdash.test` or another non-admin `@tapdash.test` account
+ * (the non-admin, which is the whole point — an
  * admin passes every permission check by design).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -28,7 +29,6 @@ let leads: string;
 let einField: string;
 let einTab: string;
 let einSubtab: string | null;
-let updatesTab: string;
 let rec: string;
 let savepoint = 0;
 
@@ -88,8 +88,11 @@ suite('@mentions — who, what and when', () => {
         where p.deleted_at is null and p.status = 'active'`,
     );
     const a = people.find((p) => p.email === 'admin@tapdash.test');
-    const m = people.find((p) => p.email === 'demo.rep@tapdash.test');
-    if (!a || !m || m.is_admin) throw new Error('needs admin@tapdash.test and a non-admin demo.rep@tapdash.test');
+    // demo.rep if it exists, otherwise any active non-admin test account.
+    const m =
+      people.find((p) => p.email === 'demo.rep@tapdash.test' && !p.is_admin) ??
+      people.filter((p) => !p.is_admin && p.email.endsWith('@tapdash.test')).sort((x, y) => x.email.localeCompare(y.email))[0];
+    if (!a || !m) throw new Error('needs admin@tapdash.test and a non-admin @tapdash.test account');
     admin = a.id;
     member = m.id;
     memberName = m.name;
@@ -100,7 +103,6 @@ suite('@mentions — who, what and when', () => {
     einField = ein.id;
     einTab = ein.tab_id;
     einSubtab = ein.subtab_id;
-    updatesTab = (await owner<{ id: string }>(`select id from tabs where key = 'updates'`))[0].id;
 
     // EIN is marked sensitive in the live configuration, which (correctly)
     // withholds its values from every mention. The value cases below need a
@@ -163,14 +165,17 @@ suite('@mentions — who, what and when', () => {
     await owner(`update user_grants set grant_level = 'edit' where user_id = $1 and scope_kind = 'field' and scope_id = $2`, [member, einField]);
   });
 
-  it('a hidden Updates tab removes a person from update mentions only', async () => {
+  // Updates has no tab level any more (Permissions spec; migration 9821) — the
+  // Cases setting is the one that can hide a whole item kind from someone.
+  it('Cases set to Hidden removes a person from case mentions only', async () => {
     await owner(
-      `insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id) values ($1, 'tab', $2, 'hidden', $3)`,
-      [member, updatesTab, leads],
+      `insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, 'items.cases', 'hidden')
+       on conflict (owner_kind, owner_id, key) do update set value = excluded.value`,
+      [member],
     );
-    expect(await candidates(admin, 'updates')).not.toContain(member);
-    expect(await candidates(admin, 'cases')).toContain(member);
-    await owner(`delete from user_grants where user_id = $1 and scope_kind = 'tab' and scope_id = $2`, [member, updatesTab]);
+    expect(await candidates(admin, 'cases')).not.toContain(member);
+    expect(await candidates(admin, 'updates')).toContain(member);
+    await owner(`delete from permission_settings where owner_kind = 'user' and owner_id = $1 and key = 'items.cases'`, [member]);
   });
 
   it('a suspended person is never offered', async () => {
@@ -186,7 +191,16 @@ suite('@mentions — who, what and when', () => {
         where not r.is_admin and p.status = 'active' and p.deleted_at is null and p.id <> $1 limit 1`,
       [member],
     );
-    if (stranger) await expect(candidates(stranger.id, 'updates')).rejects.toThrow(/not found/);
+    if (stranger) {
+      // Only mine on Leads and not on this record's team: they cannot open it.
+      // (A type with All records — Underwriter, Accounting — could.)
+      await owner(
+        `insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, $2, 'mine')
+         on conflict (owner_kind, owner_id, key) do update set value = excluded.value`,
+        [stranger.id, `module:${leads}`],
+      );
+      await expect(candidates(stranger.id, 'updates')).rejects.toThrow(/not found/);
+    }
   });
 
   // ── Update mentions ───────────────────────────────────────────────────
@@ -299,7 +313,9 @@ suite('@mentions — who, what and when', () => {
   it('a field mention is posted to Updates as a read-only entry by the sender, with the field on it', async () => {
     const rows = await owner(`select * from updates where record_id = $1 and deleted_at is null and field_key is not null order by created_at`, [rec]);
     expect(rows.length).toBeGreaterThanOrEqual(3);
-    const first = rows[0];
+    // Everything here shares one transaction, so one now(): created_at cannot
+    // order these rows. The first entry is the one with the first note.
+    const first = rows.find((r) => r.body === 'Please verify')!;
     expect(first.body).toBe('Please verify');
     expect(first.author_id).toBe(admin);
     expect(String(first.field_key).toLowerCase()).toBe('ein');

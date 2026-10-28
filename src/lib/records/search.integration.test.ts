@@ -54,7 +54,9 @@ suite('list search — records_filterable.search_text', () => {
       `select p.id, p.email::text, r.is_admin from profiles p join roles r on r.id = p.role_id where p.deleted_at is null and p.status = 'active'`,
     );
     admin = people.find((p) => p.email === 'admin@tapdash.test')!.id;
-    member = people.find((p) => p.email === 'demo.rep@tapdash.test')!.id;
+    // demo.rep if it exists, otherwise any active non-admin test account.
+    member = (people.find((p) => p.email === 'demo.rep@tapdash.test') ??
+      people.filter((p) => !p.is_admin && p.email.endsWith('@tapdash.test')).sort((x, y) => x.email.localeCompare(y.email))[0])!.id;
     const [leads] = await owner<{ id: string }>(`select id from modules where slug = 'leads'`);
     const [ein] = await owner<{ id: string; tab_id: string; subtab_id: string | null }>(`select id, tab_id, subtab_id from fields where key = 'ein'`);
     const [r] = await owner<{ id: string }>(

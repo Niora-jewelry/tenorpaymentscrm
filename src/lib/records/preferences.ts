@@ -88,6 +88,42 @@ export async function resetColumnOrder(ctx: AuthContext, moduleId: string): Prom
 }
 
 /* -------------------------------------------------------------------------- */
+/* Dashboard column show / hide — each user's own, over the module default    */
+/* -------------------------------------------------------------------------- */
+
+/** This user's explicit show/hide choices for a module's columns, by field id.
+ *  A column with no entry follows the module's `default_visible`. */
+export async function columnVisibilityFor(ctx: AuthContext, moduleId: string): Promise<Map<string, boolean>> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('user_column_visibility')
+    .select('field_id, visible')
+    .eq('user_id', ctx.userId)
+    .eq('module_id', moduleId);
+  if (error) throw error;
+  return new Map((data ?? []).map((r) => [r.field_id as string, r.visible as boolean]));
+}
+
+export async function setColumnVisibility(ctx: AuthContext, moduleId: string, fieldId: string, visible: boolean): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('user_column_visibility')
+    .upsert({ user_id: ctx.userId, module_id: moduleId, field_id: fieldId, visible }, { onConflict: 'user_id,module_id,field_id' });
+  if (error) throw error;
+}
+
+/** Back to the module's defaults. */
+export async function resetColumnVisibility(ctx: AuthContext, moduleId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase
+    .from('user_column_visibility')
+    .delete()
+    .eq('user_id', ctx.userId)
+    .eq('module_id', moduleId);
+  if (error) throw error;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Drawer field order — keyed by tab (+ subtab), NOT by module: the drawer is
  * one global definition, so one saved order per tab covers every module.    */
 /* -------------------------------------------------------------------------- */

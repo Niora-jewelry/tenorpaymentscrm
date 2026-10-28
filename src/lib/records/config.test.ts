@@ -64,8 +64,8 @@ const config: Config = {
     { moduleId: 'mod-1', subtabId: 'sub-pricing-1', position: 0 },
   ],
   moduleColumns: [
-    { moduleId: 'mod-1', fieldId: 'f2', position: 0 },
-    { moduleId: 'mod-1', fieldId: 'f1', position: 1 },
+    { moduleId: 'mod-1', fieldId: 'f2', position: 0, defaultVisible: true },
+    { moduleId: 'mod-1', fieldId: 'f1', position: 1, defaultVisible: true },
   ],
   moduleHeaderFields: [{ moduleId: 'mod-1', fieldId: 'f1', position: 0 }],
   choices: [

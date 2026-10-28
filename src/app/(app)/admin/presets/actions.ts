@@ -16,6 +16,7 @@
  *      dashboard or drawer — with no error anywhere. Call it directly rather
  *      than hand-rolling `revalidateTag`/`revalidatePath`.
  */
+import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
 import { addStatementYear } from '@/lib/records/adminStatements';
 import { revalidateConfig, revalidateStatementPeriods } from '@/lib/records/adminConfigCache';
@@ -48,7 +49,7 @@ import {
   renameTab, renameSubtab, setModuleTabOrder, setModuleSubtabOrder, setTabModules,
 } from '@/lib/records/adminPresets';
 import { createFieldWithSetup, updateField, archiveField, restoreField, changeFieldType } from '@/lib/records/adminFields';
-import { setModuleColumns, setModuleHeaderFields } from '@/lib/records/adminColumns';
+import { setModuleColumns, setModuleHeaderFields, setColumnDefaultVisible } from '@/lib/records/adminColumns';
 import {
   setFieldChoices,
   createModuleOverride,
@@ -558,6 +559,24 @@ export async function reloadConfigCacheAction(): Promise<PresetFormState> {
      app sees next, so it is admin-gated like the writes beside it. */
   if (!ctx.isAdmin) return { ok: false, message: 'Admin only.' };
 
+  revalidateConfig();
+  return { ok: true };
+}
+
+/** Presets → Columns: whether one column is shown by default in a module's
+ *  list (UI/UX spec §6). */
+export async function setColumnDefaultVisibleAction(input: {
+  moduleId: string;
+  fieldId: string;
+  visible: boolean;
+}): Promise<PresetFormState> {
+  const ctx = await authorize();
+  const parsed = z
+    .object({ moduleId: z.string().uuid(), fieldId: z.string().uuid(), visible: z.boolean() })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That column is not valid.' };
+  const result = await setColumnDefaultVisible(ctx, parsed.data);
+  if (!result.ok) return result;
   revalidateConfig();
   return { ok: true };
 }

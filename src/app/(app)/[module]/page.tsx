@@ -43,7 +43,8 @@ import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
-import { columnOrderFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
+import { columnOrderFor, columnVisibilityFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
+import { parseSort, SORTABLE_TYPES } from '@/lib/records/listSort';
 import { resolveOrder } from '@/lib/records/preferences';
 import { adaptFieldForDashboard, adaptRecordRow, adaptFieldForDrawer } from '@/lib/records/adapter';
 import { CreateRecordDialog } from './CreateRecordDialog';
@@ -59,10 +60,10 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string; q?: string }>;
+  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string; q?: string; sort?: string }>;
 }) {
   const { module: slug } = await params;
-  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam, q: qParam } = await searchParams;
+  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam, q: qParam, sort: sortParam } = await searchParams;
   // The list search; bounded like the box that writes it.
   const search = typeof qParam === 'string' ? qParam.trim().slice(0, SEARCH_MAX) : '';
   // `?n=<notification id>` is a deep link to one mention; `n=first` is the
@@ -102,10 +103,11 @@ export default async function ModulePage({
   // independent reads with no dependency between them. Awaiting them one after
   // another simply added their latencies together — worth ~3 round trips on a
   // remote database, on every single page load, for no reason.
-  const [grant, savedColumnOrder, savedFilters] = await Promise.all([
+  const [grant, savedColumnOrder, savedFilters, columnVisibility] = await Promise.all([
     moduleGrant(ctx, mod.id, mod.adminOnly),
     columnOrderFor(ctx, mod.id),
     filtersFor(ctx, mod.id),
+    columnVisibilityFor(ctx, mod.id),
   ]);
   if (grant === 'hidden') redirect('/dashboard');
 
@@ -138,7 +140,29 @@ export default async function ModulePage({
 
   const grants = await fieldGrants(ctx, orderedDbColumns, mod.id);
   const visibleDbColumns = orderedDbColumns.filter((f) => grants.get(f.id) !== 'hidden');
-  const columns = visibleDbColumns.map((f) => adaptFieldForDashboard(config, f));
+  /*
+   * Permission first (above — a hidden field is never a column at all), then
+   * the viewer's own show/hide over the module's "visible by default" (UI/UX
+   * spec §6). A column the viewer hid is still one they may see, so it stays
+   * in the Columns picker to be shown again.
+   */
+  const defaultVisible = new Map(
+    config.moduleColumns.filter((c) => c.moduleId === mod.id).map((c) => [c.fieldId, c.defaultVisible]),
+  );
+  const isShown = (f: Field) => columnVisibility.get(f.id) ?? defaultVisible.get(f.id) ?? true;
+  const shownDbColumns = visibleDbColumns.filter(isShown);
+  const columns = shownDbColumns.map((f) => adaptFieldForDashboard(config, f));
+  const columnChoices = visibleDbColumns.map((f) => ({ key: f.key, label: f.label, shown: isShown(f) }));
+  const userHiddenColumns = visibleDbColumns.filter((f) => !isShown(f)).map((f) => adaptFieldForDashboard(config, f));
+
+  /* `?sort=` — only a column this viewer can see and whose type sorts, or the
+     name; anything else is ignored rather than trusted. */
+  const requestedSort = parseSort(sortParam);
+  const sort =
+    requestedSort && (requestedSort.fieldId === 'deal_name'
+      || visibleDbColumns.some((f) => f.key === requestedSort.fieldId && SORTABLE_TYPES.has(f.type)))
+      ? requestedSort
+      : null;
   // Capped by the module grant — a field's own grant decides what it is at
   // most, the module decides the ceiling. See `capGrant`.
   const grantByKey = Object.fromEntries(
@@ -185,6 +209,7 @@ export default async function ModulePage({
     filters: Object.values(savedFilters),
     page: requestedPage,
     q: search,
+    sort,
   });
   const [membershipsByRecord, mentionCounts] = await Promise.all([
     membershipsForMany(ctx, dbRows.map((r) => r.id)),
@@ -288,7 +313,11 @@ export default async function ModulePage({
           hasCustomColumnOrder={Boolean(savedColumnOrder?.length)}
           filters={savedFilters}
           pipelines={pipelineFilterOptions}
-          pipelineStatusFields={pipelineStatusFilterFields}
+          /* Also the columns this viewer hid: a saved filter on one still
+             applies, and its chip should still say what it filters. */
+          pipelineStatusFields={[...pipelineStatusFilterFields, ...userHiddenColumns]}
+          columnChoices={columnChoices}
+          sort={sort}
           canEdit={grant === 'edit'}
           closesCases={Boolean(mod.showsOpenCases)}
           page={page}

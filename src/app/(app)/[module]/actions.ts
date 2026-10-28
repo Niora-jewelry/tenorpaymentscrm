@@ -25,7 +25,7 @@ import {
 } from '@/lib/records/notifications';
 import { deliverMentionEmails, notificationIdsFor } from '@/lib/notifications/email';
 import { authorize, fieldGrant } from '@/lib/records/permissions';
-import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, type Field } from '@/lib/records/config';
+import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, columnsForModule, type Field } from '@/lib/records/config';
 // Plain values, deliberately NOT declared in this file — see the header of
 // `fieldValueCodec.ts`: a 'use server' module may export only async
 // functions, and breaking that rule 500s every action on the page.
@@ -45,6 +45,7 @@ import { addLogin, setPassword, revealPassword } from '@/lib/records/logins';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
 import {
   setColumnOrder, resetColumnOrder, setFieldOrder, resetFieldOrder,
+  setColumnVisibility, resetColumnVisibility,
   setFilters as saveFilters, clearFilters as clearSavedFilters,
 } from '@/lib/records/preferences';
 import type { ListFilter } from '@/lib/records/records';
@@ -450,6 +451,28 @@ export async function resetColumnOrderAction(moduleSlug: string): Promise<void> 
   const mod = moduleBySlug(config, moduleSlug);
   if (!mod) return;
   await resetColumnOrder(ctx, mod.id);
+  revalidatePath(`/${moduleSlug}`);
+}
+
+/** Show or hide one list column for this user only (UI/UX spec §6). The key
+ *  must be one of the module's configured columns — anything else is ignored. */
+export async function setColumnVisibilityAction(moduleSlug: string, fieldKey: string, visible: boolean): Promise<void> {
+  const ctx = await authorize();
+  const config = await loadConfig();
+  const mod = moduleBySlug(config, moduleSlug);
+  if (!mod) return;
+  const field = columnsForModule(config, mod.id).find((f) => f.key === fieldKey);
+  if (!field || typeof visible !== 'boolean') return;
+  await setColumnVisibility(ctx, mod.id, field.id, visible);
+  revalidatePath(`/${moduleSlug}`);
+}
+
+export async function resetColumnVisibilityAction(moduleSlug: string): Promise<void> {
+  const ctx = await authorize();
+  const config = await loadConfig();
+  const mod = moduleBySlug(config, moduleSlug);
+  if (!mod) return;
+  await resetColumnVisibility(ctx, mod.id);
   revalidatePath(`/${moduleSlug}`);
 }
 

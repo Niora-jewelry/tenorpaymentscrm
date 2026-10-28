@@ -29,6 +29,8 @@
  * server render actually arrives, so the optimistic view never permanently
  * drifts from the database.
  */
+import { formatSort, type ListSort } from '@/lib/records/listSort';
+import { ColumnsPicker } from './ColumnsPicker';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { DataTable, BulkBar, SkipReportPanel, type SkipReport as ProtoSkipReport } from '@/proto/ui/DataTable';
@@ -73,7 +75,14 @@ export function RecordsTable({
   page,
   pageCount,
   total,
+  columnChoices = [],
+  sort = null,
 }: {
+  /** Every column this viewer may see, and whether it is shown for them —
+   *  the Columns picker (UI/UX spec §6: users show or hide their own). */
+  columnChoices?: { key: string; label: string; shown: boolean }[];
+  /** The list's sort, from the URL. */
+  sort?: ListSort | null;
   moduleSlug: string;
   moduleId: string;
   /** This module shows records while they have an open case (migration 9764):
@@ -196,6 +205,20 @@ export function RecordsTable({
     params.delete('record');
     startPageTransition(() => {
       router.push(`/${moduleSlug}${params.toString() ? `?${params}` : ''}`);
+    });
+  };
+
+  /** Sort is a URL parameter like paging, so it survives a reload and can be
+   *  shared; changing it goes back to page 1. */
+  const changeSort = (next: ListSort | null) => {
+    const params = new URLSearchParams(window.location.search);
+    const value = formatSort(next);
+    if (value) params.set('sort', value);
+    else params.delete('sort');
+    params.delete('page');
+    params.delete('record');
+    startPageTransition(() => {
+      router.replace(`/${moduleSlug}${params.toString() ? `?${params}` : ''}`);
     });
   };
 
@@ -567,9 +590,14 @@ export function RecordsTable({
 
   return (
     <>
-      {pipelines.length ? (
+      {pipelines.length || columnChoices.length ? (
         <div className="mb-2.5 flex shrink-0 flex-wrap items-center gap-2">
-          <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} />
+          {pipelines.length ? <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} /> : null}
+          {columnChoices.length ? (
+            <span className="ml-auto">
+              <ColumnsPicker moduleSlug={moduleSlug} choices={columnChoices} onError={setPrefError} />
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -639,6 +667,8 @@ export function RecordsTable({
         filterOnlyFields={pipelineStatusFields}
         onCellEdit={canEdit ? commitCell : undefined}
         onSetFilters={commitFilters}
+        sort={sort}
+        onSortChange={changeSort}
         onClearFilters={() => {
           startTransition(async () => {
             try {

@@ -71,6 +71,8 @@ export type ModuleFieldSelection = {
   moduleId: string;
   columnIds: string[];
   headerIds: string[];
+  /** Field id → shown by default in the list (UI/UX spec §6). */
+  columnDefaults: Record<string, boolean>;
 };
 
 /**
@@ -128,7 +130,27 @@ export async function listModuleFieldSelections(ctx: AuthContext): Promise<Modul
     moduleId: m.id,
     columnIds: pick(config.moduleColumns, m.id),
     headerIds: pick(config.moduleHeaderFields, m.id),
+    columnDefaults: Object.fromEntries(
+      config.moduleColumns.filter((c) => c.moduleId === m.id).map((c) => [c.fieldId, c.defaultVisible]),
+    ),
   }));
+}
+
+/** "Visible by default" for one module's column. Users can still show or
+ *  hide it for themselves. */
+export async function setColumnDefaultVisible(
+  ctx: AuthContext,
+  input: { moduleId: string; fieldId: string; visible: boolean },
+): Promise<Result> {
+  assertAdmin(ctx);
+  const supabase = supabaseAdmin();
+  const { error } = await supabase.rpc('set_module_column_default_visible', {
+    p_module_id: input.moduleId,
+    p_field_id: input.fieldId,
+    p_visible: input.visible,
+  });
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, id: input.fieldId };
 }
 
 /**

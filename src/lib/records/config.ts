@@ -132,7 +132,8 @@ export type Config = {
   fields: Field[];
   moduleTabOrder: { moduleId: string; tabId: string; position: number }[];
   moduleSubtabOrder: { moduleId: string; subtabId: string; position: number }[];
-  moduleColumns: { moduleId: string; fieldId: string; position: number }[];
+  /** `defaultVisible`: shown until a user hides it (migration 9808). */
+  moduleColumns: { moduleId: string; fieldId: string; position: number; defaultVisible: boolean }[];
   moduleHeaderFields: { moduleId: string; fieldId: string; position: number }[];
   choices: Choice[];
   pipelines: Pipeline[];
@@ -212,7 +213,9 @@ const loadConfigCached = unstable_cache(
       })),
       moduleTabOrder: moduleTabOrder.data!.map((r) => ({ moduleId: r.module_id, tabId: r.tab_id, position: r.position })),
       moduleSubtabOrder: moduleSubtabOrder.data!.map((r) => ({ moduleId: r.module_id, subtabId: r.subtab_id, position: r.position })),
-      moduleColumns: moduleColumns.data!.map((r) => ({ moduleId: r.module_id, fieldId: r.field_id, position: r.position })),
+      moduleColumns: moduleColumns.data!.map((r) => ({
+        moduleId: r.module_id, fieldId: r.field_id, position: r.position, defaultVisible: r.default_visible ?? true,
+      })),
       moduleHeaderFields: moduleHeaderFields.data!.map((r) => ({ moduleId: r.module_id, fieldId: r.field_id, position: r.position })),
       choices: choices.data!.map((c) => ({
         fieldId: c.field_id, moduleId: c.module_id, key: c.key, value: c.value,

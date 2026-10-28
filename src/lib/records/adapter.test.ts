@@ -35,8 +35,8 @@ const config: Config = {
   moduleTabOrder: [],
   moduleSubtabOrder: [],
   moduleColumns: [
-    { moduleId: 'mod-1', fieldId: 'f1', position: 0 },
-    { moduleId: 'mod-2', fieldId: 'f1', position: 3 },
+    { moduleId: 'mod-1', fieldId: 'f1', position: 0, defaultVisible: true },
+    { moduleId: 'mod-2', fieldId: 'f1', position: 3, defaultVisible: true },
   ],
   moduleHeaderFields: [{ moduleId: 'mod-1', fieldId: 'f1', position: 0 }],
   choices: [

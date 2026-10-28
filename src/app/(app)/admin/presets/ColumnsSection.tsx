@@ -41,7 +41,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Button, OutlineChip } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
-import { setModuleColumnsAction, setModuleHeaderFieldsAction, type PresetFormState } from './actions';
+import { setModuleColumnsAction, setModuleHeaderFieldsAction, setColumnDefaultVisibleAction, type PresetFormState } from './actions';
 import type { AssignableField, ModuleFieldSelection } from '@/lib/records/adminColumns';
 import type { ModuleOption } from '@/lib/records/adminPresets';
 
@@ -76,6 +76,20 @@ export function ColumnsSection({
   const fieldById = useMemo(() => new Map(fields.map((f) => [f.id, f])), [fields]);
   const activeModule = modules.find((m) => m.id === moduleId);
   const empty: Record<ListKind, string[]> = { columns: [], headers: [] };
+  /* Default visibility per module column, saved one click at a time. */
+  const [defaults, setDefaults] = useState<Record<string, Record<string, boolean>>>(() =>
+    Object.fromEntries(selections.map((sel) => [sel.moduleId, sel.columnDefaults])),
+  );
+  const defaultsFor = (mod: string) => ({
+    get: (fieldId: string) => defaults[mod]?.[fieldId] ?? true,
+    set: async (fieldId: string, visible: boolean): Promise<string | null> => {
+      setDefaults((d) => ({ ...d, [mod]: { ...(d[mod] ?? {}), [fieldId]: visible } }));
+      const r = await setColumnDefaultVisibleAction({ moduleId: mod, fieldId, visible });
+      if (r.ok) return null;
+      setDefaults((d) => ({ ...d, [mod]: { ...(d[mod] ?? {}), [fieldId]: !visible } }));
+      return r.message ?? 'Could not save that.';
+    },
+  });
 
   const setList = (kind: ListKind, next: string[]) =>
     setDraft((prev) => ({
@@ -153,13 +167,15 @@ export function ColumnsSection({
             onChange={(next) => setList('columns', next)}
             onReset={() => setList('columns', (saved[moduleId] ?? empty).columns)}
             onSaved={(next) => markSaved('columns', next)}
+            defaults={defaultsFor(moduleId)}
+            savedIds={(saved[moduleId] ?? empty).columns}
           />
 
           <ListEditor
             key={`${moduleId}-headers`}
             kind="headers"
-            title="Header strip"
-            blurb="Shown under the record's name at the top of the drawer. This is how the spec's scoping is expressed — “Last merchant response: Leads and Tickets only” means it is in those two modules' strips and no others."
+            title="Vital Info"
+            blurb="The Vital Info section at the top of every record in this module, in this order — four to a row, collapsed to the first row until expanded."
             moduleId={moduleId}
             selectedIds={(draft[moduleId] ?? empty).headers}
             fields={fields}
@@ -189,7 +205,13 @@ function ListEditor({
   onChange,
   onReset,
   onSaved,
+  defaults,
+  savedIds = [],
 }: {
+  /** Columns only: field id → shown by default, and the saved list (a column
+   *  must be saved before its default can be set). */
+  defaults?: { get: (fieldId: string) => boolean; set: (fieldId: string, visible: boolean) => Promise<string | null> };
+  savedIds?: string[];
   kind: ListKind;
   title: string;
   blurb: string;
@@ -325,6 +347,14 @@ function ListEditor({
                               {f?.label ?? <span className="text-ink-400">(field no longer available)</span>}
                               {f ? <span className="ml-1.5 text-[11px] text-ink-400">{f.tabLabel}</span> : null}
                             </span>
+                            {defaults ? (
+                              <DefaultVisibleToggle
+                                label={f?.label ?? 'this column'}
+                                saved={savedIds.includes(id)}
+                                visible={defaults.get(id)}
+                                onChange={(v) => defaults.set(id, v)}
+                              />
+                            ) : null}
                             <span className="flex shrink-0 items-center">
                               <MiniButton
                                 icon="chevron-up"
@@ -437,6 +467,39 @@ function MiniButton({
       className="grid size-6 place-items-center rounded text-ink-400 transition-colors hover:bg-canvas hover:text-ink-700 disabled:opacity-25 disabled:hover:bg-transparent disabled:hover:text-ink-400"
     >
       <Icon name={icon} size={12} />
+    </button>
+  );
+}
+
+/** "Shown by default" / "Hidden by default" for one list column. Users can
+ *  still show or hide it for themselves from the list's Columns menu. */
+function DefaultVisibleToggle({
+  label,
+  saved,
+  visible,
+  onChange,
+}: {
+  label: string;
+  saved: boolean;
+  visible: boolean;
+  onChange: (visible: boolean) => Promise<string | null>;
+}) {
+  const [busy, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <button
+      type="button"
+      disabled={!saved || busy}
+      aria-pressed={visible}
+      aria-label={`${label}: ${visible ? 'shown' : 'hidden'} by default`}
+      title={saved ? (error ?? (visible ? 'Shown by default — click to hide by default' : 'Hidden by default — click to show by default')) : 'Save the columns first'}
+      onClick={() => start(async () => setError(await onChange(!visible)))}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-[2px] text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        visible ? 'border-brand-100 bg-brand-50 text-brand-700' : 'border-line bg-white text-ink-400'
+      }`}
+    >
+      <Icon name={visible ? 'eye' : 'eye-off'} size={11} />
+      {visible ? 'Shown' : 'Hidden'}
     </button>
   );
 }

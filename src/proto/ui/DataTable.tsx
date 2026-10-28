@@ -58,6 +58,7 @@ import {
 import { Icon, type IconName } from './icons';
 import { PersonAvatar, resolvePerson, usePeopleById } from './people';
 import { formatDate } from './tokens';
+import { SORTABLE_TYPES, type ListSort } from '@/lib/records/listSort';
 
 const ROWS_PER_PAGE = 50;
 const DEAL_NAME_WIDTH = 250;
@@ -175,8 +176,14 @@ function ColumnHeader({
   moduleSlug,
   filter,
   onChange,
+  sort = null,
+  onSort,
 }: {
   field: Field;
+  /** This column's sort direction, when the list is sorted by it. */
+  sort?: 'asc' | 'desc' | null;
+  /** Absent = the table does not sort (the prototype). */
+  onSort?: (dir: 'asc' | 'desc' | null) => void;
   rows: RecordRow[];
   /** The filter list is built from the values records actually hold, which
    * for a choice field are KEYS. Labelling them needs the module's own option
@@ -187,6 +194,15 @@ function ColumnHeader({
 }) {
   const kind = filterKindFor(field.type);
   const active = Boolean(filter);
+  const sortable = Boolean(onSort) && SORTABLE_TYPES.has(field.type);
+  /* Said the way the type reads, not "ascending": an amount runs low to high,
+     a date oldest to newest, a dropdown or status in its options' own order. */
+  const [ascLabel, descLabel] =
+    field.type === 'date'
+      ? ['Oldest first', 'Newest first']
+      : field.type === 'dropdown' || field.type === 'status'
+        ? ['In option order', 'Reverse option order']
+        : ['Low to high', 'High to low'];
   const options = choicesFor(field, moduleSlug);
   /* A `team_member` value is a real user id. The list used to render it with
    * `v.replace(/^u_/,'').replace(/^\w/, …)` — prototype logic for its fake
@@ -239,6 +255,15 @@ function ColumnHeader({
       }`}
     >
       <span className="truncate">{field.label}</span>
+      {sort ? (
+        <Icon
+          name={sort === 'asc' ? 'chevron-up' : 'chevron-down'}
+          size={12}
+          strokeWidth={2.4}
+          className="shrink-0 text-brand-700"
+          aria-label={sort === 'asc' ? ascLabel : descLabel}
+        />
+      ) : null}
       {/* Filled funnel when a filter is active, hollow when not. */}
       {kind ? (
         <Icon
@@ -251,13 +276,49 @@ function ColumnHeader({
     </span>
   );
 
-  if (!kind) return <div className="px-3 py-2">{label}</div>;
+  if (!kind && !sortable) return <div className="px-3 py-2">{label}</div>;
 
   return (
     <div className="px-3 py-2">
       <Popover trigger={() => label} width={kind === 'values' ? 230 : 250}>
         {(close) => (
           <div className="p-1">
+            {sortable ? (
+              <div className={kind ? 'mb-2 border-b border-line-faint pb-2' : ''}>
+                <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">Sort</p>
+                {([['asc', ascLabel, 'chevron-up'], ['desc', descLabel, 'chevron-down']] as const).map(([dir, text, icon]) => (
+                  <button
+                    key={dir}
+                    type="button"
+                    aria-pressed={sort === dir}
+                    onClick={() => {
+                      onSort!(sort === dir ? null : dir);
+                      close();
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] ${
+                      sort === dir ? 'bg-brand-50 font-semibold text-brand-700' : 'text-ink-700 hover:bg-canvas'
+                    }`}
+                  >
+                    <Icon name={icon} size={12} strokeWidth={2.2} />
+                    {text}
+                    {sort === dir ? <Icon name="check" size={12} className="ml-auto" /> : null}
+                  </button>
+                ))}
+                {sort ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSort!(null);
+                      close();
+                    }}
+                    className="mt-0.5 w-full rounded-md px-2 py-1.5 text-left text-[12.5px] font-semibold text-ink-500 hover:bg-canvas"
+                  >
+                    Clear sort
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            {kind ? <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">Filter</p> : null}
             {kind === 'contains' ? (
               <input
                 autoFocus
@@ -525,6 +586,9 @@ type DataTableProps = {
   filterOnlyFields?: Field[];
   onSetFilters: (filters: Record<string, Filter>) => void;
   onClearFilters: () => void;
+  /** The list's sort (server side). Absent = columns do not offer sorting. */
+  sort?: ListSort | null;
+  onSortChange?: (sort: ListSort | null) => void;
   /**
    * Commit one edited cell. OMITTED = the table is read-only exactly as it has
    * always been, which is what keeps the prototype (no server, no CAS token)
@@ -1001,6 +1065,8 @@ export function DataTable({
   filterOnlyFields,
   onSetFilters,
   onClearFilters,
+  sort = null,
+  onSortChange,
   onCellEdit,
   pipelineColumns,
   onPipelineStep,
@@ -1336,6 +1402,8 @@ export function DataTable({
                               else delete next[col.id];
                               onSetFilters(next);
                             }}
+                            sort={sort?.fieldId === col.id ? sort.dir : null}
+                            onSort={onSortChange ? (dir) => onSortChange(dir ? { fieldId: col.id, dir } : null) : undefined}
                           />
                         </div>
                         <span className="flex shrink-0 flex-col pt-2">

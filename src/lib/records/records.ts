@@ -177,6 +177,9 @@ async function hiddenKeysFor(
  *  deliberately absent. */
 const ARRAY_VALUED_TYPES = new Set<FieldType>(['team_member', 'multi_select', 'months']);
 
+import { SORTABLE_TYPES, type ListSort } from './listSort';
+export type { ListSort };
+
 export type ListFilter =
   | { fieldId: string; kind: 'contains'; text: string }
   | { fieldId: string; kind: 'values'; values: string[] }
@@ -197,7 +200,7 @@ const PAGE_SIZE = 50;
 export async function listRecords(
   ctx: AuthContext,
   moduleId: string,
-  opts: { page?: number; filters?: ListFilter[]; q?: string } = {},
+  opts: { page?: number; filters?: ListFilter[]; q?: string; sort?: ListSort | null } = {},
 ): Promise<{ rows: RecordRow[]; total: number; page: number; pageCount: number }> {
   const supabase = await createSupabaseServerClient();
   const config = await loadConfig();
@@ -325,8 +328,11 @@ export async function listRecords(
         }
         break;
       case 'range':
-        if (filter.min != null) query = query.gte(path, filter.min);
-        if (filter.max != null) query = query.lte(path, filter.max);
+        /* `sort_values` (migration 9808), never `values->>key`: that is TEXT,
+           so "9" > "100", and stored numbers are a mix of JSON numbers and
+           numeric strings. sort_values holds a real JSON number. */
+        if (filter.min != null) query = query.gte(`sort_values->${field.key}`, filter.min);
+        if (filter.max != null) query = query.lte(`sort_values->${field.key}`, filter.max);
         break;
       case 'dates':
         if (filter.from) query = query.gte(path, filter.from);
@@ -345,10 +351,22 @@ export async function listRecords(
     }
   }
 
+  /* UI/UX spec §6: sortable by value where the type allows. A field's typed
+     value (number, date, option position) sorts; records without one go last;
+     the name breaks ties so a page boundary is stable. */
+  const sortField = opts.sort ? byId.get(opts.sort.fieldId) : undefined;
+  if (opts.sort?.fieldId === 'deal_name') {
+    query = query.order('deal_name', { ascending: opts.sort.dir === 'asc' });
+  } else if (sortField && SORTABLE_TYPES.has(sortField.type)) {
+    query = query
+      .order(`sort_values->${sortField.key}`, { ascending: opts.sort!.dir === 'asc', nullsFirst: false })
+      .order('deal_name');
+  } else {
+    query = query.order('deal_name');
+  }
+
   const from = page * PAGE_SIZE;
-  const { data, error, count } = await query
-    .order('deal_name')
-    .range(from, from + PAGE_SIZE - 1);
+  const { data, error, count } = await query.range(from, from + PAGE_SIZE - 1);
   if (error) throw error;
 
   const total = count ?? 0;

@@ -51,12 +51,16 @@ export function RealPipelineBar({
   recordId,
   pipelines,
   assignment,
+  canMove = true,
 }: {
   moduleSlug: string;
   moduleId: string;
   recordId: string;
   pipelines: Pipeline[];
   assignment: { pipelineId: string; stepId: string } | null;
+  /** "Move records through pipeline stages" (Permissions spec). Without it
+   *  the bar shows where the record is and offers nothing to click. */
+  canMove?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -119,7 +123,7 @@ export function RealPipelineBar({
           <button
             key={p.id}
             type="button"
-            disabled={pending}
+            disabled={pending || !canMove}
             title={`Put this record on the first step of ${p.label}`}
             onClick={() => setStep(p.id, p.steps[0]!.id)}
             className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2.5 py-1 text-[11.5px] font-semibold text-brand-700 transition-colors hover:border-brand-200 hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60"
@@ -174,7 +178,7 @@ export function RealPipelineBar({
             <span className="sr-only">Pipeline for this record in this module</span>
             <select
               value={pipeline.id}
-              disabled={pending}
+              disabled={pending || !canMove}
               title="Move this record to another pipeline — it starts at that pipeline's first step"
               onChange={(e) => {
                 const next = assignable.find((p) => p.id === e.target.value);
@@ -220,14 +224,16 @@ export function RealPipelineBar({
 
         <span className="ml-auto flex items-center gap-2.5">
           <span className="hidden text-[11px] text-ink-400 sm:inline">Independent per module</span>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={clear}
-            className="text-[11px] text-ink-400 transition-colors hover:text-[#b02a30] hover:underline disabled:cursor-wait disabled:opacity-60"
-          >
-            Remove
-          </button>
+          {canMove ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={clear}
+              className="text-[11px] text-ink-400 transition-colors hover:text-[#b02a30] hover:underline disabled:cursor-wait disabled:opacity-60"
+            >
+              Remove
+            </button>
+          ) : null}
         </span>
       </div>
 
@@ -268,7 +274,7 @@ export function RealPipelineBar({
 
                 <button
                   type="button"
-                  disabled={pending}
+                  disabled={pending || !canMove}
                   aria-current={current ? 'step' : undefined}
                   title={
                     current

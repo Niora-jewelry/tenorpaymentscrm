@@ -7,6 +7,7 @@
  * server-side in `page.tsx` — this component never fetches, it only renders
  * what it's given and calls the three note actions.
  */
+import { ShareItem } from './ItemAccess';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
@@ -183,8 +184,13 @@ export function NoteThread({
                         {authorName} · {relative(n.createdAt, now)}
                         {n.editedAt ? ' · edited' : ''}
                       </span>
+                      {/* Tab notes can be shared one at a time; a note on a
+                          field follows its field instead. */}
+                      {scopeKind === 'tab' ? (
+                        <span className="ml-auto"><ShareItem kind="note" itemId={n.id} /></span>
+                      ) : null}
                       {mine || isAdmin ? (
-                        <span className="ml-auto flex gap-0.5">
+                        <span className={`${scopeKind === 'tab' ? '' : 'ml-auto '}flex gap-0.5`}>
                           <IconButton
                             icon="pencil"
                             size={20}

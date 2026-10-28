@@ -71,6 +71,8 @@ export function RecordsTable({
   pipelineStatusFields,
   canEdit,
   canMoveRecords,
+  canArchive = true,
+  canPipeline = true,
   closesCases = false,
   page,
   pageCount,
@@ -109,6 +111,10 @@ export function RecordsTable({
    * Archive / Remove / Restore actions do. Separate from `canEdit`, which
    * is about the records' values. */
   canMoveRecords: boolean;
+  /** "Delete / archive records" (Permissions spec). */
+  canArchive?: boolean;
+  /** "Move records through pipeline stages". */
+  canPipeline?: boolean;
   /** Server paging — `DataTable` is handed one page at a time, so it cannot
    * work these out for itself. See its `serverPaging` prop. */
   page: number;
@@ -625,7 +631,7 @@ export function RecordsTable({
           /* Withheld outright without module Edit. That is the step picker's
              only permission gate, because the synced Status field's own grant
              is always View — see the note beside `stepEditable`. */
-          canEdit ? pipelineColumns : undefined
+          canEdit && canPipeline ? pipelineColumns : undefined
         }
         onPipelineStep={commitPipelineStep}
         hasCustomColumnOrder={hasCustomColumnOrder}
@@ -691,11 +697,11 @@ export function RecordsTable({
           onArchive={
             closesCases
               ? () => setConfirmBulk('closeCases')
-              : canMoveRecords
-                ? () => setConfirmBulk(allSelectedArchived ? 'restore' : 'archive')
-                : undefined
+              : allSelectedArchived
+                ? canMoveRecords ? () => setConfirmBulk('restore') : undefined
+                : canMoveRecords && canArchive ? () => setConfirmBulk('archive') : undefined
           }
-          onDelete={moduleSlug === 'records' ? () => setConfirmBulk('delete') : undefined}
+          onDelete={moduleSlug === 'records' && canArchive ? () => setConfirmBulk('delete') : undefined}
           allSelectedArchived={allSelectedArchived}
           removeAs={
             closesCases

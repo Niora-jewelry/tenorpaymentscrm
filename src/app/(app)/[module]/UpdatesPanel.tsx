@@ -8,6 +8,7 @@
  * `add_update_with_mentions()`. The notification bell itself lives in
  * `Sidebar.tsx`.
  */
+import { HideReply, ShareItem } from './ItemAccess';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
@@ -273,8 +274,11 @@ function Thread({
             <span className="text-[11.5px] text-ink-400">{relative(root.createdAt, now)}</span>
             {root.editedAt ? <span className="text-[11.5px] text-ink-400">(edited)</span> : null}
             {mentionedHere(root.id) ? <MentionedYou /> : null}
+            <span className="ml-auto flex items-center gap-0.5">
+              <ShareItem kind="update" itemId={root.id} />
+            </span>
             {editable && (mine || isAdmin) ? (
-              <span className="ml-auto flex gap-0.5">
+              <span className="flex gap-0.5">
                 {/* A field entry records what was sent; it can be removed, not rewritten. */}
                 {!root.fieldKey ? (
                   <IconButton
@@ -405,6 +409,9 @@ function Reply({
         <span className="text-[12.5px] font-semibold text-ink-900">{authorNames[r.authorId] ?? 'Unknown user'}</span>
         <span className="text-[11.5px] text-ink-400">{relative(r.createdAt, now)}</span>
         {mentioned ? <MentionedYou /> : null}
+        <span className="ml-auto">
+          <HideReply kind="update" replyId={r.id} authorId={r.authorId} />
+        </span>
       </div>
       {/* Replies render the same way. The client asks for "update-style
           replies", and a reply that shows its markers raw while the update

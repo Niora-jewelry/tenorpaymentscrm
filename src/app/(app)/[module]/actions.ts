@@ -39,6 +39,7 @@ import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
+import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
 import { uploadFile, uploadFieldFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
 import { addLogin, setPassword, revealPassword } from '@/lib/records/logins';
@@ -1092,4 +1093,66 @@ export async function setCaseHandlingNoteAction(
   }
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };
+}
+
+/* -----------------------------------------------------------------------
+ * Sharing an update, case or tab note; hiding a reply (Permissions spec)
+ * --------------------------------------------------------------------- */
+
+const ItemKindSchema = z.enum(['case', 'update', 'note']);
+const UserTypeSchema = z.enum(['super_admin', 'admin', 'underwriter', 'accounting', 'customer_service', 'sales_agent']);
+
+export async function grantItemAccessAction(input: {
+  kind: string;
+  itemId: string;
+  userId?: string | null;
+  userType?: string | null;
+}): Promise<{ ok: boolean; message?: string }> {
+  const parsed = z
+    .object({
+      kind: ItemKindSchema,
+      itemId: z.uuid(),
+      userId: z.uuid().nullish().transform((v) => v ?? null),
+      userType: UserTypeSchema.nullish().transform((v) => v ?? null),
+    })
+    .refine((v) => (v.userId === null) !== (v.userType === null), 'Choose one person or one user type.')
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Choose one person or one user type.' };
+  const ctx = await authorize();
+  try {
+    await grantItemAccess(ctx, parsed.data);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not share that.' };
+  }
+}
+
+export async function revokeItemAccessAction(grantId: string): Promise<{ ok: boolean; message?: string }> {
+  const parsed = z.uuid().safeParse(grantId);
+  if (!parsed.success) return { ok: false, message: 'That access is not valid.' };
+  const ctx = await authorize();
+  try {
+    await revokeItemAccess(ctx, parsed.data);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not remove that access.' };
+  }
+}
+
+export async function setReplyHiddenAction(input: {
+  kind: string;
+  replyId: string;
+  userIds: string[];
+}): Promise<{ ok: boolean; message?: string }> {
+  const parsed = z
+    .object({ kind: z.enum(['update', 'case_reply']), replyId: z.uuid(), userIds: z.array(z.uuid()).max(200) })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That list is not valid.' };
+  const ctx = await authorize();
+  try {
+    await setReplyHidden(ctx, parsed.data);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not change who sees that reply.' };
+  }
 }

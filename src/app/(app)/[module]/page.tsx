@@ -13,11 +13,13 @@ import { Suspense } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
+import { ItemAccessProvider } from './ItemAccess';
+import { itemAccessFor } from '@/lib/records/itemAccess';
 import { DrawerFieldLinks } from './DrawerFieldLinks';
 import { DrawerFieldFiles } from './DrawerFieldFiles';
 import { HeaderFacts } from './HeaderFacts';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
-import { authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
+import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -132,6 +134,13 @@ export default async function ModulePage({
     .filter(([, ok]) => ok)
     .map(([m]) => m);
   const canMoveRecords = mod.kind === 'display' ? await membershipAllowed(ctx, mod) : grant === 'edit';
+  // Company-wide actions (Permissions spec) — each button exists only for
+  // someone the database would let use it.
+  const [canCreate, canArchive, canPipeline] = await Promise.all([
+    canDo(ctx, 'create'),
+    canDo(ctx, 'archive'),
+    canDo(ctx, 'pipeline'),
+  ]);
 
   const adminColumns = columnsForModule(config, mod.id);
   const orderedColumnIds = resolveOrder(adminColumns.map((f) => f.id), savedColumnOrder);
@@ -283,7 +292,7 @@ export default async function ModulePage({
             keyed on the current search so a navigation resets what it shows. */}
         <div className="flex shrink-0 items-center gap-3">
           <SearchBox key={search} moduleSlug={slug} initial={search} />
-          {grant === 'edit' && !mod.showsOpenCases ? (
+          {grant === 'edit' && canCreate && !mod.showsOpenCases ? (
             <CreateRecordDialog moduleSlug={slug} moduleLabel={mod.label} viewerId={ctx.userId} />
           ) : null}
         </div>
@@ -310,6 +319,8 @@ export default async function ModulePage({
             .filter((m) => !m.showsOpenCases)
             .map((m) => ({ id: m.id, slug: m.slug, label: m.label }))}
           canMoveRecords={canMoveRecords}
+          canArchive={canArchive}
+          canPipeline={canPipeline}
           hasCustomColumnOrder={Boolean(savedColumnOrder?.length)}
           filters={savedFilters}
           pipelines={pipelineFilterOptions}
@@ -559,7 +570,10 @@ async function RecordDrawer({
   const tabGrantById = new Map(
     allTabs.map((t) => [t.id, capGrant(grant, rawTabGrants.get(t.id) ?? 'edit')] as const),
   );
-  const dbTabs = allTabs.filter((t) => tabGrantById.get(t.id) !== 'hidden');
+  // Cases = Hidden (Permissions spec) hides the Cases tab with the module.
+  const viewerPerms = await permissionsFor(ctx);
+  const casesHidden = !ctx.isAdmin && viewerPerms.settings['items.cases'] === 'hidden';
+  const dbTabs = allTabs.filter((t) => tabGrantById.get(t.id) !== 'hidden' && !(casesHidden && t.kind === 'cases'));
 
   /*
    * Subtab grants, capped under their own tab. A scope only since migration
@@ -792,6 +806,8 @@ async function RecordDrawer({
 
   /* Files FIELDS — only fetched when this viewer can see at least one; RLS
      leaves out any field they cannot. */
+  // Who an update, case or tab note can be shared with, and what is already shared.
+  const itemAccess = await itemAccessFor(ctx, record.id);
   const filesByField: Record<string, FileEntry[]> = config.fields.some(
     (f) => f.type === 'file' && (grantByKey[f.key] ?? 'hidden') !== 'hidden',
   )
@@ -822,6 +838,8 @@ async function RecordDrawer({
    * also arrives empty, so without this filter the redesign would have
    * announced the NAME of every field the viewer is not allowed to see.
    */
+  // Archive and the pipeline bar follow their company-wide actions.
+  const [canArchiveRecords, canMovePipeline] = await Promise.all([canDo(ctx, 'archive'), canDo(ctx, 'pipeline')]);
   const titleForCompare = (record.dealName ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   const headerFacts = headerFields
@@ -995,6 +1013,7 @@ async function RecordDrawer({
     <section className="@container min-h-full bg-white px-6 py-5">
       <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
       <DrawerFieldFiles moduleSlug={moduleSlug} recordId={record.id} filesByField={filesByField}>
+      <ItemAccessProvider value={{ ...itemAccess, viewerId: ctx.userId }}>
       {/* ── Band 1: title bar — record name, Archive, ••• menu, close. ── */}
       <div className="flex items-start justify-between gap-4">
         {/* `min-w-0 flex-1` plus `truncate` on the heading. Without both, a long
@@ -1010,7 +1029,7 @@ async function RecordDrawer({
           </h2>
         </div>
         <div className="flex items-center gap-3">
-          {grant === 'edit' && memberships.length > 0 ? (
+          {grant === 'edit' && canArchiveRecords && memberships.length > 0 ? (
             <ArchiveButton
               moduleSlug={moduleSlug}
               recordId={record.id}
@@ -1047,6 +1066,7 @@ async function RecordDrawer({
             recordId={record.id}
             pipelines={modulePipelines}
             assignment={pipelineAssign}
+            canMove={canMovePipeline}
           />
         </div>
         <div className="min-w-0 rounded-xl border border-line-soft bg-canvas/50 px-3.5 py-3">
@@ -1134,6 +1154,7 @@ async function RecordDrawer({
         openMention={openMention}
         fieldPathByUpdate={fieldPathByUpdate}
       />
+      </ItemAccessProvider>
       </DrawerFieldFiles>
       </DrawerFieldLinks>
     </section>

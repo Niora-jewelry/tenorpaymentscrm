@@ -6,6 +6,7 @@
  * server-side inside `set_case_solution()`/`toggle_case_state()` (migration
  * 30) — `isManager` here only decides what to show, same as the prototype.
  */
+import { HideReply, ShareItem } from './ItemAccess';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useActionState } from 'react';
@@ -410,6 +411,7 @@ function CaseCard({
               {c.state === 'open' ? 'Close case' : 'Reopen'}
             </Button>
           ) : null}
+          <ShareItem kind="case" itemId={c.id} />
           {isAdmin && editable ? (
             <IconButton
               icon="trash"
@@ -572,9 +574,10 @@ function CaseCard({
                         <UserAvatar userId={r.authorId} name={name} size={20} />
                         <div className="min-w-0 flex-1">
                           <RichText body={r.body} names={knownNames} className="text-[13px] leading-relaxed text-ink-700" />
-                          <p className="text-[11px] text-ink-400">
+                          <p className="flex flex-wrap items-center gap-x-1 text-[11px] text-ink-400">
                             {name} · {relative(r.createdAt, now)} · not editable
                             {r.mentionedUserIds.length ? ` · ${r.mentionedUserIds.map((id) => `@${authorNames[id] ?? 'Unknown user'}`).join(', ')} notified` : ''}
+                            <span className="ml-auto"><HideReply kind="case_reply" replyId={r.id} authorId={r.authorId} /></span>
                           </p>
                           {/* "Not editable" is about the WORDS — §3.7 says
                               replies cannot be edited or deleted once posted.

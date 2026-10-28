@@ -14,6 +14,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { DrawerFieldLinks } from './DrawerFieldLinks';
+import { DrawerFieldFiles } from './DrawerFieldFiles';
 import { HeaderFacts } from './HeaderFacts';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
@@ -32,7 +33,7 @@ import { SEARCH_MAX } from '@/lib/records/search';
 import { SearchBox } from './SearchBox';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
-import { ensureApplicationRows, fileRowsFor, filesForRows } from '@/lib/records/files';
+import { ensureApplicationRows, fileRowsFor, filesForRows, fieldFilesFor } from '@/lib/records/files';
 import { loginsFor } from '@/lib/records/logins';
 import { allPeriods, filesForRecord } from '@/lib/records/statements';
 import { residualsForRecord } from '@/lib/records/recordResiduals';
@@ -760,6 +761,14 @@ async function RecordDrawer({
     grantByKey[f.key] = capGrant(above, grants.get(f.id) ?? 'hidden');
   }
 
+  /* Files FIELDS — only fetched when this viewer can see at least one; RLS
+     leaves out any field they cannot. */
+  const filesByField: Record<string, FileEntry[]> = config.fields.some(
+    (f) => f.type === 'file' && (grantByKey[f.key] ?? 'hidden') !== 'hidden',
+  )
+    ? await fieldFilesFor(ctx, record.id)
+    : {};
+
   /*
    * ── THE HEADER STRIP'S FACTS, AND ITS PERMISSION CHAIN ───────────────────
    *
@@ -901,6 +910,8 @@ async function RecordDrawer({
         const plain = visible.filter((f) => f.type !== 'repeat_group');
         fieldsNeed += plain.length;
         fieldsHave += plain.filter((f) => {
+          // A Files field holds uploads, not a value.
+          if (f.type === 'file') return (filesByField[f.key]?.length ?? 0) > 0;
           const v = record.values[f.key];
           if (v == null || v === '') return false;
           if (Array.isArray(v)) return v.length > 0;
@@ -954,6 +965,7 @@ async function RecordDrawer({
   return (
     <section className="@container min-h-full bg-white px-6 py-5">
       <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
+      <DrawerFieldFiles moduleSlug={moduleSlug} recordId={record.id} filesByField={filesByField}>
       {/* ── Band 1: title bar — record name, Archive, ••• menu, close. ── */}
       <div className="flex items-start justify-between gap-4">
         {/* `min-w-0 flex-1` plus `truncate` on the heading. Without both, a long
@@ -1093,6 +1105,7 @@ async function RecordDrawer({
         openMention={openMention}
         fieldPathByUpdate={fieldPathByUpdate}
       />
+      </DrawerFieldFiles>
       </DrawerFieldLinks>
     </section>
   );

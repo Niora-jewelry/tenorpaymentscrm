@@ -16,6 +16,7 @@ import { formatCurrency, formatDate, formatDateTime, MONTH_NAMES, MONTHS_NONE, t
 import { StatusPill, OutlineChip, AvatarStack, Button, IconButton, NumberInput } from './kit';
 import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from './people';
 import { useFieldLinks, formatPhone, websiteHref, isValidEmail } from './fieldLinks';
+import { useFieldFiles, formatBytes } from './fieldFiles';
 import { Icon } from './icons';
 
 /* -------------------------------------------------------------------------- */
@@ -570,6 +571,11 @@ export function FieldRenderer({
         {isEmpty(value) ? <span className="text-ink-400/70">—</span> : <AutoValue field={field} value={value} />}
       </div>
     );
+  }
+
+  /* Files: uploads, not a value — see FilesControl. */
+  if (field.type === 'file') {
+    return <FilesControl field={field} readOnly={readOnly} />;
   }
 
   if (field.type === 'percent_split') {
@@ -2455,4 +2461,113 @@ function AutoValue({ field, value }: { field: Field; value: FieldValue }) {
     return <span className="tabular">{formatDate(String(value))}</span>;
   }
   return <span className="truncate" title={String(value)}>{String(value)}</span>;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Files — attach and view (UI/UX spec §4)                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One line in the box — how many files, and Attach — so a Files field is the
+ * same height as every other field. The list (open, remove) is a panel over
+ * the page, like the team checklist. Uploads go through the record's own file
+ * storage, versioned, 25 MB each, governed by this FIELD's grant.
+ */
+function FilesControl({ field, readOnly }: { field: Field; readOnly: boolean }) {
+  const ctx = useFieldFiles();
+  const anchor = useRef<HTMLButtonElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!ctx) {
+    return <span className="px-1 text-[12.5px] text-ink-400">Files attach from the record.</span>;
+  }
+  const files = ctx.list(field.id);
+
+  const pick = async (list: FileList | null) => {
+    const file = list?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    const message = await ctx.upload(field.id, file);
+    setBusy(false);
+    if (message) setError(message);
+    if (input.current) input.current.value = '';
+  };
+
+  return (
+    <div className="px-1 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5">
+        <button
+          ref={anchor}
+          type="button"
+          disabled={files.length === 0}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-1 py-1 text-[13.5px] font-medium text-ink-800 transition-colors enabled:hover:bg-brand-50 disabled:text-ink-400"
+        >
+          <Icon name="paperclip" size={13} className="shrink-0 text-ink-400" />
+          <span className="truncate">
+            {files.length === 0 ? 'No files' : files.length === 1 ? files[0]!.name : `${files.length} files`}
+          </span>
+        </button>
+        {readOnly ? null : (
+          <>
+            <input
+              ref={input}
+              type="file"
+              className="sr-only"
+              aria-label={`Attach a file to ${field.label}`}
+              onChange={(e) => void pick(e.currentTarget.files)}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => input.current?.click()}
+              className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-dashed border-line px-2 py-1 text-[12px] font-semibold text-brand-700 transition-colors hover:border-brand-600 hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Icon name={busy ? 'clock' : 'upload'} size={11} />
+              {busy ? 'Uploading…' : 'Attach'}
+            </button>
+          </>
+        )}
+      </div>
+      {error ? <p role="alert" className="mt-1 text-[11.5px] text-bad">{error}</p> : null}
+      <MenuSurface open={open && files.length > 0} onClose={() => setOpen(false)} anchorRef={anchor} align="left" width={340} role="dialog" label={`${field.label} files`}>
+        <ul className="max-h-[300px] overflow-y-auto">
+          {files.map((f) => (
+            <li key={f.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-canvas">
+              <Icon name="file-text" size={13} className="shrink-0 text-ink-400" />
+              <button
+                type="button"
+                onClick={() => ctx.open(f.id)}
+                className="min-w-0 flex-1 truncate text-left text-[12.5px] font-medium text-brand-700 hover:underline"
+                title={`Open ${f.name}`}
+              >
+                {f.name}
+              </button>
+              <span className="shrink-0 text-[11px] tabular text-ink-400">{formatBytes(f.sizeBytes)}</span>
+              {readOnly ? null : (
+                <button
+                  type="button"
+                  aria-label={`Remove ${f.name}`}
+                  title="Move to the Recycle Bin"
+                  onClick={async () => {
+                    const message = await ctx.remove(f.id);
+                    if (message) setError(message);
+                  }}
+                  className="grid size-6 shrink-0 place-items-center rounded text-ink-400 hover:bg-bad-bg hover:text-bad"
+                >
+                  <Icon name="trash" size={11} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </MenuSurface>
+    </div>
+  );
 }

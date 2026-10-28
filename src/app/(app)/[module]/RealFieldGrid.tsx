@@ -34,6 +34,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { FieldRenderer } from '@/proto/ui/value';
+import { useFieldFiles } from '@/proto/ui/fieldFiles';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { Icon } from '@/proto/ui/icons';
 import { Button, CountPill, IconButton } from '@/proto/ui/kit';
@@ -230,6 +231,8 @@ export function RealFieldGrid({
   viewerId: string;
   isAdmin: boolean;
 }) {
+  // Files fields are empty or not by their uploads, which live outside `values`.
+  const fieldFiles = useFieldFiles();
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   /*
    * View preferences (field order) persist in the background. They were
@@ -680,9 +683,10 @@ export function RealFieldGrid({
                   const grant = grantByKey[f.id] ?? 'hidden';
                   if (grant === 'hidden') return null;
                   const v = shownValue(f.id);
-                  const fieldEmpty =
-                    v == null || v === '' || (Array.isArray(v) && !v.length) ||
-                    (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
+                  const fieldEmpty = f.type === 'file'
+                    ? !(fieldFiles?.list(f.id).length)
+                    : v == null || v === '' || (Array.isArray(v) && !v.length) ||
+                      (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
                   const fieldMentions = mentionsByField[f.id] ?? [];
                   const landedHere = openMention?.fieldKey === f.id;
                   const noteCount = (notesByField[`field:${f.id}`] ?? []).length;

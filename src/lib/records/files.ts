@@ -220,17 +220,22 @@ export async function uploadFile(
    * decide who can attach to a case, which is a different question with a
    * different answer.
    */
-  fileRow: { id: string; kind: 'application' | 'other' | 'case' },
+  fileRow: { id: string; kind: 'application' | 'other' | 'case' } | { id: string; kind: 'field'; fieldKey: string },
   file: { name: string; bytes: Uint8Array; contentType: string },
 ): Promise<{ ok: true; file: FileEntry } | { ok: false; error: 'too_large' | 'row_full' }> {
-  await requireTabEdit(ctx, recordId, fileRow.kind === 'case' ? 'cases' : 'files');
+  // A Files FIELD is governed by the field's own grant (migration 9807), and
+  // its path carries the field key so the bucket policy can ask the same.
+  if (fileRow.kind === 'field') await requireFieldFilesEdit(recordId, fileRow.fieldKey);
+  else await requireTabEdit(ctx, recordId, fileRow.kind === 'case' ? 'cases' : 'files');
   if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
 
   const existing = await filesFor(ctx, fileRow.id);
   if (existing.length >= MAX_FILES_PER_ROW) return { ok: false, error: 'row_full' };
 
   const supabase = await createSupabaseServerClient();
-  const path = `${recordId}/${fileRow.kind}/${fileRow.id}/${Date.now()}-${file.name}`;
+  const path = fileRow.kind === 'field'
+    ? `${recordId}/field/${fileRow.fieldKey}/${fileRow.id}/${Date.now()}-${file.name}`
+    : `${recordId}/${fileRow.kind}/${fileRow.id}/${Date.now()}-${file.name}`;
 
   const { error: uploadError } = await supabase.storage.from('records').upload(path, file.bytes, {
     contentType: file.contentType,
@@ -254,8 +259,17 @@ export async function uploadFile(
 }
 
 export async function deleteFile(ctx: AuthContext, fileId: string): Promise<void> {
-  await requireTabEditVia(ctx, 'files', fileId, 'files', 'file_row_id');
+  // A Files field's upload answers to the field, not the Files tab — the
+  // database's `delete_file` asks `file_row_access` for every kind, so it is
+  // the check for field files; the tab check stays for the rest.
   const supabase = await createSupabaseServerClient();
+  const { data: row } = await supabase
+    .from('files')
+    .select('file_rows!inner(kind)')
+    .eq('id', fileId)
+    .maybeSingle();
+  const kind = (row as { file_rows: { kind: string } } | null)?.file_rows.kind;
+  if (kind !== 'field') await requireTabEditVia(ctx, 'files', fileId, 'files', 'file_row_id');
   const { error } = await supabase.rpc('delete_file', { p_file_id: fileId });
   if (error) throw error;
 }
@@ -308,7 +322,7 @@ export async function signedUrlFor(
 
   const { data, error } = await supabase
     .from('files')
-    .select('storage_path, name, file_rows!inner(record_id, kind)')
+    .select('storage_path, name, file_rows!inner(record_id, kind, field_key)')
     .eq('id', fileId)
     .is('deleted_at', null)
     .maybeSingle();
@@ -317,15 +331,90 @@ export async function signedUrlFor(
   // A row this viewer cannot see comes back empty, so "does not exist" and
   // "not yours" give the same answer and neither is distinguishable.
   const row = data as
-    | { storage_path: string; name: string; file_rows: { record_id: string; kind: string } }
+    | { storage_path: string; name: string; file_rows: { record_id: string; kind: string; field_key: string | null } }
     | null;
   if (!row) throw new Error('Not found');
 
-  await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
+  if (row.file_rows.kind === 'field') {
+    const { data: level, error: accessError } = await supabase.rpc('file_row_access', {
+      p_record: row.file_rows.record_id, p_kind: 'field', p_field_key: row.file_rows.field_key,
+    });
+    if (accessError) throw accessError;
+    if (level === 'hidden') throw new Error('Not found');
+  } else {
+    await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
+  }
 
   const { data: signed, error: signError } = await supabase.storage
     .from('records')
     .createSignedUrl(row.storage_path, 60, opts.download ? { download: row.name } : undefined);
   if (signError) throw signError;
   return signed.signedUrl;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Files FIELDS (UI/UX spec §4) — one file row per (record, field)            */
+/* -------------------------------------------------------------------------- */
+
+/** Edit on the field itself, asked of the database — the same helper the
+ *  policies use, so this can never disagree with them. */
+async function requireFieldFilesEdit(recordId: string, fieldKey: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('file_row_access', {
+    p_record: recordId, p_kind: 'field', p_field_key: fieldKey,
+  });
+  if (error) throw error;
+  if (data !== 'edit') throw new Error('You do not have edit access to this field.');
+}
+
+/**
+ * Every Files field's uploads on one record, keyed by field key, newest first.
+ * RLS returns only the fields this viewer may see — a hidden field's files are
+ * absent from the query, not filtered afterwards.
+ */
+export async function fieldFilesFor(_ctx: AuthContext, recordId: string): Promise<Record<string, FileEntry[]>> {
+  const supabase = await createSupabaseServerClient();
+  const { data: rows, error } = await supabase
+    .from('file_rows')
+    .select('id, field_key')
+    .eq('record_id', recordId)
+    .eq('kind', 'field')
+    .is('deleted_at', null);
+  if (error) throw error;
+  const keyOf = new Map((rows ?? []).map((r) => [r.id as string, String(r.field_key)]));
+  const byRow = await filesForRows(_ctx, [...keyOf.keys()]);
+  const out: Record<string, FileEntry[]> = {};
+  for (const [rowId, files] of Object.entries(byRow)) out[keyOf.get(rowId)!] = files;
+  return out;
+}
+
+/** Uploads to a Files field, creating its file row the first time. */
+export async function uploadFieldFile(
+  ctx: AuthContext,
+  recordId: string,
+  fieldKey: string,
+  file: { name: string; bytes: Uint8Array; contentType: string },
+): Promise<{ ok: true; file: FileEntry } | { ok: false; error: 'too_large' | 'row_full' }> {
+  await requireFieldFilesEdit(recordId, fieldKey);
+  const supabase = await createSupabaseServerClient();
+  const { data: existing, error } = await supabase
+    .from('file_rows')
+    .select('id')
+    .eq('record_id', recordId)
+    .eq('kind', 'field')
+    .eq('field_key', fieldKey)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  let rowId = existing?.id as string | undefined;
+  if (!rowId) {
+    const { data: created, error: insertError } = await supabase
+      .from('file_rows')
+      .insert({ record_id: recordId, kind: 'field', field_key: fieldKey, name: fieldKey, locked: true })
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
+    rowId = created.id as string;
+  }
+  return uploadFile(ctx, recordId, { id: rowId, kind: 'field', fieldKey }, file);
 }

@@ -39,7 +39,7 @@ import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
-import { uploadFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
+import { uploadFile, uploadFieldFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
 import { addLogin, setPassword, revealPassword } from '@/lib/records/logins';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
@@ -781,6 +781,44 @@ export async function uploadFileAction(
   }
   return { ok: true };
 }
+
+/**
+ * Attach a file to a Files FIELD (UI/UX spec §4). The field's own grant
+ * decides, in the database — not the Files tab's.
+ */
+export async function uploadFieldFileAction(
+  moduleSlug: string,
+  recordId: string,
+  fieldKey: string,
+  formData: FormData,
+): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsedKey = fieldKeySchema.safeParse(fieldKey);
+  if (!parsedKey.success) return { ok: false, message: 'That field is not valid.' };
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: 'Choose a file first.' };
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let result;
+  try {
+    result = await uploadFieldFile(ctx, recordId, parsedKey.data, {
+      name: file.name,
+      bytes,
+      contentType: file.type || 'application/octet-stream',
+    });
+  } catch {
+    return { ok: false, message: 'You cannot attach files to this field.' };
+  }
+
+  revalidatePath(`/${moduleSlug}`);
+  if (!result.ok) {
+    return { ok: false, message: result.error === 'too_large' ? 'That file is over the 25MB limit.' : 'This field already holds 5 files.' };
+  }
+  return { ok: true };
+}
+
+/** A field key as it arrives from the browser: lower-case, digits, underscores. */
+const fieldKeySchema = z.string().trim().regex(/^[a-z][a-z0-9_]{0,59}$/);
 
 /**
  * Attach a file to a case's Issue, Solution or one reply — Modules §3.7.

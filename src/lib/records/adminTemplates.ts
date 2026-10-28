@@ -48,7 +48,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { invalidateGrants, type AuthContext } from './permissions';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { assertAdmin, UNIQUE_VIOLATION, type Result } from './adminConfig';
+import { assertAdminPage, UNIQUE_VIOLATION, type Result } from './adminConfig';
 import type { CreateTemplateInput, RenameTemplateInput, DeleteTemplateInput } from './adminSchemas';
 
 
@@ -71,7 +71,7 @@ export type AdminTemplateRow = {
 };
 
 export async function listTemplates(ctx: AuthContext): Promise<TemplateOption[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const { data, error } = await supabaseAdmin().from('permission_templates').select('id, label').order('label');
   if (error) throw error;
   return data ?? [];
@@ -88,7 +88,7 @@ export async function listTemplates(ctx: AuthContext): Promise<TemplateOption[]>
  * returning both counts — not a per-row count query in a loop.
  */
 export async function listTemplatesForAdmin(ctx: AuthContext): Promise<AdminTemplateRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = supabaseAdmin();
 
   const [templatesRes, userTemplatesRes, grantsRes] = await Promise.all([
@@ -130,7 +130,7 @@ const duplicateLabel = (label: string): Result => ({
 });
 
 export async function createTemplate(ctx: AuthContext, input: CreateTemplateInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
 
   const label = input.label.trim();
   if (!label) return { ok: false, message: 'A label is required.' };
@@ -155,7 +155,7 @@ export async function createTemplate(ctx: AuthContext, input: CreateTemplateInpu
  * migration 38 requires it to stay unique.
  */
 export async function renameTemplate(ctx: AuthContext, input: RenameTemplateInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
 
   const label = input.label.trim();
   if (!label) return { ok: false, message: 'A label is required.' };
@@ -183,7 +183,7 @@ export type TemplateMember = { id: string; name: string; email: string; removed:
 
 /** The people resolving their permissions through this template. */
 export async function templateMembers(ctx: AuthContext, templateId: string): Promise<TemplateMember[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const { data, error } = await supabaseAdmin()
     .from('user_templates')
     .select('user_id, profiles!inner(email, full_name, deleted_at)')
@@ -209,7 +209,7 @@ export async function templateMembers(ctx: AuthContext, templateId: string): Pro
  * checks `auth_is_admin()` itself.
  */
 export async function deleteTemplate(ctx: AuthContext, input: DeleteTemplateInput): Promise<{ ok: true; moved: number } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('delete_permission_template', {
     p_template_id: input.templateId,

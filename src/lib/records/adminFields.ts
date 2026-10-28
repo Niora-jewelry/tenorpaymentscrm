@@ -29,7 +29,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type AuthContext, FROZEN_COLUMN_FIELD_KEY } from './permissions';
 import { loadConfig, type FieldType } from './config';
-import { assertAdmin, slugifyKey, UNIQUE_VIOLATION, CHECK_VIOLATION, type Result } from './adminConfig';
+import { assertAdminPage, slugifyKey, UNIQUE_VIOLATION, CHECK_VIOLATION, type Result } from './adminConfig';
 import type { ChangeFieldTypeInput, CreateFieldInput, FieldSetupInput, UpdateFieldInput } from './adminSchemas';
 import { normaliseChoices } from './adminChoices';
 
@@ -73,7 +73,7 @@ export type AdminFieldRow = {
  * the one place that must see retired fields, or they can never be restored.
  */
 export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
   const [{ data, error }, header, columns] = await Promise.all([
     supabase.from('fields').select('*').order('position'),
@@ -140,7 +140,7 @@ async function freeKey(base: string): Promise<string> {
  * leaves nothing behind.
  */
 export async function createFieldWithSetup(ctx: AuthContext, input: FieldSetupInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const label = input.label.trim();
   const base = slugifyKey(input.key || label);
   if (!base || !label) return { ok: false, message: 'Give the field a label.' };
@@ -197,7 +197,7 @@ export async function changeFieldType(
   ctx: AuthContext,
   input: ChangeFieldTypeInput,
 ): Promise<Result | { ok: false; message: string; needsConfirm: number }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
   const { data, error } = await supabase.rpc('change_field_type', {
     p_field_id: input.fieldId,
@@ -266,7 +266,7 @@ async function writeFailure(error: { code?: string; message: string }, key: stri
 }
 
 export async function createField(ctx: AuthContext, input: CreateFieldInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const key = slugifyKey(input.key);
@@ -342,7 +342,7 @@ export async function createField(ctx: AuthContext, input: CreateFieldInput): Pr
  * within a placement.
  */
 export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const label = input.label.trim();
@@ -404,7 +404,7 @@ export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Pr
  * against the archived-filtered set and drop the misses (`config.ts:232-246`).
  */
 export async function archiveField(ctx: AuthContext, fieldId: string): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const { data: field, error: readErr } = await supabase
@@ -428,7 +428,7 @@ export async function archiveField(ctx: AuthContext, fieldId: string): Promise<R
 }
 
 export async function restoreField(ctx: AuthContext, fieldId: string): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const { error } = await supabase.from('fields').update({ archived_at: null }).eq('id', fieldId);

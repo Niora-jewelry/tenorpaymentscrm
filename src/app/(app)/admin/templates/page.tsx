@@ -16,14 +16,14 @@
  * and checked again independently inside every action.
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listTemplatesForAdmin } from '@/lib/records/adminTemplates';
 import { TemplatesSection } from './TemplatesSection';
 import { HowPermissionsWork } from './HowPermissionsWork';
 
 export default async function AdminTemplatesPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'permissions'))) redirect('/dashboard');
 
   const templates = await listTemplatesForAdmin(ctx);
 

@@ -17,7 +17,7 @@
  */
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import {
   listTabsForAdmin, listSubtabsForAdmin, listModulesForAdmin,
   listModuleTabOrder, listModuleSubtabOrder,
@@ -40,7 +40,7 @@ import { ReloadConfigButton } from './ReloadConfigButton';
 
 export default async function AdminPresetsPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'presets'))) redirect('/dashboard');
 
   const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements] = await Promise.all([
     listTabsForAdmin(ctx),

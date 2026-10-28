@@ -17,7 +17,7 @@ import { likePattern } from './search';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { fieldGrant, fieldGrants, moduleGrant, capGrant, VISIBILITY_FIELD_KEY, type Grant } from './permissions';
+import { canDo, fieldGrant, fieldGrants, moduleGrant, capGrant, VISIBILITY_FIELD_KEY, type Grant } from './permissions';
 import { fieldCapsFor, hiddenFieldKeysFor } from './tabAccess';
 import { loadConfig, columnsForModule, type Field, type FieldType } from './config';
 import { parseTeamMembers } from './teamMembers';
@@ -576,6 +576,9 @@ export async function createRecord(
   // button is already hidden below Edit, but the action behind it is callable
   // regardless of what rendered — hiding a button is not the boundary.
   const config = await loadConfig();
+  // "Create new records" is one company-wide yes/no (Permissions spec); the
+  // records_insert policy refuses without it too.
+  if (!(await canDo(ctx, 'create'))) throw new Error('You do not have permission to create records.');
   for (const id of moduleIds) {
     const mod = config.modules.find((m) => m.id === id);
     if (!mod) throw new Error('Unknown module.');

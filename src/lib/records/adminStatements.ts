@@ -22,7 +22,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
-import { assertAdmin } from './adminConfig';
+import { assertAdminPage } from './adminConfig';
 
 export type StatementGrid = {
   /** Every year currently in the grid, ascending. */
@@ -41,7 +41,7 @@ export type StatementGrid = {
 };
 
 export async function statementGrid(ctx: AuthContext): Promise<StatementGrid> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   // `statement_periods` is at most a few hundred rows and PostgREST caps a
@@ -85,7 +85,7 @@ export type AddYearResult =
  * caller was shown" posture `soft_delete_user` takes.
  */
 export async function addStatementYear(ctx: AuthContext, year: number): Promise<AddYearResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   if (!Number.isInteger(year)) return { ok: false, message: 'That is not a year.' };
 
   /*

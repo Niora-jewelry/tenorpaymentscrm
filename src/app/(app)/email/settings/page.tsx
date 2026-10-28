@@ -10,7 +10,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { z } from 'zod';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, seesAll } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { emailAccess } from '@/lib/mail/access';
 import { myMailboxes, MAX_CONNECTIONS } from '@/lib/mail/mailboxes';
@@ -28,6 +28,7 @@ const asEmail = (v: string | undefined) => (v && z.email().max(254).safeParse(v)
 
 export default async function EmailSettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const ctx = await authorize();
+  const seesAllEmail = await seesAll(ctx, 'email');
   const access = await emailAccess(ctx);
   if (access === 'hidden') redirect('/dashboard');
 
@@ -73,7 +74,7 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
                   { id: 'sending', label: 'Sending', icon: 'send' as const },
                   { id: 'signatures', label: 'Signatures', icon: 'pencil' as const },
                   { id: 'templates', label: 'Templates', icon: 'file-text' as const },
-                  ...(ctx.isAdmin ? [{ id: 'privacy', label: 'Privacy', icon: 'lock' as const }] : []),
+                  ...(seesAllEmail ? [{ id: 'privacy', label: 'Privacy', icon: 'lock' as const }] : []),
                 ]
               : []),
           ]}

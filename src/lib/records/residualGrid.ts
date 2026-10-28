@@ -27,6 +27,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
+import { assertAdminPage } from './adminConfig';
 import type {
   GridRow,
   HistoryEntry,
@@ -62,9 +63,6 @@ export type {
 } from '@/lib/residuals/reconciliation';
 export { STATE_LABEL, STEP_LABEL, HISTORY_KIND_LABEL } from '@/lib/residuals/reconciliation';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 /* ────────────────────────────────────────────────────────────────────────
  * The grid
@@ -76,7 +74,7 @@ export async function gridRows(
   mid: string | null = null,
   processor: string | null = null,
 ): Promise<GridRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_grid_rows', {
@@ -134,7 +132,7 @@ export async function merchantStates(
   periodId: string,
   processor: string | null = null,
 ): Promise<MerchantState[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_merchant_states', {
@@ -171,7 +169,7 @@ export async function synopsis(
   mid: string | null = null,
   lifetime = false,
 ): Promise<Synopsis[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_synopsis', {
@@ -207,7 +205,7 @@ export async function periodHistory(
   periodId: string,
   limit = 200,
 ): Promise<HistoryEntry[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_period_history', {
@@ -236,7 +234,7 @@ export async function periodHeader(
   ctx: AuthContext,
   periodId: string,
 ): Promise<PeriodHeader | null> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
   const supabase = await createSupabaseServerClient();
 
   /*
@@ -340,7 +338,7 @@ export async function merchantDashboard(
   ctx: AuthContext,
   periodId: string,
 ): Promise<MerchantDashboardRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
 

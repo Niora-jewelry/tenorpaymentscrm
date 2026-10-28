@@ -16,7 +16,7 @@
  * reachable without ever loading this page.
  */
 import { notFound, redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { templateGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../GrantMatrix';
@@ -35,7 +35,7 @@ export default async function TemplateGrantsPage({
   const { module: moduleParam } = await searchParams;
 
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'permissions'))) redirect('/dashboard');
 
   const config = await loadConfig();
   // Validated against the real module list — a mistyped link must not silently

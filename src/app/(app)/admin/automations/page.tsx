@@ -24,7 +24,7 @@
  * not visible from the UI sketch.
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
 import { PlaceholderNotice } from '../PlaceholderNotice';
 
@@ -44,7 +44,7 @@ const CANDIDATES: { rule: string; note: string }[] = [
 
 export default async function AdminAutomationsPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'automations'))) redirect('/dashboard');
 
   return (
     <div className="space-y-6 p-6">

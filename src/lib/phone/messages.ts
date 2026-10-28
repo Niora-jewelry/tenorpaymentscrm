@@ -15,7 +15,7 @@ import 'server-only';
 import twilio from 'twilio';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { type AuthContext } from '@/lib/records/permissions';
+import { seesAll, type AuthContext } from '@/lib/records/permissions';
 import { serverEnv } from '@/lib/env.server';
 import { getPublicBaseUrl } from '@/lib/twilio/webhook-request';
 import { canSeePhone, canUsePhone } from './access';
@@ -263,10 +263,10 @@ export async function threadsForUser(ctx: AuthContext, limit = 200): Promise<Pho
   if (!(await canSeePhone(ctx))) return [];
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('phone_messages')
-    .select(MESSAGE_SELECT)
-    .eq('owner_id', ctx.userId)
+  // Phone = All users: every line's texts (RLS still decides, migration 9813).
+  let query = supabase.from('phone_messages').select(MESSAGE_SELECT);
+  if (!(await seesAll(ctx, 'phone'))) query = query.eq('owner_id', ctx.userId);
+  const { data, error } = await query
     .is('deleted_at', null)
     .order('sent_at', { ascending: false })
     .limit(limit);

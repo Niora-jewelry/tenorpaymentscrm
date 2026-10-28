@@ -20,7 +20,7 @@
  * requirement this build invented for itself.
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listDeletedRecords } from '@/lib/records/records';
 import { listBin, type BinItem } from '@/lib/records/recycleBin';
 import { listDeletedUsers } from '@/lib/records/adminUsers';
@@ -31,7 +31,7 @@ import { BinSections, type BinSection } from './BinSections';
 
 export default async function RecycleBinPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'recycle_bin'))) redirect('/dashboard');
 
   // Three reads in one wave. They are independent, and awaiting them in
   // sequence would simply add their latencies together against a remote

@@ -23,7 +23,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
 import { loadConfig } from './config';
-import { assertAdmin, slugifyKey, appendToModuleOrder, UNIQUE_VIOLATION, type Result } from './adminConfig';
+import { assertAdminPage, slugifyKey, appendToModuleOrder, UNIQUE_VIOLATION, type Result } from './adminConfig';
 import type { CreateTabInput, CreateSubtabInput } from './adminSchemas';
 
 /** `frozen` is the client's "do not work on it yet, someone else is designing
@@ -54,13 +54,13 @@ export type AdminSubtabRow = {
 };
 
 export async function listModulesForAdmin(ctx: AuthContext): Promise<ModuleOption[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
   return config.modules.map((m) => ({ id: m.id, slug: m.slug, label: m.label, frozen: m.frozen }));
 }
 
 export async function listTabsForAdmin(ctx: AuthContext): Promise<AdminTabRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
   const modulesByTab = new Map<string, string[]>();
   for (const r of config.moduleTabOrder) {
@@ -93,7 +93,7 @@ export async function listTabsForAdmin(ctx: AuthContext): Promise<AdminTabRow[]>
  * this only has to group it.
  */
 export async function listModuleTabOrder(ctx: AuthContext): Promise<Record<string, string[]>> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
   const out: Record<string, string[]> = {};
   for (const r of config.moduleTabOrder) (out[r.moduleId] ??= []).push(r.tabId);
@@ -115,7 +115,7 @@ export async function listModuleTabOrder(ctx: AuthContext): Promise<Record<strin
  * out in order.
  */
 export async function listModuleSubtabOrder(ctx: AuthContext): Promise<Record<string, string[]>> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
   const tabBySubtab = new Map(config.subtabs.map((s) => [s.id, s.tabId]));
   const out: Record<string, string[]> = {};
@@ -128,7 +128,7 @@ export async function listModuleSubtabOrder(ctx: AuthContext): Promise<Record<st
 }
 
 export async function listSubtabsForAdmin(ctx: AuthContext): Promise<AdminSubtabRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
   const modulesBySubtab = new Map<string, string[]>();
   for (const r of config.moduleSubtabOrder) {
@@ -142,7 +142,7 @@ export async function listSubtabsForAdmin(ctx: AuthContext): Promise<AdminSubtab
 }
 
 export async function createTab(ctx: AuthContext, input: CreateTabInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
   const key = slugifyKey(input.key);
   const label = input.label.trim();
@@ -166,7 +166,7 @@ export async function createTab(ctx: AuthContext, input: CreateTabInput): Promis
 }
 
 export async function createSubtab(ctx: AuthContext, input: CreateSubtabInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
   const key = slugifyKey(input.key);
   const label = input.label.trim();
@@ -217,7 +217,7 @@ export async function createSubtab(ctx: AuthContext, input: CreateSubtabInput): 
  * field values underneath one.
  */
 export async function renameTab(ctx: AuthContext, tabId: string, label: string): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const trimmed = label.trim();
   if (!trimmed) return { ok: false, message: 'A tab needs a label.' };
 
@@ -251,7 +251,7 @@ export async function renameSubtab(
   label: string,
   description: string | null,
 ): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const trimmed = label.trim();
   if (!trimmed) return { ok: false, message: 'A subtab needs a label.' };
 
@@ -290,7 +290,7 @@ export async function setModuleTabOrder(
   moduleId: string,
   tabIds: string[],
 ): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const { error: delError } = await supabase.from('module_tab_order').delete().eq('module_id', moduleId);
@@ -310,7 +310,7 @@ export async function setModuleSubtabOrder(
   moduleId: string,
   subtabIds: string[],
 ): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   // Scoped to the subtabs actually named, so reordering one tab's subtabs
@@ -332,7 +332,7 @@ export async function setModuleSubtabOrder(
 }
 
 export async function assignTabToModules(ctx: AuthContext, tabId: string, moduleIds: string[]): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   await appendToModuleOrder('module_tab_order', 'tab_id', tabId, moduleIds);
 }
 
@@ -360,7 +360,7 @@ export async function setTabModules(
   tabId: string,
   moduleIds: string[],
 ): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const { data: current, error: readErr } = await supabase
@@ -401,6 +401,6 @@ export async function setTabModules(
 }
 
 export async function assignSubtabToModules(ctx: AuthContext, subtabId: string, moduleIds: string[]): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   await appendToModuleOrder('module_subtab_order', 'subtab_id', subtabId, moduleIds);
 }

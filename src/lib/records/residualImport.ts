@@ -34,6 +34,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { parseWorkbook, type ParsedSheet } from '@/lib/residuals/xlsxParser';
+import { assertAdminPage } from './adminConfig';
 import {
   REQUIRED_TARGETS,
   TARGETS,
@@ -45,9 +46,6 @@ import {
   type Target,
 } from '@/lib/residuals/mapping';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 /** A fee report has a few hundred rows. Ten thousand is not a fee report. */
 export const MAX_IMPORT_ROWS = 10_000;
@@ -68,7 +66,7 @@ export async function savedMappings(
   ctx: AuthContext,
   processor: string,
 ): Promise<Map<string, Target>> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const { data, error } = await supabaseAdmin()
     .from('residual_column_mappings')
@@ -112,7 +110,7 @@ export async function replaceMappings(
   processor: string,
   mapping: ReadonlyMap<string, Target>,
 ): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
   const supabase = supabaseAdmin();
 
   const { error: retireError } = await supabase
@@ -178,7 +176,7 @@ export async function previewImport(
   file: { name: string; bytes: Uint8Array },
   sheetName: string | null,
 ): Promise<ImportPreview> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const wb = parseWorkbook(file.bytes);
   const saved = await savedMappings(ctx, processor);
@@ -269,7 +267,7 @@ const MAX_REPORTED_ERRORS = 50;
  * indistinguishable from a live one to anybody reading the table.
  */
 export async function commitImport(ctx: AuthContext, req: CommitRequest): Promise<CommitResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   // ── the file ──────────────────────────────────────────────────────────
   const wb = parseWorkbook(req.file.bytes);
@@ -470,7 +468,7 @@ export async function recentImports(
   ctx: AuthContext,
   limit = 20,
 ): Promise<ImportHistoryRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const { data, error } = await supabaseAdmin()
     .from('residual_imports')
@@ -524,7 +522,7 @@ export async function completedImportFor(
   processor: string,
   periodId: string,
 ): Promise<ExistingImport | null> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const { data } = await supabaseAdmin()
     .from('residual_imports')
@@ -594,7 +592,7 @@ export async function computePeriod(
   periodId: string,
   processor = 'MAVERICK',
 ): Promise<ComputeResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   /* Request-scoped: `compute_residual_period` is admin-gated on auth.uid(). */
   const caller = await createSupabaseServerClient();

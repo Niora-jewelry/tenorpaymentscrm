@@ -174,8 +174,13 @@ async function recordModulesFor(recordIds: string[]): Promise<Map<string, Record
 
   const config = await loadConfig();
   const moduleById = new Map(config.modules.map((m) => [m.id, m]));
+  /* The Records List holds every record, so it is one of every record's
+     modules for access — the same rule `user_record_field_grant` follows
+     (migration 9811). Whether it OPENS anything is the user's Records List
+     setting, decided in `moduleGrant`. */
+  const storage = config.modules.filter((m) => m.kind === 'storage').map((m) => ({ id: m.id, adminOnly: m.adminOnly }));
 
-  for (const id of recordIds) out.set(id, []);
+  for (const id of recordIds) out.set(id, [...storage]);
   for (const r of data) {
     const mod = moduleById.get(r.module_id as string);
     if (!mod) continue;

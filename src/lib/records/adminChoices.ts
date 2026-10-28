@@ -39,7 +39,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
 import { loadConfig, type FieldType, type Choice } from './config';
-import { assertAdmin, slugifyKey } from './adminConfig';
+import { assertAdminPage, slugifyKey } from './adminConfig';
 import {
   CHOICE_FIELD_TYPES,
   SWATCHES,
@@ -110,7 +110,7 @@ export type SetChoicesResult =
  * be editing something invisible.
  */
 export async function listChoiceFields(ctx: AuthContext): Promise<ChoiceFieldRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
 
   const tabById = new Map(config.tabs.map((t) => [t.id, t]));
@@ -184,7 +184,7 @@ export function normaliseChoices(input: SetFieldChoicesInput['choices']): { key:
  * asymmetry is the point rather than an oversight.
  */
 export async function setFieldChoices(ctx: AuthContext, input: SetFieldChoicesInput): Promise<SetChoicesResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
 
   const config = await loadConfig();
   const field = config.fields.find((f) => f.id === input.fieldId);
@@ -232,7 +232,7 @@ export async function setFieldChoices(ctx: AuthContext, input: SetFieldChoicesIn
  * holds for any caller, not just the one screen that remembers to.
  */
 export async function createModuleOverride(ctx: AuthContext, input: ModuleOverrideInput): Promise<SetChoicesResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
 
   const config = await loadConfig();
   const field = config.fields.find((f) => f.id === input.fieldId);
@@ -272,7 +272,7 @@ export type RemoveChoiceResult = { ok: true } | { ok: false; message: string; in
  * SQL meets it too — and this turns its answer into a sentence.
  */
 export async function removeFieldChoice(ctx: AuthContext, input: RemoveFieldChoiceInput): Promise<RemoveChoiceResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
 
   const config = await loadConfig();
   const field = config.fields.find((f) => f.id === input.fieldId);

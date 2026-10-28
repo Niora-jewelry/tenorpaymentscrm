@@ -14,7 +14,7 @@
  */
 import { after } from 'next/server';
 import { z } from 'zod';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, seesAll } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -513,7 +513,8 @@ export async function setHideFromAdminsAction(input: { hide: boolean }): Promise
   if (!parsed.success) return { ok: false, message: MAIL_MESSAGES.generic };
   const g = await gate();
   if ('message' in g) return { ok: false, message: g.message };
-  if (!g.ctx.isAdmin) return { ok: false, message: 'Only admins have this setting.' };
+  // For people who can see everyone's inboxes: hiding theirs from the others who can.
+  if (!(await seesAll(g.ctx, 'email'))) return { ok: false, message: 'This setting is for people who can see every inbox.' };
   const supabase = await createSupabaseServerClient();
   const { data: cur } = await supabase.from('mail_user_settings').select('undo_send_seconds, default_from_mailbox_id').eq('user_id', g.ctx.userId).maybeSingle();
   const { error } = await supabase.rpc('mail_set_user_settings', {

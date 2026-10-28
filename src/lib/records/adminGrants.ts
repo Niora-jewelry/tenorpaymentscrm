@@ -79,7 +79,7 @@ import {
   type ScopeCaps,
 } from './grantRules';
 import { loadConfig } from './config';
-import { assertAdmin } from './adminConfig';
+import { assertAdminPage } from './adminConfig';
 import type {
   ClearTemplateGrantInput,
   ClearUserGrantInput,
@@ -306,7 +306,7 @@ export async function listTemplateGrants(
   templateId: string,
   moduleId: string | null = null,
 ): Promise<Map<GrantKey, Grant>> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return (await readGrants('template_grants', 'template_id', templateId, moduleId)).grants;
 }
 
@@ -315,7 +315,7 @@ export async function listUserGrants(
   userId: string,
   moduleId: string | null = null,
 ): Promise<Map<GrantKey, Grant>> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return (await readGrants('user_grants', 'user_id', userId, moduleId)).grants;
 }
 
@@ -483,7 +483,7 @@ export async function templateGrantMatrix(
    *  grants, and what this screen showed before §2.2's per-module granularity. */
   moduleId: string | null = null,
 ): Promise<GrantMatrix | null> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = supabaseAdmin();
 
   const [templateRes, attachedRes] = await Promise.all([
@@ -524,7 +524,7 @@ export async function userGrantMatrix(
   userId: string,
   moduleId: string | null = null,
 ): Promise<GrantMatrix | null> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = supabaseAdmin();
 
   const { data: profile, error: profileErr } = await supabase
@@ -755,7 +755,7 @@ async function deleteGrant(
  * the blast radius of this call.
  */
 export async function setTemplateGrant(ctx: AuthContext, input: SetTemplateGrantInput): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return upsertGrant(
     'template_grants',
     'template_id',
@@ -768,7 +768,7 @@ export async function setTemplateGrant(ctx: AuthContext, input: SetTemplateGrant
 }
 
 export async function clearTemplateGrant(ctx: AuthContext, input: ClearTemplateGrantInput): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return deleteGrant(
     'template_grants',
     'template_id',
@@ -794,7 +794,7 @@ export async function clearTemplateGrant(ctx: AuthContext, input: ClearTemplateG
  * acknowledges the count it is about to destroy.
  */
 export async function setUserGrant(ctx: AuthContext, input: SetUserGrantInput): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return upsertGrant(
     'user_grants',
     'user_id',
@@ -807,7 +807,7 @@ export async function setUserGrant(ctx: AuthContext, input: SetUserGrantInput): 
 }
 
 export async function clearUserGrant(ctx: AuthContext, input: ClearUserGrantInput): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return deleteGrant(
     'user_grants',
     'user_id',
@@ -860,17 +860,17 @@ async function writeGrantBatch(
 }
 
 export async function setTemplateGrants(ctx: AuthContext, input: SetTemplateGrantsInput): Promise<GrantBatchResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return writeGrantBatch('template_grants', 'template_id', input.templateId, input.moduleId ?? null, input.items);
 }
 
 export async function setUserGrants(ctx: AuthContext, input: SetUserGrantsInput): Promise<GrantBatchResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return writeGrantBatch('user_grants', 'user_id', input.userId, input.moduleId ?? null, input.items);
 }
 
 export async function setInviteGrants(ctx: AuthContext, input: SetInviteGrantsInput): Promise<GrantBatchResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return writeGrantBatch('invite_grants', 'invite_id', input.inviteId, input.moduleId ?? null, input.items);
 }
 
@@ -898,7 +898,7 @@ export async function inviteGrantMatrix(
   inviteId: string,
   moduleId: string | null = null,
 ): Promise<GrantMatrix | null> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = supabaseAdmin();
 
   const { data: invite, error } = await supabase
@@ -961,7 +961,7 @@ export async function setInviteGrant(
   ctx: AuthContext,
   input: { inviteId: string; scopeKind: GrantScope; scopeId: string; level: Grant; moduleId?: string | null },
 ): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return upsertGrant(
     'invite_grants',
     'invite_id',
@@ -977,7 +977,7 @@ export async function clearInviteGrant(
   ctx: AuthContext,
   input: { inviteId: string; scopeKind: GrantScope; scopeId: string; moduleId?: string | null },
 ): Promise<GrantResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   return deleteGrant(
     'invite_grants',
     'invite_id',

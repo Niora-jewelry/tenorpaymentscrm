@@ -27,48 +27,30 @@
  * Communication tab still hides Phone — which is the correct direction.
  */
 import 'server-only';
-import { loadConfig } from '@/lib/records/config';
-import { subtabGrant, capGrant, tabGrant, type AuthContext } from '@/lib/records/permissions';
+import type { AuthContext } from '@/lib/records/permissions';
 
-/** The sub-tab this module lives in. Looked up by key, never by id. Call
- *  recordings and texts sit under it since the redesign (UI spec §5), so it
- *  is the one sub-tab every phone grant reads. */
-const PHONE_SUBTAB_KEY = 'phone';
+/*
+ * ── EVERY USER HAS THEIR OWN PHONE LINE ──────────────────────────────────
+ * Permissions spec: the Phone module is Own only / All users, with no Hidden
+ * — "every user sees at least their own". Whose calls and texts they see
+ * beyond their own is the Phone setting, enforced by the phone_* policies
+ * (migration 9813); dialling needs a number assigned on the admin Numbers
+ * screen, which stays the one control over telephony spend.
+ */
 
-async function subtabAccess(ctx: AuthContext, subtabKey: string) {
-  if (ctx.isAdmin) return 'edit' as const;
-
-  const config = await loadConfig();
-  const subtab = config.subtabs.find((s) => s.key === subtabKey);
-  if (!subtab) return 'hidden' as const;
-
-  // Capped by its own tab, so hiding Communication hides everything under it.
-  const [tg, sg] = await Promise.all([
-    tabGrant(ctx, subtab.tabId),
-    subtabGrant(ctx, subtab.id),
-  ]);
-  return capGrant(tg, sg);
-}
-
-/** Dialling and texting need Edit — both place billable traffic. */
 export async function canUsePhone(ctx: AuthContext): Promise<boolean> {
-  return (await subtabAccess(ctx, PHONE_SUBTAB_KEY)) === 'edit';
+  return Boolean(ctx.userId);
 }
 
-/** Seeing the call log needs only View. */
 export async function canSeePhone(ctx: AuthContext): Promise<boolean> {
-  return (await subtabAccess(ctx, PHONE_SUBTAB_KEY)) !== 'hidden';
+  return Boolean(ctx.userId);
 }
 
 /**
- * Hearing a recording needs View on Phone, where Call recordings now live.
- *
- * ⚠ This is the APPLICATION half only. The real boundary is the
- * `phone_recordings` RLS policy and the `phone-recordings` bucket policy, both
- * of which restrict audio to the call's owner and admins regardless of what
- * this returns — see migration 68. This gate can only ever narrow that further,
- * never widen it.
+ * Hearing a recording: the `phone_recordings` policy and the bucket policy
+ * decide (your own calls; the record's calls with Communication = Whole org;
+ * everyone's with Phone = All users). This gate cannot widen them.
  */
 export async function canHearRecordings(ctx: AuthContext): Promise<boolean> {
-  return (await subtabAccess(ctx, PHONE_SUBTAB_KEY)) !== 'hidden';
+  return Boolean(ctx.userId);
 }

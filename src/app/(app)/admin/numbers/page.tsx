@@ -10,14 +10,14 @@
  * checked again independently inside every action and every data function.
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listNumbers } from '@/lib/records/adminNumbers';
 import { listUsers } from '@/lib/records/adminUsers';
 import { NumbersSection } from './NumbersSection';
 
 export default async function AdminNumbersPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'numbers'))) redirect('/dashboard');
 
   const [numbers, users] = await Promise.all([listNumbers(ctx), listUsers(ctx)]);
 

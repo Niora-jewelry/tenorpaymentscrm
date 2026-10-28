@@ -36,7 +36,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type AuthContext, FROZEN_COLUMN_FIELD_KEY } from './permissions';
 import { loadConfig, type FieldType } from './config';
-import { assertAdmin, type Result } from './adminConfig';
+import { assertAdminPage, type Result } from './adminConfig';
 import type { SetModuleFieldListInput } from './adminSchemas';
 
 /**
@@ -86,7 +86,7 @@ export type ModuleFieldSelection = {
  * "select" a column that cannot appear.
  */
 export async function listAssignableFields(ctx: AuthContext): Promise<AssignableField[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
 
   const tabById = new Map(config.tabs.map((t) => [t.id, t]));
@@ -116,7 +116,7 @@ export async function listAssignableFields(ctx: AuthContext): Promise<Assignable
  * saving that list right back, which is the one thing that WOULD delete them.
  */
 export async function listModuleFieldSelections(ctx: AuthContext): Promise<ModuleFieldSelection[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
 
   const live = new Set(config.fields.map((f) => f.id));
@@ -142,7 +142,7 @@ export async function setColumnDefaultVisible(
   ctx: AuthContext,
   input: { moduleId: string; fieldId: string; visible: boolean },
 ): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
   const { error } = await supabase.rpc('set_module_column_default_visible', {
     p_module_id: input.moduleId,
@@ -202,12 +202,12 @@ async function replaceList(fn: 'set_module_columns' | 'set_module_header_fields'
  * one — and refusing it would be a rule the client never asked for.
  */
 export async function setModuleColumns(ctx: AuthContext, input: SetModuleFieldListInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   return replaceList('set_module_columns', input);
 }
 
 /** Header-strip membership — same mechanics, same preservation rule. */
 export async function setModuleHeaderFields(ctx: AuthContext, input: SetModuleFieldListInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   return replaceList('set_module_header_fields', input);
 }

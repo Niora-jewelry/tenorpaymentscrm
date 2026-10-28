@@ -40,7 +40,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
 import { loadConfig } from './config';
-import { assertAdmin, type Result } from './adminConfig';
+import { assertAdminPage, type Result } from './adminConfig';
 import type {
   CreatePipelineInput,
   RenamePipelineInput,
@@ -80,7 +80,7 @@ export type SetStepsResult =
  * cached config does not already hold.
  */
 export async function listPipelinesForAdmin(ctx: AuthContext): Promise<AdminPipelineRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const config = await loadConfig();
 
   const stepsByPipeline = new Map<string, AdminStepRow[]>();
@@ -116,7 +116,7 @@ const failed = (error: { message: string }): { ok: false; message: string } => (
  * anyway. Both halves, per CLAUDE.md.
  */
 export async function createPipeline(ctx: AuthContext, input: CreatePipelineInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
 
   const config = await loadConfig();
   // The function enforces this too (and must, against direct SQL) — checking
@@ -145,7 +145,7 @@ export async function createPipeline(ctx: AuthContext, input: CreatePipelineInpu
  * header, and the trigger that holds the same line against direct SQL).
  */
 export async function renamePipeline(ctx: AuthContext, input: RenamePipelineInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   const label = input.label.trim();
@@ -168,7 +168,7 @@ export async function renamePipeline(ctx: AuthContext, input: RenamePipelineInpu
  * first time and then frozen.
  */
 export async function setPipelineSteps(ctx: AuthContext, input: SetPipelineStepsInput): Promise<SetStepsResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
 
   const config = await loadConfig();
   if (!config.pipelines.some((p) => p.id === input.pipelineId)) {
@@ -196,7 +196,7 @@ export async function setPipelineSteps(ctx: AuthContext, input: SetPipelineSteps
  * to change it.
  */
 export async function setPipelineOrder(ctx: AuthContext, input: SetPipelineOrderInput): Promise<Result> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'presets');
   const supabase = supabaseAdmin();
 
   // De-duplicated for the same reason `adminColumns.ts` does it: a repeated id

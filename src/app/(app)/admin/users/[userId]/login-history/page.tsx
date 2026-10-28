@@ -23,7 +23,7 @@
  * there is no path to this data that skips the check.
  */
 import { notFound, redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listUsers, listLoginHistory } from '@/lib/records/adminUsers';
 import { OutlineChip, StatusPill } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
@@ -60,7 +60,7 @@ export default async function UserLoginHistoryPage({
   const { userId } = await params;
 
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'users'))) redirect('/dashboard');
 
   // The list is already an admin-scoped read and is small; reusing it avoids a
   // second "one profile by id" function that would have to repeat the same

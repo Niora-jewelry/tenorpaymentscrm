@@ -26,6 +26,7 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type AuthContext } from '@/lib/records/permissions';
 import { normalizePhone } from '@/lib/phone/normalize';
+import { assertAdminPage } from './adminConfig';
 
 export type AdminPhoneNumber = {
   id: string;
@@ -37,12 +38,9 @@ export type AdminPhoneNumber = {
   isActive: boolean;
 };
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only.');
-}
 
 export async function listNumbers(ctx: AuthContext): Promise<AdminPhoneNumber[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'numbers');
 
   const { data, error } = await supabaseAdmin()
     .from('phone_numbers')
@@ -66,7 +64,7 @@ export async function addNumber(
   ctx: AuthContext,
   input: { e164: string; label: string | null },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'numbers');
 
   const normalized = normalizePhone(input.e164);
   if (!normalized.ok) return { ok: false, message: 'That does not look like a phone number.' };
@@ -98,7 +96,7 @@ export async function assignNumber(
   ctx: AuthContext,
   input: { numberId: string; userId: string | null },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'numbers');
 
   const { error } = await supabaseAdmin()
     .from('phone_numbers')
@@ -126,7 +124,7 @@ export async function setNumberActive(
   ctx: AuthContext,
   input: { numberId: string; isActive: boolean },
 ): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'numbers');
 
   const { error } = await supabaseAdmin()
     .from('phone_numbers')

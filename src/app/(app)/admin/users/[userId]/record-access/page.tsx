@@ -20,7 +20,7 @@
  * which is how a mis-click becomes a data leak.
  */
 import { notFound, redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listUsers } from '@/lib/records/adminUsers';
 import { listVisibilityGrants, listVisibilityPeople } from '@/lib/records/adminVisibility';
 import { OutlineChip } from '@/proto/ui/kit';
@@ -35,7 +35,7 @@ export default async function RecordAccessPage({
   const { userId } = await params;
 
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'permissions'))) redirect('/dashboard');
 
   // `listUsers` rather than a one-row read: it already resolves the role and
   // admin flag this page needs, and there is no second function to keep in step

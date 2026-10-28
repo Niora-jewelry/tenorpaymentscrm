@@ -36,12 +36,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { RATE_KEYS, type RateEditorData, type StandingRate } from '@/lib/residuals/rates';
 import type { RateImportResult } from '@/lib/residuals/rateImport';
+import { assertAdminPage } from './adminConfig';
 
 export type { RateEditorData, StandingRate } from '@/lib/residuals/rates';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 /**
  * Everything the editor needs for one merchant, optionally in the context of
@@ -57,7 +55,7 @@ export async function rateEditor(
   mid: string,
   periodId: string | null = null,
 ): Promise<RateEditorData> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_merchant_rate_editor', {
@@ -101,7 +99,7 @@ export type RateVersion = {
 };
 
 export async function rateVersions(ctx: AuthContext, mid: string): Promise<RateVersion[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_merchant_rate_versions', { p_mid: mid });
@@ -161,7 +159,7 @@ export async function supersedeRates(
   values: Record<string, string | null>,
   notes: string | null,
 ): Promise<SupersedeResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   /*
    * Only the known keys, and nothing else. The RPC reads what it recognises
@@ -210,7 +208,7 @@ export async function updateRateRow(
   riskTier: string,
   values: Record<string, string | null>,
 ): Promise<{ ok: boolean; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const clean: Record<string, string | null> = {};
   for (const k of RATE_KEYS) {
@@ -253,7 +251,7 @@ export async function rateCoverage(
   ctx: AuthContext,
   periodId: string,
 ): Promise<RateCoverageRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_merchant_rate_coverage', {
@@ -326,7 +324,7 @@ export async function previewRateImport(
   effectiveFrom: string,
   rows: Record<string, string | null>[],
 ): Promise<RateImportOutcome> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_preview_merchant_rates_import', {
@@ -356,7 +354,7 @@ export async function commitRateImport(
   effectiveFrom: string,
   rows: Record<string, string | null>[],
 ): Promise<RateImportOutcome> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('commit_residual_merchant_rates_import', {

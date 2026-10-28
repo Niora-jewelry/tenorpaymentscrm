@@ -17,13 +17,23 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import type { AuthContext } from './permissions';
+import { canOpenAdminPage, type AdminPage, type AuthContext } from './permissions';
 
 /** Every Presets data function's first line. `AuthContext` can only be built
  * by `authorize()`, so this is the admin half of the check, not the
  * authentication half. */
 export function assertAdmin(ctx: AuthContext): void {
   if (!ctx.isAdmin) throw new Error('Admin only');
+}
+
+/**
+ * Full access to one admin page (Permissions spec: "Each page is set
+ * separately"). Every data function behind a page starts here, so a page the
+ * user cannot open is also a page whose writes refuse them — hiding the link
+ * is never the boundary. Super admin always may.
+ */
+export async function assertAdminPage(ctx: AuthContext, page: AdminPage): Promise<void> {
+  if (!(await canOpenAdminPage(ctx, page))) throw new Error('You do not have access to this admin page.');
 }
 
 /** A human-typed key ("Merchant Equipment") to a storable one

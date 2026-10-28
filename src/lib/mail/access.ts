@@ -15,25 +15,24 @@
  * `mail_*` table (`mail_visible_mailbox_ids()`), which this can only narrow.
  */
 import 'server-only';
-import { loadConfig } from '@/lib/records/config';
-import { subtabGrant, capGrant, tabGrant, type AuthContext } from '@/lib/records/permissions';
+import type { AuthContext } from '@/lib/records/permissions';
 import { mailConfigured } from '@/lib/env.server';
 
 /** Looked up by key, never by id. */
-const EMAIL_SUBTAB_KEY = 'email';
 
 export type EmailAccess = 'hidden' | 'view' | 'edit';
 
+/**
+ * Every user has the Email module for their own connected inbox, "whatever
+ * their other permissions" (Permissions spec: Moving Email settings into the
+ * Email module). Whose OTHER inboxes they also see is the Email setting —
+ * Own only / All users — enforced by `mail_visible_mailbox_ids()`
+ * (migration 9813), not here. There is no Hidden and no view-only Email.
+ */
 export async function emailAccess(ctx: AuthContext): Promise<EmailAccess> {
+  void ctx;
   if (!mailConfigured) return 'hidden';
-  if (ctx.isAdmin) return 'edit';
-
-  const config = await loadConfig();
-  const subtab = config.subtabs.find((s) => s.key === EMAIL_SUBTAB_KEY);
-  if (!subtab) return 'hidden';
-
-  const [tg, sg] = await Promise.all([tabGrant(ctx, subtab.tabId), subtabGrant(ctx, subtab.id)]);
-  return capGrant(tg, sg);
+  return 'edit';
 }
 
 export async function canSeeEmail(ctx: AuthContext): Promise<boolean> {

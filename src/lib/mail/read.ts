@@ -11,7 +11,7 @@ import 'server-only';
 import { profileNamesFor } from '@/lib/records/users';
 import { moduleNotice } from './health';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { AuthContext } from '@/lib/records/permissions';
+import { seesAll, type AuthContext } from '@/lib/records/permissions';
 import { healthOf } from './mailboxes';
 import { actingFor } from './acting';
 import { sanitizeEmail } from './content/sanitize';
@@ -111,9 +111,9 @@ export async function loadMailboxes(ctx: AuthContext): Promise<MailboxView[]> {
       folders: [],
     }));
 
-  // Admins also see members' personal mailboxes (spec): whatever RLS shows
-  // beyond their own connections.
-  if (ctx.isAdmin) {
+  // Email = All users also sees other people's personal mailboxes
+  // (Permissions spec): whatever RLS shows beyond their own connections.
+  if (await seesAll(ctx, 'email')) {
     const { data: team } = await supabase
       .from('mail_mailboxes')
       .select('id, address, display_name, kind, sync_status, seeded_at')

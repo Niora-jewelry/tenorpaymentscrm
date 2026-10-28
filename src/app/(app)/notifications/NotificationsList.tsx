@@ -12,6 +12,7 @@ import { Icon, type IconName } from '@/proto/ui/icons';
 import { Button, Spinner } from '@/proto/ui/kit';
 import { relative } from '@/proto/ui/tokens';
 import { UserAvatar } from '../[module]/UserAvatar';
+import { usePeople, usePeopleById } from '@/proto/ui/people';
 import { notificationsAction, openNotificationAction, markNotificationsAction, markAllReadAction } from '../actions';
 import { announceNotificationsChanged, CHANGED_EVENT } from '../useLiveCounts';
 import type { NotificationView, NotificationCursor, NotificationFilter } from '@/lib/records/notifications';
@@ -40,8 +41,22 @@ function whereOf(n: NotificationView): { icon: IconName; label: string; detail?:
   }
 }
 
-export function NotificationsList({ initial, initialUnread }: { initial: Page; initialUnread: number }) {
+export function NotificationsList({
+  initial,
+  initialUnread,
+  canSeeAll = false,
+  viewerId,
+}: {
+  initial: Page;
+  initialUnread: number;
+  /** Notifications = All users (Permissions spec): may look at someone
+   *  else's notifications, or everyone's. */
+  canSeeAll?: boolean;
+  viewerId?: string;
+}) {
   const router = useRouter();
+  const people = usePeople();
+  const [who, setWho] = useState<string>('me');
   const [filter, setFilter] = useState<NotificationFilter>('unread');
   const [pages, setPages] = useState<Record<NotificationFilter, Page | null>>({ unread: initial, read: null, all: null });
   const [loading, setLoading] = useState(false);
@@ -50,12 +65,14 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
   const [now, setNow] = useState(() => new Date());
   const [unread, setUnread] = useState(initialUnread);
   const seq = useRef(0);
+  const whoRef = useRef('me');
+  const own = who === 'me' || who === viewerId;
 
   const load = useCallback(async (f: NotificationFilter, cursor: NotificationCursor, append: boolean) => {
     const n = ++seq.current;
     if (!append) setLoading(true);
     try {
-      const page = await notificationsAction({ filter: f, cursor });
+      const page = await notificationsAction({ filter: f, cursor, who: whoRef.current });
       if (n !== seq.current && !append) return;
       setPages((p) => ({ ...p, [f]: append && p[f] ? { rows: [...p[f]!.rows, ...page.rows], next: page.next } : page }));
       setNow(new Date());
@@ -84,6 +101,14 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
   const pick = (f: NotificationFilter) => {
     setFilter(f);
     if (!pages[f]) void load(f, null, false);
+  };
+
+  /** Switching whose notifications are shown drops every cached page. */
+  const pickWho = (next: string) => {
+    whoRef.current = next;
+    setWho(next);
+    setPages({ unread: null, read: null, all: null });
+    void load(filter, null, false);
   };
 
   const page = pages[filter];
@@ -116,6 +141,12 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
   };
 
   const open = (n: NotificationView) => {
+    // Someone else's notification: go there, but leave it unread for them.
+    if (n.recipientId && n.recipientId !== viewerId) {
+      if (n.href) router.push(n.href);
+      else setNote('This item is no longer available.');
+      return;
+    }
     setRead([n.id], true);
     void openNotificationAction({ id: n.id, follow: true }).then(({ href }) => {
       announceNotificationsChanged();
@@ -130,12 +161,38 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
         <div>
           <h1 className="text-[22px] font-semibold tracking-[-.01em] text-ink-900">Notifications</h1>
           <p className="mt-1 text-[13px] text-ink-500">
-            {unread > 0 ? `${unread} unread · ` : ''}Mentions on updates, cases and fields from the last 90 days. Only you see these.
+            {own
+              ? `${unread > 0 ? `${unread} unread · ` : ''}Mentions on updates, cases and fields from the last 90 days.`
+              : 'Read only — they stay unread for the person they went to.'}
           </p>
         </div>
-        <Button variant="secondary" size="sm" icon="check" onClick={markAll} disabled={unread === 0}>
-          Mark all as read
-        </Button>
+        <div className="flex items-center gap-2">
+          {canSeeAll ? (
+            <label className="inline-flex items-center gap-2 text-[12.5px] text-ink-500">
+              Showing
+              <select
+                value={who}
+                onChange={(e) => pickWho(e.target.value)}
+                className="rounded-lg border border-line bg-white px-2.5 py-1.5 text-[13px] font-medium text-ink-800 outline-none hover:border-ink-300 focus-field"
+              >
+                <option value="me">Mine</option>
+                <option value="everyone">Everyone&rsquo;s</option>
+                <optgroup label="One person">
+                  {people
+                    .filter((p) => !p.suspended && p.id !== viewerId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                </optgroup>
+              </select>
+            </label>
+          ) : null}
+          {own ? (
+            <Button variant="secondary" size="sm" icon="check" onClick={markAll} disabled={unread === 0}>
+              Mark all as read
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -185,7 +242,7 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
       ) : (
         <ul className="overflow-hidden rounded-xl border border-line bg-white">
           {rows.map((n) => (
-            <Row key={n.id} n={n} now={now} onOpen={() => open(n)} onMark={(read) => mark(n, read)} />
+            <Row key={n.id} n={n} now={now} viewerId={viewerId} onOpen={() => open(n)} onMark={(read) => mark(n, read)} />
           ))}
         </ul>
       )}
@@ -201,7 +258,18 @@ export function NotificationsList({ initial, initialUnread }: { initial: Page; i
   );
 }
 
-function Row({ n, now, onOpen, onMark }: { n: NotificationView; now: Date; onOpen: () => void; onMark: (read: boolean) => void }) {
+function Row({
+  n, now, viewerId, onOpen, onMark,
+}: {
+  n: NotificationView;
+  now: Date;
+  viewerId?: string;
+  onOpen: () => void;
+  onMark: (read: boolean) => void;
+}) {
+  const byId = usePeopleById();
+  const others = Boolean(n.recipientId && n.recipientId !== viewerId);
+  const toName = others ? (byId.get(n.recipientId!)?.name ?? 'someone') : null;
   const unread = !n.readAt;
   const where = whereOf(n);
   const isMention = n.sourceKind.startsWith('mention_');
@@ -229,10 +297,10 @@ function Row({ n, now, onOpen, onMark }: { n: NotificationView; now: Date; onOpe
           {isMention ? (
             <>
               <span>{actor}</span>
-              <span className={unread ? 'font-medium text-ink-500' : 'text-ink-400'}>mentioned you</span>
+              <span className={unread ? 'font-medium text-ink-500' : 'text-ink-400'}>mentioned {toName ?? 'you'}</span>
             </>
           ) : (
-            <span>{where.label}</span>
+            <span>{where.label}{toName ? <span className="font-normal text-ink-400"> · to {toName}</span> : null}</span>
           )}
           <span className="inline-flex items-center gap-1 rounded-md border border-line bg-white px-1.5 py-px text-[11px] font-semibold text-ink-600">
             <Icon name={where.icon} size={11} className="text-ink-400" />
@@ -252,14 +320,14 @@ function Row({ n, now, onOpen, onMark }: { n: NotificationView; now: Date; onOpe
         <time dateTime={n.createdAt} title={stamp.toLocaleString()} className="text-[11.5px] tabular text-ink-400">
           {relative(n.createdAt, now)}
         </time>
-        <button
+        {others ? null : <button
           type="button"
           /* `onMark(read)`: an unread row is marked read, a read one unread. */
           onClick={() => onMark(unread)}
           className="rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold text-ink-400 opacity-0 transition-opacity hover:bg-canvas hover:text-ink-900 focus:opacity-100 group-hover:opacity-100"
         >
           {unread ? 'Mark read' : 'Mark unread'}
-        </button>
+        </button>}
       </div>
     </li>
   );

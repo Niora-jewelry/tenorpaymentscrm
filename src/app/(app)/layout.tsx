@@ -6,7 +6,7 @@
  * are real, fetched once per request, same as every other real page here.
  */
 import { Suspense } from 'react';
-import { authorize, moduleGrant } from '@/lib/records/permissions';
+import { canOpenAdminPage, authorize, moduleGrant } from '@/lib/records/permissions';
 import { PostHogProvider, PostHogPageviews } from './PostHogProvider';
 import { loadConfig } from '@/lib/records/config';
 import { moduleRecordCounts, deletedRecordCount } from '@/lib/records/records';
@@ -69,9 +69,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const visible = config.modules.filter((m) => grants.get(m.id) !== 'hidden');
   const displayModules = visible.filter((m) => m.kind === 'display');
   const storageModules = visible.filter((m) => m.kind === 'storage');
+  // The Configure items this person may open — one Full/Hidden per page.
+  const ADMIN_PAGES = ['users', 'permissions', 'presets', 'numbers', 'residuals', 'integrations', 'automations', 'recycle_bin'] as const;
+  const adminPages = (
+    await Promise.all(ADMIN_PAGES.map(async (p) => [p, await canOpenAdminPage(ctx, p)] as const))
+  ).filter(([, ok]) => ok).map(([p]) => p);
   const [counts, binCount] = await Promise.all([
     moduleRecordCounts([...storageModules, ...displayModules]),
-    deletedRecordCount(ctx),
+    adminPages.includes('recycle_bin') ? deletedRecordCount(ctx) : Promise.resolve(0),
   ]);
 
   return (
@@ -115,7 +120,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         binCount={binCount}
         userName={user?.name ?? user?.email ?? 'You'}
         userEmail={user?.email ?? ''}
-        isAdmin={ctx.isAdmin}
+        adminPages={adminPages}
         userId={ctx.userId}
         initialCounts={counts0}
         emailUnread={emailUnread}

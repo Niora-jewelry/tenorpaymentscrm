@@ -29,7 +29,7 @@
  * been specified. Instantly was removed outright (UI/UX Redesign spec §5).
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
 import { mailConfigured, phoneConfigured } from '@/lib/env.server';
 import { adminHealth, SECRET_WARNING_DAYS, type AdminHealth } from '@/lib/mail/health';
@@ -136,7 +136,7 @@ function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
 
 export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'integrations'))) redirect('/dashboard');
 
   const list = providers(phoneConfigured, mailConfigured ? await adminHealth() : null);
   const twilioLive = phoneConfigured;

@@ -15,7 +15,7 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { type AuthContext } from '@/lib/records/permissions';
+import { seesAll, type AuthContext } from '@/lib/records/permissions';
 import { canSeePhone, canUsePhone, canHearRecordings } from './access';
 import { resolveUserActiveNumber } from './numbers';
 import { resolveRecordByPhone } from './records';
@@ -148,10 +148,10 @@ export async function callsForUser(ctx: AuthContext, limit = 100): Promise<Phone
   await expireStaleCalls();
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('phone_calls')
-    .select(CALL_SELECT)
-    .eq('owner_id', ctx.userId)
+  // Phone = All users: every line's calls (RLS still decides, migration 9813).
+  let query = supabase.from('phone_calls').select(CALL_SELECT);
+  if (!(await seesAll(ctx, 'phone'))) query = query.eq('owner_id', ctx.userId);
+  const { data, error } = await query
     .is('deleted_at', null)
     .order('started_at', { ascending: false })
     .limit(limit);

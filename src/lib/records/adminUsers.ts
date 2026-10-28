@@ -18,10 +18,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { invalidateGrants, type AuthContext } from './permissions';
 import { sendInviteEmail } from '@/lib/email/send';
 import type { AssignTemplateInput, InviteUserInput } from './adminSchemas';
+import { assertAdminPage } from './adminConfig';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 export type AdminUserRow = {
   id: string;
@@ -65,7 +63,7 @@ export type AdminUserRow = {
 export type RoleOption = { id: string; slug: string; name: string; isAdmin: boolean };
 
 export async function listUsers(ctx: AuthContext): Promise<AdminUserRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   const [profilesRes, rolesRes, userTemplatesRes, templatesRes, grantsRes, visibilityRes] = await Promise.all([
@@ -119,7 +117,7 @@ export async function listUsers(ctx: AuthContext): Promise<AdminUserRow[]> {
 }
 
 export async function listRoles(ctx: AuthContext): Promise<RoleOption[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const { data, error } = await supabaseAdmin().from('roles').select('id, slug, name, is_admin').order('name');
   if (error) throw error;
   return (data ?? []).map((r) => ({ id: r.id, slug: r.slug, name: r.name, isAdmin: r.is_admin }));
@@ -139,7 +137,7 @@ export async function inviteUser(
   ctx: AuthContext,
   input: InviteUserInput,
 ): Promise<{ ok: true; inviteId: string | null } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
   // Trimmed and lower-cased by the schema (Phase 6c) rather than here — the
   // address is the invite's unique key, so normalising it is a boundary
@@ -196,7 +194,7 @@ export async function inviteUser(
  * the paused user's next login attempt. Both columns and their enforcement
  * already existed (Phase 1); this is the first thing that ever sets them. */
 export async function pauseUser(ctx: AuthContext, userId: string): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   if (userId === ctx.userId) throw new Error('You cannot pause your own account.');
   const { error } = await supabaseAdmin()
     .from('profiles')
@@ -206,7 +204,7 @@ export async function pauseUser(ctx: AuthContext, userId: string): Promise<void>
 }
 
 export async function resumeUser(ctx: AuthContext, userId: string): Promise<void> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const { error } = await supabaseAdmin().from('profiles').update({ status: 'active' }).eq('id', userId);
   if (error) throw error;
 }
@@ -248,7 +246,7 @@ export async function assignTemplate(
   ctx: AuthContext,
   input: AssignTemplateInput,
 ): Promise<{ ok: true } | { ok: false; message: string; overrideCount?: number }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
   const templateId = input.templateId || null;
 
@@ -323,7 +321,7 @@ export type AdminInviteRow = {
  * request-scoped client at all — the same reason `listDeletedUsers` uses it.
  */
 export async function listInvites(ctx: AuthContext): Promise<AdminInviteRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   const [invitesRes, rolesRes, profilesRes, templatesRes] = await Promise.all([
@@ -391,7 +389,7 @@ export async function sendInviteNotification(
   ctx: AuthContext,
   inviteId: string,
 ): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   const { data: invite, error } = await supabase
@@ -454,7 +452,7 @@ export async function revokeInvite(
   ctx: AuthContext,
   inviteId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   /*
@@ -518,7 +516,7 @@ export async function renewInvite(
   ctx: AuthContext,
   inviteId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   const { data, error } = await supabase
@@ -626,7 +624,7 @@ export async function listLoginHistory(
   userId: string,
   limit = 200,
 ): Promise<LoginEvent[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = supabaseAdmin();
 
   const { data: profile, error: profileError } = await supabase
@@ -694,7 +692,7 @@ export type OffboardResult = { ok: true } | { ok: false; message: string };
  * mislead the admin, never corrupt the outcome.
  */
 export async function getUserRecordCount(ctx: AuthContext, userId: string): Promise<number> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('count_user_records', { p_user: userId });
   if (error) throw error;
@@ -715,7 +713,7 @@ export async function reassignUserRecords(
   fromUserId: string,
   toUserId: string,
 ): Promise<OffboardResult & { moved?: number }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('reassign_user_records', {
     p_from: fromUserId,
@@ -732,7 +730,7 @@ export async function reassignUserRecords(
 /** Soft delete → the Recycle Bin. Refused while the person still holds
  *  records; the message names how many. */
 export async function softDeleteUser(ctx: AuthContext, userId: string): Promise<OffboardResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('soft_delete_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
@@ -757,7 +755,7 @@ async function disconnectMail(userId: string): Promise<void> {
  *  account and re-enabling sign-in are two decisions, and the second one is
  *  Resume. */
 export async function restoreUser(ctx: AuthContext, userId: string): Promise<OffboardResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('restore_user', { p_user: userId });
   if (error) return { ok: false, message: error.message };
@@ -786,7 +784,7 @@ export async function purgeUser(
   ctx: AuthContext,
   userId: string,
 ): Promise<OffboardResult & { outcome?: PurgeOutcome }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'users');
   const supabase = await createSupabaseServerClient();
   // Before the account goes: its mail sign-ins must not outlive it.
   await disconnectMail(userId);

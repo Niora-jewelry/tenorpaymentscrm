@@ -27,12 +27,10 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { VOLUME_KEYS } from '@/lib/residuals/volumes';
 import type { VolumeMappingRow, VolumeRow } from '@/lib/residuals/volumes';
+import { assertAdminPage } from './adminConfig';
 
 export type { VolumeBucketDetail, VolumeMappingRow, VolumeRow } from '@/lib/residuals/volumes';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 /**
  * The volume row for one merchant, or for every merchant in the period.
@@ -46,7 +44,7 @@ export async function volumeRows(
   periodId: string,
   mid: string | null = null,
 ): Promise<VolumeRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_merchant_volume_row', {
@@ -88,7 +86,7 @@ export async function volumeMappingCoverage(
   ctx: AuthContext,
   periodId: string,
 ): Promise<VolumeMappingRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('residual_volume_mapping_coverage', {
@@ -142,7 +140,7 @@ export async function updateVolumes(
   values: Record<string, string | null>,
   merchantName: string | null,
 ): Promise<{ ok: boolean; message: string; created?: boolean }> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const clean: Record<string, string | null> = {};
   for (const k of VOLUME_KEYS) {

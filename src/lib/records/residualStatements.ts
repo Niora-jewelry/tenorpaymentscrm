@@ -41,10 +41,8 @@ import {
 } from '@/lib/residuals/statementParser';
 import type { AuthContext } from './permissions';
 import { ensurePeriod } from './residualImport';
+import { assertAdminPage } from './adminConfig';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 export type StatementFile = { name: string; bytes: Uint8Array };
 
@@ -77,7 +75,7 @@ export async function readStatements(
   files: StatementFile[],
   statementMonth: string | null,
 ): Promise<StatementReadSet> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const reads: StatementRead[] = [];
 
@@ -206,7 +204,7 @@ export async function commitStatements(
     replaceExisting: boolean;
   },
 ): Promise<StatementCommitResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   /* Parsed AGAIN from the bytes, never taken from what the preview returned. */
   const { reads } = await readStatements(ctx, req.files, req.statementMonth);

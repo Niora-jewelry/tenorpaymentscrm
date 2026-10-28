@@ -25,6 +25,9 @@ export const PHONE_KINDS = ['call', 'voicemail', 'recording', 'sms'] as const;
 
 export type NotificationView = {
   id: string;
+  /** Whose notification this is — set only when listing someone else's
+   *  (Notifications = All users), so the row can say who it went to. */
+  recipientId?: string | null;
   sourceKind: string;
   recordId: string | null;
   recordName: string | null;
@@ -157,16 +160,33 @@ export async function listNotifications(
   filter: NotificationFilter,
   cursor: NotificationCursor,
   limit = 30,
+  /** Whose: the viewer (default), one person, or 'everyone' — the last two
+   *  only with Notifications = All users, which the database checks. */
+  who: 'me' | 'everyone' | string = 'me',
 ): Promise<{ rows: NotificationView[]; next: NotificationCursor }> {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.rpc('notifications_list', {
-    p_filter: filter,
-    p_cursor_at: cursor?.at ?? null,
-    p_cursor_id: cursor?.id ?? null,
-    p_limit: limit,
-  });
+  const own = who === 'me' || who === ctx.userId;
+  const { data, error } = own
+    ? await supabase.rpc('notifications_list', {
+        p_filter: filter,
+        p_cursor_at: cursor?.at ?? null,
+        p_cursor_id: cursor?.id ?? null,
+        p_limit: limit,
+      })
+    : await supabase.rpc('notifications_list_of', {
+        p_user: who === 'everyone' ? null : who,
+        p_filter: filter,
+        p_cursor_at: cursor?.at ?? null,
+        p_cursor_id: cursor?.id ?? null,
+        p_limit: limit,
+      });
   if (error) throw error;
-  const rows = await toViews(ctx, (data ?? []) as Raw[]);
+  let rows = await toViews(ctx, (data ?? []) as Raw[]);
+  if (!own && rows.length) {
+    const { data: recips } = await supabase.from('notifications').select('id, recipient_id').in('id', rows.map((r) => r.id));
+    const to = new Map((recips ?? []).map((r) => [r.id as string, r.recipient_id as string]));
+    rows = rows.map((r) => ({ ...r, recipientId: to.get(r.id) ?? null }));
+  }
   const last = rows[rows.length - 1];
   return { rows, next: rows.length === limit && last ? { at: last.createdAt, id: last.id } : null };
 }

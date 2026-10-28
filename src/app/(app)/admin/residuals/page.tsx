@@ -24,7 +24,7 @@
  * ask the same question: auth_is_admin().
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import {
   listPeriods,
   referenceSummary,
@@ -40,7 +40,7 @@ import { ResidualsTabs } from './ResidualsTabs';
 
 export default async function AdminResidualsPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'residuals'))) redirect('/dashboard');
 
   const [periods, reference, rates, worklist, procs, imports] = await Promise.all([
     listPeriods(ctx),

@@ -28,7 +28,7 @@
  */
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import {
   gridRows,
   merchantStates,
@@ -53,7 +53,7 @@ export default async function PeriodPage({
   searchParams?: Promise<{ mid?: string }>;
 }) {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'residuals'))) redirect('/dashboard');
 
   const { periodId } = await params;
   const focusMid = ((await searchParams)?.mid ?? '').replace(/[^0-9]/g, '') || null;

@@ -35,8 +35,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getSessionUser } from '@/lib/auth/session';
 import {
   GRANT_DEFAULT,
-  resolveModuleGrant,
-  resolveMembership,
   resolveTabGrant,
   resolveSubtabGrant,
   resolveFieldGrant,
@@ -265,46 +263,122 @@ async function rawGrant(
   return grants.get(`${kind}:${scopeId}`) ?? GRANT_DEFAULT;
 }
 
+/* -------------------------------------------------------------------------- */
+/* The Permissions spec's settings (migrations 9810-9812)                      */
+/* -------------------------------------------------------------------------- */
+
+export type CompanyAction = 'create' | 'team' | 'archive' | 'modules' | 'pipeline';
+export type AdminPage =
+  | 'users' | 'permissions' | 'presets' | 'numbers' | 'residuals' | 'integrations' | 'automations' | 'recycle_bin';
+export type ModuleScope = 'hidden' | 'mine' | 'all';
+
+export type Permissions = {
+  superAdmin: boolean;
+  userType: string | null;
+  /** Every resolved setting: `action.*`, `admin.*`, `*.scope`, `items.*`. */
+  settings: Record<string, string>;
+  /** Module id → Hidden / Only mine / All (Tickets already follows Cases). */
+  modules: Record<string, ModuleScope>;
+};
+
 /**
- * Module-level access. "Records List defaults to no access for every
- * non-admin" (MODULE-2-PLAN §5.1) is the `adminOnly` floor below, not a
- * special-cased default in `effective_grant()` itself — a module flagged
- * admin-only is simply never reachable by a non-admin, full stop, regardless
- * of any template or override.
+ * The caller's whole resolved set, read once per request through the same
+ * resolver the database policies use (`my_permissions`, migration 9812) — so
+ * a button and the write behind it can never disagree.
+ */
+const permsBox = cache((): { userId: string | null; perms: Promise<Permissions> | null } => ({ userId: null, perms: null }));
+
+export async function permissionsFor(ctx: AuthContext): Promise<Permissions> {
+  const box = permsBox();
+  if (box.userId !== ctx.userId || !box.perms) {
+    box.userId = ctx.userId;
+    box.perms = (async () => {
+      const supabase = await createSupabaseServerClient();
+      const { data, error } = await supabase.rpc('my_permissions');
+      if (error) throw error;
+      const p = (data ?? {}) as Partial<Permissions>;
+      return {
+        superAdmin: Boolean(p.superAdmin),
+        userType: p.userType ?? null,
+        settings: p.settings ?? {},
+        modules: (p.modules ?? {}) as Record<string, ModuleScope>,
+      };
+    })().catch((e) => {
+      box.userId = null;
+      box.perms = null;
+      throw e;
+    });
+  }
+  return box.perms;
+}
+
+/** Re-read on the next ask — after a permission change in this request. */
+export function invalidatePermissions(): void {
+  const box = permsBox();
+  box.userId = null;
+  box.perms = null;
+}
+
+/** A company-wide action (Permissions spec): create, team, archive, modules, pipeline. */
+export async function canDo(ctx: AuthContext, action: CompanyAction): Promise<boolean> {
+  if (ctx.isAdmin) return true;
+  return (await permissionsFor(ctx)).settings[`action.${action}`] === 'yes';
+}
+
+/** Full access to one admin page (Users, Permissions, Presets, …). */
+export async function canOpenAdminPage(ctx: AuthContext, page: AdminPage): Promise<boolean> {
+  if (ctx.isAdmin) return true;
+  return (await permissionsFor(ctx)).settings[`admin.${page}`] === 'full';
+}
+
+/** Hidden / Only mine / All for one module. */
+export async function moduleScope(ctx: AuthContext, moduleId: string): Promise<ModuleScope> {
+  if (ctx.isAdmin) return 'all';
+  return (await permissionsFor(ctx)).modules[moduleId] ?? 'hidden';
+}
+
+/** One of the own/all scopes — notifications, email, phone — or the
+ *  Communication tab's own/whole-org. */
+export async function seesAll(ctx: AuthContext, what: 'notifications' | 'email' | 'phone' | 'communication'): Promise<boolean> {
+  if (ctx.isAdmin) return true;
+  const v = (await permissionsFor(ctx)).settings[`${what}.scope`];
+  return v === 'all' || v === 'org';
+}
+
+/**
+ * A module's level, for the screens that still ask for one.
+ *
+ * Module access is Hidden / Only mine / All now (Permissions spec), not a
+ * Hidden / View / Edit level: what a user may change is decided by tabs and
+ * fields. So a module is `hidden` when the user cannot open it and `edit`
+ * otherwise. The Records List is no longer forced Hidden for everyone but a
+ * Super admin — its setting decides, as for any module (`Admin` has it).
  */
 export async function moduleGrant(
   ctx: AuthContext,
   moduleId: string,
-  moduleAdminOnly: boolean,
+  // Kept for the existing call sites; the setting decides now.
+  _moduleAdminOnly?: boolean,
 ): Promise<Grant> {
-  // Both floors decide the answer without the stored grant, so skip the round
-  // trip when either applies — `resolveModuleGrant` ignores `raw` in exactly
-  // those two cases.
-  const decided = (moduleAdminOnly && !ctx.isAdmin) || ctx.isAdmin;
-  const raw = decided ? GRANT_DEFAULT : await rawGrant(ctx, 'module', moduleId);
-  return resolveModuleGrant(raw, moduleAdminOnly, ctx.isAdmin);
+  void _moduleAdminOnly;
+  if (ctx.isAdmin) return 'edit';
+  return (await moduleScope(ctx, moduleId)) === 'hidden' ? 'hidden' : GRANT_DEFAULT;
 }
 
 /**
- * May this person add records to, and remove them from, a module — the
- * `membership` scope (migration 9766), resolved exactly as
- * `module_membership_allowed()` does in SQL: the module must not be Hidden,
- * and the stored membership row — or, when none is set, the module grant —
- * must be Edit. Admins always may.
- *
- * Read from the same per-request grant set as everything else, through the
- * key `effective_grants()` emits for a global row (`membership:<module id>`).
- * `rawGrant` cannot be used here: its miss resolves to `GRANT_DEFAULT`, and
- * for this scope a miss must fall through to the module grant instead.
+ * "Display / remove records from modules" — one company-wide yes/no, for a
+ * display module the user can open. A module that shows open cases is
+ * automatic and never set by hand. Mirrors `module_membership_allowed`.
  */
 export async function membershipAllowed(
   ctx: AuthContext,
-  module: { id: string; adminOnly: boolean },
+  module: { id: string; adminOnly: boolean; kind?: string; showsOpenCases?: boolean },
 ): Promise<boolean> {
   if (ctx.isAdmin) return true;
-  const mg = await moduleGrant(ctx, module.id, module.adminOnly);
-  const raw = (await allGrantsFor(ctx.userId)).get(`membership:${module.id}`) ?? null;
-  return resolveMembership(mg, raw, false) === 'edit';
+  if (module.kind && module.kind !== 'display') return false;
+  if (module.showsOpenCases) return false;
+  if (!(await canDo(ctx, 'modules'))) return false;
+  return (await moduleScope(ctx, module.id)) !== 'hidden';
 }
 
 /**
@@ -380,11 +454,17 @@ export async function tabGrants(
  */
 export async function fieldGrant(
   ctx: AuthContext,
-  field: { id: string; key: string; readOnly: boolean },
+  field: { id: string; key: string; readOnly: boolean; type?: string },
   moduleId?: string | null,
 ): Promise<Grant> {
   const raw = ctx.isAdmin ? GRANT_DEFAULT : await rawGrant(ctx, 'field', field.id, moduleId);
-  return resolveFieldGrant(raw, field, ctx.isAdmin);
+  const resolved = resolveFieldGrant(raw, field, ctx.isAdmin);
+  // Team pickers need "Add / remove team members" to change — the same cap
+  // `user_record_field_grant` applies (migration 9811).
+  if (!ctx.isAdmin && field.type === 'team_member' && resolved === 'edit' && !(await canDo(ctx, 'team'))) {
+    return 'view';
+  }
+  return resolved;
 }
 
 /** Field grants for a whole tab/drawer's worth of fields.
@@ -395,7 +475,7 @@ export async function fieldGrant(
  * map, so the map is fetched once and every field is resolved in memory. */
 export async function fieldGrants(
   ctx: AuthContext,
-  fields: { id: string; key: string; readOnly: boolean }[],
+  fields: { id: string; key: string; readOnly: boolean; type?: string }[],
   moduleId?: string | null,
 ): Promise<Map<string, Grant>> {
   const entries = await Promise.all(

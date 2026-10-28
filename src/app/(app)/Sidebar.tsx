@@ -76,6 +76,25 @@ import { useLiveCounts } from './useLiveCounts';
 const BRAND_NAME = 'TapDash';
 const BRAND_TAGLINE = 'Merchant services CRM';
 
+/**
+ * The Configure group, in its long-standing order: Users and Permissions
+ * together (who a user is, and what they may see), then Presets, then the two
+ * things an admin operates (Phone numbers, Residuals admin), then the status
+ * pages, then the Recycle bin. "Permissions" is the user's word for the
+ * template screen; "Residuals admin", because the Residuals MODULE owns the
+ * plain name.
+ */
+const CONFIGURE_ITEMS: { page: string; href: string; icon: IconName; label: string; exact?: boolean }[] = [
+  { page: 'users', href: '/admin/users', icon: 'users', label: 'Users', exact: true },
+  { page: 'permissions', href: '/admin/templates', icon: 'key', label: 'Permissions' },
+  { page: 'presets', href: '/admin/presets', icon: 'sliders', label: 'Presets', exact: true },
+  { page: 'numbers', href: '/admin/numbers', icon: 'phone', label: 'Phone numbers', exact: true },
+  { page: 'residuals', href: '/admin/residuals', icon: 'percent', label: 'Residuals admin' },
+  { page: 'integrations', href: '/admin/integrations', icon: 'link', label: 'Integrations', exact: true },
+  { page: 'automations', href: '/admin/automations', icon: 'route', label: 'Automations', exact: true },
+  { page: 'recycle_bin', href: '/admin/recycle-bin', icon: 'trash', label: 'Recycle bin', exact: true },
+];
+
 export function Sidebar({
   storageModules,
   displayModules,
@@ -83,18 +102,19 @@ export function Sidebar({
   binCount,
   userName,
   userEmail,
-  isAdmin,
+  adminPages = [],
   userId,
   initialCounts,
   emailUnread,
 }: {
+  /** Admin pages this person has Full access to (Permissions spec). */
+  adminPages?: string[];
   storageModules: Module[];
   displayModules: Module[];
   counts: Record<string, number>;
   binCount: number;
   userName: string;
   userEmail: string;
-  isAdmin: boolean;
   /** For the live-count subscription: a person only ever receives their own rows. */
   userId: string;
   initialCounts: UnreadCounts;
@@ -272,7 +292,7 @@ export function Sidebar({
             icon="mail"
             label="Email"
             count={mailUnread > 0 ? mailUnread : undefined}
-            active={pathname === '/email' || (pathname.startsWith('/email/') && !(isAdmin && pathname.startsWith('/email/settings')))}
+            active={pathname === '/email' || pathname.startsWith('/email/')}
             collapsed={collapsed}
           />
         ) : null}
@@ -287,111 +307,27 @@ export function Sidebar({
           collapsed={collapsed}
         />
 
-        {isAdmin ? (
+        {/*
+          Configure: each admin page appears for whoever has Full access to it
+          (Permissions spec — "Each page is set separately"); the group label
+          only when at least one does. Email settings is no longer here: it is
+          the Email module's own gear, for everyone (spec: "Moving Email
+          settings into the Email module").
+        */}
+        {adminPages.length ? (
           <>
             <GroupLabel collapsed={collapsed}>Configure</GroupLabel>
-            <NavItem
-              href="/admin/users"
-              icon="users"
-              label="Users"
-              active={pathname === '/admin/users'}
-              collapsed={collapsed}
-            />
-            {/*
-              Sits next to Users rather than next to Presets: it is the other
-              half of one job (who a user is, and what they may see), and the
-              assign control that pairs with it lives on Users.
-
-              Labelled "Permissions", not "Templates". A permission template is
-              what the route stores, but nobody arrives at this sidebar looking
-              for a template — they arrive asking what someone is allowed to
-              see. The route, the tables and the page's own heading still say
-              template; only this label is the user's word for it.
-            */}
-            <NavItem
-              href="/admin/templates"
-              icon="key"
-              label="Permissions"
-              active={pathname.startsWith('/admin/templates')}
-              collapsed={collapsed}
-            />
-            <NavItem
-              href="/admin/presets"
-              icon="sliders"
-              label="Presets"
-              active={pathname === '/admin/presets'}
-              collapsed={collapsed}
-            />
-            {/*
-              Integrations and Automations are placeholder screens — connected
-              to nothing, and saying so on the page itself. They are linked
-              rather than left unreachable because an admin who cannot find the
-              screen assumes the feature is missing from the build; one who
-              opens it learns exactly what is and is not wired. Same position
-              as the prototype's own admin nav (`proto/ui/Sidebar.tsx:31-37`).
-            */}
-            {/* Phone numbers sits ABOVE Integrations because it is a thing an
-                admin actually operates — assigning a number is how a rep gets
-                telephony — whereas Integrations is a status page. */}
-            <NavItem
-              href="/admin/numbers"
-              icon="phone"
-              label="Phone numbers"
-              active={pathname === '/admin/numbers'}
-              collapsed={collapsed}
-            />
-            {/*
-              Residuals sits between Phone numbers and Integrations for the
-              same reason Phone numbers sits above them: it is something an
-              admin operates monthly, not a status page.
-
-              "Residuals admin", not "Residuals". The sixth MODULE is also
-              called Residuals and is also in this sidebar, a few items up —
-              two identical labels pointing at different screens, one listing
-              merchant records and one running the calculation. The module owns
-              the plain name because that is the one most people mean.
-            */}
-            <NavItem
-              href="/admin/residuals"
-              icon="percent"
-              label="Residuals admin"
-              active={pathname.startsWith('/admin/residuals')}
-              collapsed={collapsed}
-            />
-            {/* Email settings: connecting mailboxes, signatures, templates, undo
-                window. Members reach the same page from the Email screen's gear;
-                admins also find it here with the other things they set up. */}
-            {emailUnread !== null ? (
+            {CONFIGURE_ITEMS.filter((it) => adminPages.includes(it.page)).map((it) => (
               <NavItem
-                href="/email/settings"
-                icon="cog"
-                label="Email settings"
-                active={pathname.startsWith('/email/settings')}
+                key={it.page}
+                href={it.href}
+                icon={it.icon}
+                label={it.label}
+                count={it.page === 'recycle_bin' ? binCount || undefined : undefined}
+                active={it.exact ? pathname === it.href : pathname.startsWith(it.href)}
                 collapsed={collapsed}
               />
-            ) : null}
-            <NavItem
-              href="/admin/integrations"
-              icon="link"
-              label="Integrations"
-              active={pathname === '/admin/integrations'}
-              collapsed={collapsed}
-            />
-            <NavItem
-              href="/admin/automations"
-              icon="route"
-              label="Automations"
-              active={pathname === '/admin/automations'}
-              collapsed={collapsed}
-            />
-            <NavItem
-              href="/admin/recycle-bin"
-              icon="trash"
-              label="Recycle bin"
-              count={binCount || undefined}
-              active={pathname === '/admin/recycle-bin'}
-              collapsed={collapsed}
-            />
+            ))}
           </>
         ) : null}
       </nav>

@@ -27,10 +27,8 @@ import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
+import { assertAdminPage } from './adminConfig';
 
-function assertAdmin(ctx: AuthContext): void {
-  if (!ctx.isAdmin) throw new Error('Admin only');
-}
 
 /**
  * ── WHY SOME CALLS HERE ARE *NOT* supabaseAdmin() ────────────────────────
@@ -91,7 +89,7 @@ export type ResidualPeriod = {
 };
 
 export async function listPeriods(ctx: AuthContext): Promise<ResidualPeriod[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
   const supabase = supabaseAdmin();
 
   const { data, error } = await supabase
@@ -220,7 +218,7 @@ export type ReferenceSummary = {
 };
 
 export async function referenceSummary(ctx: AuthContext): Promise<ReferenceSummary> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
   const supabase = supabaseAdmin();
 
   const count = async (table: string) => {
@@ -363,7 +361,7 @@ export async function linkWorklist(
   ctx: AuthContext,
   periodId?: string | null,
 ): Promise<LinkWorklistRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   /* Request-scoped, not service-role — see the note by `asCaller`. */
   const { data, error } = await (await asCaller()).rpc('residual_link_worklist', {
@@ -420,7 +418,7 @@ export type BuyRateRow = {
 };
 
 export async function buyRates(ctx: AuthContext, processor = 'MAVERICK'): Promise<BuyRateRow[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   const { data, error } = await supabaseAdmin()
     .from('residual_buy_rates')
@@ -459,7 +457,7 @@ export async function buyRates(ctx: AuthContext, processor = 'MAVERICK'): Promis
 
 /** Which processors have a schedule at all. Only MAVERICK today. */
 export async function processors(ctx: AuthContext): Promise<string[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'residuals');
 
   /*
    * ── PROCESSORS, NOT VENDORS ─────────────────────────────────────────────

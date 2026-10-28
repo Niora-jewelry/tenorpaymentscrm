@@ -23,7 +23,7 @@
  * own permissions screen, which is the live one.
  */
 import { redirect, notFound } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { loadConfig } from '@/lib/records/config';
 import { inviteGrantMatrix } from '@/lib/records/adminGrants';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -43,7 +43,7 @@ export default async function InvitePermissionsPage({
   const { module: moduleParam } = await searchParams;
 
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'users'))) redirect('/dashboard');
 
   const config = await loadConfig();
   // Validated against the real module list, never trusted from the URL — a

@@ -12,7 +12,7 @@
  * verified on its own first.
  */
 import { redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { listUsers, listRoles, listInvites, sweepExpiredInvites } from '@/lib/records/adminUsers';
 import { listTemplates } from '@/lib/records/adminTemplates';
 import { UsersTable } from './UsersTable';
@@ -22,7 +22,7 @@ import { loadConfig } from '@/lib/records/config';
 
 export default async function AdminUsersPage() {
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'users'))) redirect('/dashboard');
 
   /*
    * The expiry sweep runs BEFORE the list is read, not alongside it.

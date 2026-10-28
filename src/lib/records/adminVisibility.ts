@@ -50,7 +50,7 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { assertAdmin } from './adminConfig';
+import { assertAdminPage } from './adminConfig';
 import type { RecordVisibilityGrantInput, RevokeVisibilityGrantInput } from './adminSchemas';
 
 /** One row, with both people resolved. `grantedBy` is nullable because
@@ -97,7 +97,7 @@ type ProfileRow = {
  * `adminUsers.ts` reads it the same way for the same reason.
  */
 export async function listVisibilityPeople(ctx: AuthContext): Promise<VisibilityPerson[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const { data, error } = await supabaseAdmin()
     .from('profiles')
     .select('id, email, full_name, status')
@@ -134,7 +134,7 @@ function mapGrants(rows: GrantRow[], nameById: Map<string, string>): VisibilityG
 
 /** Both directions for one person, in one round trip each way. */
 export async function listVisibilityGrants(ctx: AuthContext, userId: string): Promise<VisibilityGrants> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const supabase = supabaseAdmin();
 
   const [seesRes, seenByRes, people] = await Promise.all([
@@ -155,7 +155,7 @@ export async function listVisibilityGrants(ctx: AuthContext, userId: string): Pr
 /** Every grant in the system — the "who can see whose records" overview, which
  * is the only place the shape of the whole arrangement is visible at once. */
 export async function listAllVisibilityGrants(ctx: AuthContext): Promise<VisibilityGrant[]> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const [grantsRes, people] = await Promise.all([
     supabaseAdmin().from('record_visibility_grants').select('*').order('created_at', { ascending: false }),
     listVisibilityPeople(ctx),
@@ -185,7 +185,7 @@ export async function grantRecordVisibility(
   ctx: AuthContext,
   input: RecordVisibilityGrantInput,
 ): Promise<VisibilityResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
 
   const { error } = await supabaseAdmin().from('record_visibility_grants').insert({
     owner_id: input.ownerId,
@@ -218,7 +218,7 @@ export async function revokeRecordVisibility(
   ctx: AuthContext,
   input: RevokeVisibilityGrantInput,
 ): Promise<VisibilityResult> {
-  assertAdmin(ctx);
+  await assertAdminPage(ctx, 'permissions');
   const { error } = await supabaseAdmin().from('record_visibility_grants').delete().eq('id', input.grantId);
   if (error) return { ok: false, message: error.message };
   return { ok: true };

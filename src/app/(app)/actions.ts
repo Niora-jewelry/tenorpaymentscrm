@@ -23,11 +23,19 @@ import {
 const Filter = z.enum(['unread', 'read', 'all']);
 const Cursor = z.object({ at: z.string().max(40), id: z.uuid() }).nullable();
 
-export async function notificationsAction(input: { filter: 'unread' | 'read' | 'all'; cursor: NotificationCursor }): Promise<{ rows: NotificationView[]; next: NotificationCursor }> {
-  const parsed = z.object({ filter: Filter, cursor: Cursor }).safeParse(input);
+export async function notificationsAction(input: {
+  filter: 'unread' | 'read' | 'all';
+  cursor: NotificationCursor;
+  /** 'me' (default), 'everyone', or a user id — the last two need
+   *  Notifications = All users, which the database enforces. */
+  who?: string;
+}): Promise<{ rows: NotificationView[]; next: NotificationCursor }> {
+  const parsed = z
+    .object({ filter: Filter, cursor: Cursor, who: z.union([z.literal('me'), z.literal('everyone'), z.uuid()]).default('me') })
+    .safeParse(input);
   const ctx = await authorize();
   if (!parsed.success) return listNotifications(ctx, 'all', null);
-  return listNotifications(ctx, parsed.data.filter, parsed.data.cursor);
+  return listNotifications(ctx, parsed.data.filter, parsed.data.cursor, 30, parsed.data.who);
 }
 
 export async function unreadCountsAction(): Promise<UnreadCounts> {

@@ -24,7 +24,7 @@
  * below is the same fact stated on the screen showing the rows at stake.
  */
 import { notFound, redirect } from 'next/navigation';
-import { authorize } from '@/lib/records/permissions';
+import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { userGrantMatrix } from '@/lib/records/adminGrants';
 import { OutlineChip } from '@/proto/ui/kit';
 import { PlaceholderNotice } from '../../../PlaceholderNotice';
@@ -44,7 +44,7 @@ export default async function UserPermissionsPage({
   const { module: moduleParam } = await searchParams;
 
   const ctx = await authorize();
-  if (!ctx.isAdmin) redirect('/dashboard');
+  if (!(await canOpenAdminPage(ctx, 'permissions'))) redirect('/dashboard');
 
   const config = await loadConfig();
   /*

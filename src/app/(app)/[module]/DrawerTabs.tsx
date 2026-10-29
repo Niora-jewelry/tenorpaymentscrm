@@ -35,6 +35,8 @@ import type { Message } from '@/lib/records/messages';
 import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import type { Note } from '@/lib/records/notes';
+import type { ApplicationsPanelData } from '@/lib/applications/service';
+import { ApplicationsPanel } from './ApplicationsPanel';
 import type { RecordResiduals } from '@/lib/records/recordResiduals';
 
 type Grant = 'hidden' | 'view' | 'edit';
@@ -84,6 +86,8 @@ export type TabPayload = {
   fieldsBySubtab: Record<string, ProtoField[]>;
   repeatGroupsBySubtab: Record<string, RepeatGroupDef[]>;
   hasCustomFieldOrderBySubtab: Record<string, boolean>;
+  /** Carries the Prepopulated Application panel above its fields. */
+  showsApplications?: boolean;
 };
 
 export function DrawerTabs({
@@ -106,6 +110,7 @@ export function DrawerTabs({
   statementPeriods,
   statementFiles,
   residuals,
+  applications = null,
   messages,
   phoneCalls,
   smsMessages,
@@ -159,6 +164,8 @@ export function DrawerTabs({
    * shown and the figures behind it are not.
    */
   residuals: RecordResiduals | null;
+  /** The record's applications, when a visible tab carries them. */
+  applications?: ApplicationsPanelData | null;
   messages: Message[];
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
@@ -438,6 +445,7 @@ export function DrawerTabs({
           (() => {
             return (
               <div className="space-y-4">
+                {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
                 <RealFieldGrid
                   moduleSlug={moduleSlug}
                   recordId={recordId}

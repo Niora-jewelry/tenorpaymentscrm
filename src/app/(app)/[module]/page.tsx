@@ -39,6 +39,7 @@ import { ensureApplicationRows, fileRowsFor, filesForRows, fieldFilesFor } from 
 import { loginsFor } from '@/lib/records/logins';
 import { allPeriods, filesForRecord } from '@/lib/records/statements';
 import { residualsForRecord } from '@/lib/records/recordResiduals';
+import { applicationsFor } from '@/lib/applications/service';
 import { messagesFor } from '@/lib/records/messages';
 import { callsForRecord } from '@/lib/phone/calls';
 import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
@@ -601,6 +602,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
+    applications,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -672,6 +674,8 @@ async function RecordDrawer({
      * distinction this whole panel is built around.
      */
     shows('residuals') ? residualsForRecord(ctx, record.id) : Promise.resolve(null),
+    // The Prepopulated Application panel, on whichever visible tab carries it.
+    dbTabs.some((t) => t.showsApplications) ? applicationsFor(ctx, record.id) : Promise.resolve(null),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -994,7 +998,7 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false };
   }));
 
   return (
@@ -1130,6 +1134,7 @@ async function RecordDrawer({
         statementPeriods={statementPeriods}
         statementFiles={statementFiles}
         residuals={residuals}
+        applications={applications}
         messages={messages}
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}

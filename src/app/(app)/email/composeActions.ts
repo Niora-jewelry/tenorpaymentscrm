@@ -26,8 +26,9 @@ import { sanitizeEmail, sanitizeOutgoing } from '@/lib/mail/content/sanitize';
 import { GraphError } from '@/lib/mail/graph/transport';
 import { adoptDraft, ComposeError, discardDraft, forgetKept, saveDraft, senderFor } from '@/lib/mail/compose/drafts';
 import { OUTBOX_BUCKET, sendDue } from '@/lib/mail/compose/send';
+import { fromOptions, withSignature } from '@/lib/mail/compose/sender';
 import { isEmail, likeEscape, replyRecipients, subjectFor } from '@/lib/mail/compose/recipients';
-import type { Addr, ComposeInit, ComposeKind, FromOption, ScheduledItem } from '@/lib/mail/viewTypes';
+import type { Addr, ComposeInit, ComposeKind, ScheduledItem } from '@/lib/mail/viewTypes';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 type Ctx = Awaited<ReturnType<typeof authorize>>;
@@ -85,43 +86,6 @@ function messageForCode(e: GraphError): string {
 const Recipient = z.object({ name: z.string().max(200).default(''), address: z.string().trim().toLowerCase().max(254).refine(isEmail, 'Not an email address') });
 const Recipients = z.array(Recipient).max(500);
 const Kind = z.enum(['new', 'reply', 'replyAll', 'forward']);
-
-/** Mailboxes this person can write from, each with its signature. */
-async function fromOptions(ctx: Ctx): Promise<FromOption[]> {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
-    .from('mail_connections')
-    .select('mailbox_id, status, mail_mailboxes(address, display_name)')
-    .eq('user_id', ctx.userId)
-    .is('disconnected_at', null)
-    .order('connected_at')
-    .returns<Array<{ mailbox_id: string; status: string; mail_mailboxes: { address: string; display_name: string } | null }>>();
-  const boxes = (data ?? []).filter((c) => c.mail_mailboxes && c.status !== 'disconnected');
-  const { data: sigs } = boxes.length
-    ? await supabase.from('mail_signatures').select('mailbox_id, body_html').in('mailbox_id', boxes.map((b) => b.mailbox_id))
-    : { data: [] };
-  const sig = new Map((sigs ?? []).map((x) => [x.mailbox_id as string, x.body_html as string]));
-  return boxes.map((b) => ({
-    mailboxId: b.mailbox_id,
-    address: b.mail_mailboxes!.address,
-    displayName: b.mail_mailboxes!.display_name,
-    signatureHtml: sig.get(b.mailbox_id) ?? '',
-  }));
-}
-
-async function signatureFor(mailboxId: string): Promise<string> {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.from('mail_signatures').select('body_html').eq('mailbox_id', mailboxId).maybeSingle();
-  return (data?.body_html as string | undefined) ?? '';
-}
-
-/** The person's words, then (optionally) their signature, kept apart from the editor. */
-async function withSignature(html: string, mailboxId: string, include: boolean): Promise<string> {
-  const clean = sanitizeOutgoing(html);
-  if (!include) return clean;
-  const sig = await signatureFor(mailboxId);
-  return sig ? `${clean}<br><div class="tapdash-signature">${sig}</div>` : clean;
-}
 
 // ── starting ──────────────────────────────────────────────────────────────
 

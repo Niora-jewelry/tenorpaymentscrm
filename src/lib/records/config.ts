@@ -63,6 +63,8 @@ export type Tab = {
   isSystem: boolean;
   acceptsFields: boolean;
   position: number;
+  /** Carries the Prepopulated Application panel (`tabs.shows_applications`). */
+  showsApplications?: boolean;
 };
 
 export type Subtab = {
@@ -195,6 +197,7 @@ const loadConfigCached = unstable_cache(
       tabs: tabs.data!.map((t) => ({
         id: t.id, key: t.key, label: t.label, kind: t.kind,
         isSystem: t.is_system, acceptsFields: t.accepts_fields, position: t.position,
+        showsApplications: t.shows_applications ?? false,
       })),
       subtabs: subtabs.data!.map((s) => ({
         id: s.id, tabId: s.tab_id, key: s.key, label: s.label,

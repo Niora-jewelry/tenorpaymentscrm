@@ -180,8 +180,21 @@ type SessionState = {
   deleted_at: string | null;
 };
 
+/**
+ * A merchant's application link (Prepopulated Application spec): no login,
+ * the token in the path IS the access. Exactly one segment of exactly the
+ * token's shape — `/apply`, `/apply/x/y` or anything looser stays private.
+ * The page checks the token itself, rate-limits misses, and holds no merchant
+ * data in its URL.
+ */
+const MERCHANT_APPLICATION = /^\/apply\/[A-Za-z0-9_-]{43}$/;
+
+export function isMerchantApplicationPath(pathname: string): boolean {
+  return MERCHANT_APPLICATION.test(pathname);
+}
+
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.has(pathname) || PUBLIC_API_PATHS.has(pathname) || isPrototypePath(pathname);
+  return PUBLIC_PATHS.has(pathname) || PUBLIC_API_PATHS.has(pathname) || isPrototypePath(pathname) || isMerchantApplicationPath(pathname);
 }
 
 /**

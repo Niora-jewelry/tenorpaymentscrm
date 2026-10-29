@@ -39,6 +39,7 @@ import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { Icon } from '@/proto/ui/icons';
 import { Button, CountPill, IconButton } from '@/proto/ui/kit';
 import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
+import { FieldHistoryButton } from './FieldHistory';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 import type { NotificationView } from '@/lib/records/notifications';
 import type { Field as ProtoField, FieldValue } from '@/proto/schema';
@@ -714,6 +715,7 @@ export function RealFieldGrid({
                             with the dot; a mention leaves from the @. */}
                         <FieldMentionNote mentions={fieldMentions} autoOpen={landedHere ? openMention : null} onRead={onMentionRead} />
                         <FieldMentionButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} currentValue={valueText(v)} />
+                        <FieldHistoryButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} />
                         {f.notes ? (
                           <button
                             type="button"

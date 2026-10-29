@@ -35,6 +35,8 @@ import { ColumnsSection } from './ColumnsSection';
 import { ChoicesSection } from './ChoicesSection';
 import { PipelinesSection } from './PipelinesSection';
 import { StatementsSection } from './StatementsSection';
+import { ApplicationSection } from './ApplicationSection';
+import { readApplicationSettings } from '@/lib/applications/service';
 import { PresetsTabs, type PresetSection } from './PresetsTabs';
 import { ReloadConfigButton } from './ReloadConfigButton';
 
@@ -42,7 +44,7 @@ export default async function AdminPresetsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'presets'))) redirect('/dashboard');
 
-  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements] = await Promise.all([
+  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements, applicationSettings] = await Promise.all([
     listTabsForAdmin(ctx),
     listSubtabsForAdmin(ctx),
     listModulesForAdmin(ctx),
@@ -54,6 +56,7 @@ export default async function AdminPresetsPage() {
     listModuleTabOrder(ctx),
     listModuleSubtabOrder(ctx),
     statementGrid(ctx),
+    readApplicationSettings(ctx),
   ]);
 
   /*
@@ -145,6 +148,14 @@ export default async function AdminPresetsPage() {
       description:
         'The month grid behind the Statements tab — one global calendar shared by every record. It can be extended forward by whole years; July 2024 is fixed and nothing is ever removed.',
       content: <StatementsSection key="statements" grid={statements} />,
+    },
+    {
+      key: 'application',
+      label: 'Application',
+      icon: 'file-pen',
+      description:
+        'The merchant application sent from a record: how long its link lasts, and the email it goes out with.',
+      content: <ApplicationSection key="application" initial={applicationSettings} />,
     },
   ];
 

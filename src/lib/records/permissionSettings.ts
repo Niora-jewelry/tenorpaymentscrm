@@ -113,6 +113,12 @@ export async function settingGroups(): Promise<SettingGroup[]> {
         { key: 'items.notes', label: 'Tab notes', options: MINE_ALL },
       ],
     },
+    {
+      id: 'applications',
+      title: 'Applications',
+      blurb: 'Returned application PDFs contain Social Security numbers. Only these people can open or download one.',
+      rows: [{ key: 'applications.pdfs', label: 'Returned application PDFs', options: HIDDEN_FULL }],
+    },
   ];
 }
 

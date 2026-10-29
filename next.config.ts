@@ -147,6 +147,17 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+  /*
+   * The merchant application template is read from disk when an application
+   * is sent (`lib/applications/pdf.ts`). It is a runtime read, not an import,
+   * so the bundler cannot see it: without this, the deployed function would
+   * not carry the file and every Send would fail with "template not installed".
+   * Sending happens from a record (`/[module]`'s Server Actions).
+   */
+  outputFileTracingIncludes: {
+    '/[module]': ['./src/lib/applications/template/*.pdf'],
+  },
+
   experimental: {
     /*
      * How many workers `next build` forks to collect page data and prerender.

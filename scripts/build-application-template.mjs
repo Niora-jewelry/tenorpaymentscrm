@@ -24,7 +24,7 @@
  */
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString, StandardFonts, rgb } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, PDFString, StandardFonts, rgb } from 'pdf-lib';
 
 const SINGLE_CHOICE_GROUPS = ['area_zoned', 'entity_type', 'square_footage'];
 export const RECEIVED_OPTIONS = ['24 hours', '2-5 days', '6-10 days', '11+ days'];
@@ -131,6 +131,54 @@ for (const field of doc.getForm().getFields()) {
   dict.delete(PDFName.of('DV'));
   for (const w of field.acroField.getWidgets()) w.dict.set(PDFName.of('AS'), PDFName.of('Off'));
 }
+
+// The client's tick boxes have a drawing for "ticked" only. With nothing to
+// draw for "not ticked", Chrome and Edge invent a bordered square of their own
+// over the printed box, off-centre and across the label. An empty "not ticked"
+// drawing lets the printed box show, as it does in Acrobat and Preview.
+let blanks = 0;
+for (const field of doc.getForm().getFields()) {
+  if (field.acroField.dict.lookup(PDFName.of('FT')) !== PDFName.of('Btn')) continue;
+  for (const w of field.acroField.getWidgets()) {
+    const n = w.dict.lookup(PDFName.of('AP'), PDFDict)?.lookup(PDFName.of('N'));
+    if (!(n instanceof PDFDict) || n.has(PDFName.of('Off'))) continue;
+    const { width, height } = w.getRectangle();
+    n.set(PDFName.of('Off'), ctx.register(ctx.formXObject([], { BBox: [0, 0, width, height] })));
+    blanks++;
+  }
+}
+console.log('empty "not ticked" drawings added:', blanks);
+
+// The client's Yes/No radios carry some appearance drawings as streams written
+// straight inside their /AP dictionaries. A stream must be an object of its
+// own; pdf.js and pdf-lib let it pass, Chrome and Edge (PDFium) do not — they
+// then drew no radio at all, and drew page 2's first answers again on page 1
+// under the legal name. Each such stream is moved into an object of its own;
+// the drawing itself is unchanged.
+let lifted = 0;
+for (const pg of doc.getPages()) {
+  const annots = pg.node.lookup(PDFName.of('Annots'), PDFArray);
+  if (!annots) continue;
+  for (let i = 0; i < annots.size(); i++) {
+    const ap = ctx.lookup(annots.get(i), PDFDict).lookup(PDFName.of('AP'));
+    if (!(ap instanceof PDFDict)) continue;
+    for (const kind of ['N', 'D', 'R']) {
+      const raw = ap.get(PDFName.of(kind));
+      if (raw instanceof PDFStream) {
+        ap.set(PDFName.of(kind), ctx.register(raw));
+        lifted++;
+      } else if (raw instanceof PDFDict) {
+        for (const [state, v] of raw.entries()) {
+          if (v instanceof PDFStream) {
+            raw.set(state, ctx.register(v));
+            lifted++;
+          }
+        }
+      }
+    }
+  }
+}
+console.log('appearance streams moved into objects of their own:', lifted);
 
 // Appearances are generated; NeedAppearances stays off (the client found some
 // viewers draw radios wrongly with it on).

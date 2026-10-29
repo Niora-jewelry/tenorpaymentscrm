@@ -3,18 +3,19 @@
 /**
  * The merchant's application (spec, Online path): prefilled answers they can
  * edit, saved as they type ("save and finish later"), checked before submit,
- * then a thank-you and a read-only link. "Upload your completed PDF" sits
- * beside it for anyone who chose the PDF.
+ * then a thank-you and a read-only link. It opens on a choice between that
+ * and uploading a completed PDF (`ChooseMethod`); a merchant who has already
+ * saved answers here goes straight back to them.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
-import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import type { Answers } from '@/lib/applications/catalog';
 import { problemsWith } from '@/lib/applications/validate';
 import { ApplicationForm } from '../ApplicationForm';
+import { ChooseMethod } from './ChooseMethod';
 import { LinkMessage } from './LinkMessage';
-import { finishMerchantUploadAction, prepareMerchantUploadAction, saveAnswersAction, submitAnswersAction } from './actions';
+import { saveAnswersAction, submitAnswersAction } from './actions';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
@@ -44,12 +45,11 @@ export function MerchantApplication({
   const [done, setDone] = useState<null | 'submitted' | 'thanks_pdf' | 'expired' | 'voided' | 'not_found' | 'busy'>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
-  const [upload, setUpload] = useState<{ state: 'idle' | 'busy' | 'error'; message?: string }>({ state: 'idle' });
+  // Online once they have saved answers here; otherwise they choose first.
+  const [mode, setMode] = useState<'choose' | 'online'>(initialSavedAt ? 'online' : 'choose');
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(answers);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const flush = useCallback(async () => {
     if (!dirty.current) return;
@@ -110,59 +110,65 @@ export function MerchantApplication({
       setSubmitError(('message' in r && r.message) || 'Something went wrong. Your answers are kept — please try again.');
     });
 
-  const uploadPdf = async (file: File) => {
-    if (file.type && file.type !== 'application/pdf') return setUpload({ state: 'error', message: 'Choose a PDF file.' });
-    if (file.size > 25 * 1024 * 1024) return setUpload({ state: 'error', message: 'The PDF must be under 25 MB.' });
-    setUpload({ state: 'busy' });
-    const slot = await prepareMerchantUploadAction(token);
-    if (!slot.ok) {
-      if (slot.state && slot.state !== 'busy' && slot.state !== 'open') return setDone(slot.state);
-      return setUpload({ state: 'error', message: 'Please wait a moment and try again.' });
-    }
-    const put = await supabase.storage.from('application-pdfs').uploadToSignedUrl(slot.path, slot.token, file, { contentType: 'application/pdf' });
-    if (put.error) return setUpload({ state: 'error', message: 'The upload failed. Please try again.' });
-    const r = await finishMerchantUploadAction(token, slot.path, file.name);
-    if (r.ok) return setDone('thanks_pdf');
-    if ('state' in r && r.state && r.state !== 'busy' && r.state !== 'open') return setDone(r.state);
-    setUpload({ state: 'error', message: ('message' in r && r.message) || 'The upload failed. Please try again.' });
-  };
-
   if (done) return <LinkMessage state={done} label={label} merchant={merchant} />;
 
   const problemCount = Object.keys(problems).length;
+  const online = mode === 'online';
+  const show = (next: 'choose' | 'online') => {
+    if (next === 'choose') void flush();
+    setMode(next);
+    window.scrollTo({ top: 0 });
+  };
+
+  const header = (
+    <header className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
+      <div className="mx-auto flex max-w-[880px] items-center gap-3 px-4 py-3 sm:px-6">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-950 text-white">
+          <Icon name="file-pen" size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold text-ink-900">{merchant}</p>
+          <p className="text-[12px] text-ink-500">
+            Merchant application · <span className="font-mono">{label}</span>
+          </p>
+        </div>
+        <p className="hidden items-center gap-1.5 text-[12px] text-ink-500 sm:flex" aria-live="polite">
+          {!online ? (
+            <>
+              <Icon name="lock" size={12} /> Secure link
+            </>
+          ) : save.state === 'saving' ? (
+            <>
+              <Spinner /> Saving…
+            </>
+          ) : save.state === 'error' ? (
+            <span className="text-bad">Not saved — check your connection</span>
+          ) : save.at ? (
+            <>
+              <Icon name="check" size={13} className="text-[#0b6b5d]" /> Saved {fmtTime(save.at)}
+            </>
+          ) : (
+            <>
+              <Icon name="lock" size={12} /> Secure link
+            </>
+          )}
+        </p>
+      </div>
+    </header>
+  );
+
+  if (!online) {
+    return (
+      <div className="min-h-dvh bg-canvas">
+        {header}
+        <ChooseMethod token={token} merchant={merchant} expiresAt={expiresAt} onOnline={() => show('online')} onClosed={setDone} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-canvas">
-      <header className="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/75">
-        <div className="mx-auto flex max-w-[880px] items-center gap-3 px-4 py-3 sm:px-6">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-950 text-white">
-            <Icon name="file-pen" size={16} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-semibold text-ink-900">{merchant}</p>
-            <p className="text-[12px] text-ink-500">
-              Merchant application · <span className="font-mono">{label}</span>
-            </p>
-          </div>
-          <p className="hidden items-center gap-1.5 text-[12px] text-ink-500 sm:flex" aria-live="polite">
-            {save.state === 'saving' ? (
-              <>
-                <Spinner /> Saving…
-              </>
-            ) : save.state === 'error' ? (
-              <span className="text-bad">Not saved — check your connection</span>
-            ) : save.at ? (
-              <>
-                <Icon name="check" size={13} className="text-[#0b6b5d]" /> Saved {fmtTime(save.at)}
-              </>
-            ) : (
-              <>
-                <Icon name="lock" size={12} /> Secure link
-              </>
-            )}
-          </p>
-        </div>
-      </header>
+      {header}
 
       <main className="mx-auto max-w-[880px] px-4 pb-32 pt-6 sm:px-6">
         <div className="mb-5 rounded-2xl border border-line bg-white p-5 sm:p-6">
@@ -171,33 +177,18 @@ export function MerchantApplication({
             We have filled in what we already know. Check each answer, complete the rest, and submit. Your answers save as you type — you can close
             this page and come back through the same link until <strong className="font-semibold text-ink-800">{fmtDate(expiresAt)}</strong>.
           </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-line bg-canvas/60 px-4 py-3">
-            <Icon name="file-text" size={16} className="shrink-0 text-ink-400" />
-            <p className="min-w-0 flex-1 text-[13px] text-ink-600">
-              Filled in the PDF from your email instead? <span className="text-ink-500">Upload it here — no need to email it back.</span>
-            </p>
+          <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-line-soft pt-3.5 text-[13px] text-ink-500">
+            <Icon name="file-text" size={14} className="shrink-0 text-ink-400" />
+            Rather send the PDF?
             <button
               type="button"
-              onClick={() => fileInput.current?.click()}
-              disabled={upload.state === 'busy'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3 py-1.5 text-[13px] font-semibold text-ink-700 hover:border-ink-400 disabled:opacity-60"
+              onClick={() => show('choose')}
+              disabled={submitting}
+              className="font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2 hover:decoration-brand-700 disabled:opacity-60"
             >
-              {upload.state === 'busy' ? <Spinner /> : <Icon name="upload" size={13} />}
-              {upload.state === 'busy' ? 'Uploading…' : 'Upload completed PDF'}
+              Upload or download it
             </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/pdf,.pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void uploadPdf(f);
-                e.target.value = '';
-              }}
-            />
-            {upload.state === 'error' ? <p className="basis-full text-[12.5px] font-medium text-bad">{upload.message}</p> : null}
-          </div>
+          </p>
         </div>
 
         <ApplicationForm answers={answers} onChange={onChange} problems={problems} ssnOnFile={ssnOnFile} ssnEntered={ssnEntered} disabled={submitting} />

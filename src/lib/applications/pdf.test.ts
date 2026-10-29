@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PDFDocument, PDFName, PDFTextField } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream, PDFTextField } from 'pdf-lib';
 
 vi.mock('server-only', () => ({}));
 const { applicationFileName, fillApplicationPdf, readApplicationPdf } = await import('./pdf');
@@ -147,5 +147,42 @@ describe('the blank template', () => {
     expect(read.readable).toBe(true);
     expect(read.answers).toEqual({});
     expect(read.appLabel).toBeNull();
+  });
+});
+
+describe('the template in Chrome and Edge (PDFium)', () => {
+  // pdf.js forgives both of these; PDFium does not. With them, Chrome drew no
+  // radio answers, drew page 2's first answers again on page 1, and drew a
+  // stray bordered square on every unticked box.
+  it('keeps every appearance drawing in an object of its own', async () => {
+    const { loadTemplate } = await import('./pdf');
+    const doc = await PDFDocument.load(await loadTemplate());
+    const inline: string[] = [];
+    for (const page of doc.getPages()) {
+      const annots = page.node.lookup(PDFName.of('Annots'), PDFArray);
+      for (let i = 0; i < (annots?.size() ?? 0); i++) {
+        const ap = doc.context.lookup(annots!.get(i), PDFDict).lookup(PDFName.of('AP'));
+        if (!(ap instanceof PDFDict)) continue;
+        for (const [kind, v] of ap.entries()) {
+          if (v instanceof PDFStream) inline.push(`${i}${kind}`);
+          if (v instanceof PDFDict) for (const [state, s] of v.entries()) if (s instanceof PDFStream) inline.push(`${i}${kind}${state}`);
+        }
+      }
+    }
+    expect(inline).toEqual([]);
+  });
+
+  it('gives every tick box and radio a drawing for "not chosen"', async () => {
+    const { loadTemplate } = await import('./pdf');
+    const doc = await PDFDocument.load(await loadTemplate());
+    const missing: string[] = [];
+    for (const field of doc.getForm().getFields()) {
+      if (field.acroField.dict.lookup(PDFName.of('FT')) !== PDFName.of('Btn')) continue;
+      for (const w of field.acroField.getWidgets()) {
+        const n = w.dict.lookup(PDFName.of('AP'), PDFDict)?.lookup(PDFName.of('N'));
+        if (!(n instanceof PDFDict) || !n.has(PDFName.of('Off'))) missing.push(field.getName());
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

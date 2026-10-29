@@ -8,7 +8,9 @@
  *    "On file (•••-••-1234)" with an option to replace it;
  *  · save as you type; come back through the same link;
  *  · submit → thank-you, read-only, status Submitted;
- *  · "Upload your completed PDF" as the safer return route;
+ *  · "Upload your completed PDF" as the safer return route — and, for a
+ *    merchant without the email's attachment to hand, the same PDF to
+ *    download from the link;
  *  · repeated attempts are limited.
  *
  * The token is the only key. Nothing here trusts anything else the browser
@@ -24,8 +26,8 @@ import { toPostgresBytea } from '@/lib/security/otp';
 import { fromBytea } from '@/lib/mail/crypto';
 import { openText, sealText } from './crypto';
 import { MAX_OWNERS, ownerField, type Answers } from './catalog';
-import { prefillAnswers, ssnOnFile } from './mapping';
-import { readApplicationPdf } from './pdf';
+import { answersForPdf, prefillAnswers, ssnOnFile } from './mapping';
+import { applicationFileName, fillApplicationPdf, loadTemplate, readApplicationPdf } from './pdf';
 import { problemsWith, sanitizeAnswers, type Problems } from './validate';
 import { signedPdfUpload, storeReturnedPdf } from './service';
 import {
@@ -62,6 +64,7 @@ const LIMITS = {
   savePerLink: { limit: 600, windowSeconds: 600 },
   submitPerLink: { limit: 20, windowSeconds: 3600 },
   uploadPerLink: { limit: 10, windowSeconds: 3600 },
+  downloadPerLink: { limit: 30, windowSeconds: 3600 },
 };
 
 async function ip(): Promise<string> {
@@ -235,4 +238,23 @@ export async function prepareMerchantUpload(token: string): Promise<{ ok: true; 
   if (!linkIsLive(app)) return { ok: false, state: effectiveStatus(app) === 'voided' ? 'voided' : effectiveStatus(app) === 'expired' ? 'expired' : 'submitted' };
   const slot = await signedPdfUpload();
   return { ok: true, ...slot };
+}
+
+/**
+ * The application as a PDF, from the link: the merchant's saved answers if
+ * they started online, otherwise what the CRM prefilled — the same answers
+ * the online form shows. Never an SSN (drafts hold none; they are sealed
+ * apart), so the file is no more than the page already shows.
+ */
+export async function downloadForMerchant(token: string): Promise<{ ok: true; fileName: string; base64: string } | { ok: false; state: MerchantState }> {
+  const app = await resolve(token, LIMITS.downloadPerLink, 'download');
+  if (typeof app === 'string') return { ok: false, state: app };
+  if (!linkIsLive(app)) return { ok: false, state: effectiveStatus(app) === 'voided' ? 'voided' : effectiveStatus(app) === 'expired' ? 'expired' : 'submitted' };
+  const rec = await recordForApplication(app.record_id);
+  if (!rec) return { ok: false, state: 'not_found' };
+  const { data: row } = await supabaseAdmin().from('applications').select('draft').eq('id', app.id).single();
+  const draft = (row?.draft ?? {}) as Answers;
+  const answers = Object.keys(draft).length ? sanitizeAnswers(draft) : prefillAnswers(rec.values, await choiceLabels());
+  const pdf = await fillApplicationPdf(await loadTemplate(), answersForPdf(answers), appLabel(app.number));
+  return { ok: true, fileName: applicationFileName(merchantName(rec.values, rec.dealName)), base64: Buffer.from(pdf).toString('base64') };
 }

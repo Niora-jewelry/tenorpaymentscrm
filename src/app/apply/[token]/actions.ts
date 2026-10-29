@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import {
+  downloadForMerchant,
   prepareMerchantUpload,
   saveForMerchant,
   submitForMerchant,
@@ -30,6 +31,17 @@ export async function submitAnswersAction(token: string, answers: unknown) {
   } catch (e) {
     console.error('[apply] submit failed', e instanceof Error ? e.message.slice(0, 200) : e);
     return { ok: false as const, message: 'Something went wrong while saving your application. Your answers are kept — please try again.' };
+  }
+}
+
+export async function downloadPdfAction(token: string) {
+  const t = Token.safeParse(token);
+  if (!t.success) return { ok: false as const, state: 'not_found' as const };
+  try {
+    return await downloadForMerchant(t.data);
+  } catch (e) {
+    console.error('[apply] download failed', e instanceof Error ? e.message.slice(0, 200) : e);
+    return { ok: false as const, message: 'The PDF could not be prepared. Please try again.' };
   }
 }
 

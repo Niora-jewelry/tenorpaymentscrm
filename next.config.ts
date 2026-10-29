@@ -152,10 +152,12 @@ const nextConfig: NextConfig = {
    * is sent (`lib/applications/pdf.ts`). It is a runtime read, not an import,
    * so the bundler cannot see it: without this, the deployed function would
    * not carry the file and every Send would fail with "template not installed".
-   * Sending happens from a record (`/[module]`'s Server Actions).
+   * Sending happens from a record (`/[module]`'s Server Actions); the
+   * merchant downloads it from their link (`/apply/[token]`).
    */
   outputFileTracingIncludes: {
     '/[module]': ['./src/lib/applications/template/*.pdf'],
+    '/apply/[token]': ['./src/lib/applications/template/*.pdf'],
   },
 
   experimental: {

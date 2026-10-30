@@ -181,10 +181,10 @@ describe('pre-send problems (spec §5 + 30 Oct rulings)', () => {
     expect(keys({ ...FULL, inventory: ['off_site'] })).toEqual(['inventory']);
     expect(keys({ ...FULL, inventory: ['off_site'] }, { addresses: { inventory: { street: '9 Dock Rd', city: 'Austin', state: 'TX', zip: '78701' } } })).toEqual([]);
   });
-  it('seasonal months need no note; CC termination Yes needs its note', () => {
+  it('seasonal months need no note; a CC termination note never blocks (spec §5)', () => {
     expect(keys({ ...FULL, seasonal: ['Jun'] })).toEqual([]);
     expect(keys({ ...FULL, seasonal: ['No'] })).toEqual([]);
-    expect(keys({ ...FULL, cc_termination: 'yes' })).toEqual(['cc_termination']);
+    expect(keys({ ...FULL, cc_termination: 'yes' })).toEqual([]);
   });
   it('prior processor must be "No" or a name', () => expect(keys({ ...FULL, prior_processor: '' })).toEqual(['prior_processor']));
 });

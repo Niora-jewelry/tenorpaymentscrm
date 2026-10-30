@@ -62,14 +62,14 @@ export function pct(v: unknown): number {
   return 0;
 }
 
-export function selectSigners(owners: OwnerInput[]): { signers: Signer[]; problems: SignerProblem[] } {
+export function selectSigners(owners: OwnerInput[]): { signers: Signer[]; problems: SignerProblem[]; selected: number[] } {
   const problems: SignerProblem[] = [];
   const ranked = owners
     .map((o) => ({ ...o, percentage: pct(o.percentage) }))
     .filter((o) => o.percentage > 0 || o.first.trim() || o.last.trim() || o.email.trim())
     .sort((a, b) => b.percentage - a.percentage || a.index - b.index);
 
-  if (ranked.length === 0) return { signers: [], problems: [{ kind: 'no_owners' }] };
+  if (ranked.length === 0) return { signers: [], problems: [{ kind: 'no_owners' }], selected: [] };
 
   const chosen: typeof ranked = [];
   let total = 0;
@@ -104,8 +104,11 @@ export function selectSigners(owners: OwnerInput[]): { signers: Signer[]; proble
     }
   }
 
-  if (problems.length) return { signers: [], problems };
+  // `selected` survives a problem: the check lists every problem at once (spec §5).
+  const selected = chosen.map((o) => o.index);
+  if (problems.length) return { signers: [], problems, selected };
   return {
+    selected,
     signers: chosen.map((o, i) => ({
       slot: (i + 1) as Signer['slot'],
       index: o.index,

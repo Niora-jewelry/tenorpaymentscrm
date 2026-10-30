@@ -6,7 +6,7 @@
  */
 import type { AgreementKindDef, AgreementProblem, AgreementSource, CrmValues, Used } from './kinds/types';
 import type { Signer } from './signers';
-import { winAnsi } from './format';
+import { addressParts, winAnsi } from './format';
 
 export type Rendered = {
   /** PDF field name → text (text fields, or the option of a radio group) or checked. */
@@ -61,8 +61,47 @@ export function renderAgreement(kind: AgreementKindDef, src: AgreementSource, si
   return { byPdfField, used, usedFieldKeys: [...new Set(used.map((u) => u.fieldKey))] };
 }
 
+/** Spec §5: a 0 counts as filled; spaces only count as empty. */
 const blank = (x: unknown): boolean =>
-  x == null || x === '' || (Array.isArray(x) && x.length === 0) || (typeof x === 'object' && !Array.isArray(x) && Object.values(x as object).every(blank));
+  x == null || (typeof x === 'string' && x.trim() === '') || (Array.isArray(x) && x.length === 0) || (typeof x === 'object' && !Array.isArray(x) && Object.values(x as object).every(blank));
+
+export function ownerName(values: CrmValues, index: number): string {
+  const o = ownersOf(values).owners[index] ?? {};
+  return [o.first, o.last].filter((x): x is string => typeof x === 'string' && x.trim() !== '').join(' ') || `Owner ${index + 1}`;
+}
+
+const listed = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`);
+
+/**
+ * Spec §5, "Required for each selected signer": nothing is left for a signer
+ * to type. Name and email are `selectSigners`' problems. Each group is its own
+ * item because each sits on its own sub-tab, and the Private one must mask
+ * itself for a viewer who cannot see that sub-tab.
+ */
+export function signerDetailProblems(src: AgreementSource, ownerIndexes: number[]): AgreementProblem[] {
+  const { owners, privates } = ownersOf(src.values);
+  const out: AgreementProblem[] = [];
+  for (const index of ownerIndexes) {
+    const o = owners[index] ?? {};
+    const p = privates[index] ?? {};
+    const a = addressParts(o.address);
+    const open = [
+      blank(o.percentage) ? 'an ownership percentage' : '',
+      blank(o.title) ? 'a title' : '',
+      blank(a.street) || blank(a.city) || blank(a.state) || blank(a.zip) ? 'a full home address' : '',
+      blank(o.phone) ? 'a phone number' : '',
+      blank(o.dob) ? 'a date of birth' : '',
+    ].filter(Boolean);
+    if (open.length) out.push({ fieldKey: PAIRED.owners, index, message: `${ownerName(src.values, index)} needs ${listed(open)}.` });
+    const closed = [
+      blank(p.ssn) ? 'an SSN' : '',
+      blank(p.dl_number) ? "a driver's license number" : '',
+      blank(p.dl_expiry) ? "a driver's license expiry date" : '',
+    ].filter(Boolean);
+    if (closed.length) out.push({ fieldKey: PAIRED.privates, index, message: `${ownerName(src.values, index)} needs ${listed(closed)}.` });
+  }
+  return out;
+}
 
 /** Spec §5: required fields, conditional rules, totals. "0 counts as filled". */
 export function requiredProblems(kind: AgreementKindDef, src: AgreementSource): AgreementProblem[] {

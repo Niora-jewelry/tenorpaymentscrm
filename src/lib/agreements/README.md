@@ -72,5 +72,9 @@ template change:
 
 ## What the client still has to decide
 
-- Nothing blocks sending. The ACH agreement (phase 2) needs its own kind
-  file; its sheet's open points are in the plan.
+- Nothing blocks sending. Two kinds are live: the merchant agreement and the
+  ACH agreement. One may be out per kind on a record.
+- The ACH sheet names "ACH return" for both FED Unauthorized Return Fee and
+  Exception/Corrections Processing, and also says "new ACH field". Built as
+  the existing ACH Debit unauthorized fee and a new ACH exception/corrections
+  fee. Izzy can correct this with a one-line change in `kinds/maverickAch.ts`.

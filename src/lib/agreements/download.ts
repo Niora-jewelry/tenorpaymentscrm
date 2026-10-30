@@ -25,7 +25,7 @@ export async function storeCompletedPdf(agreementId: string): Promise<'stored' |
     const bytes = await vendor().downloadCompleted(a.vendor_document_id);
     const rec = await recordForApplication(a.record_id);
     const kind = kindFor(a.kind);
-    const name = agreementFileName(rec ? merchantName(rec.values, rec.dealName) : 'Merchant', kind?.label ?? 'Agreement', new Date(a.completed_at ?? Date.now()));
+    const name = agreementFileName(rec ? merchantName(rec.values, rec.dealName) : 'Merchant', kind?.fileLabel ?? 'Agreement', new Date(a.completed_at ?? Date.now()));
     await storeAgreementFile(a.id, a.record_id, 'completed', name, bytes);
     await supabaseAdmin().from('agreements').update({ download_status: 'stored', next_attempt_at: null, download_note: null }).eq('id', a.id);
     await supabaseAdmin().rpc('agreement_log', { p_agreement: a.id, p_actor: null, p_summary: `Signed PDF saved for ${agrLabel(a.number)}`, p_update_body: null });

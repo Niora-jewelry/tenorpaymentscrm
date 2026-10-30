@@ -16,45 +16,10 @@
  * `mapping.test.ts` proves each one exists. The principal slots print from
  * `owner_ownership[i]` / `owner_private[i]` for the signers the rule picks.
  */
-import type { AgreementKindDef, AgreementProblem, AgreementSource, CrmValues, Fill, MappingEntry, PrincipalSlot, Used } from './types';
+import type { AgreementKindDef, AgreementProblem, AgreementSource, CrmValues, MappingEntry, PrincipalSlot } from './types';
 import { addressParts, ein, equipmentList, money, percent, phone, ssn, str, usDate, yearsSince, yesNo } from '../format';
+import { addressBlock, bankruptcy, hasDba, part, splitTotal, text, tick, used, v } from './fill';
 
-const v = (src: AgreementSource, key: string) => src.values[key];
-const used = (fieldKey: string, kind: Used['kind'] = 'value'): Used[] => [{ fieldKey, kind }];
-
-/** A text box from one CRM field, through a formatter. */
-const text = (pdf: string, key: string, fmt: (x: unknown) => string = str): MappingEntry => ({
-  pdf,
-  fill: (src) => ({ text: fmt(v(src, key)), used: used(key) }),
-});
-/** A box ticked when the CRM choice is one of the given keys. */
-const tick = (pdf: string, key: string, when: string[]): MappingEntry => ({
-  pdf,
-  fill: (src) => ({ check: when.includes(str(v(src, key)).toLowerCase()), used: used(key) }),
-});
-/** One part of a percent split. */
-const part = (pdf: string, key: string, partKey: string): MappingEntry => ({
-  pdf,
-  fill: (src) => {
-    const split = v(src, key);
-    const n = split && typeof split === 'object' && !Array.isArray(split) ? (split as Record<string, unknown>)[partKey] : undefined;
-    return { text: percent(n), used: used(key) };
-  },
-});
-/** The address fields a four-box address block prints into. */
-const addressBlock = (street: string, city: string, state: string, zip: string, key: string, onlyIf?: (src: AgreementSource) => boolean): MappingEntry[] => {
-  const when = (src: AgreementSource) => (onlyIf ? onlyIf(src) : true);
-  const pick = (f: (a: ReturnType<typeof addressParts>) => string) => (src: AgreementSource): Fill => ({ text: when(src) ? f(addressParts(v(src, key))) : '', used: used(key) });
-  return [
-    { pdf: street, fill: pick((a) => [a.street, a.street2].filter(Boolean).join(', ')) },
-    { pdf: city, fill: pick((a) => a.city) },
-    { pdf: state, fill: pick((a) => a.state) },
-    { pdf: zip, fill: pick((a) => a.zip) },
-  ];
-};
-
-const hasDba = (src: AgreementSource) => Boolean(str(v(src, 'dba')));
-const bankruptcy = (src: AgreementSource) => str(v(src, 'bankruptcy')).toLowerCase();
 const priorProcessor = (src: AgreementSource) => str(v(src, 'prior_processor'));
 const processesCards = (src: AgreementSource) => priorProcessor(src) !== '' && priorProcessor(src).toLowerCase() !== 'no';
 const months = (src: AgreementSource) => (Array.isArray(v(src, 'seasonal')) ? (v(src, 'seasonal') as unknown[]).map((m) => str(m)) : []);
@@ -315,8 +280,7 @@ const required: AgreementKindDef['required'] = [
   ['td_vmd_auth_fee', 'VMD Auth fee'], ['td_pci_fee', 'PCI Fee'], ['td_batch_fee', 'Batch fee'], ['td_chargeback_fee', 'Chargeback fee'], ['td_avs_fee', 'AVS Fee'],
 ].map(([fieldKey, label]) => ({ fieldKey: fieldKey!, label: label! }));
 
-const sum = (split: unknown) =>
-  split && typeof split === 'object' && !Array.isArray(split) ? Object.values(split as Record<string, unknown>).reduce<number>((s, x) => s + (Number(x) || 0), 0) : NaN;
+const sum = splitTotal;
 
 /** Conditional and total rules (spec §5) and the 30 Oct "pick a matching choice" rules. */
 function check(src: AgreementSource): AgreementProblem[] {
@@ -325,7 +289,6 @@ function check(src: AgreementSource): AgreementProblem[] {
   if (pm && !['ic', 'fr', 'surcharge', 'dp'].includes(pm)) out.push({ fieldKey: 'pricing_model', message: 'Pricing model must be IC+, Flat Rate, Surcharge or Dual Pricing.' });
   if (bankruptcy(src) === 'yes') out.push({ fieldKey: 'bankruptcy', message: 'Bankruptcy says "Yes". Pick Business bankruptcy, Personal bankruptcy or Never filed — the agreement has a box for each.' });
   if (['business', 'personal'].includes(bankruptcy(src)) && !(src.notes.bankruptcy ?? '').trim()) out.push({ fieldKey: 'bankruptcy', message: 'Bankruptcy is Yes: add the details as a note on the field.' });
-  if (yesNo(v(src, 'cc_termination')) === 'Yes' && !(src.notes.cc_termination ?? '').trim()) out.push({ fieldKey: 'cc_termination', message: 'CC termination is Yes: add the explanation as a note on the field.' });
   const et = str(v(src, 'entity_type')).toLowerCase();
   if (et === 'other') out.push({ fieldKey: 'entity_type', message: 'Entity type "Other" has no box on the agreement. Pick the matching entity type.' });
   const inv = inventory(src);
@@ -344,6 +307,8 @@ function check(src: AgreementSource): AgreementProblem[] {
 export const maverickMerchant: AgreementKindDef = {
   key: 'maverick_merchant',
   label: 'Maverick merchant agreement',
+  fileLabel: 'Merchant Agreement',
+  emailLabel: 'merchant agreement',
   templateFile: 'Maverick_Merchant_Agreement_v1.8.pdf',
   fieldsFile: 'maverick_merchant.fields.json',
   version: '1.8',

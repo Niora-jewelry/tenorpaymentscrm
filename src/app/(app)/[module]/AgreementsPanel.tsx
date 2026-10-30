@@ -50,7 +50,11 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
   const kindMenu = useRef<HTMLSpanElement>(null);
   const [kindOpen, setKindOpen] = useState(false);
 
-  const open = data.items.find((a) => OPEN.has(a.status)) ?? null;
+  // One agreement may be out per kind (the card and the ACH agreement can be out together).
+  const openByKind = new Map(data.items.filter((a) => OPEN.has(a.status)).map((a) => [a.kind, a] as const));
+  const single = data.kinds.length === 1 ? data.kinds[0]! : null;
+  const singleOpen = single ? (openByKind.get(single.key) ?? null) : null;
+  const allOut = data.kinds.length > 0 && data.kinds.every((k) => openByKind.has(k.key));
   const startSend = (kind: string, resendOf: string | null = null) => {
     setKindOpen(false);
     setSending({ kind, resendOf });
@@ -73,7 +77,7 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
           <p className="text-[12px] text-ink-500">
             {data.items.length
               ? 'Filled from this record, signed online by each principal. The signed PDF lands here.'
-              : 'Send the merchant agreement, filled from this record, to every principal for e-signature.'}
+              : 'Send an agreement, filled from this record, to every principal for e-signature.'}
           </p>
         </div>
         {data.canSend ? (
@@ -81,16 +85,28 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
             {data.kinds.length > 1 ? (
               <>
                 <span ref={kindMenu} className="inline-flex">
-                  <Button size="sm" variant="primary" icon="send" disabled={Boolean(open)} title={open ? `${open.label} is already out. Void it first.` : undefined} onClick={() => setKindOpen((o) => !o)}>
+                  <Button size="sm" variant="primary" icon="send" disabled={allOut} title={allOut ? 'Every agreement is already out. Void one first.' : undefined} onClick={() => setKindOpen((o) => !o)}>
                     Send agreement
                   </Button>
                 </span>
                 <MenuSurface open={kindOpen} onClose={() => setKindOpen(false)} anchorRef={kindMenu} align="right" width={260} label="Which agreement">
-                  {data.kinds.map((k) => (
-                    <button key={k.key} type="button" onClick={() => startSend(k.key)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-700 hover:bg-canvas">
-                      <Icon name="file-pen" size={13} className="text-ink-400" /> {k.label}
-                    </button>
-                  ))}
+                  {data.kinds.map((k) => {
+                    const out = openByKind.get(k.key);
+                    return (
+                      <button
+                        key={k.key}
+                        type="button"
+                        disabled={Boolean(out)}
+                        title={out ? `${out.label} is already out. Void it first.` : undefined}
+                        onClick={() => startSend(k.key)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Icon name="file-pen" size={13} className="text-ink-400" />
+                        <span className="min-w-0 flex-1">{k.label}</span>
+                        {out ? <span className="text-[11px] text-ink-400">{out.label} out</span> : null}
+                      </button>
+                    );
+                  })}
                 </MenuSurface>
               </>
             ) : (
@@ -98,9 +114,9 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
                 size="sm"
                 variant="primary"
                 icon="send"
-                disabled={Boolean(open) || !data.kinds.length}
-                title={open ? `${open.label} is already out. Void it first.` : !data.configured ? 'The signing service is not set up yet' : undefined}
-                onClick={() => data.kinds[0] && startSend(data.kinds[0].key)}
+                disabled={Boolean(singleOpen) || !single}
+                title={singleOpen ? `${singleOpen.label} is already out. Void it first.` : !data.configured ? 'The signing service is not set up yet' : undefined}
+                onClick={() => single && startSend(single.key)}
               >
                 Send agreement
               </Button>
@@ -131,35 +147,39 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
         </div>
       ) : null}
 
-      {open && data.changes && data.changes.length ? (
-        <div className="border-t border-[#f7e0af] bg-[#fdf1d8] px-4 py-3 text-[12.5px] text-[#8a5a09]">
-          <p className="flex items-start gap-2 font-semibold">
-            <Icon name="alert-triangle" size={13} className="mt-[2px] shrink-0" />
-            <span>
-              {data.changes.length} value{data.changes.length === 1 ? '' : 's'} on this record changed after {open.label} went out. The signers are looking at the old
-              {data.changes.length === 1 ? ' one' : ' ones'}.
-            </span>
-          </p>
-          <ul className="mt-2 space-y-1 pl-5">
-            {data.changes.slice(0, 8).map((c, i) => (
-              <li key={i} className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-medium">{c.label}:</span>
-                <span className="line-through decoration-[#8a5a09]/50">{c.before || 'empty'}</span>
-                <span aria-hidden>→</span>
-                <span className="font-semibold">{c.after || 'empty'}</span>
-              </li>
-            ))}
-            {data.changes.length > 8 ? <li className="text-[12px]">…and {data.changes.length - 8} more</li> : null}
-          </ul>
-          {data.canSend ? (
-            <div className="mt-2.5 pl-5">
-              <Button size="sm" icon="refresh-cw" onClick={() => startSend(data.kinds[0]?.key ?? 'maverick_merchant', open.id)} disabled={busy}>
-                Void &amp; resend with the new values
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      {[...openByKind.values()].map((open) => {
+        const changes = data.changesById[open.id] ?? [];
+        if (!changes.length) return null;
+        return (
+          <div key={open.id} className="border-t border-[#f7e0af] bg-[#fdf1d8] px-4 py-3 text-[12.5px] text-[#8a5a09]">
+            <p className="flex items-start gap-2 font-semibold">
+              <Icon name="alert-triangle" size={13} className="mt-[2px] shrink-0" />
+              <span>
+                {changes.length} value{changes.length === 1 ? '' : 's'} on this record changed after {open.label} ({open.kindLabel}) went out. The signers are looking at the old
+                {changes.length === 1 ? ' one' : ' ones'}.
+              </span>
+            </p>
+            <ul className="mt-2 space-y-1 pl-5">
+              {changes.slice(0, 8).map((c, i) => (
+                <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{c.label}:</span>
+                  <span className="line-through decoration-[#8a5a09]/50">{c.before || 'empty'}</span>
+                  <span aria-hidden>→</span>
+                  <span className="font-semibold">{c.after || 'empty'}</span>
+                </li>
+              ))}
+              {changes.length > 8 ? <li className="text-[12px]">…and {changes.length - 8} more</li> : null}
+            </ul>
+            {data.canSend ? (
+              <div className="mt-2.5 pl-5">
+                <Button size="sm" icon="refresh-cw" onClick={() => startSend(open.kind, open.id)} disabled={busy}>
+                  Void &amp; resend with the new values
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
 
       {data.items.length ? (
         <ul className="divide-y divide-line-faint border-t border-line-soft">
@@ -170,7 +190,7 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
               canSend={data.canSend}
               busy={busy}
               onVoid={() => setVoiding(a)}
-              onResend={() => startSend(data.kinds[0]?.key ?? 'maverick_merchant', a.id)}
+              onResend={() => startSend(a.kind, a.id)}
               onRemind={() => act(() => sendReminderAction(a.id), `Reminder sent for ${a.label} to everyone who has not signed.`)}
               onResendSigner={(s) => act(() => resendToSignerAction(a.id, s.id), `${a.label} resent to ${s.name} at the corrected address.`)}
               onRetryDownload={() => act(() => retryDownloadAction(a.id), 'Fetching the signed PDF again…')}

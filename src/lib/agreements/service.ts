@@ -27,7 +27,7 @@ import { fromBytea } from '@/lib/mail/crypto';
 import { choiceLabels, merchantName, recordForApplication } from '@/lib/applications/store';
 import { openBytes, openText, sealBytes, sealText } from './crypto';
 import { describeSignerProblem, selectSigners, type Signer, type SignerProblem } from './signers';
-import { ownersOf, renderAgreement, requiredProblems } from './mapping';
+import { ownerName, ownersOf, renderAgreement, requiredProblems, signerDetailProblems } from './mapping';
 import { agreementFileName, fillAndFlatten, loadTemplate, signatureSpots, templateInstalled, TemplateMissingError } from './pdf';
 import { buildSnapshot, diffSnapshot, showValue, type Snapshot } from './snapshot';
 import { agreementsConfigured, signwellTestMode, vendor } from './vendor';
@@ -132,17 +132,17 @@ function groupProblems(config: Config, problems: AgreementProblem[]): ProblemGro
 }
 
 function signerProblems(problems: SignerProblem[], src: AgreementSource): AgreementProblem[] {
-  const { owners } = ownersOf(src.values);
-  const nameOf = (index: number) => {
-    const o = owners[index] ?? {};
-    const n = [o.first, o.last].filter((x): x is string => typeof x === 'string' && x.trim() !== '').join(' ');
-    return n || `Owner ${index + 1}`;
-  };
   return problems.map((p) => ({
     fieldKey: 'owner_ownership',
     index: 'index' in p ? p.index : undefined,
-    message: describeSignerProblem(p, nameOf),
+    message: describeSignerProblem(p, (index) => ownerName(src.values, index)),
   }));
+}
+
+/** Every rule of spec §5, at once. Past four principals nobody can sign yet, so their details wait. */
+function sendProblems(kind: AgreementKindDef, src: AgreementSource, picked: ReturnType<typeof selectSigners>): AgreementProblem[] {
+  const tooMany = picked.problems.some((p) => p.kind === 'too_many');
+  return [...requiredProblems(kind, src), ...signerProblems(picked.problems, src), ...(tooMany ? [] : signerDetailProblems(src, picked.selected))];
 }
 
 export type PreSendResult = {
@@ -178,16 +178,15 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     sourceFor(recordId),
     agreementSettings(),
     templateInstalled(kind),
-    openAgreementFor(recordId),
+    openAgreementFor(recordId, kind.key),
     supabaseAdmin().from('profiles').select('full_name, email').eq('id', ctx.userId).maybeSingle(),
   ]);
   if (!found) throw new AgreementError('That record no longer exists.');
   const { src, dealName } = found;
 
-  const problems: AgreementProblem[] = requiredProblems(kind, src);
   const picked = selectSigners(ownerInputs(src.values));
-  problems.push(...signerProblems(picked.problems, src));
-  if (open) problems.push({ fieldKey: 'owner_ownership', message: `An agreement is already out (${agrLabel(open.number)}). Void it first.` });
+  const problems = sendProblems(kind, src, picked);
+  if (open) problems.push({ fieldKey: 'owner_ownership', message: `This ${kind.label.toLowerCase()} is already out (${agrLabel(open.number)}). Void it first.` });
 
   // A problem on a field the viewer cannot see is named by its place, not its value.
   const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
@@ -197,6 +196,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
   const expires = new Date(Date.now() + settings.expiresDays * 86400_000);
   const vars = {
     merchant: name,
+    agreement: kind.emailLabel,
     signer_name: picked.signers[0]?.first ?? 'there',
     expires: expires.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
     sender_name: (me.data?.full_name as string | undefined) || (me.data?.email as string | undefined) || settings.requesterName,
@@ -209,7 +209,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     expiresDays: settings.expiresDays,
     subject: fillTemplate(settings.emailSubject, vars),
     message: fillTemplate(settings.emailMessage, vars),
-    fileName: agreementFileName(name, kind.label),
+    fileName: agreementFileName(name, kind.fileLabel),
     testMode: signwellTestMode,
     configured: agreementsConfigured,
     templateReady,
@@ -233,11 +233,10 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
   const { src, dealName } = found;
 
   // The same check again, on the server: never the browser alone (spec §5).
-  const problems = requiredProblems(kind, src);
   const picked = selectSigners(ownerInputs(src.values));
-  problems.push(...signerProblems(picked.problems, src));
+  const problems = sendProblems(kind, src, picked);
   if (problems.length) throw new AgreementError(`Can't send yet: ${problems.length} item${problems.length === 1 ? '' : 's'} need fixing. Open the check to see them.`);
-  if (await openAgreementFor(input.recordId)) throw new AgreementError('An agreement is already out. Void it first.');
+  if (await openAgreementFor(input.recordId, kind.key)) throw new AgreementError(`This ${kind.label.toLowerCase()} is already out. Void it first.`);
 
   const settings = await agreementSettings();
   const { pdf: template, fields } = await loadTemplate(kind);
@@ -245,7 +244,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
   const flat = await fillAndFlatten(kind, template, rendered.byPdfField);
   const spots = signatureSpots(kind, fields, picked.signers);
   const name = merchantName(src.values, dealName);
-  const fileName = agreementFileName(name, kind.label);
+  const fileName = agreementFileName(name, kind.fileLabel);
 
   const id = newId();
   const snapshot = buildSnapshot(src, rendered.used, kind.version, sentAt);
@@ -269,7 +268,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     signer_count: picked.signers.length,
   }).select('number').single();
   if (insert.error) {
-    if (insert.error.code === '23505') throw new AgreementError('An agreement is already out. Void it first.');
+    if (insert.error.code === '23505') throw new AgreementError(`This ${kind.label.toLowerCase()} is already out. Void it first.`);
     throw insert.error;
   }
   const label = agrLabel(insert.data.number as number);
@@ -387,7 +386,8 @@ export async function voidAgreement(ctx: AuthContext, agreementId: string): Prom
 export async function voidAndResend(ctx: AuthContext, agreementId: string, input: Omit<SendInput, 'recordId'>): Promise<{ id: string; label: string }> {
   const a = await ownedOpen(ctx, agreementId);
   if (isOpen(a.status)) await voidAgreement(ctx, agreementId);
-  return sendAgreement(ctx, { ...input, recordId: a.record_id });
+  // The new one is the same agreement kind as the one it replaces.
+  return sendAgreement(ctx, { ...input, kind: a.kind, recordId: a.record_id });
 }
 
 export async function sendReminder(ctx: AuthContext, agreementId: string): Promise<void> {
@@ -453,6 +453,7 @@ export type FileView = { id: string; kind: 'sent_copy' | 'completed'; name: stri
 export type AgreementView = {
   id: string;
   label: string;
+  kind: string;
   kindLabel: string;
   status: AgreementStatus;
   testMode: boolean;
@@ -474,9 +475,8 @@ export type AgreementsPanelData = {
   kinds: { key: string; label: string }[];
   canSend: boolean;
   configured: boolean;
-  /** Values that changed since the open agreement went out (spec §8). */
-  changes: ChangeView[] | null;
-  openId: string | null;
+  /** Per open agreement: values that changed since it went out (spec §8). */
+  changesById: Record<string, ChangeView[]>;
 };
 
 function openSnapshot(a: AgreementRow): Snapshot | null {
@@ -510,6 +510,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
     return {
       id: r.id as string,
       label: agrLabel(r.number as number),
+      kind: r.kind as string,
       kindLabel: kindLabel(r.kind as string),
       status: r.status as AgreementStatus,
       testMode: Boolean(r.test_mode),
@@ -540,15 +541,15 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
     };
   });
 
-  // The change banner: the open agreement's snapshot against the record now.
-  let changes: ChangeView[] | null = null;
-  const openRow = items.find((i) => isOpen(i.status));
-  if (openRow) {
+  // The change banner: each open agreement's snapshot against the record now.
+  const changesById: Record<string, ChangeView[]> = {};
+  const openRows = items.filter((i) => isOpen(i.status));
+  const found = openRows.length ? await sourceFor(recordId) : null;
+  for (const openRow of openRows) {
     const full = await agreementById(openRow.id);
     const snap = full ? openSnapshot(full) : null;
-    const found = await sourceFor(recordId);
     if (snap && found) {
-      changes = diffSnapshot(snap, found.src)
+      changesById[openRow.id] = diffSnapshot(snap, found.src)
         .filter((c) => !hidden.has(c.key))
         .map((c) => {
           const f = config.fields.find((x) => x.key === c.key);
@@ -560,7 +561,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
     }
   }
 
-  return { items, kinds: kinds.map((k) => ({ key: k.key, label: k.label })), canSend, configured: agreementsConfigured, changes, openId: openRow?.id ?? null };
+  return { items, kinds: kinds.map((k) => ({ key: k.key, label: k.label })), canSend, configured: agreementsConfigured, changesById };
 }
 
 /** The sealed PDF, for a viewer who may see every field printed on it. */

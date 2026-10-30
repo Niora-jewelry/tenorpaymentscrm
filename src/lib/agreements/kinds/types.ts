@@ -56,6 +56,10 @@ export type AgreementProblem = {
 export type AgreementKindDef = {
   key: string;
   label: string;
+  /** The words in the file name: "[Legal name] - Merchant Agreement - Signed [date].pdf" (spec §8). */
+  fileLabel: string;
+  /** The words in the signer's email: {{agreement}} in the Presets subject and message. */
+  emailLabel: string;
   /** File under src/lib/agreements/template/. */
   templateFile: string;
   /** The fields.json beside it, written by scripts/build-agreement-template.mjs. */

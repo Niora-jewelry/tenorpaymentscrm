@@ -68,6 +68,15 @@ describe('prefill (CRM → application)', () => {
     expect(a.monthly_ach_volume).toBe('50000');
   });
 
+  it('the ACH questions show the record’s own ACH figures when it has them', () => {
+    const own = prefillAnswers({ monthly_acq_volume: '50000', monthly_ach_volume: '12000', avg_transaction: '40', ach_avg_transaction: '250', max_transaction: '900', ach_max_transaction: '5000' }, labels);
+    expect(own.monthly_acq_volume).toBe('50000');
+    expect(own.monthly_ach_volume).toBe('12000');
+    expect(own.average_ach_transaction_amount).toBe('250');
+    expect(own.maximum_ach_transaction_amount).toBe('5000');
+    expect(own.average_transaction_amount).toBe('40');
+  });
+
   it('R1 and R6 prefill Yes/No from whether the field has a value', () => {
     expect(a.ach_refunds).toBe('No');
     expect(a.accepts_payment_before_delivery).toBe('Yes');

@@ -305,16 +305,18 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
 
   set('prior_processor', str(crm.prior_processor));
   set('prior_pos', str(crm.prior_pos));
-  // R2–R4: the card and ACH question share one CRM field; both are prefilled.
+  // R2–R4: the card and ACH questions are prefilled from the card fields —
+  // unless the record holds its own ACH figures (the ACH agreement's fields,
+  // 30 Oct 2026), which the ACH questions then show instead.
   const vol = cleanNumber(crm.monthly_acq_volume);
   set('monthly_acq_volume', vol);
-  set('monthly_ach_volume', vol);
+  set('monthly_ach_volume', cleanNumber(crm.monthly_ach_volume) || vol);
   const avg = cleanNumber(crm.avg_transaction);
   set('average_transaction_amount', avg);
-  set('average_ach_transaction_amount', avg);
+  set('average_ach_transaction_amount', cleanNumber(crm.ach_avg_transaction) || avg);
   const max = cleanNumber(crm.max_transaction);
   set('maximum_transaction_amount', max);
-  set('maximum_ach_transaction_amount', max);
+  set('maximum_ach_transaction_amount', cleanNumber(crm.ach_max_transaction) || max);
 
   const months = list(crm.seasonal);
   if (months.length) a.seasonal = months.includes(MONTHS_NONE) ? 'No' : 'Yes';

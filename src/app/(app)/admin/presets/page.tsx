@@ -164,7 +164,7 @@ export default async function AdminPresetsPage() {
       key: 'agreement',
       label: 'Agreements',
       icon: 'file-pen',
-      description: 'The merchant agreement sent for e-signature: how long signers have, reminders, the sender name, and the email they receive.',
+      description: 'The agreements sent for e-signature: how long signers have, reminders, the sender name, and the email they receive.',
       content: <AgreementSection key="agreement" initial={agreementSettings} />,
     },
   ];

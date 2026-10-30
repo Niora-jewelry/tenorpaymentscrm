@@ -75,8 +75,17 @@ export async function agreementById(id: string): Promise<AgreementRow | null> {
   return (data as AgreementRow | null) ?? null;
 }
 
-export async function openAgreementFor(recordId: string): Promise<AgreementRow | null> {
-  const { data } = await supabaseAdmin().from('agreements').select('*').eq('record_id', recordId).in('status', OPEN_STATUSES).order('sent_at', { ascending: false }).limit(1).maybeSingle();
+/** The open agreement of one kind on a record — one may be out per kind. */
+export async function openAgreementFor(recordId: string, kind: string): Promise<AgreementRow | null> {
+  const { data } = await supabaseAdmin()
+    .from('agreements')
+    .select('*')
+    .eq('record_id', recordId)
+    .eq('kind', kind)
+    .in('status', OPEN_STATUSES)
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
   return (data as AgreementRow | null) ?? null;
 }
 
@@ -92,7 +101,7 @@ export async function agreementSettings(): Promise<Settings> {
     reminders: (data?.reminders as boolean | undefined) ?? true,
     requesterName: (data?.requester_name as string | undefined) ?? 'TapDash',
     requesterEmail: (data?.requester_email as string | null | undefined) ?? null,
-    emailSubject: (data?.email_subject as string | undefined) ?? 'Your merchant agreement — {{merchant}}',
+    emailSubject: (data?.email_subject as string | undefined) ?? 'Your {{agreement}} — {{merchant}}',
     emailMessage: (data?.email_message as string | undefined) ?? '',
   };
 }

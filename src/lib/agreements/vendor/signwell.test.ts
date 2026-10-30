@@ -86,6 +86,10 @@ describe('SignWell client', () => {
     expect(ev).toMatchObject({ type: 'document_signed', time, documentId: 'doc-1', agreementIdHint: 'agr-1', signer: { email: 'jane@zz.test', name: 'Jane Doe' } });
     expect(ev?.document?.status).toBe('pending');
     expect(sw.verifyWebhook(JSON.stringify({ ...good, event: { ...good.event, hash: 'nope' } }))).toBeNull();
+    // Two hooks on one URL: an event signed by either verifies.
+    const two = new SignWell('key', 'other-id, webhook-id');
+    expect(two.verifyWebhook(JSON.stringify(good))?.documentId).toBe('doc-1');
+    expect(new SignWell('key', 'other-id').verifyWebhook(JSON.stringify(good))).toBeNull();
     expect(sw.verifyWebhook(JSON.stringify({ ...good, event: { ...good.event, type: 'document_completed' } }))).toBeNull();
     expect(sw.verifyWebhook('not json')).toBeNull();
   });

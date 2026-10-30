@@ -12,6 +12,9 @@
  * Webhooks carry `event.hash = HMAC-SHA256(key = the webhook id,
  * message = "<type>@<time>")`. Only type and time are signed, so the route
  * re-reads terminal documents from the API before trusting their body.
+ * SignWell can register several hooks on one URL (a workspace one and one
+ * per API app), each signing with its own id — SIGNWELL_WEBHOOK_ID holds
+ * them comma-separated and an event verifies against any of them.
  *
  * Coordinates: SignWell places a field by `x`/`y` from the page's TOP-left in
  * PDF points at the page's native size; the template's rectangles are
@@ -62,11 +65,14 @@ export function signwellHash(webhookId: string, type: string, time: number | str
 
 export class SignWell implements ESignVendor {
   readonly name = 'signwell';
+  private readonly webhookIds: string[];
   constructor(
     private readonly apiKey: string,
-    private readonly webhookId: string,
+    webhookIds: string,
     private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+  ) {
+    this.webhookIds = webhookIds.split(',').map((x) => x.trim()).filter(Boolean);
+  }
 
   private async call<T>(method: string, path: string, body?: unknown, parse?: (json: unknown) => T): Promise<T> {
     const ctl = new AbortController();
@@ -178,10 +184,12 @@ export class SignWell implements ESignVendor {
       return null;
     }
     const { type, time, hash, related_signer } = parsed.event;
-    const expected = signwellHash(this.webhookId, type, time);
-    const a = Buffer.from(hash, 'utf8');
-    const b = Buffer.from(expected, 'utf8');
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    const given = Buffer.from(hash, 'utf8');
+    const verified = this.webhookIds.some((id) => {
+      const expected = Buffer.from(signwellHash(id, type, time), 'utf8');
+      return given.length === expected.length && timingSafeEqual(given, expected);
+    });
+    if (!verified) return null;
     const obj = parsed.data.object;
     const docId = obj?.id;
     if (!docId) return null;

@@ -139,7 +139,8 @@ const serverSchema = z.object({
 
   /**
    * SignWell — e-signature for merchant agreements (lib/agreements). The
-   * webhook id is the HMAC key SignWell signs every event with. Test mode
+   * webhook id is the HMAC key SignWell signs every event with; several ids
+   * (one per hook on the URL) go comma-separated. Test mode
    * sends watermarked, non-binding documents and is forced on outside
    * production, so a developer cannot send a real agreement by mistake.
    */

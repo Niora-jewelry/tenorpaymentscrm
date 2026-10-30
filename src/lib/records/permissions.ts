@@ -267,7 +267,7 @@ async function rawGrant(
 /* The Permissions spec's settings (migrations 9810-9812)                      */
 /* -------------------------------------------------------------------------- */
 
-export type CompanyAction = 'create' | 'team' | 'archive' | 'modules' | 'pipeline';
+export type CompanyAction = 'create' | 'team' | 'archive' | 'modules' | 'pipeline' | 'pipeline_change';
 export type AdminPage =
   | 'users' | 'permissions' | 'presets' | 'numbers' | 'residuals' | 'integrations' | 'automations' | 'recycle_bin';
 export type ModuleScope = 'hidden' | 'mine' | 'all';

@@ -848,7 +848,7 @@ async function RecordDrawer({
    * announced the NAME of every field the viewer is not allowed to see.
    */
   // Archive and the pipeline bar follow their company-wide actions.
-  const [canArchiveRecords, canMovePipeline] = await Promise.all([canDo(ctx, 'archive'), canDo(ctx, 'pipeline')]);
+  const [canArchiveRecords, canMovePipeline, canChangePipeline] = await Promise.all([canDo(ctx, 'archive'), canDo(ctx, 'pipeline'), canDo(ctx, 'pipeline_change')]);
   const titleForCompare = (record.dealName ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   const headerFacts = headerFields
@@ -1078,6 +1078,7 @@ async function RecordDrawer({
             pipelines={modulePipelines}
             assignment={pipelineAssign}
             canMove={canMovePipeline}
+            canChange={canChangePipeline}
           />
         </div>
         <div className="min-w-0 rounded-xl border border-line-soft bg-canvas/50 px-3.5 py-3">

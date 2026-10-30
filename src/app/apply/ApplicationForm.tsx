@@ -27,6 +27,7 @@ import {
   type AnswerValue,
   type Answers,
   type Question,
+  type SectionId,
 } from '@/lib/applications/catalog';
 
 export type FormProps = {
@@ -36,6 +37,8 @@ export type FormProps = {
   ssnOnFile: Record<number, string>;
   ssnEntered: Record<number, string>;
   disabled?: boolean;
+  /** One page of the form (the merchant's step-by-step link); every section when absent. */
+  only?: SectionId;
 };
 
 const input =
@@ -374,14 +377,14 @@ function Owners({
   );
 }
 
-export function ApplicationForm({ answers, onChange, problems, ssnOnFile, ssnEntered, disabled }: FormProps) {
+export function ApplicationForm({ answers, onChange, problems, ssnOnFile, ssnEntered, disabled, only }: FormProps) {
   const set = (k: string, v: AnswerValue) => onChange({ ...answers, [k]: v });
   // First and last change together, and replace any one-box name.
   const onNames = (n: number, first: string, last: string) =>
     onChange({ ...answers, [ownerField(n, 'first')]: first, [ownerField(n, 'last')]: last, [ownerField(n, 'name')]: '' });
   return (
     <div className="space-y-5">
-      {SECTIONS.map((s, i) => (
+      {SECTIONS.map((s, i) => only && s.id !== only ? null : (
         <section key={s.id} aria-labelledby={`sec-${s.id}`} className="rounded-2xl border border-line bg-white p-5 shadow-[0_1px_2px_rgba(8,32,47,.04)] sm:p-6">
           <header className="mb-5 flex items-baseline gap-3 border-b border-line-soft pb-3">
             <span className="font-mono text-[12px] font-semibold text-ink-300">{String(i + 1).padStart(2, '0')}</span>

@@ -250,6 +250,7 @@ const fieldMetaShape = {
   sensitive: checkbox,
   wide: checkbox,
   notesEnabled: checkbox,
+  addressEnabled: checkbox,
 };
 
 export const createFieldSchema = z
@@ -484,6 +485,7 @@ export const fieldSetupSchema = z
     hint: hintSchema,
     required: checkbox,
     notesEnabled: checkbox,
+    addressEnabled: checkbox,
     sensitive: checkbox,
     choices: z.preprocess(parseJsonList, z.array(setupChoiceSchema).max(100, 'That is more options than one field can offer.')),
     autoSource: z.preprocess((v) => (v === '' || v == null ? null : v), z.enum(AUTO_SOURCES).nullable()),

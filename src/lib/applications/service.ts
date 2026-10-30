@@ -158,8 +158,14 @@ export async function applicationsFor(ctx: AuthContext, recordId: string): Promi
 
 // ── composing ───────────────────────────────────────────────────────────────
 
+/** An email the record already holds, offered in the To picker. */
+export type Recipient = { address: string; label: string; kind: 'default' | 'other' };
+
 export type SendDefaults = {
   to: string;
+  /** Default first (the first contact's email), then every other email on the
+   *  record — other contacts, affiliates, owners — each once. */
+  recipients: Recipient[];
   from: FromOption[];
   subject: string;
   body: string;
@@ -184,6 +190,37 @@ async function mailGate(ctx: AuthContext): Promise<void> {
 
 const firstContact = (crm: CrmValues) =>
   (Array.isArray(crm.contact) ? (crm.contact[0] as Record<string, unknown> | undefined) : undefined) ?? {};
+
+/**
+ * "Which emails do applications go to? Can we do a picker: Default / Other
+ * emails / Custom email" (the client, 30 Oct 2026). Default is the first
+ * contact; the others are every email the record holds, in the groups the
+ * viewer may see, each address once.
+ */
+function recipientsOn(crm: CrmValues, hidden: Set<string>): Recipient[] {
+  const out: Recipient[] = [];
+  const seen = new Set<string>();
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const add = (address: string, label: string, kind: Recipient['kind']) => {
+    if (!address || seen.has(address.toLowerCase())) return;
+    seen.add(address.toLowerCase());
+    out.push({ address, label, kind });
+  };
+  const groups: [string, string, (m: Record<string, unknown>) => string][] = [
+    ['contact', 'Contact', (m) => str(m.name)],
+    ['affiliate', 'Affiliate', (m) => str(m.business_name) || str(m.name)],
+    ['owner_ownership', 'Owner', (m) => [str(m.first), str(m.last)].filter(Boolean).join(' ')],
+  ];
+  for (const [key, who, nameOf] of groups) {
+    if (hidden.has(key) || !Array.isArray(crm[key])) continue;
+    (crm[key] as unknown[]).forEach((raw, i) => {
+      const m = (raw ?? {}) as Record<string, unknown>;
+      const name = nameOf(m);
+      add(str(m.email), `${who}${name ? ` · ${name}` : ` ${i + 1}`}`, key === 'contact' && i === 0 ? 'default' : 'other');
+    });
+  }
+  return out;
+}
 
 function fillTemplate(text: string, vars: Record<string, string>): string {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k: string) => (k in vars ? vars[k]! : m));
@@ -210,8 +247,10 @@ export async function sendDefaults(ctx: AuthContext, recordId: string): Promise<
     expires: expires.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
     sender_name: (me.data?.full_name as string | undefined) || (me.data?.email as string | undefined) || '',
   };
+  const recipients = recipientsOn(rec.values, hidden);
   return {
     to: typeof contact.email === 'string' ? contact.email : '',
+    recipients,
     from,
     subject: fillTemplate(settings.emailSubject, vars),
     body: fillTemplate(settings.emailBody, vars),

@@ -9,7 +9,7 @@ import {
 function field(overrides: Partial<Field> & Pick<Field, 'id' | 'key' | 'tabId'>): Field {
   return {
     label: overrides.key, type: 'text', subtabId: null, position: 0, hint: null,
-    notesEnabled: false, syncEnabled: false, isSystem: false, readOnly: false,
+    notesEnabled: false, addressEnabled: false, syncEnabled: false, isSystem: false, readOnly: false,
     required: false, sensitive: false, wide: false, placeholder: false,
     width: null, digits: null, repeatMax: null, repeatSchema: null,
     repeatGroupKey: null, gridColumns: null, section: null, autoSource: null, autoSourceField: null, archivedAt: null,

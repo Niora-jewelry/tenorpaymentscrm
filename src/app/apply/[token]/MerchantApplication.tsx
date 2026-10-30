@@ -6,12 +6,16 @@
  * then a thank-you and a read-only link. It opens on a choice between that
  * and uploading a completed PDF (`ChooseMethod`); a merchant who has already
  * saved answers here goes straight back to them.
+ *
+ * The form is one section per page — "Next page instead of one long app"
+ * (the client, 30 Oct 2026). Next checks only that page; Submit, on the last
+ * page, checks everything and names the page a problem is on.
  */
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
-import type { Answers } from '@/lib/applications/catalog';
-import { problemsWith } from '@/lib/applications/validate';
+import { SECTIONS, type Answers } from '@/lib/applications/catalog';
+import { problemsInSection, problemsWith } from '@/lib/applications/validate';
 import { ApplicationForm } from '../ApplicationForm';
 import { ChooseMethod } from './ChooseMethod';
 import { LinkMessage } from './LinkMessage';
@@ -47,6 +51,9 @@ export function MerchantApplication({
   const [submitting, startSubmit] = useTransition();
   // Online once they have saved answers here; otherwise they choose first.
   const [mode, setMode] = useState<'choose' | 'online'>(initialSavedAt ? 'online' : 'choose');
+  const [step, setStep] = useState(0);
+  const section = SECTIONS[step]!;
+  const last = step === SECTIONS.length - 1;
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(answers);
@@ -89,13 +96,32 @@ export function MerchantApplication({
     };
   }, [flush]);
 
+  const scrollToFirstProblem = () =>
+    requestAnimationFrame(() => document.querySelector('[aria-invalid="true"], .border-bad')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+
+  // Next checks this page only; a problem on an earlier page waits for Submit.
+  const next = () => {
+    const found = problemsInSection(problemsWith(answers, ssnOnFile), section.id);
+    setProblems(found);
+    if (Object.keys(found).length) return scrollToFirstProblem();
+    setStep((s) => Math.min(s + 1, SECTIONS.length - 1));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const goTo = (i: number) => {
+    setStep(i);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const submit = () =>
     startSubmit(async () => {
       setSubmitError(null);
       const found = problemsWith(answers, ssnOnFile);
       setProblems(found);
       if (Object.keys(found).length) {
-        requestAnimationFrame(() => document.querySelector('[aria-invalid="true"], .border-bad')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+        // Land on the first page that has a problem, then on the field.
+        const firstBad = SECTIONS.findIndex((s) => Object.keys(problemsInSection(found, s.id)).length > 0);
+        if (firstBad >= 0 && firstBad !== step) setStep(firstBad);
+        scrollToFirstProblem();
         return;
       }
       if (timer.current) clearTimeout(timer.current);
@@ -104,6 +130,9 @@ export function MerchantApplication({
       if (r.ok) return setDone('submitted');
       if ('problems' in r && r.problems) {
         setProblems(r.problems);
+        const firstBad = SECTIONS.findIndex((s) => Object.keys(problemsInSection(r.problems!, s.id)).length > 0);
+        if (firstBad >= 0) setStep(firstBad);
+        scrollToFirstProblem();
         return;
       }
       if ('state' in r && r.state) return setDone(r.state === 'open' ? null : r.state);
@@ -191,7 +220,40 @@ export function MerchantApplication({
           </p>
         </div>
 
-        <ApplicationForm answers={answers} onChange={onChange} problems={problems} ssnOnFile={ssnOnFile} ssnEntered={ssnEntered} disabled={submitting} />
+        <ol className="mb-5 grid grid-cols-4 gap-1.5" aria-label="Pages">
+          {SECTIONS.map((s, i) => {
+            const done = i < step;
+            const here = i === step;
+            const bad = Object.keys(problemsInSection(problems, s.id)).length > 0;
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => goTo(i)}
+                  aria-current={here ? 'step' : undefined}
+                  disabled={submitting}
+                  className={`group/step w-full rounded-lg border px-2 py-2 text-left transition-colors ${
+                    here ? 'border-brand-600 bg-white' : bad ? 'border-bad/40 bg-white hover:border-bad' : done ? 'border-line bg-white hover:border-ink-300' : 'border-transparent bg-transparent hover:bg-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-400">
+                    <span
+                      className={`grid size-4 place-items-center rounded-full text-[10px] ${
+                        bad ? 'bg-bad text-white' : done ? 'bg-[#0b6b5d] text-white' : here ? 'bg-brand-600 text-white' : 'bg-line text-ink-500'
+                      }`}
+                    >
+                      {bad ? '!' : done ? <Icon name="check" size={9} strokeWidth={3} /> : i + 1}
+                    </span>
+                    Page {i + 1}
+                  </span>
+                  <span className={`mt-1 block truncate text-[12.5px] font-medium ${here ? 'text-ink-900' : 'text-ink-600'}`}>{s.title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+
+        <ApplicationForm only={section.id} answers={answers} onChange={onChange} problems={problems} ssnOnFile={ssnOnFile} ssnEntered={ssnEntered} disabled={submitting} />
 
         <p className="mt-6 flex items-start gap-2 text-[12px] leading-relaxed text-ink-400">
           <Icon name="lock" size={12} className="mt-[2px] shrink-0" />
@@ -208,19 +270,44 @@ export function MerchantApplication({
               <span className="font-medium text-bad">
                 {problemCount} answer{problemCount === 1 ? ' needs' : 's need'} attention before you can submit.
               </span>
-            ) : (
+            ) : last ? (
               <span className="text-ink-500">Check your answers, then submit. You can’t change them afterwards.</span>
+            ) : (
+              <span className="text-ink-500">
+                Page {step + 1} of {SECTIONS.length} · {section.title}
+              </span>
             )}
           </p>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
-          >
-            {submitting ? <Spinner /> : <Icon name="check" size={15} />}
-            {submitting ? 'Submitting…' : 'Submit application'}
-          </button>
+          {step > 0 ? (
+            <button
+              type="button"
+              onClick={() => goTo(step - 1)}
+              disabled={submitting}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-4 py-2.5 text-[14px] font-semibold text-ink-700 hover:border-ink-400 disabled:opacity-60"
+            >
+              <Icon name="chevron-left" size={14} /> Back
+            </button>
+          ) : null}
+          {last ? (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+            >
+              {submitting ? <Spinner /> : <Icon name="check" size={15} />}
+              {submitting ? 'Submitting…' : 'Submit application'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={next}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+            >
+              Next page <Icon name="chevron-right" size={14} />
+            </button>
+          )}
         </div>
       </div>
     </div>

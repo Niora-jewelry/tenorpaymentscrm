@@ -241,6 +241,8 @@ export type Field = {
   headerIn?: ModuleSlug[];
   /** Carries a per-record notes thread. */
   notes?: boolean;
+  /** Carries an address of its own, beside the notes (Inventory: off-site warehouse). */
+  address?: boolean;
   /** Drawn in a named card under the sub-tab's main grid, with every field sharing the label. */
   section?: string;
   /** Email/Phone only: inbound messages match against this value. */

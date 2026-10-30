@@ -35,6 +35,8 @@ import type { Message } from '@/lib/records/messages';
 import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import type { Note } from '@/lib/records/notes';
+import type { FieldAddress } from '@/lib/records/fieldAddresses';
+import { FieldSearch, type FieldHit } from './FieldSearch';
 import type { ApplicationsPanelData } from '@/lib/applications/service';
 import { ApplicationsPanel } from './ApplicationsPanel';
 import type { RecordResiduals } from '@/lib/records/recordResiduals';
@@ -115,11 +117,13 @@ export function DrawerTabs({
   phoneCalls,
   smsMessages,
   notesByScope,
+  addressByField = {},
   authorNames,
   viewerId,
   isAdmin,
   openTabId,
   openSubtabId,
+  openFieldKey = null,
   caseRoster = [],
   mentions: initialMentions = [],
   openMention = null,
@@ -140,6 +144,9 @@ export function DrawerTabs({
    *  see, so these are either usable ids or null — never a hidden tab. */
   openTabId?: string | null;
   openSubtabId?: string | null;
+  /** A field key to land on (`?field=`), already checked as visible. Its tab
+   *  and sub-tab are the resolved `openTabId`/`openSubtabId`. */
+  openFieldKey?: string | null;
   grantByKey: Record<string, Grant>;
   values: Record<string, unknown>;
   updatedAt: string;
@@ -170,6 +177,8 @@ export function DrawerTabs({
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
   notesByScope: Record<string, Note[]>;
+  /** A field's own address, by field key (fields with `address_enabled`). */
+  addressByField?: Record<string, FieldAddress>;
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
@@ -220,15 +229,26 @@ export function DrawerTabs({
   // were read once, so a notification click on an open record did nothing.)
   // State adjusted during render from the previous props — React's own
   // pattern for "react to a prop change", with no effect round-trip.
-  const target = `${openTabId ?? ''}/${openSubtabId ?? ''}/${openMention?.id ?? ''}`;
+  const target = `${openTabId ?? ''}/${openSubtabId ?? ''}/${openMention?.id ?? ''}/${openFieldKey ?? ''}`;
   const [seenTarget, setSeenTarget] = useState(target);
+  // The field card to scroll to and flash: a `?field=` link, or a pick in the
+  // drawer's own search. Cleared and re-set across a frame so the same field
+  // picked twice lands twice.
+  const [focusFieldKey, setFocusFieldKey] = useState<string | null>(openFieldKey);
   if (seenTarget !== target) {
     setSeenTarget(target);
     if (openTabId) {
       setActiveTabId(openTabId);
       setActiveSubtabId(openSubtabId ?? tabs.find((t) => t.id === openTabId)?.subtabs[0]?.id);
     }
+    setFocusFieldKey(openFieldKey);
   }
+  const landOn = (hit: FieldHit) => {
+    setActiveTabId(hit.tabId);
+    setActiveSubtabId(hit.subtabId ?? undefined);
+    setFocusFieldKey(null);
+    requestAnimationFrame(() => setFocusFieldKey(hit.key));
+  };
 
   /*
    * ⚠️ THE EDITED VALUES LIVE HERE, not inside `RealFieldGrid`.
@@ -356,6 +376,7 @@ export function DrawerTabs({
             </button>
           );
         })}
+        <FieldSearch tabs={tabs} onPick={landOn} />
       </nav>
 
       {/*
@@ -466,11 +487,13 @@ export function DrawerTabs({
                   markEdited={(key) => editedKeys.current.add(key)}
                   initialUpdatedAt={updatedAt}
                   notesByField={notesByScope}
+                  addressByField={addressByField}
                   authorNames={authorNames}
                   viewerId={viewerId}
                   isAdmin={isAdmin}
                   mentionsByField={mentionsByTab.byField}
                   openMention={openMention?.fieldKey ? openMention : null}
+                  focusFieldKey={focusFieldKey}
                   onMentionRead={onMentionRead}
                 />
               </div>

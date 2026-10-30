@@ -331,9 +331,9 @@ export const FIELDS: Field[] = [
     choices: c('0-500', '501-2500', '2501-5000', '5001-10000', '10000+'),
     width: 150,
   }),
-  f('inventory', 'Inventory', 'dropdown', 'application/general', {
-    choices: c('On-site', 'Off-site', '3rd party', 'Service only'),
-    hint: 'Notes section as well.',
+  f('inventory', 'Inventory', 'multi_select', 'application/general', {
+    choices: c('We don’t have any', 'On-site', 'Off-site (Warehouse)', 'Fulfillment Center', 'Third Party Storage', 'Other'),
+    hint: 'Select all that apply. Off-site: add the warehouse address with the pin.',
     notes: true,
     width: 160,
   }),
@@ -355,9 +355,9 @@ export const FIELDS: Field[] = [
     width: 210,
   }),
   f('refund_policy', 'Refund policy', 'long_text', 'application/general', { wide: true, width: 300 }),
-  f('bankruptcy', 'Bankruptcy', 'multi_select', 'application/general', {
-    choices: c('Business', 'Personal', 'Never'),
-    hint: 'Can choose more than one; with a notes section.',
+  f('bankruptcy', 'Bankruptcy', 'dropdown', 'application/general', {
+    choices: c('Business bankruptcy', 'Personal bankruptcy', 'Never filed', 'Yes'),
+    hint: 'Pick the kind; a plain "Yes" cannot go on an agreement. Details go in the notes.',
     notes: true,
     width: 200,
   }),
@@ -383,24 +383,24 @@ export const FIELDS: Field[] = [
   /* ====================================================================== */
   /* Application → Financial                                                 */
   /* ====================================================================== */
-  f('monthly_acq_volume', 'Monthly ACQ volume', 'currency', 'application/financial', {
+  f('monthly_acq_volume', 'Monthly ACQ volume', 'currency', 'application/acq', {
     headerIn: LEADS_ONLY,
     columnIn: ['records', 'leads', 'deals', 'contacts', 'residuals'],
     columnOrder: 80,
     width: 160,
   }),
-  f('monthly_ach_volume', 'Monthly ACH volume', 'currency', 'application/financial', {
+  f('monthly_ach_volume', 'Monthly ACH volume', 'currency', 'application/ach', {
     columnIn: ['records', 'deals', 'residuals'],
     columnOrder: 90,
     width: 160,
   }),
-  f('avg_transaction', 'Average transaction amount', 'currency', 'application/financial', {
+  f('avg_transaction', 'Average transaction amount', 'currency', 'application/acq', {
     columnIn: ['records', 'deals'],
     columnOrder: 240,
     width: 180,
   }),
-  f('max_transaction', 'Maximum transaction amount', 'currency', 'application/financial', { width: 190 }),
-  f('amex_monthly_volume', 'Amex monthly volume', 'currency', 'application/financial', { width: 180 }),
+  f('max_transaction', 'Maximum transaction amount', 'currency', 'application/acq', { width: 190 }),
+  f('amex_monthly_volume', 'Amex monthly volume', 'currency', 'application/acq', { width: 180 }),
 
   /* ====================================================================== */
   /* Application → ACQ                                                       */
@@ -579,7 +579,7 @@ export const FIELDS: Field[] = [
   f('td_ach_return', 'ACH return', 'currency', 'pricing/td_merchant', { width: 150, section: 'Acquirer/ACH merchant pricing' }),
   f('td_ach_monthly_gateway_fee', 'ACH monthly gateway fee', 'currency', 'pricing/td_merchant', { width: 200, section: 'Acquirer/ACH merchant pricing' }),
   f('td_ach_debit_unauthorized_fee', 'ACH Debit unauthorized fee', 'currency', 'pricing/td_merchant', { width: 220, section: 'Acquirer/ACH merchant pricing' }),
-  f('td_ach_bin', 'ACH BIN', 'text', 'pricing/td_merchant', { width: 150, section: 'Acquirer/ACH merchant pricing' }),
+  f('td_ach_bin', 'ACH BIN', 'percentage', 'pricing/td_merchant', { width: 150, section: 'Acquirer/ACH merchant pricing' }),
 
   /* ====================================================================== */
   /* Pricing → Processor-Vendor Pricing to TD                                */

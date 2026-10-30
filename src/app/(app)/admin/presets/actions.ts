@@ -237,6 +237,7 @@ export async function createFieldAction(_prev: PresetFormState, formData: FormDa
     hint: formData.get('hint') ?? '',
     required: formData.get('required'),
     notesEnabled: formData.get('notesEnabled'),
+    addressEnabled: formData.get('addressEnabled'),
     sensitive: formData.get('sensitive'),
     choices: formData.get('choices'),
     autoSource: formData.get('autoSource'),
@@ -271,6 +272,7 @@ export async function updateFieldAction(_prev: PresetFormState, formData: FormDa
     sensitive: formData.get('sensitive'),
     wide: formData.get('wide'),
     notesEnabled: formData.get('notesEnabled'),
+    addressEnabled: formData.get('addressEnabled'),
     // Same rule as section: the form always sends these, so a save never
     // quietly takes a field out of Vital Info or off a list.
     showInVital: formData.get('showInVital'),

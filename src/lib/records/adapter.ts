@@ -85,6 +85,7 @@ export function adaptFieldForDashboard(config: Config, f: DbField): ProtoField {
     columnOrder: columnRow?.position,
     headerIn: headerModuleSlugs.length ? (headerModuleSlugs as ProtoField['headerIn']) : undefined,
     notes: f.notesEnabled,
+    address: f.addressEnabled,
     sync: f.syncEnabled,
     system: f.isSystem,
     readOnly: f.readOnly,

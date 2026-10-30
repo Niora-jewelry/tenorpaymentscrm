@@ -486,6 +486,7 @@ export function CreateFieldForm({
             <div className="divide-y divide-line-faint">
               <Toggle name="required" label="Required" hint="Marked until it is filled in." />
               <Toggle name="notesEnabled" label="Allow notes" hint="Gives the field its own notes thread, like Seasonal and Inventory." />
+              <Toggle name="addressEnabled" label="Allow an address" hint="A pin beside the notes that holds one address, like Inventory's off-site warehouse." />
               <Toggle name="sensitive" label="Sensitive" hint="Masked until revealed; every reveal is logged." />
             </div>
           </Group>
@@ -589,6 +590,7 @@ export function EditFieldForm({
             <div className="divide-y divide-line-faint">
               <Toggle name="required" label="Required" hint="Marked until it is filled in." defaultChecked={field.required} />
               <Toggle name="notesEnabled" label="Allow notes" hint="Gives the field its own notes thread." defaultChecked={field.notesEnabled} />
+              <Toggle name="addressEnabled" label="Allow an address" hint="A pin beside the notes that holds one address." defaultChecked={field.addressEnabled} />
               <Toggle name="sensitive" label="Sensitive" hint="Masked until revealed; every reveal is logged." defaultChecked={field.sensitive} />
             </div>
           </Group>

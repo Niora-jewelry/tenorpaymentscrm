@@ -59,6 +59,8 @@ import {
   fieldCardClass, isFullRow, spanFor,
 } from './FieldCard';
 import type { Note } from '@/lib/records/notes';
+import type { FieldAddress } from '@/lib/records/fieldAddresses';
+import { FieldAddressButton, FieldAddressPanel } from './FieldAddress';
 
 type Grant = 'hidden' | 'view' | 'edit';
 
@@ -122,6 +124,17 @@ type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes'
  * its own label row (matching the prototype's shuffle icon sitting before
  * the field label) — never as an absolutely-positioned overlay, which would
  * collide with the label row's own trailing notes-toggle button. */
+/** A repeat group's section, addressable like a field card so a `?field=`
+ *  link or a search pick can land on it. */
+function RepeatGroupSection({ groupKey, flash, children }: { groupKey: string; flash: boolean; children: React.ReactNode }) {
+  const flashing = useFlashTarget(targetId.field(groupKey), flash);
+  return (
+    <section id={targetId.field(groupKey)} className={`rounded-lg transition-shadow ${flashing ? FLASH_CLASS : ''}`}>
+      {children}
+    </section>
+  );
+}
+
 function SortableFieldCell({
   id,
   span,
@@ -186,12 +199,14 @@ export function RealFieldGrid({
   markEdited,
   initialUpdatedAt,
   notesByField,
+  addressByField = {},
   authorNames,
   viewerId,
   isAdmin,
   mentionsByField = {},
   openMention = null,
   onMentionRead = () => undefined,
+  focusFieldKey = null,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -200,6 +215,8 @@ export function RealFieldGrid({
   mentionsByField?: Record<string, NotificationView[]>;
   /** A field mention a link landed on. */
   openMention?: NotificationView | null;
+  /** A field (or repeat group) key to scroll to and flash — `?field=`, or a pick in the drawer's search. */
+  focusFieldKey?: string | null;
   onMentionRead?: (id: string) => void;
   subtabId: string | null;
   fields: ProtoField[];
@@ -228,6 +245,8 @@ export function RealFieldGrid({
   markEdited: (key: string) => void;
   initialUpdatedAt: string;
   notesByField: Record<string, Note[]>;
+  /** A field's own address, by field key, for fields with the address option. */
+  addressByField?: Record<string, FieldAddress>;
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
@@ -235,6 +254,10 @@ export function RealFieldGrid({
   // Files fields are empty or not by their uploads, which live outside `values`.
   const fieldFiles = useFieldFiles();
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
+  const [openAddress, setOpenAddress] = useState<Set<string>>(new Set());
+  // What this session saved, ahead of the server's next render.
+  const [addressSaved, setAddressSaved] = useState<Record<string, FieldAddress | undefined>>({});
+  const addressOf = (key: string) => (key in addressSaved ? addressSaved[key] : addressByField[key]);
   /*
    * View preferences (field order) persist in the background. They were
    * `await someAction(...)` with nothing around them, so a failed save was
@@ -689,7 +712,7 @@ export function RealFieldGrid({
                     : v == null || v === '' || (Array.isArray(v) && !v.length) ||
                       (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
                   const fieldMentions = mentionsByField[f.id] ?? [];
-                  const landedHere = openMention?.fieldKey === f.id;
+                  const landedHere = openMention?.fieldKey === f.id || focusFieldKey === f.id;
                   const noteCount = (notesByField[`field:${f.id}`] ?? []).length;
                   const requiredEmpty = Boolean(f.required && fieldEmpty);
                   return (
@@ -739,6 +762,21 @@ export function RealFieldGrid({
                             {noteCount || ''}
                           </button>
                         ) : null}
+                        {f.address ? (
+                          <FieldAddressButton
+                            has={Boolean(addressOf(f.id))}
+                            open={openAddress.has(f.id)}
+                            label={f.label}
+                            onToggle={() =>
+                              setOpenAddress((s) => {
+                                const next = new Set(s);
+                                if (next.has(f.id)) next.delete(f.id);
+                                else next.add(f.id);
+                                return next;
+                              })
+                            }
+                          />
+                        ) : null}
                       </FieldLabelRow>
 
                       <div className={FIELD_VALUE_SLOT}>
@@ -779,6 +817,16 @@ export function RealFieldGrid({
                           compact
                         />
                       ) : null}
+                      {f.address && openAddress.has(f.id) ? (
+                        <FieldAddressPanel
+                          moduleSlug={moduleSlug}
+                          recordId={recordId}
+                          field={f}
+                          address={addressOf(f.id)}
+                          editable={grant === 'edit'}
+                          onSaved={(next) => setAddressSaved((s) => ({ ...s, [f.id]: next }))}
+                        />
+                      ) : null}
                       </>
                       )}
                     </SortableFieldCell>
@@ -801,7 +849,7 @@ export function RealFieldGrid({
         const singular = group.label.replace(/s$/, '');
 
         return (
-          <section key={group.id}>
+          <RepeatGroupSection key={group.id} groupKey={group.key} flash={focusFieldKey === group.key}>
             <SectionHeading label={group.label}>
               <CountPill n={count} />
               {editable ? (
@@ -905,7 +953,7 @@ export function RealFieldGrid({
                 {conflicts[group.key]}
               </p>
             ) : null}
-          </section>
+          </RepeatGroupSection>
         );
       })}
     </div>

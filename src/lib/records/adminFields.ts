@@ -50,6 +50,7 @@ export type AdminFieldRow = {
   sensitive: boolean;
   wide: boolean;
   notesEnabled: boolean;
+  addressEnabled: boolean;
   isSystem: boolean;
   readOnly: boolean;
   repeatMax: number | null;
@@ -105,6 +106,7 @@ export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRo
     sensitive: f.sensitive,
     wide: f.wide,
     notesEnabled: f.notes_enabled,
+    addressEnabled: f.address_enabled ?? false,
     isSystem: f.is_system,
     readOnly: f.read_only,
     repeatMax: f.repeat_max,
@@ -175,6 +177,7 @@ export async function createFieldWithSetup(ctx: AuthContext, input: FieldSetupIn
       required: input.required,
       sensitive: input.sensitive,
       notes_enabled: input.notesEnabled,
+      address_enabled: input.addressEnabled,
       digits,
       auto_source: type === 'auto' ? input.autoSource : null,
       auto_source_field: type === 'auto' && input.autoSource === 'mcc_lookup' ? input.autoSourceField : null,
@@ -304,6 +307,7 @@ export async function createField(ctx: AuthContext, input: CreateFieldInput): Pr
       sensitive: input.sensitive,
       wide: input.wide,
       notes_enabled: input.notesEnabled,
+      address_enabled: input.addressEnabled,
       // Not admin-settable, any of them. `is_system`/`read_only` are structural
       // claims about fields the build seeded (Record creator is the read-only
       // one); `sync_enabled` is Email/Phone only and needs a provider wired up;
@@ -375,6 +379,7 @@ export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Pr
       sensitive: input.sensitive,
       wide: input.wide,
       notes_enabled: input.notesEnabled,
+      address_enabled: input.addressEnabled,
       ...(moved ? { position: await nextPositionIn(input.tabId, input.subtabId) } : {}),
     })
     .eq('id', input.fieldId);

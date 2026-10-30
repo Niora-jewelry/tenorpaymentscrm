@@ -1,9 +1,12 @@
 'use client';
 
 /**
- * Send Application (spec, Sending the application): recipient (defaults to
- * Contact Email, editable), CC, subject and message from the editable
- * template. One email carries both ways back — the link and the prefilled PDF.
+ * Send Application (spec, Sending the application): recipient, CC, subject
+ * and message from the editable template. One email carries both ways back —
+ * the link and the prefilled PDF.
+ *
+ * "To" is a picker (the client, 30 Oct 2026): Default (the first contact's
+ * email), every other email the record holds, or a custom address typed in.
  *
  * The same dialog resends: same link, a freshly filled PDF.
  */
@@ -32,6 +35,9 @@ export function SendApplicationDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  // The picker's own selection: an address from the record, or CUSTOM.
+  const CUSTOM = '__custom__';
+  const [toPick, setToPick] = useState(CUSTOM);
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -46,7 +52,10 @@ export function SendApplicationDialog({
       if (!r.ok) return setLoadError(r.message);
       setDefaults(r.data);
       setFrom(r.data.from[0]?.mailboxId ?? '');
-      setTo(resend?.to ?? r.data.to);
+      const want = resend?.to ?? r.data.to;
+      const known = r.data.recipients.find((x) => x.address.toLowerCase() === want.trim().toLowerCase());
+      setToPick(known ? known.address : want ? CUSTOM : (r.data.recipients[0]?.address ?? CUSTOM));
+      setTo(known ? known.address : want || r.data.recipients[0]?.address || '');
       setCc((resend?.cc ?? []).join(', '));
       setSubject(r.data.subject);
       setBody(r.data.body);
@@ -162,14 +171,51 @@ export function SendApplicationDialog({
                 <label htmlFor={ids.to} className={label}>
                   To
                 </label>
-                <input
+                <select
                   id={ids.to}
-                  type="email"
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                  placeholder="merchant@business.com"
-                  className={`${field} ${to && !EMAIL.test(to.trim()) ? 'border-bad' : ''}`}
-                />
+                  value={toPick}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setToPick(v);
+                    setTo(v === CUSTOM ? '' : v);
+                  }}
+                  className={field}
+                >
+                  {defaults.recipients.some((r) => r.kind === 'default') ? (
+                    <optgroup label="Default">
+                      {defaults.recipients
+                        .filter((r) => r.kind === 'default')
+                        .map((r) => (
+                          <option key={r.address} value={r.address}>
+                            {r.address} — {r.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+                  {defaults.recipients.some((r) => r.kind === 'other') ? (
+                    <optgroup label="Other emails on this record">
+                      {defaults.recipients
+                        .filter((r) => r.kind === 'other')
+                        .map((r) => (
+                          <option key={r.address} value={r.address}>
+                            {r.address} — {r.label}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+                  <option value={CUSTOM}>Custom email…</option>
+                </select>
+                {toPick === CUSTOM ? (
+                  <input
+                    aria-label="Custom email address"
+                    type="email"
+                    autoFocus={!to}
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    placeholder="merchant@business.com"
+                    className={`${field} mt-2 ${to && !EMAIL.test(to.trim()) ? 'border-bad' : ''}`}
+                  />
+                ) : null}
               </div>
             </div>
             <div>

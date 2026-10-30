@@ -37,6 +37,7 @@ import { addRepeatInstance, removeRepeatInstance, type RepeatMutationResult } fr
 import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/memberships';
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
+import { setFieldAddress, type FieldAddress } from '@/lib/records/fieldAddresses';
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
@@ -318,6 +319,30 @@ export async function addNoteAction(
   const body = String(formData.get('body') ?? '').trim();
   if (body) await addNote(ctx, recordId, scopeKind, scopeId, body);
   revalidatePath(`/${moduleSlug}`);
+}
+
+const FieldAddressInput = z.object({
+  street: z.string().trim().max(200).default(''),
+  street2: z.string().trim().max(200).default(''),
+  city: z.string().trim().max(120).default(''),
+  state: z.string().trim().max(40).default(''),
+  zip: z.string().trim().max(20).default(''),
+  country: z.string().trim().max(80).default(''),
+});
+
+/** A field's own address (the pin beside the notes). Blank everywhere = removed. */
+export async function setFieldAddressAction(moduleSlug: string, recordId: string, fieldKey: string, address: unknown): Promise<ActionState> {
+  const ctx = await authorize();
+  const parsed = FieldAddressInput.safeParse(address);
+  const key = z.string().trim().min(1).max(80).safeParse(fieldKey);
+  if (!parsed.success || !key.success) return { ok: false, message: 'That address is not valid.' };
+  try {
+    await setFieldAddress(ctx, recordId, key.data, parsed.data as FieldAddress);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'The address could not be saved.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
 }
 
 export async function editNoteAction(moduleSlug: string, noteId: string, body: string): Promise<ActionState> {

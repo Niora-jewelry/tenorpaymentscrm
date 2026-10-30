@@ -10,7 +10,7 @@
  *
  * Plus input hygiene: only the application's own keys, bounded lengths.
  */
-import { MAX_OWNERS, QUESTIONS, answerKeys, ownerField, type AddressAnswer, type Answers, type AnswerValue } from './catalog';
+import { MAX_OWNERS, QUESTIONS, answerKeys, ownerField, type AddressAnswer, type Answers, type AnswerValue, type SectionId } from './catalog';
 
 export type Problems = Record<string, string>;
 
@@ -58,6 +58,21 @@ export function sanitizeAnswers(raw: unknown): Answers {
     }
   }
   return out;
+}
+
+/** The section an answer key is asked in — owners and the 51% total are the
+ *  Ownership page; a details or comments box is its question's page. */
+export function sectionOfKey(key: string): SectionId {
+  if (key === 'owners' || /^owner\d+_/.test(key)) return 'ownership';
+  const q = QUESTIONS.find(
+    (x) => x.id === key || x.details?.id === key || x.comments?.id === key || (x.kind === 'percent_group' && key.startsWith(`${x.id}_`)),
+  );
+  return q?.section ?? 'business';
+}
+
+/** The problems on one page of the form. */
+export function problemsInSection(p: Problems, section: SectionId): Problems {
+  return Object.fromEntries(Object.entries(p).filter(([k]) => sectionOfKey(k) === section));
 }
 
 /** Every problem, keyed by the answer key it belongs to. Empty means submit. */

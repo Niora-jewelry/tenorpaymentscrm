@@ -39,7 +39,6 @@ export const CUSTOM_TABS: Tab[] = [
     acceptsFields: true,
     subtabs: [
       { id: 'general', label: 'General' },
-      { id: 'financial', label: 'Financial' },
       { id: 'acq', label: 'ACQ' },
       { id: 'ach', label: 'ACH' },
       { id: 'private', label: 'Private' },

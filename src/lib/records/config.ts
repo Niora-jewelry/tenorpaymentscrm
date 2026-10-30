@@ -87,6 +87,8 @@ export type Field = {
   position: number;
   hint: string | null;
   notesEnabled: boolean;
+  /** Carries an address of its own, like notes (`field_addresses`). */
+  addressEnabled: boolean;
   syncEnabled: boolean;
   isSystem: boolean;
   readOnly: boolean;
@@ -206,7 +208,7 @@ const loadConfigCached = unstable_cache(
       fields: fields.data!.map((f) => ({
         id: f.id, key: f.key, label: f.label, type: f.type,
         tabId: f.tab_id, subtabId: f.subtab_id, position: f.position, hint: f.hint,
-        notesEnabled: f.notes_enabled, syncEnabled: f.sync_enabled, isSystem: f.is_system,
+        notesEnabled: f.notes_enabled, addressEnabled: f.address_enabled ?? false, syncEnabled: f.sync_enabled, isSystem: f.is_system,
         readOnly: f.read_only, required: f.required, sensitive: f.sensitive,
         wide: f.wide, placeholder: f.placeholder, width: f.width, digits: f.digits,
         repeatMax: f.repeat_max, repeatSchema: f.repeat_schema, repeatGroupKey: f.repeat_group_key,

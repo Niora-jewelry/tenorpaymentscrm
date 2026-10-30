@@ -44,6 +44,7 @@ import { messagesFor } from '@/lib/records/messages';
 import { callsForRecord } from '@/lib/phone/calls';
 import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
+import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
 import { columnOrderFor, columnVisibilityFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
@@ -63,10 +64,10 @@ export default async function ModulePage({
   searchParams,
 }: {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string; q?: string; sort?: string }>;
+  searchParams: Promise<{ record?: string; page?: string; tab?: string; subtab?: string; n?: string; field?: string; q?: string; sort?: string }>;
 }) {
   const { module: slug } = await params;
-  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam, q: qParam, sort: sortParam } = await searchParams;
+  const { record: recordId, page: pageParam, tab: tabKey, subtab: subtabKey, n: mentionParam, field: fieldParam, q: qParam, sort: sortParam } = await searchParams;
   // The list search; bounded like the box that writes it.
   const search = typeof qParam === 'string' ? qParam.trim().slice(0, SEARCH_MAX) : '';
   // `?n=<notification id>` is a deep link to one mention; `n=first` is the
@@ -372,6 +373,7 @@ export default async function ModulePage({
               openTabKey={tabKey ?? null}
               openSubtabKey={subtabKey ?? null}
               mentionKey={mentionKey}
+              fieldKey={typeof fieldParam === 'string' && /^[a-z0-9_]{1,80}$/i.test(fieldParam) ? fieldParam : null}
             />
           </Suspense>
         </DrawerShell>
@@ -485,6 +487,7 @@ async function RecordDrawer({
   openTabKey,
   openSubtabKey,
   mentionKey = null,
+  fieldKey = null,
 }: {
   moduleSlug: string;
   moduleId: string;
@@ -497,6 +500,10 @@ async function RecordDrawer({
   openSubtabKey?: string | null;
   /** `?n=` — a notification id, or 'first' for the oldest unread mention here. */
   mentionKey?: string | null;
+  /** `?field=` — a field KEY to land on: its tab and sub-tab open and the card
+   *  flashes (the pre-send check's "fix this" links, the drawer's own field
+   *  search). Ignored when the field is hidden for this viewer. */
+  fieldKey?: string | null;
   /** Started by `ModulePage` before it awaited its own queries, so this read
    *  overlaps the dashboard's instead of queueing behind it. Awaited here, so
    *  a failure lands inside the Suspense boundary and takes only the drawer. */
@@ -518,9 +525,15 @@ async function RecordDrawer({
     if (id) openMention = await openNotification(ctx, id);
     if (openMention && openMention.recordId !== record.id) openMention = null;
   }
-  // Where the drawer opens: the mention's home wins over `?tab=`/`?subtab=`.
-  const wantTabKey = openMention?.tabKey ?? openTabKey;
-  const wantSubtabKey = openMention?.tabKey ? (openMention.subtabKey ?? null) : openSubtabKey;
+  // `?field=` resolves to the field's own tab and sub-tab (by key, like the
+  // params themselves); whether the viewer may see it is settled further down,
+  // where the tab list has been filtered and the field's grant is known.
+  const fieldHome = fieldKey ? config.fields.find((f) => f.key === fieldKey && !f.archivedAt) : undefined;
+  const fieldTabKey = fieldHome ? config.tabs.find((t) => t.id === fieldHome.tabId)?.key ?? null : null;
+  const fieldSubtabKey = fieldHome?.subtabId ? config.subtabs.find((s) => s.id === fieldHome.subtabId)?.key ?? null : null;
+  // Where the drawer opens: the mention's home wins, then the field's, then `?tab=`/`?subtab=`.
+  const wantTabKey = openMention?.tabKey ?? fieldTabKey ?? openTabKey;
+  const wantSubtabKey = openMention?.tabKey ? (openMention.subtabKey ?? null) : fieldTabKey ? fieldSubtabKey : openSubtabKey;
   // `getRecord` legitimately returns null: the record was deleted, or this
   // viewer was removed from its team. Returning `null` here rendered a
   // full-height blank white sheet with no title, no message and no close
@@ -602,7 +615,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications,
+    applications, addressesRaw,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -676,6 +689,7 @@ async function RecordDrawer({
     shows('residuals') ? residualsForRecord(ctx, record.id) : Promise.resolve(null),
     // The Prepopulated Application panel, on whichever visible tab carries it.
     dbTabs.some((t) => t.showsApplications) ? applicationsFor(ctx, record.id) : Promise.resolve(null),
+    fieldAddressesFor(ctx, record.id),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -912,6 +926,11 @@ async function RecordDrawer({
     }),
   ) as Record<string, Note[]>;
 
+  // A field's own address follows the field's grant, like its notes.
+  const addressByField = Object.fromEntries(
+    Object.entries(addressesRaw).filter(([key]) => grantByKey[key] !== undefined && grantByKey[key] !== 'hidden'),
+  );
+
   const tabs: TabPayload[] = await Promise.all(dbTabs.map(async (t) => {
     // A Hidden subtab is dropped from the strip, exactly as a Hidden tab is —
     // "absent, never blank". Its fields are then never built below either,
@@ -936,16 +955,13 @@ async function RecordDrawer({
       const buildFor = async (subtabId: string | null, slotKey: string) => {
         const visible = fieldsInTab(config, t.id, subtabId)
           .filter((f) => grants.get(f.id) !== 'hidden')
-          // Admin §3.6: "That Status field is visible only on records assigned
-          // to that pipeline." A synced Status field is an ordinary field row
-          // with an ordinary tab, so nothing else would keep it off the other
-          // records — and on those it would render empty, offering the steps of
-          // a process the record is not in. Dropped rather than disabled, which
-          // is the same "absent, never blank" rule hidden fields follow.
-          .filter((f) => {
-            const owner = statusFieldOwners.get(f.id);
-            return owner === undefined || owner === pipelineAssign?.pipelineId;
-          });
+          // A pipeline's synced Status field never renders as a card: the
+          // stage lives in the header stepper, and a second copy in the body
+          // was the client's "remove the pipeline in the body — it lives in
+          // the header" (30 Oct 2026). The field row stays (lists, filters and
+          // the header read it); only the grid drops it. Dropped rather than
+          // disabled, the same "absent, never blank" rule hidden fields follow.
+          .filter((f) => !statusFieldOwners.has(f.id));
         const plain = visible.filter((f) => f.type !== 'repeat_group');
         fieldsNeed += plain.length;
         fieldsHave += plain.filter((f) => {
@@ -1139,6 +1155,8 @@ async function RecordDrawer({
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}
         notesByScope={notesByScopeObj}
+        addressByField={addressByField}
+        openFieldKey={fieldHome && grantByKey[fieldHome.key] !== undefined && grantByKey[fieldHome.key] !== 'hidden' ? fieldHome.key : null}
         authorNames={authorNames}
         viewerId={ctx.userId}
         isAdmin={ctx.isAdmin}

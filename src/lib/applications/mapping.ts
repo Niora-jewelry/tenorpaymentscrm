@@ -142,23 +142,25 @@ const ENTITY: Record<string, string> = {
 };
 /** CRM entity types the PDF has no box for read as "Other". */
 const ENTITY_AS_OTHER = new Set(['gov', 'public']);
+/** Inventory is "select all that apply" on both sides since 30 Oct 2026, with
+ * the application's six options; only the off-site key is spelled differently. */
 const INVENTORY: Record<string, string> = {
-  none: 'service_only', on_site: 'on_site', off_site_warehouse: 'off_site',
-  fulfillment_center: '3rd_party', third_party_storage: '3rd_party', other: 'other',
+  none: 'none', on_site: 'on_site', off_site_warehouse: 'off_site',
+  fulfillment_center: 'fulfillment_center', third_party_storage: 'third_party_storage', other: 'other',
 };
-const INVENTORY_PREFILL: Record<string, string> = {
-  service_only: 'none', on_site: 'on_site', off_site: 'off_site_warehouse', '3rd_party': 'third_party_storage', other: 'other',
-};
-/** The PDF's square-footage boxes against the CRM's ranges. Where a box spans
- * two CRM ranges the reviewer picks; a CRM range that spans two boxes is not
- * prefilled. */
+const INVENTORY_PREFILL: Record<string, string> = Object.fromEntries(Object.entries(INVENTORY).map(([pdf, crm]) => [crm, pdf]));
+/** The PDF's square-footage boxes against the CRM's ranges. The CRM keeps its
+ * own ranges — the merchant agreement prints them as they are (the client,
+ * 30 Oct 2026). Where a box spans two CRM ranges the reviewer picks; the one
+ * CRM range that spans two boxes, 501–2,500, prefills as 1,000–5,000 (the
+ * client, 29 Oct 2026). */
 const SQFT_RETURN: Record<string, string[]> = {
   '1_1000': ['0_500', '501_2500'],
   '1000_5000': ['501_2500', '2501_5000'],
   '5000_10000': ['5001_10000'],
   above_10000: ['10000'],
 };
-const SQFT_PREFILL: Record<string, string> = { '0_500': '1_1000', '2501_5000': '1000_5000', '5001_10000': '5000_10000', '10000': 'above_10000' };
+const SQFT_PREFILL: Record<string, string> = { '0_500': '1_1000', '501_2500': '1000_5000', '2501_5000': '1000_5000', '5001_10000': '5000_10000', '10000': 'above_10000' };
 const SALES_METHOD: Record<string, string> = { internet: 'ecommerce', in_person: 'in_person', mail_phone: 'mail_phone' };
 const CUSTOMER_TYPE: Record<string, string> = { b2c: 'individual', b2b: 'business', government: 'gov' };
 const CUSTOMER_PROFILE: Record<string, string> = { local: 'local', national: 'national', international: 'international' };
@@ -277,9 +279,9 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   const et = str(crm.entity_type);
   const etPdf = ENTITY_AS_OTHER.has(et) ? 'other' : Object.entries(ENTITY).find(([, k]) => k === et)?.[0];
   if (etPdf) a.entity_type = [etPdf];
-  // Bankruptcy is Yes / No in the CRM, as on the PDF (the client, 28 Oct 2026).
-  // A value from before that change (a Business / Personal / Never list) is
-  // still read.
+  // Bankruptcy in the CRM is the agreement's kind — Business / Personal /
+  // Never filed — or a plain Yes (the client, 30 Oct 2026); the application
+  // only asks Yes / No. Older shapes (a list; the 28 Oct "no") are still read.
   const bkRaw = crm.bankruptcy;
   const bk = Array.isArray(bkRaw) ? list(bkRaw) : [str(bkRaw)];
   if (bk.includes('yes') || bk.includes('business') || bk.includes('personal')) a.bankruptcy = 'Yes';
@@ -330,8 +332,8 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
 
   set('advertising_method', str(crm.advertising_method));
   set('return_policy', str(crm.refund_policy));
-  const inv = INVENTORY_PREFILL[str(crm.inventory)];
-  if (inv) a.inventory = [inv];
+  const inv = (Array.isArray(crm.inventory) ? list(crm.inventory) : [str(crm.inventory)]).map((k) => INVENTORY_PREFILL[k]).filter((x): x is string => !!x);
+  if (inv.length) a.inventory = inv;
   // R6: Yes when How Long After Charge Is Order Shipped has a value.
   a.accepts_payment_before_delivery = str(crm.charge_to_service) ? 'Yes' : 'No';
   const recv = str(crm.order_to_service);
@@ -342,8 +344,11 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   // R5: the new field, like any other.
   set('ach_monthly_transactions', cleanNumber(crm.ach_monthly_transactions));
   set('ach_monthly_returns', cleanNumber(crm.ach_monthly_returns));
-  // R1: Yes when ACH Return (a fee) has a value.
-  a.ach_refunds = str(crm.td_ach_return) ? 'Yes' : 'No';
+  // Its own field since 30 Oct 2026 ("Do you issue refunds via ACH? Please
+  // add here"); before that it was read off the ACH Return fee.
+  const ar = str(crm.ach_refunds);
+  if (ar === 'yes' || ar === 'no') a.ach_refunds = ar === 'yes' ? 'Yes' : 'No';
+  else a.ach_refunds = str(crm.td_ach_return) ? 'Yes' : 'No'; // R1, until the field is set
 
   return a;
 }
@@ -467,8 +472,10 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
   }
 
   // Bankruptcy: Yes / No, as on the PDF.
+  // Yes lands as the plain "Yes" — someone picks the kind before an agreement
+  // can go out; No is "Never filed".
   const bk = answer(a, 'bankruptcy');
-  if (bk === 'Yes' || bk === 'No') choice('bankruptcy', 'Bankruptcy', bk === 'Yes' ? 'yes' : 'no');
+  if (bk === 'Yes' || bk === 'No') choice('bankruptcy', 'Bankruptcy', bk === 'Yes' ? 'yes' : 'never');
   // R7: each details box goes into its own question's notes.
   note('bankruptcy', 'Bankruptcy details', answer(a, 'bankruptcy_details'));
 
@@ -560,8 +567,8 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
   text('advertising_method', 'advertising_method', 'Advertising method');
   text('return_policy', 'refund_policy', 'Return policy');
 
-  const inv = ticked(a, 'inventory').map((i) => INVENTORY[i]).filter((x): x is string => !!x);
-  if (inv.length) pick('inventory', 'Inventory', inv, ticked(a, 'inventory').map((i) => i.replace(/_/g, ' ')).join(', '));
+  const inv = [...new Set(ticked(a, 'inventory').map((i) => INVENTORY[i]).filter((x): x is string => !!x))];
+  if (inv.length) field('inventory', 'Inventory', inv, inv.map((k) => labels('inventory', k)).join(', '));
 
   // R6: the Yes/No about paying before delivery is never written back.
 
@@ -580,6 +587,9 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
 
   const svc = ticked(a, 'service_model').filter((s) => ['one_time', 'recurring', 'extended', 'subscriptions', 'memberships'].includes(s));
   if (svc.length) field('service_model', 'Service model', svc, svc.map((s) => labels('service_model', s)).join(', '));
+
+  const ar = answer(a, 'ach_refunds');
+  if (ar === 'Yes' || ar === 'No') choice('ach_refunds', 'ACH refunds', ar === 'Yes' ? 'yes' : 'no');
 
   // R5
   const achTx = cleanNumber(answer(a, 'ach_monthly_transactions'));

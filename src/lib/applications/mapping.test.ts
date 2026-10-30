@@ -101,6 +101,8 @@ describe('return (application → CRM)', () => {
   it('R1 and R6: those Yes/No answers are never written back', () => {
     const ps = proposalsFrom({ ach_refunds: 'Yes', accepts_payment_before_delivery: 'No' }, {}, labels);
     expect(ps.find((p) => p.fieldKey === 'td_ach_return')).toBeUndefined();
+    expect(find(ps, 'field:ach_refunds')?.value).toBe('yes');
+    expect(find(ps, 'field:accepts_payment_before_delivery')).toBeUndefined();
     expect(ps.find((p) => p.fieldKey === 'charge_to_service')).toBeUndefined();
   });
 
@@ -150,9 +152,11 @@ describe('return (application → CRM)', () => {
 
   it('Bankruptcy is Yes / No, as on the PDF (client, 28 Oct)', () => {
     expect(find(proposalsFrom({ bankruptcy: 'Yes' }, {}, labels), 'field:bankruptcy')?.value).toBe('yes');
-    expect(find(proposalsFrom({ bankruptcy: 'No' }, {}, labels), 'field:bankruptcy')?.value).toBe('no');
+    expect(find(proposalsFrom({ bankruptcy: 'No' }, {}, labels), 'field:bankruptcy')?.value).toBe('never');
     // Prefill reads the new Yes/No value and an older Business/Personal/Never list alike.
     expect(prefillAnswers({ bankruptcy: 'yes' }, labels).bankruptcy).toBe('Yes');
+    expect(prefillAnswers({ bankruptcy: 'business' }, labels).bankruptcy).toBe('Yes');
+    expect(prefillAnswers({ bankruptcy: 'never' }, labels).bankruptcy).toBe('No');
     expect(prefillAnswers({ bankruptcy: ['never'] }, labels).bankruptcy).toBe('No');
     expect(prefillAnswers({ bankruptcy: ['personal'] }, labels).bankruptcy).toBe('Yes');
   });
@@ -181,10 +185,15 @@ describe('return (application → CRM)', () => {
     expect(find(proposalsFrom({ square_footage: ['above_10000'] }, {}, labels), 'field:square_footage')?.value).toBe('10000');
   });
 
-  it('several inventory boxes against a one-choice field is a pick', () => {
-    const p = find(proposalsFrom({ inventory: ['on_site', 'fulfillment_center'] }, {}, labels), 'field:inventory');
-    expect(p?.candidates?.map((c) => c.value)).toEqual(['on_site', '3rd_party']);
-    expect(find(proposalsFrom({ inventory: ['none'] }, {}, labels), 'field:inventory')?.value).toBe('service_only');
+  it('inventory boxes land as the CRM’s own multi-select keys', () => {
+    expect(find(proposalsFrom({ inventory: ['on_site', 'fulfillment_center'] }, {}, labels), 'field:inventory')?.value).toEqual(['on_site', 'fulfillment_center']);
+    expect(find(proposalsFrom({ inventory: ['none', 'off_site_warehouse'] }, {}, labels), 'field:inventory')?.value).toEqual(['none', 'off_site']);
+    expect(prefillAnswers({ inventory: ['off_site', 'third_party_storage'] }, labels).inventory).toEqual(['off_site_warehouse', 'third_party_storage']);
+    expect(prefillAnswers({ inventory: 'on_site' }, labels).inventory).toEqual(['on_site']);
+  });
+
+  it('501–2,500 sq ft prefills as the 1,000–5,000 box (the client, 29 Oct 2026)', () => {
+    expect(prefillAnswers({ square_footage: '501_2500' }, labels).square_footage).toEqual(['1000_5000']);
   });
 
   it('entity type Other against a Gov / Public CRM value is the same answer', () => {

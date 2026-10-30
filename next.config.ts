@@ -156,8 +156,9 @@ const nextConfig: NextConfig = {
    * merchant downloads it from their link (`/apply/[token]`).
    */
   outputFileTracingIncludes: {
-    '/[module]': ['./src/lib/applications/template/*.pdf'],
+    '/[module]': ['./src/lib/applications/template/*.pdf', './src/lib/agreements/template/*'],
     '/apply/[token]': ['./src/lib/applications/template/*.pdf'],
+    '/api/agreements/send': ['./src/lib/agreements/template/*'],
   },
 
   experimental: {

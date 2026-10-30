@@ -36,6 +36,8 @@ function whereOf(n: NotificationView): { icon: IconName; label: string; detail?:
       return { icon: 'lifebuoy', label: n.caseNumber ? `Case #${n.caseNumber}` : 'Case' };
     case 'mention_field':
       return { icon: 'file-pen', label: `Field: ${n.fieldLabel ?? n.fieldKey ?? ''}` };
+    case 'agreement':
+      return { icon: 'file-pen', label: 'Agreement' };
     default:
       return { icon: PHONE_ICON[n.sourceKind] ?? 'bell', label: n.sourceKind === 'sms' ? 'Text message' : n.sourceKind === 'call' ? 'Call' : n.sourceKind === 'voicemail' ? 'Voicemail' : 'Recording' };
   }

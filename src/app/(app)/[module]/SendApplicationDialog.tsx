@@ -11,6 +11,7 @@
  * The same dialog resends: same link, a freshly filled PDF.
  */
 import { useEffect, useId, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Icon } from '@/proto/ui/icons';
 import { Button, Spinner } from '@/proto/ui/kit';
@@ -89,7 +90,10 @@ export function SendApplicationDialog({
   const field = 'w-full rounded-lg border border-line bg-white px-3 py-2 text-[13.5px] text-ink-900 outline-none transition-colors placeholder:text-ink-300 focus-field';
   const label = 'mb-1 block text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400';
 
-  return (
+  // Rendered into <body>: the drawer animates with a transform, which would
+  // otherwise contain this fixed overlay inside the panel. Opened by a click,
+  // so it only ever renders in the browser.
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
       <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={() => !pending && onClose()} />
       <div
@@ -278,6 +282,7 @@ export function SendApplicationDialog({
           </Button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

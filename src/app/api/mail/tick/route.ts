@@ -13,7 +13,8 @@
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { mailConfigured, serverEnv } from '@/lib/env.server';
+import { agreementsConfigured, mailConfigured, serverEnv } from '@/lib/env.server';
+import { retryPendingDownloads } from '@/lib/agreements/download';
 import { safeEqual } from '@/lib/mail/oauthState';
 import { runTick } from '@/lib/mail/sync/tick';
 import { mailLog } from '@/lib/mail/log';
@@ -25,8 +26,6 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 async function handle(req: NextRequest) {
-  if (!mailConfigured) return NextResponse.json({ skipped: 'not_configured' });
-
   const secret = serverEnv.CRON_SECRET;
   if (!secret) return NextResponse.json({ error: 'cron_secret_missing' }, { status: 503 });
 
@@ -41,6 +40,20 @@ async function handle(req: NextRequest) {
   if (only !== null && !z.uuid().safeParse(only).success) {
     return NextResponse.json({ error: 'bad_mailbox' }, { status: 400 });
   }
+
+  // Signed agreement PDFs that are due a fetch ride the same minute, mail or
+  // no mail — hence this sits ahead of the mail check below.
+  if (agreementsConfigured) {
+    after(async () => {
+      try {
+        const r = await retryPendingDownloads();
+        if (r.stored || r.failed) mailLog('info', 'tick', 'agreement downloads', r);
+      } catch (e) {
+        mailLog('error', 'tick', 'agreement downloads crashed', { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
+      }
+    });
+  }
+  if (!mailConfigured) return NextResponse.json({ skipped: 'not_configured' }, { status: 202 });
 
   after(async () => {
     try {

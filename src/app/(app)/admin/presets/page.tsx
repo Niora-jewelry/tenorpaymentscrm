@@ -37,6 +37,8 @@ import { PipelinesSection } from './PipelinesSection';
 import { StatementsSection } from './StatementsSection';
 import { ApplicationSection } from './ApplicationSection';
 import { readApplicationSettings } from '@/lib/applications/service';
+import { AgreementSection } from './AgreementSection';
+import { readAgreementSettings } from '@/lib/agreements/service';
 import { PresetsTabs, type PresetSection } from './PresetsTabs';
 import { ReloadConfigButton } from './ReloadConfigButton';
 
@@ -44,7 +46,7 @@ export default async function AdminPresetsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'presets'))) redirect('/dashboard');
 
-  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements, applicationSettings] = await Promise.all([
+  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements, applicationSettings, agreementSettings] = await Promise.all([
     listTabsForAdmin(ctx),
     listSubtabsForAdmin(ctx),
     listModulesForAdmin(ctx),
@@ -57,6 +59,7 @@ export default async function AdminPresetsPage() {
     listModuleSubtabOrder(ctx),
     statementGrid(ctx),
     readApplicationSettings(ctx),
+    readAgreementSettings(ctx),
   ]);
 
   /*
@@ -156,6 +159,13 @@ export default async function AdminPresetsPage() {
       description:
         'The merchant application sent from a record: how long its link lasts, and the email it goes out with.',
       content: <ApplicationSection key="application" initial={applicationSettings} />,
+    },
+    {
+      key: 'agreement',
+      label: 'Agreements',
+      icon: 'file-pen',
+      description: 'The merchant agreement sent for e-signature: how long signers have, reminders, the sender name, and the email they receive.',
+      content: <AgreementSection key="agreement" initial={agreementSettings} />,
     },
   ];
 

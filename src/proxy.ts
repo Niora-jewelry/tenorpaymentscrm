@@ -96,6 +96,15 @@ const PUBLIC_API_PATHS = new Set([
   '/api/mail/graph/lifecycle',
 
   /*
+   * ── SignWell webhook (agreements) ─────────────────────────────────────
+   * SignWell posts document events with no session. Each carries an HMAC of
+   * its type and time keyed by the webhook id; the route checks it in
+   * constant time, drops anything stale or unknown, and re-reads terminal
+   * states from SignWell's API before trusting them.
+   */
+  '/api/agreements/webhooks/signwell',
+
+  /*
    * ── Twilio webhooks ───────────────────────────────────────────────────
    * Twilio POSTs these server-to-server with NO user session. Without an
    * entry here the proxy redirects the request to /login, Twilio receives

@@ -16,6 +16,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { getClientIp } from '@/lib/security/request';
 import { ipKey, rateLimit, RATE_LIMITS } from '@/lib/security/rate-limit';
 import { pruneStagedUploads } from '@/lib/applications/housekeeping';
+import { expireStaleAgreements, reconcileOpenAgreements } from '@/lib/agreements/housekeeping';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,10 @@ async function handle(req: NextRequest) {
       else if (Number(data ?? 0) > 0) console.log('[housekeeping] notifications pruned', Number(data));
       const staged = await pruneStagedUploads();
       if (staged > 0) console.log('[housekeeping] abandoned application uploads removed', staged);
+      const expired = await expireStaleAgreements();
+      if (expired > 0) console.log('[housekeeping] agreements expired', expired);
+      const reconciled = await reconcileOpenAgreements();
+      if (reconciled.changed > 0) console.log('[housekeeping] agreements reconciled', reconciled);
     } catch (e) {
       console.error('[housekeeping] crashed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
     }

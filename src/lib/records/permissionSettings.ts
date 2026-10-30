@@ -119,6 +119,12 @@ export async function settingGroups(): Promise<SettingGroup[]> {
       blurb: 'Returned application PDFs contain Social Security numbers. Only these people can open or download one.',
       rows: [{ key: 'applications.pdfs', label: 'Returned application PDFs', options: HIDDEN_FULL }],
     },
+    {
+      id: 'agreements',
+      title: 'Agreements',
+      blurb: 'Sending a merchant agreement for e-signature, voiding it, resending and reminding. Anyone who can open the record sees the agreements and their status; the signed PDF opens only for people who can see every field printed on it.',
+      rows: [{ key: 'agreements.send', label: 'Send agreements for e-signature', options: YES_NO }],
+    },
   ];
 }
 

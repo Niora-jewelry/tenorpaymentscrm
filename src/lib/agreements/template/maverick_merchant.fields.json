@@ -1,0 +1,4070 @@
+{
+  "kind": "maverick_merchant",
+  "file": "Maverick_Merchant_Agreement_v1.8.pdf",
+  "pages": [
+    {
+      "page": 1,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 2,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 3,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 4,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 5,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 6,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 7,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 8,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 9,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 10,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 11,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 12,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    },
+    {
+      "page": 13,
+      "width": 612,
+      "height": 786,
+      "rotation": 0
+    }
+  ],
+  "fields": [
+    {
+      "name": "Merchant Row1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 26.24,
+          "y": 687.27,
+          "w": 280.48,
+          "h": 12.96,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ResellerRow1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 306.78,
+          "y": 687.27,
+          "w": 278.97,
+          "h": 12.96,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CORPORATE  LEGAL NAME",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.02,
+          "y": 636.53,
+          "w": 447.46,
+          "h": 13.43,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "FEDERAL TAX ID NUMBER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 484.9,
+          "y": 636.46,
+          "w": 101.65,
+          "h": 13.63,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LOCATION ADDRESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 26.96,
+          "y": 609.41,
+          "w": 273.46,
+          "h": 13.93,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 313.08,
+          "y": 609.59,
+          "w": 82.73,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 407.15,
+          "y": 609.1,
+          "w": 82.37,
+          "h": 14.3,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 504.05,
+          "y": 609.41,
+          "w": 82.44,
+          "h": 13.86,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Information same as above corporate  legal",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 140.97,
+          "y": 597.95,
+          "w": 8.16,
+          "h": 7.93,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "MERCHANT NAME DBA OR TRADE NAME",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 26.35,
+          "y": 580.71,
+          "w": 560.29,
+          "h": 14.62,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LOCATION ADDRESS_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.3,
+          "y": 552.52,
+          "w": 272.29,
+          "h": 13.3,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 313.51,
+          "y": 552.3,
+          "w": 82.31,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 406.99,
+          "y": 552.3,
+          "w": 82.88,
+          "h": 13.82,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 504.12,
+          "y": 552.43,
+          "w": 82.51,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CUSTOMER SERVICE NUMBER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.23,
+          "y": 502.32,
+          "w": 82.29,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "FAX TELEPHONE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 124.39,
+          "y": 502.43,
+          "w": 82.14,
+          "h": 13.02,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "BUSINESS EMAIL",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 223.3,
+          "y": 502.53,
+          "w": 174.36,
+          "h": 12.89,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "WEBSITE ADDRESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 412.26,
+          "y": 502.39,
+          "w": 174.32,
+          "h": 13.57,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "AVERAGE TRANSACTION AMOUNT",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.39,
+          "y": 443.06,
+          "w": 132.24,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "MAXIMUM TRANSACTION AMOUNT",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 168.28,
+          "y": 442.93,
+          "w": 132.59,
+          "h": 13.55,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "MONTHLY VOLUME",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 308.99,
+          "y": 443.15,
+          "w": 132.88,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "AMEX MONTHLY VOLUME",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 454.17,
+          "y": 443.18,
+          "w": 118.43,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DESCRIBE YOUR PRODUCTSERVICE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.46,
+          "y": 412.18,
+          "w": 447.14,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "MCCSIC CODE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 485.17,
+          "y": 412.12,
+          "w": 101.42,
+          "h": 13.63,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "INDIVIDUAL  SOLE PROPRIETOR",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.3,
+          "y": 327.65,
+          "w": 8.01,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "PARTNERSHIP",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 139.5,
+          "y": 327.65,
+          "w": 8.01,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "CORPORATION",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 203.39,
+          "y": 327.47,
+          "w": 7.89,
+          "h": 7.37,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "GOVERNMENT",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 265.64,
+          "y": 327.65,
+          "w": 7.84,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "LLC",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 329.6,
+          "y": 327.47,
+          "w": 7.89,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "NONPROFIT MUST PROVIDE 501C3 LETTER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 365.89,
+          "y": 327.65,
+          "w": 8.59,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "PUBLICLY TRADED PAPC",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 508.25,
+          "y": 327.47,
+          "w": 7.84,
+          "h": 7.72,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "YEARS IN BUSINESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 82.41,
+          "y": 301.43,
+          "w": 101.35,
+          "h": 13.4,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Stock symbol",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 480.46,
+          "y": 301.42,
+          "w": 100.92,
+          "h": 13.43,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SHOPPING CENTER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 105.39,
+          "y": 261.99,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "OFFICE BUILDING",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 203.4,
+          "y": 261.82,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "INDUSTRIAL BUILDING",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 301.42,
+          "y": 261.99,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "RESIDENCE",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 400.48,
+          "y": 261.99,
+          "w": 7.84,
+          "h": 7.48,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "OWNS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 105.34,
+          "y": 248.98,
+          "w": 8.01,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "RENTS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 203.58,
+          "y": 249.02,
+          "w": 7.84,
+          "h": 7.37,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "COMMERCIAL",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 105.47,
+          "y": 234,
+          "w": 8.01,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "INDUSTRIAL",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 203.58,
+          "y": 234.18,
+          "w": 7.66,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "RESIDENTIAL",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 301.42,
+          "y": 234,
+          "w": 8.19,
+          "h": 7.37,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "0500",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 105.39,
+          "y": 218.99,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "5012500",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 203.4,
+          "y": 219.16,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "2501  5000",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 301.06,
+          "y": 219.16,
+          "w": 8.36,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "5000  10000",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 400.48,
+          "y": 218.99,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "10000",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 498.58,
+          "y": 219.16,
+          "w": 7.49,
+          "h": 7.31,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "FIRST",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 27.79,
+          "y": 107.67,
+          "w": 130.1,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LAST",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 172.31,
+          "y": 107.94,
+          "w": 129.17,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SSN",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 313.16,
+          "y": 107.94,
+          "w": 82.47,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "OWNERSHIP",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 407.5,
+          "y": 107.67,
+          "w": 81.94,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "TITLE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 504.46,
+          "y": 107.67,
+          "w": 82.54,
+          "h": 13.56,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME ADDRESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 28.31,
+          "y": 79.57,
+          "w": 273.44,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 313.16,
+          "y": 79.83,
+          "w": 82.99,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 407.41,
+          "y": 79.92,
+          "w": 82.73,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 504.46,
+          "y": 79.83,
+          "w": 82.8,
+          "h": 13.15,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "EMAIL",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 28.31,
+          "y": 51.73,
+          "w": 129.84,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME PHONE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 172.31,
+          "y": 51.73,
+          "w": 129.44,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DRIVERS LICENSE NUMBER AND EXP DATE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 313.42,
+          "y": 52.17,
+          "w": 179.43,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE OF BIRTH",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 1,
+          "x": 504.72,
+          "y": 51.73,
+          "w": 82.01,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "FIRST_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.71,
+          "y": 699.48,
+          "w": 128.78,
+          "h": 14.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LAST_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 171.01,
+          "y": 699.48,
+          "w": 129.61,
+          "h": 14.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SSN_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.29,
+          "y": 699.48,
+          "w": 82.29,
+          "h": 14.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "OWNERSHIP_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.28,
+          "y": 699.48,
+          "w": 82.64,
+          "h": 14.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "TITLE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.77,
+          "y": 699.48,
+          "w": 82.01,
+          "h": 14.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME ADDRESS_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.71,
+          "y": 671.76,
+          "w": 272.91,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 311.94,
+          "y": 671.76,
+          "w": 82.64,
+          "h": 14.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.81,
+          "y": 672.13,
+          "w": 82.64,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.77,
+          "y": 671.76,
+          "w": 82.01,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "EMAIL_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.71,
+          "y": 643.92,
+          "w": 129.13,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME PHONE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 171.71,
+          "y": 643.92,
+          "w": 128.91,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DRIVERS LICENSE NUMBER AND EXP DATE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 311.94,
+          "y": 643.92,
+          "w": 179.43,
+          "h": 14.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE OF BIRTH_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.07,
+          "y": 643.92,
+          "w": 82.71,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "FIRST_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 600.99,
+          "w": 129.53,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LAST_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 170.84,
+          "y": 600.99,
+          "w": 129.96,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SSN_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 311.77,
+          "y": 601.34,
+          "w": 82.99,
+          "h": 12.98,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "OWNERSHIP_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.46,
+          "y": 601.34,
+          "w": 82.99,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "TITLE_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.9,
+          "y": 600.64,
+          "w": 83.06,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME ADDRESS_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 573.27,
+          "w": 274.31,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 311.77,
+          "y": 572.57,
+          "w": 82.99,
+          "h": 14.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.3,
+          "y": 573.3,
+          "w": 82.99,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.6,
+          "y": 572.92,
+          "w": 82.01,
+          "h": 14.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "EMAIL_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 545.08,
+          "w": 129.92,
+          "h": 13.64,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME PHONE_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 170.84,
+          "y": 545.43,
+          "w": 130.31,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DRIVERS LICENSE NUMBER AND EXP DATE_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.48,
+          "y": 545.43,
+          "w": 179.78,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE OF BIRTH_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.25,
+          "y": 545.08,
+          "w": 82.71,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "FIRST_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 502.62,
+          "w": 129.92,
+          "h": 12.85,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LAST_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 170.84,
+          "y": 501.79,
+          "w": 130.31,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SSN_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.48,
+          "y": 502.36,
+          "w": 82.64,
+          "h": 13.46,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "OWNERSHIP_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.11,
+          "y": 501.79,
+          "w": 82.99,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "TITLE_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.9,
+          "y": 501.79,
+          "w": 83.06,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME ADDRESS_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 474.42,
+          "w": 273.96,
+          "h": 13.5,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_6",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.48,
+          "y": 474.42,
+          "w": 81.94,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_6",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.38,
+          "y": 474.1,
+          "w": 82.34,
+          "h": 13.29,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_6",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.9,
+          "y": 474.42,
+          "w": 82.71,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "EMAIL_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 446.23,
+          "w": 129.97,
+          "h": 13.59,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME PHONE_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 170.84,
+          "y": 446.58,
+          "w": 130.27,
+          "h": 13.02,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DRIVERS LICENSE NUMBER AND EXP DATE_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.13,
+          "y": 445.88,
+          "w": 179.43,
+          "h": 14.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE OF BIRTH_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.9,
+          "y": 446.58,
+          "w": 83.06,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "undefined",
+      "type": "radio",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 313.56,
+          "y": 373.79,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "NO"
+        },
+        {
+          "page": 2,
+          "x": 357.61,
+          "y": 373.61,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "YES"
+        }
+      ],
+      "options": [
+        "NO",
+        "YES"
+      ]
+    },
+    {
+      "name": "FIRST_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 344.48,
+          "w": 130.26,
+          "h": 14.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LAST_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 171.68,
+          "y": 344.48,
+          "w": 128.91,
+          "h": 14.1,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "SSN_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.48,
+          "y": 344.48,
+          "w": 81.94,
+          "h": 14.94,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "OWNERSHIP_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.18,
+          "y": 344.48,
+          "w": 82.36,
+          "h": 14.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "TITLE_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 503.63,
+          "y": 345.01,
+          "w": 82.29,
+          "h": 13.54,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME ADDRESS_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 316.76,
+          "w": 273.75,
+          "h": 14.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "CITY_7",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.05,
+          "y": 316.76,
+          "w": 82.36,
+          "h": 14.1,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "STATE_7",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 406.36,
+          "y": 317.29,
+          "w": 82.59,
+          "h": 13.36,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ZIP_7",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.83,
+          "y": 317.39,
+          "w": 83.27,
+          "h": 13.05,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "EMAIL_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 26.84,
+          "y": 288.92,
+          "w": 129.84,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HOME PHONE_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 170.84,
+          "y": 288.92,
+          "w": 130.17,
+          "h": 14.1,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DRIVERS LICENSE NUMBER AND EXP DATE_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 312.48,
+          "y": 288.92,
+          "w": 179.01,
+          "h": 14.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE OF BIRTH_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 502.83,
+          "y": 288.92,
+          "w": 82.86,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "BUSINESS BANKRUPTCY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 183.88,
+          "y": 257.4,
+          "w": 6.96,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "PERSONAL BANKRUPTCY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 267.04,
+          "y": 257.53,
+          "w": 6.96,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "NEVER FILED",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 351.13,
+          "y": 257.53,
+          "w": 6.96,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "IF YES PLEASE EXPLAIN",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.84,
+          "y": 226.78,
+          "w": 558.84,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DOES THIS BUSINESS CURRENTLY PROCESS CARDS",
+      "type": "radio",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 184.4,
+          "y": 212.63,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "NO_2"
+        },
+        {
+          "page": 2,
+          "x": 228.55,
+          "y": 212.63,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "YES_2"
+        }
+      ],
+      "options": [
+        "NO_2",
+        "YES_2"
+      ]
+    },
+    {
+      "name": "CURRENT PROCESSOR",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.58,
+          "y": 184.65,
+          "w": 558.84,
+          "h": 14.1,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "HAVE MERCHANT OR OWNERS  PRINCIPALS EVER BEEN TERMINATED FROM ACCEPTING BANKCARDS FOR THIS BUSINESS OR ANY OTHER BUSINESSES",
+      "type": "radio",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 436.4,
+          "y": 171.55,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "NO_3"
+        },
+        {
+          "page": 2,
+          "x": 480.42,
+          "y": 171.68,
+          "w": 6.96,
+          "h": 6.84,
+          "on": "YES_3"
+        }
+      ],
+      "options": [
+        "NO_3",
+        "YES_3"
+      ]
+    },
+    {
+      "name": "IF YES PLEASE EXPLAIN_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.58,
+          "y": 141.06,
+          "w": 558,
+          "h": 14.1,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "AMERICAN EXPRESS ESA",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 302.8,
+          "y": 114.36,
+          "w": 73.29,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "WHICH PAYMENTS WOULD YOU LIKE TO ACCEPT CHECK ALL THAT APPLY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 224.21,
+          "y": 114.34,
+          "w": 8.14,
+          "h": 7.49,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "VISA MASTERCARD DISCOVER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27,
+          "y": 114.34,
+          "w": 8.14,
+          "h": 7.75,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "AMERICAN EXPRESS OPTBLUE",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 125.93,
+          "y": 114.21,
+          "w": 8.27,
+          "h": 7.48,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "PIN DEBIT",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 385.63,
+          "y": 114.69,
+          "w": 7.31,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 436.19,
+          "y": 114.56,
+          "w": 7.72,
+          "h": 7.13,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "EBT  EBT FNS NUMBER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 512.55,
+          "y": 114.36,
+          "w": 73.62,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Notes",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.18,
+          "y": 86.41,
+          "w": 559.26,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "By checking this box Merchantopts out of receiving future commercial marketing communications from American Express",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 2,
+          "x": 27.33,
+          "y": 61.19,
+          "w": 8.1,
+          "h": 7.43,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "IN PERSON",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 113.3,
+          "y": 699.26,
+          "w": 50.36,
+          "h": 13.93,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "MAILPHONE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 299.06,
+          "y": 699.51,
+          "w": 49.97,
+          "h": 14.18,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ECOMMERCE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 490.13,
+          "y": 699.49,
+          "w": 50.25,
+          "h": 12.84,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ROUTING NUMBER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 26.59,
+          "y": 637.31,
+          "w": 274.31,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ACCOUNT NUMBER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 313.33,
+          "y": 637.34,
+          "w": 273.28,
+          "h": 13.4,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Debits such as fees  chargebacks",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 93.22,
+          "y": 623.05,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Deposits such as payouts",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 201.01,
+          "y": 623.23,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Other describe",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 288.02,
+          "y": 623.05,
+          "w": 8.19,
+          "h": 7.84,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 340.81,
+          "y": 619.34,
+          "w": 245.89,
+          "h": 13.87,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ROUTING NUMBER_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.31,
+          "y": 592.37,
+          "w": 273.47,
+          "h": 13.07,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ACCOUNT NUMBER_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 313.39,
+          "y": 591.93,
+          "w": 273.22,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Debits such as fees  chargebacks_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 92.43,
+          "y": 575.98,
+          "w": 7.84,
+          "h": 7.72,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Deposits such as payouts_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 200.4,
+          "y": 576.15,
+          "w": 7.84,
+          "h": 7.37,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Other describe_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 287.23,
+          "y": 576.15,
+          "w": 8.19,
+          "h": 7.54,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 341.13,
+          "y": 571.97,
+          "w": 246.18,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "i  PLEASE DESCRIBE YOUR REFUNDRETURN POLICY",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.31,
+          "y": 505.66,
+          "w": 557.63,
+          "h": 13.16,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.31,
+          "y": 477.69,
+          "w": 557.37,
+          "h": 13.94,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ONSITE",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.26,
+          "y": 439.6,
+          "w": 8.01,
+          "h": 7.5,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "3RD PARTY FULFILLMENT CENTER IF SO PROVIDE FULLY EXECUTED FULFILLMENT AGREEMENT",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27,
+          "y": 423.57,
+          "w": 8.01,
+          "h": 7.49,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "OFFSITE IE WAREHOUSE IF SO PROVIDE ADDRESS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 74.3,
+          "y": 439.47,
+          "w": 8.01,
+          "h": 7.76,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 223.21,
+          "y": 440.5,
+          "w": 361.91,
+          "h": 13.93,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Service Only No Products Sold",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 285.22,
+          "y": 423.61,
+          "w": 8.19,
+          "h": 7.62,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "NO_4",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.26,
+          "y": 394.56,
+          "w": 8.14,
+          "h": 7.63,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "YES IF SO PROVIDE FULLY EXECUTED FULFILLMENT AGREEMENT",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 74.17,
+          "y": 394.56,
+          "w": 8.14,
+          "h": 7.76,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "iii  DO YOU OFFER RECURRING AND TIMEEXTENDED SERVICES SUBSCRIPTIONS MEMBERSHIPS RECURRING PLANS ETC IF YES PLEASE DESCRIBE AND INCLUDE DURATION",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.31,
+          "y": 360.11,
+          "w": 557.9,
+          "h": 14.2,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "INDIVIDUAL CONSUMER",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 102.81,
+          "y": 317.87,
+          "w": 50.33,
+          "h": 14.03,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "BUSINESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 287.25,
+          "y": 318.05,
+          "w": 49.86,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "GOVERNMENT_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 479.94,
+          "y": 317.87,
+          "w": 49.98,
+          "h": 14.21,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "LOCAL",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 102.98,
+          "y": 264.96,
+          "w": 50.04,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "NATIONAL",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 287.19,
+          "y": 264.96,
+          "w": 49.86,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "INTERNATIONAL",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 480.36,
+          "y": 265.13,
+          "w": 49.69,
+          "h": 13.5,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "24 HOURS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 66.15,
+          "y": 226.27,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "2 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 119.06,
+          "y": 225.39,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "310 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 158.82,
+          "y": 225.57,
+          "w": 8.36,
+          "h": 7.49,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "1130 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 207.18,
+          "y": 225.22,
+          "w": 8.19,
+          "h": 7.49,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "3190 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 259.2,
+          "y": 225.39,
+          "w": 7.84,
+          "h": 7.31,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "90 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 317.19,
+          "y": 225.39,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "24 HOURS_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 66.15,
+          "y": 194.9,
+          "w": 8.19,
+          "h": 8.01,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "25 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 119.06,
+          "y": 195.25,
+          "w": 8.36,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "610 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 159.18,
+          "y": 195.08,
+          "w": 8.36,
+          "h": 7.84,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "11 DAYS",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 207,
+          "y": 195.08,
+          "w": 8.36,
+          "h": 7.84,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "TIME OF ORDER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 26.91,
+          "y": 166.3,
+          "w": 8.71,
+          "h": 7.31,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "UP SHIPMENT",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 98.39,
+          "y": 165.82,
+          "w": 8.19,
+          "h": 7.49,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "ix  DO YOU HAVE A RETAIL LOCATION FOR MOTOINTERNET MERCHANTS IF YES PLEASE CONFIRM PHYSICAL ADDRESS",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.14,
+          "y": 131.82,
+          "w": 557.72,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "x HOW DO YOU ADVERTISE INTERNET MAGAZINES TV ETC LIST ALL THAT APPLY",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27.49,
+          "y": 102.48,
+          "w": 557.2,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "xi IS YOUR BUSINESS SEASONAL",
+      "type": "radio",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 27,
+          "y": 74.04,
+          "w": 7.66,
+          "h": 7.84,
+          "on": "NO_5"
+        },
+        {
+          "page": 3,
+          "x": 71.41,
+          "y": 74.21,
+          "w": 7.49,
+          "h": 7.66,
+          "on": "YES_4"
+        }
+      ],
+      "options": [
+        "NO_5",
+        "YES_4"
+      ]
+    },
+    {
+      "name": "JANUARY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 28.05,
+          "y": 44.25,
+          "w": 8.01,
+          "h": 7.37,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "FEBRUARY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 122.3,
+          "y": 44.43,
+          "w": 7.84,
+          "h": 7.19,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "MARCH",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 216.02,
+          "y": 44.43,
+          "w": 8.01,
+          "h": 7.19,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "APRIL",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 310.1,
+          "y": 44.43,
+          "w": 8.01,
+          "h": 7.02,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "MAY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 404.17,
+          "y": 44.08,
+          "w": 8.19,
+          "h": 7.72,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "JUNE",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 498.31,
+          "y": 44.56,
+          "w": 8.01,
+          "h": 7.02,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "JULY",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 28.05,
+          "y": 30.9,
+          "w": 8.19,
+          "h": 8.01,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "AUGUST",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 122.12,
+          "y": 31.25,
+          "w": 8.01,
+          "h": 7.31,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "SEPTEMBER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 216.02,
+          "y": 31.25,
+          "w": 8.36,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "OCTOBER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 310.1,
+          "y": 31.42,
+          "w": 8.19,
+          "h": 7.31,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "NOVEMBER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 404.17,
+          "y": 31.25,
+          "w": 8.01,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "DECEMBER",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 3,
+          "x": 498.13,
+          "y": 31.38,
+          "w": 8.19,
+          "h": 7.66,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "fill_29",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.87,
+          "y": 689.25,
+          "w": 38.93,
+          "h": 9.24,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_31",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 512.63,
+          "y": 689.25,
+          "w": 67.33,
+          "h": 10.21,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 200.14,
+          "y": 679.79,
+          "w": 18.94,
+          "h": 9.23,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_33",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.34,
+          "y": 675.33,
+          "w": 39.63,
+          "h": 8.89,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_35",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 513.68,
+          "y": 675.07,
+          "w": 66.54,
+          "h": 11.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_36",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.69,
+          "y": 661.29,
+          "w": 39.28,
+          "h": 10.12,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_38",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 513.68,
+          "y": 661.55,
+          "w": 66.28,
+          "h": 10.99,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_39",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.87,
+          "y": 647.25,
+          "w": 39.45,
+          "h": 8.89,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_41",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 513.15,
+          "y": 647.25,
+          "w": 66.8,
+          "h": 11.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_2.0",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 65.67,
+          "y": 636.85,
+          "w": 19.03,
+          "h": 8.97,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_2.1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 133.27,
+          "y": 637.1,
+          "w": 18.5,
+          "h": 8.62,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 199.81,
+          "y": 637.12,
+          "w": 19.44,
+          "h": 9.48,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_42",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 348.22,
+          "y": 633.16,
+          "w": 39.1,
+          "h": 9.59,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_m_fee",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 513.37,
+          "y": 633.26,
+          "w": 67.07,
+          "h": 11.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_44",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.52,
+          "y": 619.29,
+          "w": 39.45,
+          "h": 9.07,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Other",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 396.26,
+          "y": 603.72,
+          "w": 31.59,
+          "h": 12.4,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Include Fee Type  Billing Method One time monthly etc",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 458.02,
+          "y": 603.72,
+          "w": 31.48,
+          "h": 12.57,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Billing Method",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 534.96,
+          "y": 603.72,
+          "w": 49.99,
+          "h": 12.57,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Flat Rate",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 55.2,
+          "y": 610.17,
+          "w": 6.84,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Surcharge",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 103.91,
+          "y": 609.99,
+          "w": 6.96,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Dual Pricing",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 157.28,
+          "y": 609.99,
+          "w": 6.84,
+          "h": 6.96,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "fill_49",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.87,
+          "y": 605.08,
+          "w": 39.45,
+          "h": 9.24,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Passthrough Network Fees",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 151.01,
+          "y": 595.89,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "fill_51.0",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 347.97,
+          "y": 591.06,
+          "w": 38.72,
+          "h": 9.42,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Other_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 396.43,
+          "y": 588.88,
+          "w": 31.23,
+          "h": 13.45,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Include Fee Type  Billing Method One time monthly etc_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 457.76,
+          "y": 588.44,
+          "w": 31.48,
+          "h": 13.36,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Billing Method_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 535.22,
+          "y": 589.23,
+          "w": 49.99,
+          "h": 12.31,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 66.52,
+          "y": 583.41,
+          "w": 18.36,
+          "h": 8.6,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_5",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 165.86,
+          "y": 582.97,
+          "w": 19.29,
+          "h": 9.09,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_6",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 178.07,
+          "y": 555.34,
+          "w": 19.03,
+          "h": 8.43,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Passthrough Network Fees_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 164.9,
+          "y": 526.02,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Percentage_7",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 79.13,
+          "y": 513.28,
+          "w": 18.9,
+          "h": 8.78,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Percentage_8",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 180.15,
+          "y": 513.37,
+          "w": 18.9,
+          "h": 8.82,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Authorization Fee_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 88.09,
+          "y": 500.43,
+          "w": 31.49,
+          "h": 8.95,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Authorization Fee_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 183.78,
+          "y": 500.3,
+          "w": 32.2,
+          "h": 8.69,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Terminal Type",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 284.9,
+          "y": 474.07,
+          "w": 294.92,
+          "h": 12.12,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Special Pricing or Exception NotesRow1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 27.45,
+          "y": 381.23,
+          "w": 203.13,
+          "h": 74.5,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Gateway",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 248.16,
+          "y": 441.59,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Wireless",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 297.12,
+          "y": 440.93,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "POS System",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 346.08,
+          "y": 440.93,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_6",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 543.05,
+          "y": 441.06,
+          "w": 6,
+          "h": 6,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "fill_57",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 252.5,
+          "y": 424.94,
+          "w": 36.12,
+          "h": 10.99,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_58",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 302.25,
+          "y": 424.94,
+          "w": 35.6,
+          "h": 10.86,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_59",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 351.07,
+          "y": 425.2,
+          "w": 36.52,
+          "h": 10.6,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Per Trans Fee",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 401.09,
+          "y": 425.07,
+          "w": 36.12,
+          "h": 10.73,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_61",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 448.08,
+          "y": 424.94,
+          "w": 35.99,
+          "h": 10.99,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Monthly Fee",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 497.69,
+          "y": 424.94,
+          "w": 36.38,
+          "h": 10.86,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_63",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 546.86,
+          "y": 424.94,
+          "w": 36.25,
+          "h": 10.86,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Gateway_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 248.16,
+          "y": 413.23,
+          "w": 6,
+          "h": 5.88,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "Wireless_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 297.12,
+          "y": 413.23,
+          "w": 6,
+          "h": 5.88,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "POS System_2",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 346.08,
+          "y": 413.23,
+          "w": 6,
+          "h": 5.88,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "undefined_7",
+      "type": "checkbox",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 543.05,
+          "y": 413.1,
+          "w": 6,
+          "h": 5.88,
+          "on": "On"
+        }
+      ]
+    },
+    {
+      "name": "fill_66",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 251.71,
+          "y": 397.33,
+          "w": 36.12,
+          "h": 11.39,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_67",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 301.98,
+          "y": 397.33,
+          "w": 35.99,
+          "h": 11.39,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_68",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 351.21,
+          "y": 397.46,
+          "w": 35.73,
+          "h": 11.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Per Trans Fee_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 401.22,
+          "y": 397.33,
+          "w": 35.73,
+          "h": 11.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_70",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 448.21,
+          "y": 397.2,
+          "w": 35.47,
+          "h": 11.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Monthly Fee_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 498.09,
+          "y": 397.2,
+          "w": 36.12,
+          "h": 11.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "fill_72",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 547.18,
+          "y": 397.2,
+          "w": 35.99,
+          "h": 11.65,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Please list any other service providers",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 355.53,
+          "y": 381.76,
+          "w": 231.05,
+          "h": 12.05,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Merchant Legal Name of Business",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 27,
+          "y": 183.33,
+          "w": 559.68,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "PRINCIPAL  1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 27,
+          "y": 151.97,
+          "w": 135.8,
+          "h": 13.92,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 169.58,
+          "y": 151.83,
+          "w": 133.9,
+          "h": 14.4,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "PRINCIPAL  2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 309.75,
+          "y": 152.24,
+          "w": 135.81,
+          "h": 13.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 455.06,
+          "y": 151.83,
+          "w": 131.71,
+          "h": 13.88,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "PRINCIPAL  3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 26.9,
+          "y": 121.62,
+          "w": 135.38,
+          "h": 13.81,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE_3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 169.58,
+          "y": 121.05,
+          "w": 133.9,
+          "h": 14.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "PRINCIPAL  4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 309.75,
+          "y": 120.91,
+          "w": 135.81,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "DATE_4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 455.06,
+          "y": 121.47,
+          "w": 131.71,
+          "h": 13.33,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "ISO Sig",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 27.2,
+          "y": 89.31,
+          "w": 276.3,
+          "h": 13.26,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "NAME AND TITLE",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 311.64,
+          "y": 89,
+          "w": 275.05,
+          "h": 13.68,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Bank Sig",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 27.6,
+          "y": 55.24,
+          "w": 276,
+          "h": 13.55,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "NAME AND TITLE_2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 311.29,
+          "y": 55.36,
+          "w": 275.47,
+          "h": 13.38,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Purchase",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 282.44,
+          "y": 553.35,
+          "w": 37.41,
+          "h": 10.81,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Group2",
+      "type": "radio",
+      "widgets": [
+        {
+          "page": 4,
+          "x": 314.14,
+          "y": 542.06,
+          "w": 7.92,
+          "h": 8.05,
+          "on": "TPP"
+        },
+        {
+          "page": 4,
+          "x": 406.98,
+          "y": 542.25,
+          "w": 7.92,
+          "h": 8.05,
+          "on": "StageOnly"
+        },
+        {
+          "page": 4,
+          "x": 436.02,
+          "y": 555.19,
+          "w": 7.92,
+          "h": 8.05,
+          "on": "Merchant"
+        },
+        {
+          "page": 4,
+          "x": 481.94,
+          "y": 555.22,
+          "w": 7.92,
+          "h": 8.05,
+          "on": "Reseller"
+        }
+      ],
+      "options": [
+        "TPP",
+        "StageOnly",
+        "Merchant",
+        "Reseller"
+      ]
+    },
+    {
+      "name": "Pg_prin1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 27,
+          "y": 577.24,
+          "w": 154.7,
+          "h": 13.45,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "pg_prin1_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 190.2,
+          "y": 576.95,
+          "w": 112.43,
+          "h": 13.78,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 311.43,
+          "y": 576.94,
+          "w": 154.7,
+          "h": 14.37,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin2_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 474.17,
+          "y": 577.32,
+          "w": 112.58,
+          "h": 13.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 27.14,
+          "y": 548.32,
+          "w": 154.7,
+          "h": 13.45,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin3_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 190.35,
+          "y": 548.02,
+          "w": 112.43,
+          "h": 13.78,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 311.44,
+          "y": 548.5,
+          "w": 154.7,
+          "h": 13.45,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "Pg_prin4_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 474.26,
+          "y": 548.29,
+          "w": 112.41,
+          "h": 13.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin1",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 26.67,
+          "y": 229.1,
+          "w": 154.7,
+          "h": 14.37,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin1_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 189.88,
+          "y": 228.8,
+          "w": 112.43,
+          "h": 13.78,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin2",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 311.11,
+          "y": 228.79,
+          "w": 154.7,
+          "h": 14.37,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin2_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 473.31,
+          "y": 229.17,
+          "w": 113.11,
+          "h": 13.52,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin3",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 26.82,
+          "y": 200.17,
+          "w": 154.7,
+          "h": 14.37,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin3_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 190.02,
+          "y": 199.88,
+          "w": 112.43,
+          "h": 13.78,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin4",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 311.11,
+          "y": 199.44,
+          "w": 154.7,
+          "h": 14.37,
+          "on": null
+        }
+      ]
+    },
+    {
+      "name": "bd_prin4_date",
+      "type": "text",
+      "widgets": [
+        {
+          "page": 5,
+          "x": 473.32,
+          "y": 200.14,
+          "w": 113.02,
+          "h": 13.52,
+          "on": null
+        }
+      ]
+    }
+  ]
+}

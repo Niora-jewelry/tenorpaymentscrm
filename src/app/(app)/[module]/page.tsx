@@ -45,6 +45,7 @@ import { callsForRecord } from '@/lib/phone/calls';
 import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
 import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
+import { agreementsFor } from '@/lib/agreements/service';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
 import { columnOrderFor, columnVisibilityFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
@@ -615,7 +616,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications, addressesRaw,
+    applications, addressesRaw, agreements,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -690,6 +691,8 @@ async function RecordDrawer({
     // The Prepopulated Application panel, on whichever visible tab carries it.
     dbTabs.some((t) => t.showsApplications) ? applicationsFor(ctx, record.id) : Promise.resolve(null),
     fieldAddressesFor(ctx, record.id),
+    // The Agreements (e-signature) panel, on whichever visible tab carries it.
+    dbTabs.some((t) => t.showsAgreements) ? agreementsFor(ctx, record.id) : Promise.resolve(null),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -1014,7 +1017,7 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
   }));
 
   return (
@@ -1151,6 +1154,7 @@ async function RecordDrawer({
         statementFiles={statementFiles}
         residuals={residuals}
         applications={applications}
+        agreements={agreements}
         messages={messages}
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}

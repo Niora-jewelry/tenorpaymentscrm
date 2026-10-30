@@ -108,7 +108,7 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   const recordId = r.record_id as string | null;
   if (!recordId || !mod) return kind in TAB_FOR_PHONE ? '/phone' : null;
   const base = `/${mod.slug}?record=${recordId}`;
-  if (kind.startsWith('mention_')) {
+  if (kind.startsWith('mention_') || kind === 'agreement') {
     const tab = r.tab_key as string | null;
     const sub = r.subtab_key as string | null;
     return `${base}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}${sub ? `&subtab=${encodeURIComponent(sub)}` : ''}&n=${r.id as string}`;

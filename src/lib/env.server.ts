@@ -137,6 +137,16 @@ const serverSchema = z.object({
   MAIL_CLIENT_SECRET_EXPIRES_AT: optionalString,
   CRON_SECRET: optionalString,
 
+  /**
+   * SignWell — e-signature for merchant agreements (lib/agreements). The
+   * webhook id is the HMAC key SignWell signs every event with. Test mode
+   * sends watermarked, non-binding documents and is forced on outside
+   * production, so a developer cannot send a real agreement by mistake.
+   */
+  SIGNWELL_API_KEY: optionalString,
+  SIGNWELL_WEBHOOK_ID: optionalString,
+  SIGNWELL_TEST_MODE: optionalString,
+
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -167,6 +177,9 @@ const parsed = serverSchema.safeParse({
   MAIL_MOCK_BASE_URL: process.env.MAIL_MOCK_BASE_URL,
   MAIL_CLIENT_SECRET_EXPIRES_AT: process.env.MAIL_CLIENT_SECRET_EXPIRES_AT,
   CRON_SECRET: process.env.CRON_SECRET,
+  SIGNWELL_API_KEY: process.env.SIGNWELL_API_KEY,
+  SIGNWELL_WEBHOOK_ID: process.env.SIGNWELL_WEBHOOK_ID,
+  SIGNWELL_TEST_MODE: process.env.SIGNWELL_TEST_MODE,
   NODE_ENV: process.env.NODE_ENV,
 });
 
@@ -224,3 +237,8 @@ export const phoneConfigured = Boolean(
     serverEnv.TWILIO_TWIML_APP_SID &&
     serverEnv.TWILIO_AUTH_TOKEN,
 );
+
+/** Agreements can be sent: SignWell's key and webhook id are both set. */
+export const agreementsConfigured = Boolean(serverEnv.SIGNWELL_API_KEY && serverEnv.SIGNWELL_WEBHOOK_ID);
+/** Test mode unless production says otherwise with SIGNWELL_TEST_MODE=false. */
+export const signwellTestMode = serverEnv.NODE_ENV !== 'production' || serverEnv.SIGNWELL_TEST_MODE !== 'false';

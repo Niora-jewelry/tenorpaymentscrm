@@ -65,6 +65,8 @@ export type Tab = {
   position: number;
   /** Carries the Prepopulated Application panel (`tabs.shows_applications`). */
   showsApplications?: boolean;
+  /** Carries the Agreements (e-signature) panel. A flag, so no code names the tab. */
+  showsAgreements?: boolean;
 };
 
 export type Subtab = {
@@ -200,6 +202,7 @@ const loadConfigCached = unstable_cache(
         id: t.id, key: t.key, label: t.label, kind: t.kind,
         isSystem: t.is_system, acceptsFields: t.accepts_fields, position: t.position,
         showsApplications: t.shows_applications ?? false,
+        showsAgreements: t.shows_agreements ?? false,
       })),
       subtabs: subtabs.data!.map((s) => ({
         id: s.id, tabId: s.tab_id, key: s.key, label: s.label,

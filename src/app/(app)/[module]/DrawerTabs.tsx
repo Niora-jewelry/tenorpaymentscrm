@@ -38,6 +38,8 @@ import type { Note } from '@/lib/records/notes';
 import type { FieldAddress } from '@/lib/records/fieldAddresses';
 import { FieldSearch, type FieldHit } from './FieldSearch';
 import type { ApplicationsPanelData } from '@/lib/applications/service';
+import type { AgreementsPanelData } from '@/lib/agreements/service';
+import { AgreementsPanel } from './AgreementsPanel';
 import { ApplicationsPanel } from './ApplicationsPanel';
 import type { RecordResiduals } from '@/lib/records/recordResiduals';
 
@@ -90,6 +92,8 @@ export type TabPayload = {
   hasCustomFieldOrderBySubtab: Record<string, boolean>;
   /** Carries the Prepopulated Application panel above its fields. */
   showsApplications?: boolean;
+  /** Carries the Agreements (e-signature) panel above its fields. */
+  showsAgreements?: boolean;
 };
 
 export function DrawerTabs({
@@ -113,6 +117,7 @@ export function DrawerTabs({
   statementFiles,
   residuals,
   applications = null,
+  agreements = null,
   messages,
   phoneCalls,
   smsMessages,
@@ -173,6 +178,7 @@ export function DrawerTabs({
   residuals: RecordResiduals | null;
   /** The record's applications, when a visible tab carries them. */
   applications?: ApplicationsPanelData | null;
+  agreements?: AgreementsPanelData | null;
   messages: Message[];
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
@@ -467,6 +473,7 @@ export function DrawerTabs({
             return (
               <div className="space-y-4">
                 {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
+                {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
                 <RealFieldGrid
                   moduleSlug={moduleSlug}
                   recordId={recordId}

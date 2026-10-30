@@ -16,10 +16,12 @@
  * per API app), each signing with its own id — SIGNWELL_WEBHOOK_ID holds
  * them comma-separated and an event verifies against any of them.
  *
- * Coordinates: SignWell places a field by `x`/`y` from the page's TOP-left in
- * PDF points at the page's native size; the template's rectangles are
- * bottom-left, so `y = pageHeight - (y + h)`. Pinned by a test-mode send
- * before the first real one (see README.md in this folder).
+ * Coordinates: SignWell places a field by `x`/`y` from the page's TOP-left,
+ * in CSS PIXELS at 96 dpi (1 pt = 4/3 px); the template's rectangles are
+ * PDF points from the bottom-left, so `y = (pageHeight - (y + h)) * 4/3`.
+ * Pinned on 30 Oct 2026 with a draft test-mode document: in points the boxes
+ * landed ~150 pt high and 7 pt left; in pixels they sit on the lines (see
+ * README.md in this folder).
  *
  * Nothing here logs a request body: the PDF holds SSNs and bank details.
  */
@@ -30,6 +32,8 @@ import { VendorError } from './types';
 
 const BASE = 'https://www.signwell.com/api/v1';
 const TIMEOUT_MS = 45_000;
+/** SignWell field geometry is CSS pixels at 96 dpi; the template's is PDF points. */
+const PX_PER_PT = 96 / 72;
 
 const Recipient = z.object({ id: z.string(), email: z.string().default(''), name: z.string().default(''), status: z.string().nullish(), bounced: z.boolean().nullish() });
 const Document = z.object({
@@ -105,8 +109,10 @@ export class SignWell implements ESignVendor {
       type: spot.kind === 'signature' ? 'signature' : 'date',
       api_id: `${spot.kind}-${spot.slot}-p${spot.page}-${Math.round(spot.x)}-${Math.round(spot.y)}`,
       page: spot.page,
-      x: Math.round(spot.x),
-      y: Math.round(spot.pageHeight - (spot.y + spot.h)),
+      x: Math.round(spot.x * PX_PER_PT),
+      y: Math.round((spot.pageHeight - (spot.y + spot.h)) * PX_PER_PT),
+      width: Math.round(spot.w * PX_PER_PT),
+      height: Math.round(spot.h * PX_PER_PT),
       required: true,
       recipient_id: `principal-${spot.slot}`,
       ...(spot.kind === 'date' ? { lock_sign_date: true } : {}),

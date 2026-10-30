@@ -54,8 +54,8 @@ describe('SignWell client', () => {
       { id: 'principal-1', name: 'Jane Doe', email: 'jane@zz.test' },
       { id: 'principal-2', name: 'John Roe', email: 'john@zz.test' },
     ]);
-    // y is measured from the top: 786 - (152 + 14) = 620
-    expect(body.fields[0][0]).toMatchObject({ type: 'signature', page: 4, x: 27, y: 620, recipient_id: 'principal-1', required: true });
+    // From the top, in CSS pixels: (786 - (152 + 14)) * 4/3 = 827; x 27 pt = 36 px; 136×14 pt = 181×19 px
+    expect(body.fields[0][0]).toMatchObject({ type: 'signature', page: 4, x: 36, y: 827, width: 181, height: 19, recipient_id: 'principal-1', required: true });
     expect(body.fields[0][1]).toMatchObject({ type: 'date', lock_sign_date: true, recipient_id: 'principal-1' });
     expect(body.fields[0][2]).toMatchObject({ recipient_id: 'principal-2' });
   });

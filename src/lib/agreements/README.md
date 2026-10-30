@@ -45,9 +45,12 @@ updates is the same either way.
 
 ## Before the first real send: the coordinate check
 
-SignWell places a field by `x`/`y` from the page's top-left; the template's
-rectangles are PDF points from the bottom-left and `vendor/signwell.ts`
-converts (`y = pageHeight − (y + h)`). Confirm once in test mode:
+SignWell places a field by `x`/`y` from the page's top-left in CSS pixels
+(96 dpi); the template's rectangles are PDF points from the bottom-left and
+`vendor/signwell.ts` converts (`y = (pageHeight − (y + h)) × 4/3`, same for
+x, width and height). Checked on 30 Oct 2026 with a draft test-mode
+document — the boxes sit on the signature lines. Re-check after any
+template change:
 
 1. On a test record with one owner at 100%, Send agreement.
 2. Open the signing link SignWell emails. The signature box must sit on the

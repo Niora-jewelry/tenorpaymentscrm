@@ -68,7 +68,7 @@ export function FieldHistoryButton({ recordId, fieldKey, fieldLabel }: { recordI
               {(state.entries ?? []).map((e) => {
                 // No person behind it: the merchant (an answer that filled an
                 // empty field) or a system change such as a data conversion.
-                const who = e.actorId ? byId.get(e.actorId)?.name ?? 'Someone' : e.source?.startsWith('Application ') ? 'The merchant' : 'System';
+                const who = e.actorId ? byId.get(e.actorId)?.name ?? 'Someone' : e.source?.startsWith('Application ') ? 'The merchant' : e.source?.startsWith('Automation: ') ? 'Automation' : 'System';
                 return (
                   <li key={e.id} className="px-2 py-2">
                     <p className="flex items-baseline justify-between gap-2 text-[11.5px] text-ink-400">

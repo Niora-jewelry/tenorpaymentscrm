@@ -397,6 +397,7 @@ export async function sendApplication(ctx: AuthContext, input: SendInput): Promi
     p_actor: ctx.userId,
     p_summary: `${appLabel(row.number as number)} sent to ${input.to}`,
   });
+  await supabaseAdmin().rpc('automation_application_sent', { p_application: id });
   return { id, label: appLabel(row.number as number) };
 }
 
@@ -426,6 +427,7 @@ export async function resendApplication(ctx: AuthContext, applicationId: string,
     })
     .eq('id', app.id);
   await supabaseAdmin().rpc('application_log', { p_application: app.id, p_actor: ctx.userId, p_summary: `${appLabel(app.number)} sent again to ${input.to}` });
+  await supabaseAdmin().rpc('automation_application_sent', { p_application: app.id });
 }
 
 /** The link stops working. Answers already returned stay. */

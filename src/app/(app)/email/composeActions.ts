@@ -315,7 +315,36 @@ const SendInput = DraftInput.extend({
     .array(z.object({ path: z.string().min(1).max(400), name: z.string().min(1).max(255), size: z.number().int().min(0), contentType: z.string().max(200) }))
     .max(50),
   sendAt: z.string().datetime({ offset: true }).nullable(),
+  /** The record chosen when a recipient's address is on more than one. */
+  mainRecordId: z.uuid().nullable().optional(),
 });
+
+const ChoicesInput = z.object({ addresses: z.array(z.string().max(254)).min(1).max(500), mailboxId: z.uuid(), sourceMessageId: z.uuid().nullable() });
+
+/**
+ * Automations spec: if an address belongs to more than one record, the person
+ * writing the email is asked which is the main record. Empty means nothing to
+ * ask. One record they can see is the answer, so that isn't a question either.
+ */
+export async function mainRecordChoicesAction(input: z.input<typeof ChoicesInput>): Promise<Result<{ id: string; label: string }[]>> {
+  const parsed = ChoicesInput.safeParse(input);
+  if (!parsed.success) return { ok: true, data: [] };
+  const g = await gate('mail_send');
+  if ('message' in g) return { ok: false, message: g.message };
+  const supabase = await createSupabaseServerClient();
+  const conversation = parsed.data.sourceMessageId
+    ? ((await supabase.from('mail_messages').select('conversation_id').eq('id', parsed.data.sourceMessageId).maybeSingle()).data?.conversation_id as string | undefined) ?? null
+    : null;
+  const { data, error } = await supabase.rpc('mail_record_choices', {
+    p_addresses: parsed.data.addresses.map((a) => a.toLowerCase()),
+    p_mailbox: parsed.data.mailboxId,
+    p_conversation: conversation,
+  });
+  if (error) return { ok: true, data: [] };
+  const seen = new Map<string, string>();
+  for (const r of (data ?? []) as { record_id: string; deal_name: string | null }[]) seen.set(r.record_id, r.deal_name ?? '(untitled)');
+  return { ok: true, data: [...seen].map(([id, label]) => ({ id, label })) };
+}
 
 export async function sendMailAction(input: z.input<typeof SendInput>): Promise<Result<{ outboxId: string; releaseAt: string; status: 'held' | 'scheduled' }>> {
   const parsed = SendInput.safeParse(input);
@@ -353,6 +382,10 @@ export async function sendMailAction(input: z.input<typeof SendInput>): Promise<
     });
     if (error) return { ok: false, message: error.code === '42501' || error.code === '22023' ? error.message : MAIL_MESSAGES.generic };
     const row = (data as Array<{ id: string; release_at: string; status: 'held' | 'scheduled' }>)[0];
+    if (d.mainRecordId) {
+      const main = await supabase.rpc('mail_set_main_record', { p_outbox: row.id, p_record: d.mainRecordId });
+      if (main.error) mailLog('error', 'send', 'main_record_failed', { code: main.error.code });
+    }
     return { ok: true, data: { outboxId: row.id, releaseAt: row.release_at, status: row.status } };
   } catch (e) {
     return explain(e, 'send');

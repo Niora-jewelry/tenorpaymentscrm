@@ -17,7 +17,9 @@ export type CaseThread = {
   number: number;
   title: string;
   issue: string;
-  issueAuthor: string;
+  /** Null when an automation opened it: `automationName` says which. */
+  issueAuthor: string | null;
+  automationName: string | null;
   issueAt: string;
   solution: string | null;
   solutionAuthor: string | null;
@@ -36,7 +38,8 @@ function mapCase(r: Record<string, unknown>): CaseThread {
     number: r.number as number,
     title: r.title as string,
     issue: r.issue as string,
-    issueAuthor: r.issue_author as string,
+    issueAuthor: (r.issue_author as string | null) ?? null,
+    automationName: (r.automation_name as string | null) ?? null,
     issueAt: r.issue_at as string,
     solution: (r.solution as string | null) ?? null,
     solutionAuthor: (r.solution_author as string | null) ?? null,

@@ -18,7 +18,7 @@ const MAX_FILES_PER_ROW = 5;
 /** The 5 locked rows every record's Application Files subtab has —
  * "defined as a system structure," per the prototype's own framing, not
  * something a user adds or removes. */
-const APPLICATION_ROWS = ['Owner ID', 'Bank statements', 'Processing statements', 'Corp docs', 'Voided check'] as const;
+export const APPLICATION_ROWS = ['Owner ID', 'Bank statements', 'Processing statements', 'Corp docs', 'Voided check'] as const;
 
 /** Which section of the Files tab a row belongs to. */
 export type FileRowKind = 'application' | 'other';

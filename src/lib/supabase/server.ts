@@ -6,18 +6,32 @@
  * Spec §3: "Sessions: Supabase SSR with HTTP-only cookies."
  */
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { cache } from 'react';
 import { env } from '@/lib/env';
 
+/** The page a request came from, as a path. Tells an automation which module a
+ *  change happened in (`automation_page_module`), without every write function
+ *  having to carry it. It decides nothing about access. */
+async function requestPage(): Promise<string | null> {
+  try {
+    const referer = (await headers()).get('referer');
+    return referer ? new URL(referer).pathname : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
+  const page = await requestPage();
 
   return createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
+      global: page ? { headers: { 'x-tapdash-page': page } } : undefined,
       cookies: {
         getAll() {
           return cookieStore.getAll();

@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/mail/tick", "schedule": "* * * * *" },
+    { "path": "/api/automations/tick", "schedule": "* * * * *" },
     { "path": "/api/housekeeping/tick", "schedule": "17 3 * * *" }
   ]
 }

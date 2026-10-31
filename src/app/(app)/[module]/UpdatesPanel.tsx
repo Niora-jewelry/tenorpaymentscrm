@@ -204,7 +204,8 @@ function Thread({
   const [pending, startTransition] = useTransition();
   const flashRoot = useFlashTarget(targetId.update(root.id), openMention?.updateId === root.id);
 
-  const authorName = authorNames[root.authorId] ?? 'Unknown user';
+  const byAutomation = root.automationName !== null;
+  const authorName = byAutomation ? 'Automation' : authorNames[root.authorId ?? ''] ?? 'Unknown user';
   const mine = root.authorId === viewerId;
   const mentionedHere = (id: string) => Boolean(mentionsByUpdate[id]);
 
@@ -257,10 +258,21 @@ function Thread({
       className={`rounded-xl border bg-white p-3 transition-shadow ${mentionedHere(root.id) ? 'border-brand-300' : 'border-line'} ${flashRoot ? FLASH_CLASS : ''}`}
     >
       <div className="flex gap-3">
-        <UserAvatar userId={root.authorId} name={authorName} size={26} />
+        {byAutomation ? (
+          <span className="grid size-[26px] shrink-0 place-items-center rounded-full bg-brand-950 text-accent">
+            <Icon name="route" size={13} />
+          </span>
+        ) : (
+          <UserAvatar userId={root.authorId!} name={authorName} size={26} />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
             <span className="text-[13px] font-semibold text-ink-900">{authorName}</span>
+            {byAutomation ? (
+              <span className="inline-flex max-w-full items-center rounded-full border border-line bg-canvas px-1.5 py-px text-[10.5px] font-medium text-ink-600">
+                <span className="truncate">{root.automationName}</span>
+              </span>
+            ) : null}
             {fieldPath ? (
               /* A field mention's trace in the feed: where it was sent from. */
               <span
@@ -277,7 +289,7 @@ function Thread({
             <span className="ml-auto flex items-center gap-0.5">
               <ShareItem kind="update" itemId={root.id} />
             </span>
-            {editable && (mine || isAdmin) ? (
+            {editable && !byAutomation && (mine || isAdmin) ? (
               <span className="flex gap-0.5">
                 {/* A field entry records what was sent; it can be removed, not rewritten. */}
                 {!root.fieldKey ? (
@@ -406,11 +418,11 @@ function Reply({
   return (
     <div id={targetId.update(r.id)} className={`rounded-lg px-2 py-1 -mx-2 transition-shadow ${mentioned ? 'bg-brand-50/50' : ''} ${flashing ? FLASH_CLASS : ''}`}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <span className="text-[12.5px] font-semibold text-ink-900">{authorNames[r.authorId] ?? 'Unknown user'}</span>
+        <span className="text-[12.5px] font-semibold text-ink-900">{authorNames[r.authorId ?? ''] ?? 'Unknown user'}</span>
         <span className="text-[11.5px] text-ink-400">{relative(r.createdAt, now)}</span>
         {mentioned ? <MentionedYou /> : null}
         <span className="ml-auto">
-          <HideReply kind="update" replyId={r.id} authorId={r.authorId} />
+          <HideReply kind="update" replyId={r.id} authorId={r.authorId ?? ''} />
         </span>
       </div>
       {/* Replies render the same way. The client asks for "update-style

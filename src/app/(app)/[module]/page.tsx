@@ -34,6 +34,8 @@ import { pipelineAssignment } from '@/lib/records/pipelines';
 import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor } from '@/lib/records/cases';
 import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
 import { RecordHeaderMenu } from './RecordHeaderMenu';
+import { AutomationWaiting } from './AutomationWaiting';
+import { waitingOn } from '@/lib/automations/service';
 import { SEARCH_MAX } from '@/lib/records/search';
 import { SearchBox } from './SearchBox';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
@@ -565,11 +567,12 @@ async function RecordDrawer({
   grant: 'view' | 'edit';
 }) {
   const ctx = await authorize();
-  const [config, record, drawerTeams, assignable] = await Promise.all([
+  const [config, record, drawerTeams, assignable, automationsWaiting] = await Promise.all([
     loadConfig(),
     recordPromise,
     teamsFor(ctx, [recordId]),
     assignableTeams(ctx),
+    waitingOn(ctx, recordId),
   ]);
   const teamsHere = drawerTeams.get(recordId);
   // Read-only until taken, when an open assignment is the only way in.
@@ -805,11 +808,11 @@ async function RecordDrawer({
   const authorIds = new Set<string>();
   for (const notes of notesByScope.values()) for (const n of notes) authorIds.add(n.authorId);
   for (const u of updates) {
-    authorIds.add(u.authorId);
+    if (u.authorId) authorIds.add(u.authorId);
     for (const m of u.mentionedUserIds) authorIds.add(m);
   }
   for (const c of cases) {
-    authorIds.add(c.issueAuthor);
+    if (c.issueAuthor) authorIds.add(c.issueAuthor);
     if (c.solutionAuthor) authorIds.add(c.solutionAuthor);
     if (c.editedBy) authorIds.add(c.editedBy);
   }
@@ -1131,6 +1134,7 @@ async function RecordDrawer({
               }}
             />
           ) : null}
+          <AutomationWaiting waiting={automationsWaiting} />
           <RecordHeaderMenu recordId={record.id} muted={muted} />
           <Link
             href={`/${moduleSlug}`}

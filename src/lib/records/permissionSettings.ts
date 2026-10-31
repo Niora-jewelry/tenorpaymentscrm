@@ -27,6 +27,7 @@ export type SettingGroup = { id: string; title: string; blurb: string; rows: Set
 
 const YES_NO: SettingOption[] = [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }];
 const HIDDEN_FULL: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { value: 'full', label: 'Full access' }];
+const HIDDEN_VIEW_FULL: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { value: 'view', label: 'View only' }, { value: 'full', label: 'Full edit' }];
 const OWN_ALL: SettingOption[] = [{ value: 'own', label: 'Own only' }, { value: 'all', label: 'All users' }];
 const MINE_ALL: SettingOption[] = [{ value: 'mine', label: 'Only mine' }, { value: 'all', label: 'See all + grant' }];
 
@@ -119,7 +120,7 @@ export async function settingGroups(): Promise<SettingGroup[]> {
         { key: 'admin.numbers', label: 'Phone numbers', options: HIDDEN_FULL },
         { key: 'admin.residuals', label: 'Residuals admin', options: HIDDEN_FULL },
         { key: 'admin.integrations', label: 'Integrations', options: HIDDEN_FULL },
-        { key: 'admin.automations', label: 'Automations', options: HIDDEN_FULL },
+        { key: 'admin.automations', label: 'Automations', options: HIDDEN_VIEW_FULL },
         { key: 'admin.recycle_bin', label: 'Recycle bin', options: HIDDEN_FULL },
       ],
     },

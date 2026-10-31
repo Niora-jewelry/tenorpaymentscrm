@@ -763,3 +763,44 @@ export function sendMentionEmail(
     { 'Auto-Submitted': 'auto-generated', 'X-Auto-Response-Suppress': 'All' },
   );
 }
+
+/**
+ * Automations spec: when an action is skipped or fails, the admin who built it is
+ * told in the admin panel, in Notifications, and by email.
+ */
+export function sendAutomationAlertEmail(
+  to: string,
+  opts: { automationName: string; recordName: string; reason: string; href: string },
+): Promise<SendResult> {
+  const stamp = sendStamp();
+  const subject = `Automation stopped: ${opts.automationName}`;
+  const body = `
+    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">An automation stopped</h1>
+
+    <p style="margin:0 0 20px;font-family:${FONT};font-size:15px;line-height:1.65;color:${BRAND.muted};">
+      <strong style="color:${BRAND.ink};">${esc(opts.automationName)}</strong> stopped on <strong style="color:${BRAND.ink};">${esc(opts.recordName)}</strong>, ${esc(stamp)}. No further steps ran for this record.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px;">
+      <tr><td bgcolor="${BRAND.panel}" style="background:${BRAND.panel};border:1px solid ${BRAND.line};border-left:3px solid ${BRAND.accent};border-radius:10px;padding:14px 18px;font-family:${FONT};font-size:14.5px;line-height:1.7;color:${BRAND.ink};">${esc(opts.reason)}</td></tr>
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 6px;">
+      <tr><td align="center" bgcolor="${BRAND.accent}" style="background:${BRAND.accent};border-radius:10px;">
+        <a href="${esc(opts.href)}" style="display:inline-block;padding:13px 28px;font-family:${FONT};font-size:15px;font-weight:600;line-height:1;color:${BRAND.accentInk};text-decoration:none;border-radius:10px;">Open run history</a>
+      </td></tr>
+    </table>`;
+
+  const plain = [
+    `${opts.automationName} stopped on ${opts.recordName}, ${stamp}.`,
+    'No further steps ran for this record.',
+    '',
+    opts.reason,
+    '',
+    `Run history: ${opts.href}`,
+    '',
+    `Automated message, sent ${stamp}. Replies are not monitored.`,
+  ].join('\n');
+
+  return send(to, subject, emailShell({ title: subject, preheader: opts.reason, bodyHtml: body, stamp }), plain);
+}

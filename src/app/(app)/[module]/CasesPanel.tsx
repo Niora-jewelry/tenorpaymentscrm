@@ -476,7 +476,7 @@ function CaseCard({
               <SectionLabel>Issue</SectionLabel>
               <p className="mt-1 text-[13.5px] leading-relaxed text-ink-700">{c.issue}</p>
               <p className="mt-1 text-[11.5px] text-ink-400">
-                {authorNames[c.issueAuthor] ?? 'Unknown user'} · {relative(c.issueAt, now)}
+                {c.automationName ? `Automation · ${c.automationName}` : authorNames[c.issueAuthor ?? ''] ?? 'Unknown user'} · {relative(c.issueAt, now)}
                 {c.editedBy ? ` · edited by ${authorNames[c.editedBy] ?? 'Unknown user'}` : ''}
               </p>
               {/* Modules §3.7: files attach to the Issue, the Solution and each

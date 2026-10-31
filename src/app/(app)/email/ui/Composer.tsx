@@ -24,6 +24,7 @@ import {
   discardDraftAction,
   removeUploadAction,
   saveDraftAction,
+  mainRecordChoicesAction,
   sendMailAction,
   sourcePreviewAction,
   templatesAction,
@@ -84,6 +85,8 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [askSubject, setAskSubject] = useState<null | { sendAt: string | null }>(null);
+  const [askRecord, setAskRecord] = useState<null | { sendAt: string | null; choices: { id: string; label: string }[] }>(null);
+  const [mainRecord, setMainRecord] = useState<string | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -194,7 +197,7 @@ export function Composer({
   const uploading = uploads.some((u) => !u.path && !u.error);
   const invalid = [...to, ...cc, ...bcc].some((c) => c.invalid);
 
-  const send = async (sendAt: string | null, skipSubjectCheck = false) => {
+  const send = async (sendAt: string | null, skipSubjectCheck = false, mainRecordId?: string | null) => {
     setError(null);
     if (invalid) return setError('One of the addresses isn’t valid. Fix it or remove it, then send.');
     if (valid(to).length + valid(cc).length + valid(bcc).length === 0) return setError('Add at least one recipient.');
@@ -202,13 +205,25 @@ export function Composer({
     if (uploading) return setError('Wait for the attachments to finish uploading.');
     if (!subject.trim() && !skipSubjectCheck) return setAskSubject({ sendAt });
     setSending(true);
+    let main = mainRecordId ?? null;
+    if (mainRecordId === undefined) {
+      const addresses = [...valid(to), ...valid(cc), ...valid(bcc)].map((c) => c.address);
+      const choices = await mainRecordChoicesAction({ addresses, mailboxId, sourceMessageId: init.sourceMessageId ?? null });
+      if (choices.ok && choices.data.length > 1) {
+        setSending(false);
+        setAskRecord({ sendAt, choices: choices.data });
+        setMainRecord(choices.data[0]!.id);
+        return;
+      }
+      if (choices.ok && choices.data.length === 1) main = choices.data[0]!.id;
+    }
     // An autosave in flight decides which Outlook draft gets sent: wait for it.
     if (saving.current) await saving.current;
     // …and no autosave may start while the send is on its way.
     const wasDirty = dirty.current;
     dirty.current = false;
     const att: OutgoingAttachment[] = uploads.map((u) => ({ path: u.path!, name: u.name, size: u.size, contentType: u.contentType }));
-    const res = await sendMailAction({ ...snapshot(), requestId: crypto.randomUUID(), attachments: att, sendAt });
+    const res = await sendMailAction({ ...snapshot(), requestId: crypto.randomUUID(), attachments: att, sendAt, mainRecordId: main });
     setSending(false);
     if (!res.ok) {
       dirty.current = wasDirty;
@@ -549,6 +564,28 @@ export function Composer({
       {askSubject ? (
         <Dialog title="Send without a subject?" confirmLabel="Send anyway" onConfirm={() => void send(askSubject.sendAt, true)} onClose={() => setAskSubject(null)}>
           <p>Mail without a subject is easy to miss and often lands in spam filters.</p>
+        </Dialog>
+      ) : null}
+      {askRecord ? (
+        <Dialog
+          title="Which record is this email about?"
+          confirmLabel="Send"
+          onConfirm={() => {
+            const pick = askRecord;
+            setAskRecord(null);
+            void send(pick.sendAt, true, mainRecord);
+          }}
+          onClose={() => setAskRecord(null)}
+        >
+          <p className="text-[13px] text-ink-600">This address is on more than one record. Everything about this email goes to the one you pick.</p>
+          <div className="mt-3 space-y-1">
+            {askRecord.choices.map((r) => (
+              <label key={r.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-[13px] ${mainRecord === r.id ? 'border-brand-600 bg-brand-50 font-semibold text-ink-900' : 'border-line text-ink-700'}`}>
+                <input type="radio" name="main-record" checked={mainRecord === r.id} onChange={() => setMainRecord(r.id)} />
+                <span className="truncate">{r.label}</span>
+              </label>
+            ))}
+          </div>
         </Dialog>
       ) : null}
       {confirmDiscard ? (

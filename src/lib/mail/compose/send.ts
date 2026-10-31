@@ -61,6 +61,7 @@ type OutboxRow = {
   quote_html: string;
   internet_message_id: string | null;
   attempts: number;
+  automation_run_id: string | null;
 };
 
 export type SendSummary = { sent: number; failed: number; retried: number };
@@ -239,6 +240,7 @@ async function done(row: OutboxRow, address: string, draft: string): Promise<'se
   if (paths.length) await admin.storage.from(OUTBOX_BUCKET).remove(paths);
   // Show it in Sent Items (and gone from Drafts) without waiting for the scheduler.
   await admin.rpc('mail_enqueue_hot', { p_mailbox_id: row.mailbox_id });
+  if (row.automation_run_id) await admin.rpc('automation_mail_result', { p_outbox: row.id, p_ok: true, p_error: null });
   mailLog('info', 'send', 'sent', { outboxId: row.id, mailbox: address.split('@')[1] ?? '' });
   return 'sent';
 }
@@ -267,6 +269,7 @@ async function fail(row: OutboxRow, code: string, address: string | null): Promi
     kind: 'send_failed',
     body: `${subject} to ${first} didn't send. ${why}`.slice(0, 500),
   });
+  if (row.automation_run_id) await admin.rpc('automation_mail_result', { p_outbox: row.id, p_ok: false, p_error: why.slice(0, 300) });
   return 'failed';
 }
 

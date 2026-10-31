@@ -43,6 +43,8 @@ async function handle(req: NextRequest) {
       if (expired > 0) console.log('[housekeeping] agreements expired', expired);
       const reconciled = await reconcileOpenAgreements();
       if (reconciled.changed > 0) console.log('[housekeeping] agreements reconciled', reconciled);
+      const pruned = await supabaseAdmin().rpc('automation_prune');
+      if (pruned.error) console.error('[housekeeping] automation_prune failed', pruned.error.code);
     } catch (e) {
       console.error('[housekeeping] crashed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
     }

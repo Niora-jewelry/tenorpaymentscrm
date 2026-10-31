@@ -22,7 +22,9 @@ export type Update = {
   id: string;
   recordId: string;
   parentId: string | null;
-  authorId: string;
+  /** Null when an automation did it: `automationName` says which. */
+  authorId: string | null;
+  automationName: string | null;
   body: string;
   createdAt: string;
   editedAt: string | null;
@@ -39,7 +41,8 @@ function mapUpdate(r: Record<string, unknown>, mentionedUserIds: string[]): Upda
     id: r.id as string,
     recordId: r.record_id as string,
     parentId: (r.parent_id as string | null) ?? null,
-    authorId: r.author_id as string,
+    authorId: (r.author_id as string | null) ?? null,
+    automationName: (r.automation_name as string | null) ?? null,
     body: r.body as string,
     createdAt: r.created_at as string,
     editedAt: (r.edited_at as string | null) ?? null,

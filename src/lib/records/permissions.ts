@@ -325,10 +325,18 @@ export async function canDo(ctx: AuthContext, action: CompanyAction): Promise<bo
   return (await permissionsFor(ctx)).settings[`action.${action}`] === 'yes';
 }
 
-/** Full access to one admin page (Users, Permissions, Presets, …). */
+/** May open one admin page (Users, Permissions, Presets, …). Only Automations has a View only level; the rest are Full or Hidden. */
 export async function canOpenAdminPage(ctx: AuthContext, page: AdminPage): Promise<boolean> {
   if (ctx.isAdmin) return true;
-  return (await permissionsFor(ctx)).settings[`admin.${page}`] === 'full';
+  const level = (await permissionsFor(ctx)).settings[`admin.${page}`];
+  return level === 'full' || level === 'view';
+}
+
+/** Automations spec: Full edit, View only, or Hidden. */
+export async function automationsAccess(ctx: AuthContext): Promise<'hidden' | 'view' | 'full'> {
+  if (ctx.isAdmin) return 'full';
+  const level = (await permissionsFor(ctx)).settings['admin.automations'];
+  return level === 'full' || level === 'view' ? level : 'hidden';
 }
 
 /** Hidden / Only mine / All for one module. */

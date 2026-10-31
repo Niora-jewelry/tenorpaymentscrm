@@ -57,7 +57,7 @@
  * it is filtered server-side, because absent is not the same as disabled
  * (CLAUDE.md §3).
  */
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, useCallback, useState, useSyncExternalStore } from 'react';
 import { FieldRenderer } from '@/proto/ui/value';
 import type { Field as ProtoField, FieldValue } from '@/proto/schema';
 import { Icon } from '@/proto/ui/icons';
@@ -120,6 +120,7 @@ export function HeaderFacts({
   viewerId,
   viewerIsAdmin,
   visibilityFieldKey,
+  teamSlot,
   mentionsByField = {},
   openMention = null,
   onMentionRead = () => undefined,
@@ -142,6 +143,8 @@ export function HeaderFacts({
    * visibility. The field grid makes the identical comparison.
    */
   visibilityFieldKey: string;
+  /** Team member(s) assigned, drawn by the drawer. */
+  teamSlot?: ReactNode;
 }) {
   /* Local overlay so an edit paints immediately, keyed by field id. */
   const [values, setValues] = useState<Record<string, FieldValue>>({});
@@ -337,6 +340,7 @@ export function HeaderFacts({
                   moduleSlug={moduleSlug}
                   card
                   grantsVisibility={fact.field.id === visibilityFieldKey}
+                  teamSlot={fact.field.id === visibilityFieldKey ? teamSlot : undefined}
                   viewerId={viewerId}
                   viewerIsAdmin={viewerIsAdmin}
                   onChange={(next) => void commit(fact, next)}

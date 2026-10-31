@@ -35,6 +35,7 @@ const uuid = z.string().uuid('Invalid id.');
 export const createRecordSchema = z.object({
   dealName: z.string().trim().min(1, 'Deal Name is required.').max(200, 'Deal Name must be 200 characters or fewer.'),
   memberIds: z.array(uuid).max(200, 'That is more people than one record can be assigned to.').default([]),
+  teamIds: z.array(uuid).max(50, 'That is more teams than exist.').default([]),
 });
 
 export type CreateRecordInput = z.infer<typeof createRecordSchema>;

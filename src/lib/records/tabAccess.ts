@@ -97,7 +97,22 @@ async function chainCapFor(
   );
 
   for (const id of recordIds) out.set(id, bestOf(modulesByRecord.get(id) ?? [], capByModule));
+
+  // Read only until taken (Team Assignment). Asked only when there is an Edit
+  // to take away, and the database's own checks say the same thing.
+  const editable = recordIds.filter((id) => out.get(id) === 'edit');
+  for (const id of await readOnlyRecords(ctx, editable)) out.set(id, 'view');
   return out;
+}
+
+/** Records this viewer can open only because an assignment is open: they may
+ *  read them, not work them, until they take it. */
+export async function readOnlyRecords(ctx: AuthContext, recordIds: string[]): Promise<string[]> {
+  if (ctx.isAdmin || !recordIds.length) return [];
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('records_read_only', { p_ids: recordIds });
+  if (error) throw error;
+  return (data ?? []) as string[];
 }
 
 /** The chain capped inside ONE module. */

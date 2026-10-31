@@ -19,7 +19,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadConfig, type Config } from '@/lib/records/config';
 import { assertAdminPage } from '@/lib/records/adminConfig';
 import { permissionsFor, type AuthContext } from '@/lib/records/permissions';
-import { hiddenFieldKeysFor, tabAccess } from '@/lib/records/tabAccess';
+import { hiddenFieldKeysFor, readOnlyRecords, tabAccess } from '@/lib/records/tabAccess';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { rateLimit, userKey } from '@/lib/security/rate-limit';
 import { toPostgresBytea } from '@/lib/security/otp';
@@ -67,6 +67,7 @@ async function requireView(ctx: AuthContext, recordId: string): Promise<void> {
 
 async function requireSend(ctx: AuthContext, recordId: string): Promise<void> {
   await requireView(ctx, recordId);
+  if ((await readOnlyRecords(ctx, [recordId])).length) throw new AgreementError('Assign this record to yourself before working on it.');
   if (!(await canSendAgreements(ctx))) throw new AgreementError('You do not have the "Send agreement" permission.');
   if (await currentImpersonation()) throw new AgreementError('You are signed in as someone else. Stop impersonating to send.');
 }

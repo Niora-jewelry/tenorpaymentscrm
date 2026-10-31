@@ -19,6 +19,9 @@ import { DrawerFieldLinks } from './DrawerFieldLinks';
 import { DrawerFieldFiles } from './DrawerFieldFiles';
 import { HeaderFacts } from './HeaderFacts';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
+import { assignableTeams, teamsFor } from '@/lib/teams/service';
+import type { AssignableTeam, RecordTeams } from '@/lib/teams/types';
+import { AssignToMe, OpenRecordNotice, TeamAssignments } from './TeamAssignments';
 import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
@@ -163,7 +166,10 @@ export default async function ModulePage({
   );
   const isShown = (f: Field) => columnVisibility.get(f.id) ?? defaultVisible.get(f.id) ?? true;
   const shownDbColumns = visibleDbColumns.filter(isShown);
-  const columns = shownDbColumns.map((f) => adaptFieldForDashboard(config, f));
+  // Team member(s) assigned carries a team, its tag and Assign to me on one line.
+  const columns = shownDbColumns
+    .map((f) => adaptFieldForDashboard(config, f))
+    .map((c) => (c.id === VISIBILITY_FIELD_KEY ? { ...c, width: Math.max(c.width ?? 0, 300) } : c));
   const columnChoices = visibleDbColumns.map((f) => ({ key: f.key, label: f.label, shown: isShown(f) }));
   const userHiddenColumns = visibleDbColumns.filter((f) => !isShown(f)).map((f) => adaptFieldForDashboard(config, f));
 
@@ -223,10 +229,14 @@ export default async function ModulePage({
     q: search,
     sort,
   });
-  const [membershipsByRecord, mentionCounts] = await Promise.all([
+  // Asked only for a viewer the column is shown to: absent, never blank.
+  const showsTeams = columns.some((c) => c.id === VISIBILITY_FIELD_KEY);
+  const [membershipsByRecord, mentionCounts, teamsByRecord, assignable] = await Promise.all([
     membershipsForMany(ctx, dbRows.map((r) => r.id)),
     // The viewer's own unread @mentions per row — the "@ 3" badge.
     unreadMentionCounts(ctx, dbRows.map((r) => r.id)),
+    showsTeams ? teamsFor(ctx, dbRows.map((r) => r.id)) : new Map<string, RecordTeams>(),
+    showsTeams || canCreate ? assignableTeams(ctx) : ([] as AssignableTeam[]),
   ]);
   const moduleSlugById = new Map(config.modules.map((m) => [m.id, m.slug]));
   const rows = dbRows.map((r) => ({
@@ -296,7 +306,7 @@ export default async function ModulePage({
         <div className="flex shrink-0 items-center gap-3">
           <SearchBox key={search} moduleSlug={slug} initial={search} />
           {grant === 'edit' && canCreate && !mod.showsOpenCases ? (
-            <CreateRecordDialog moduleSlug={slug} moduleLabel={mod.label} viewerId={ctx.userId} />
+            <CreateRecordDialog moduleSlug={slug} moduleLabel={mod.label} viewerId={ctx.userId} assignable={assignable} />
           ) : null}
         </div>
       </div>
@@ -333,6 +343,10 @@ export default async function ModulePage({
           columnChoices={columnChoices}
           sort={sort}
           canEdit={grant === 'edit'}
+          teamsByRecord={Object.fromEntries(teamsByRecord)}
+          assignableTeams={assignable}
+          viewerId={ctx.userId}
+          viewerIsAdmin={ctx.isAdmin}
           closesCases={Boolean(mod.showsOpenCases)}
           page={page}
           pageCount={pageCount}
@@ -369,6 +383,7 @@ export default async function ModulePage({
             <RecordDrawer
               moduleSlug={slug}
               moduleId={mod.id}
+              recordId={recordId}
               recordPromise={recordPromise!}
               grant={grant}
               openTabKey={tabKey ?? null}
@@ -391,6 +406,40 @@ export default async function ModulePage({
  * which is the disclosure the record-visibility rules exist to prevent. The
  * wording covers both without confirming either.
  */
+function RecordLocked({ moduleSlug, recordId, data }: { moduleSlug: string; recordId: string; data: RecordTeams }) {
+  const take = data.teams.find((t) => t.canTake);
+  return (
+    <section className="flex min-h-full flex-col bg-white px-6 py-5">
+      <div className="flex justify-end">
+        <Link
+          href={`/${moduleSlug}`}
+          title="Close"
+          aria-label="Close"
+          className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-400 transition-colors duration-150 hover:bg-canvas hover:text-ink-900"
+        >
+          <Icon name="x" size={16} />
+        </Link>
+      </div>
+      <div className="flex flex-1 items-center justify-center pb-16">
+        <div className="max-w-sm text-center">
+          <div className="mx-auto grid size-10 place-items-center rounded-full bg-canvas text-ink-400">
+            <Icon name="lock" size={18} />
+          </div>
+          <h2 className="mt-3 text-[15px] font-semibold text-ink-900">{take ? 'Take this record to open it' : 'This record is open for another team'}</h2>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
+            {take ? 'It is open for your team, and nobody has taken it yet.' : 'You can open it once it has been assigned to you.'}
+          </p>
+          {take ? (
+            <div className="mt-4">
+              <AssignToMe moduleSlug={moduleSlug} recordId={recordId} team={take} size="md" />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function RecordUnavailable({ moduleSlug }: { moduleSlug: string }) {
   return (
     <section className="flex min-h-full flex-col bg-white px-6 py-5">
@@ -483,8 +532,9 @@ function DrawerSkeleton() {
 async function RecordDrawer({
   moduleSlug,
   moduleId,
+  recordId,
   recordPromise,
-  grant,
+  grant: moduleLevel,
   openTabKey,
   openSubtabKey,
   mentionKey = null,
@@ -508,10 +558,20 @@ async function RecordDrawer({
   /** Started by `ModulePage` before it awaited its own queries, so this read
    *  overlaps the dashboard's instead of queueing behind it. Awaited here, so
    *  a failure lands inside the Suspense boundary and takes only the drawer. */
+  recordId: string;
   recordPromise: Promise<Awaited<ReturnType<typeof getRecord>>>;
   grant: 'view' | 'edit';
 }) {
-  const [ctx, config, record] = await Promise.all([authorize(), loadConfig(), recordPromise]);
+  const ctx = await authorize();
+  const [config, record, drawerTeams, assignable] = await Promise.all([
+    loadConfig(),
+    recordPromise,
+    teamsFor(ctx, [recordId]),
+    assignableTeams(ctx),
+  ]);
+  const teamsHere = drawerTeams.get(recordId);
+  // Read-only until taken, when an open assignment is the only way in.
+  const grant = teamsHere?.writable === false ? 'view' : moduleLevel;
 
   /*
    * ── MENTIONS ON THIS RECORD ─────────────────────────────────────────────
@@ -540,7 +600,11 @@ async function RecordDrawer({
   // full-height blank white sheet with no title, no message and no close
   // button — the "×" lives inside the subtree that was skipped — so a stale
   // bookmark or a shared link looked like the app had hung.
-  if (!record) return <RecordUnavailable moduleSlug={moduleSlug} />;
+  if (!record) {
+    // In this viewer's list but not theirs to open yet: say so, and offer the way in.
+    if (teamsHere?.locked) return <RecordLocked moduleSlug={moduleSlug} recordId={recordId} data={teamsHere} />;
+    return <RecordUnavailable moduleSlug={moduleSlug} />;
+  }
 
   /*
    * ⚠️ TAB GRANTS ARE RESOLVED BEFORE ANYTHING IS FETCHED, and that ordering is
@@ -848,7 +912,19 @@ async function RecordDrawer({
    * announced the NAME of every field the viewer is not allowed to see.
    */
   // Archive and the pipeline bar follow their company-wide actions.
-  const [canArchiveRecords, canMovePipeline, canChangePipeline] = await Promise.all([canDo(ctx, 'archive'), canDo(ctx, 'pipeline'), canDo(ctx, 'pipeline_change')]);
+  const [canArchiveRecords, canMovePipelineAtAll, canChangePipelineAtAll] = await Promise.all([canDo(ctx, 'archive'), canDo(ctx, 'pipeline'), canDo(ctx, 'pipeline_change')]);
+  const canMovePipeline = canMovePipelineAtAll && grant === 'edit';
+  const canChangePipeline = canChangePipelineAtAll && grant === 'edit';
+  const teamSlot = (
+    <TeamAssignments
+      moduleSlug={moduleSlug}
+      recordId={record.id}
+      data={teamsHere}
+      assignable={assignable}
+      viewerId={ctx.userId}
+      viewerIsAdmin={ctx.isAdmin}
+    />
+  );
   const titleForCompare = (record.dealName ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
   const headerFacts = headerFields
@@ -1109,6 +1185,7 @@ async function RecordDrawer({
         use, so the permission chain, the compare-and-swap and the activity
         entry are not reimplemented here.
       */}
+      {teamsHere && !teamsHere.writable ? <OpenRecordNotice moduleSlug={moduleSlug} recordId={record.id} data={teamsHere} /> : null}
       <HeaderFacts
         moduleSlug={moduleSlug}
         recordId={record.id}
@@ -1117,11 +1194,13 @@ async function RecordDrawer({
         viewerId={ctx.userId}
         viewerIsAdmin={ctx.isAdmin}
         visibilityFieldKey={VISIBILITY_FIELD_KEY}
+        teamSlot={teamSlot}
         mentionsByField={headerMentions}
         openMention={openMention?.fieldKey ? openMention : null}
       />
 
       <DrawerTabs
+        teamSlot={teamSlot}
         moduleSlug={moduleSlug}
         recordId={record.id}
         tabs={tabs}

@@ -41,6 +41,8 @@ import type { Field, RecordRow, Filter, FieldValue, Swatch } from '@/proto/schem
 import { PipelineFilter, type PipelineFilterOption } from './PipelineFilter';
 import { choicesFor, choiceKey } from '@/proto/fields';
 import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
+import type { AssignableTeam, RecordTeams } from '@/lib/teams/types';
+import { AssignToMe, TeamAssignments } from './TeamAssignments';
 import {
   reorderColumnsAction, resetColumnOrderAction, setFiltersAction, clearFiltersAction,
   setValueAction,
@@ -59,6 +61,10 @@ function toProtoReport(r: { applied: string[]; skipped: { id: string; reason: st
 }
 
 export function RecordsTable({
+  teamsByRecord,
+  assignableTeams,
+  viewerId,
+  viewerIsAdmin,
   moduleSlug,
   moduleId,
   rows,
@@ -106,6 +112,11 @@ export function RecordsTable({
    * Labelling only; see `DataTable`'s `filterOnlyFields`. */
   pipelineStatusFields: Field[];
   canEdit: boolean;
+  /** Team member(s) assigned, as this viewer may see it, by record id. */
+  teamsByRecord: Record<string, RecordTeams>;
+  assignableTeams: AssignableTeam[];
+  viewerId: string;
+  viewerIsAdmin: boolean;
   /** May this viewer add records to / remove them from THIS module — the
    * `membership` permission (migration 9766), which is what the bar's
    * Archive / Remove / Restore actions do. Separate from `canEdit`, which
@@ -620,6 +631,25 @@ export function RecordsTable({
         moduleSlug={moduleSlug}
         rows={localRows}
         columns={localColumns}
+        cellOverride={(col, r) =>
+          col.id === VISIBILITY_FIELD_KEY ? (
+            <TeamAssignments
+              moduleSlug={moduleSlug}
+              recordId={r.id}
+              data={teamsByRecord[r.id]}
+              assignable={assignableTeams}
+              viewerId={viewerId}
+              viewerIsAdmin={viewerIsAdmin}
+              offersTake={false}
+            />
+          ) : undefined
+        }
+        rowAction={(r) => {
+          // The way in for someone who cannot open the record yet, so it does
+          // not sit in a column that may be scrolled out of sight.
+          const team = teamsByRecord[r.id]?.teams.find((t) => t.canTake);
+          return team ? <AssignToMe moduleSlug={moduleSlug} recordId={r.id} team={team} /> : null;
+        }}
         onOpen={(id) => openRecord(id)}
         onOpenMention={(id) => openRecord(id, true)}
         openingId={opening ? openingId : null}
@@ -742,7 +772,9 @@ export function RecordsTable({
       {bulkEditing ? (
         <BulkEditDialog
           count={selected.size}
-          columns={localColumns.filter((c) => grantFor(c) === 'edit')}
+          // A bulk edit REPLACES the people on each record, around the team
+          // rules: only an admin, who may do all of it anyway, gets the field.
+          columns={localColumns.filter((c) => grantFor(c) === 'edit' && (viewerIsAdmin || c.id !== VISIBILITY_FIELD_KEY))}
           moduleSlug={moduleSlug}
           pending={pending}
           onApply={runBulkEdit}

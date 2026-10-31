@@ -473,8 +473,16 @@ export async function getRecord(ctx: AuthContext, recordId: string): Promise<Rec
   if (error) throw error;
   if (!data) return null;
 
-  // Values come separately now, already stripped by the database.
-  const valuesById = await valuesByRecordId(supabase, [recordId]);
+  // A record can be a row in this viewer's list without being one they may
+  // open: an open assignment, before they take it (migration 9843). `records`
+  // answers the list's question, `record_visible` this one.
+  const [{ data: opens, error: opensError }, valuesById] = await Promise.all([
+    supabase.rpc('record_visible', { rec: recordId }),
+    // Values come separately now, already stripped by the database.
+    valuesByRecordId(supabase, [recordId]),
+  ]);
+  if (opensError) throw opensError;
+  if (!opens) return null;
   (data as Record<string, unknown>).values = valuesById.get(recordId) ?? {};
 
   // Per RECORD, not global: this record's modules decide which per-module
@@ -571,6 +579,8 @@ export async function createRecord(
    * behaviour exactly.
    */
   memberIds: string[] = [],
+  /** Whole teams to assign, each left Open. */
+  teamIds: string[] = [],
 ): Promise<{ id: string } | { error: 'duplicate' } | { error: 'members'; message: string }> {
   // Creating INTO a module is an edit of that module. The "+ New record"
   // button is already hidden below Edit, but the action behind it is callable
@@ -631,7 +641,7 @@ export async function createRecord(
   // a create that leaves the creator out. The picker in the dialog says so.
   const team = await parseTeamMembers(ctx, memberIds);
   if (!team.ok) return { error: 'members', message: team.message };
-  const teamIds = [ctx.userId, ...team.ids.filter((id) => id !== ctx.userId)];
+  const others = team.ids.filter((id) => id !== ctx.userId);
 
   const id = crypto.randomUUID();
   const { error } = await supabase
@@ -644,7 +654,7 @@ export async function createRecord(
       // seed only this one is read by `sync_record_team_members()`. Writing the
       // creator into `relationship_manager` instead would grant nothing and
       // leave the insert's own read-back illegal.
-      values: { [VISIBILITY_FIELD_KEY]: teamIds },
+      values: { [VISIBILITY_FIELD_KEY]: [ctx.userId] },
     });
 
   if (error) {
@@ -676,6 +686,31 @@ export async function createRecord(
        */
       await supabaseAdmin().from('records').delete().eq('id', id);
       throw memErr;
+    }
+  }
+
+  /*
+   * Anyone else goes on through the same functions the drawer's picker uses,
+   * so a new record is held to the same settings and each one is written to its
+   * Updates tab. Both-or-neither, like the placement above.
+   */
+  if (others.length || teamIds.length) {
+    const { data: teamRows, error: teamErr } = await supabaseAdmin().from('user_templates').select('user_id, template_id').in('user_id', others);
+    if (teamErr) throw teamErr;
+    const teamOf = new Map((teamRows ?? []).map((r) => [r.user_id as string, r.template_id as string]));
+    for (const user of others) {
+      const { error: e } = await supabase.rpc('assign_team_member', { p_record: id, p_team: teamOf.get(user) as string, p_user: user });
+      if (e) {
+        await supabaseAdmin().from('records').delete().eq('id', id);
+        return { error: 'members', message: e.message };
+      }
+    }
+    for (const teamId of teamIds) {
+      const { error: e } = await supabase.rpc('assign_team', { p_record: id, p_team: teamId });
+      if (e) {
+        await supabaseAdmin().from('records').delete().eq('id', id);
+        return { error: 'members', message: e.message };
+      }
     }
   }
 

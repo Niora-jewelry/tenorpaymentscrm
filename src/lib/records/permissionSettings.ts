@@ -20,6 +20,8 @@ export type SettingRow = {
   options: SettingOption[];
   /** Shown instead of a control (Tickets follows Cases). */
   fixed?: string;
+  /** One cell of a settings table: a team across the top, a setting down the side. */
+  cell?: { team: string; teamLabel: string; setting: string; settingLabel: string; settingHint: string };
 };
 export type SettingGroup = { id: string; title: string; blurb: string; rows: SettingRow[] };
 
@@ -28,10 +30,27 @@ const HIDDEN_FULL: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { va
 const OWN_ALL: SettingOption[] = [{ value: 'own', label: 'Own only' }, { value: 'all', label: 'All users' }];
 const MINE_ALL: SettingOption[] = [{ value: 'mine', label: 'Only mine' }, { value: 'all', label: 'See all + grant' }];
 
+/** Set separately for each team (Team Assignment spec). */
+const TEAM_SETTINGS = [
+  { key: 'assign', label: 'Assign this team', hint: 'Add this team to a record.' },
+  { key: 'assign_member', label: 'Assign a specific member', hint: 'Assign a named person from this team instead of the whole team.' },
+  { key: 'unassign', label: 'Unassign this team', hint: 'Remove this team, or a member of it, from a record.' },
+  { key: 'see_open', label: 'See open records', hint: 'See records where this team is assigned and nobody has taken them yet.' },
+  { key: 'see_team', label: 'See team when assigned', hint: 'See that this team is assigned on a record.' },
+  { key: 'see_users', label: 'See users when assigned', hint: 'See which person from this team took the record.' },
+];
+
 /** The groups, in the spec's order. Module rows come from configuration. */
 export async function settingGroups(): Promise<SettingGroup[]> {
   const config = await loadConfig();
   const cases = config.modules.find((m) => m.showsOpenCases);
+  const { data: teamRows, error: teamError } = await supabaseAdmin()
+    .from('permission_templates')
+    .select('user_type, label, team_label')
+    .not('user_type', 'is', null)
+    .order('position');
+  if (teamError) throw teamError;
+  const teams = (teamRows ?? []).map((t) => ({ key: t.user_type as string, label: (t.team_label ?? t.label) as string }));
   return [
     {
       id: 'actions',
@@ -39,11 +58,28 @@ export async function settingGroups(): Promise<SettingGroup[]> {
       blurb: 'One yes/no each, in every module the user can open.',
       rows: [
         { key: 'action.create', label: 'Create new records', hint: 'The creator is added as a team member.', options: YES_NO },
-        { key: 'action.team', label: 'Add / remove team members', hint: 'Team member(s) assigned and Relationship manager.', options: YES_NO },
+        { key: 'action.team', label: 'Add / remove Relationship manager', hint: 'Team member(s) assigned has its own settings, under Team assignment.', options: YES_NO },
         { key: 'action.archive', label: 'Delete / archive records', options: YES_NO },
         { key: 'action.modules', label: 'Display / remove from modules', hint: 'The In modules chips.', options: YES_NO },
         { key: 'action.pipeline', label: 'Move records through pipeline stages', options: YES_NO },
         { key: 'action.pipeline_change', label: 'Change pipeline in drawer', hint: 'Move a record to a different pipeline, or remove it from one. Moving along the stages is the setting above.', options: YES_NO },
+      ],
+    },
+    {
+      id: 'team_assignment',
+      title: 'Team assignment',
+      blurb: 'A user can always assign their own team. Turning on Assign this team also turns on See team when assigned. See users when assigned works only with See team when assigned.',
+      rows: [
+        { key: 'action.team_view_open', label: 'Can view open items', hint: 'Open a record that’s still open, before taking it.', options: YES_NO },
+        { key: 'action.team_take', label: 'Can take open items', hint: 'Use Assign to me on an open record assigned to their own team.', options: YES_NO },
+        ...TEAM_SETTINGS.flatMap((s) =>
+          teams.map((t) => ({
+            key: `team.${t.key}.${s.key}`,
+            label: `${t.label}: ${s.label}`,
+            options: YES_NO,
+            cell: { team: t.key, teamLabel: t.label, setting: s.key, settingLabel: s.label, settingHint: s.hint },
+          })),
+        ),
       ],
     },
     {

@@ -8,7 +8,7 @@
  * themselves. That is what makes "add a field type" a change in one file
  * rather than a change everywhere.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { MenuSurface } from './MenuSurface';
 import type { Field, FieldType, FieldValue, GridRow, PercentSplit, AddressValue } from '../schema';
 import { choicesFor, choiceKey, choiceLabel } from '../fields';
@@ -389,6 +389,7 @@ export function FieldRenderer({
   grant,
   moduleSlug,
   grantsVisibility,
+  teamSlot,
   viewerId,
   viewerIsAdmin,
   autoEdit,
@@ -411,6 +412,9 @@ export function FieldRenderer({
    * nothing, would be the more dangerous half of a wrong answer.
    */
   grantsVisibility?: boolean;
+  /** `team_member` only: drawn instead of the people picker. The real app's
+   *  Team member(s) assigned field is worked by team (Team Assignment spec). */
+  teamSlot?: ReactNode;
   /**
    * Who is looking, when that is known. Read by exactly one control:
    * `team_member`, where taking YOURSELF off the list is the one edit in the
@@ -596,6 +600,7 @@ export function FieldRenderer({
   // tell you there is an "add" control is the wrong shape for the one control
   // where not noticing something is a permission mistake.
   if (field.type === 'team_member') {
+    if (teamSlot) return <>{teamSlot}</>;
     return (
       <TeamMemberControl
         ids={asTeamMembers(value)}

@@ -96,6 +96,7 @@ export async function createRecordAction(moduleSlug: string, _prev: ActionState,
   const parsed = createRecordSchema.safeParse({
     dealName: formData.get('dealName'),
     memberIds: formData.getAll('memberIds'),
+    teamIds: formData.getAll('teamIds'),
   });
   if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
 
@@ -103,7 +104,7 @@ export async function createRecordAction(moduleSlug: string, _prev: ActionState,
   const target = config.modules.find((m) => m.slug === moduleSlug);
   if (!target) return { ok: false, message: 'Unknown module.' };
 
-  const result = await createRecord(ctx, parsed.data.dealName, [target.id], parsed.data.memberIds);
+  const result = await createRecord(ctx, parsed.data.dealName, [target.id], parsed.data.memberIds, parsed.data.teamIds);
   if ('error' in result) {
     if (result.error !== 'duplicate') return { ok: false, message: result.message };
 

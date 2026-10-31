@@ -7,7 +7,7 @@
  * is active (no data fetching here — everything for every tab is already on
  * the page, so switching tabs is instant, no loading state needed).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { recordMentionsAction } from './actions';
 import { CHANGED_EVENT } from '../useLiveCounts';
 import type { Candidate, NotificationView } from '@/lib/records/notifications';
@@ -125,6 +125,7 @@ export function DrawerTabs({
   addressByField = {},
   authorNames,
   viewerId,
+  teamSlot,
   isAdmin,
   openTabId,
   openSubtabId,
@@ -187,6 +188,8 @@ export function DrawerTabs({
   addressByField?: Record<string, FieldAddress>;
   authorNames: Record<string, string>;
   viewerId: string;
+  /** Team member(s) assigned, drawn by the drawer. */
+  teamSlot?: ReactNode;
   isAdmin: boolean;
 }) {
   const [activeTabId, setActiveTabId] = useState(openTabId ?? tabs[0]?.id ?? '');
@@ -475,6 +478,7 @@ export function DrawerTabs({
                 {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
                 {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
                 <RealFieldGrid
+                  teamSlot={teamSlot}
                   moduleSlug={moduleSlug}
                   recordId={recordId}
                   tabId={activeTab.id}

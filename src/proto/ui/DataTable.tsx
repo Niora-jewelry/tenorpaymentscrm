@@ -534,6 +534,11 @@ type DataTableProps = {
   moduleSlug: string;
   rows: RecordRow[];
   columns: Field[];
+  /** A cell the caller draws itself; undefined leaves the column's own cell. */
+  cellOverride?: (col: Field, row: RecordRow) => ReactNode | undefined;
+  /** One action in the frozen Deal Name cell: always on screen, however far the
+   *  table has scrolled sideways. */
+  rowAction?: (row: RecordRow) => ReactNode;
   onOpen: (id: string) => void;
   /** Opens the record straight at the viewer's oldest unread mention. */
   onOpenMention?: (id: string) => void;
@@ -1049,6 +1054,8 @@ export function DataTable({
   moduleSlug,
   rows,
   columns,
+  cellOverride,
+  rowAction,
   onOpen,
   onOpenMention,
   serverPaging,
@@ -1517,6 +1524,7 @@ export function DataTable({
                       {archived && moduleSlug === 'records' ? (
                         <OutlineChip icon="archive">Archived</OutlineChip>
                       ) : null}
+                      {rowAction ? <span className="ml-auto shrink-0">{rowAction(r)}</span> : null}
                       {r.mentions ? (
                         /* Only the viewer's own unread mentions — the count
                            came from a query keyed on them. Clicking lands on
@@ -1594,6 +1602,7 @@ export function DataTable({
                      * in both cases: `set_pipeline_step` and RLS.
                      */
                     const stepEditable = Boolean(pipe && onPipelineStep && r.updatedAt);
+                    const override = cellOverride?.(col, r);
 
                     return (
                       <td
@@ -1606,7 +1615,9 @@ export function DataTable({
                             isNumeric(col.type) ? 'justify-end' : ''
                           } ${readOnly ? 'text-ink-400' : 'text-ink-700'}`}
                         >
-                          {stepEditable ? (
+                          {override !== undefined ? (
+                            override
+                          ) : stepEditable ? (
                             <PillMenu
                               field={col}
                               value={r.values[col.id]}

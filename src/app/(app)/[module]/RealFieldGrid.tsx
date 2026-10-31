@@ -180,6 +180,7 @@ function SortableFieldCell({
 }
 
 export function RealFieldGrid({
+  teamSlot,
   moduleSlug,
   recordId,
   tabId,
@@ -249,6 +250,8 @@ export function RealFieldGrid({
   addressByField?: Record<string, FieldAddress>;
   authorNames: Record<string, string>;
   viewerId: string;
+  /** Team member(s) assigned, drawn by the drawer. */
+  teamSlot?: ReactNode;
   isAdmin: boolean;
 }) {
   // Files fields are empty or not by their uploads, which live outside `values`.
@@ -792,6 +795,7 @@ export function RealFieldGrid({
                         // type only this key is read by the trigger that
                         // decides record visibility.
                         grantsVisibility={f.id === VISIBILITY_FIELD_KEY}
+                        teamSlot={f.id === VISIBILITY_FIELD_KEY ? teamSlot : undefined}
                         viewerId={viewerId}
                         viewerIsAdmin={isAdmin}
                         onChange={(v) => handleChange(f.id, v)}

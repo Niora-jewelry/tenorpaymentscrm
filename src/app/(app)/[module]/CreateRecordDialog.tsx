@@ -16,16 +16,21 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/proto/ui/kit';
-import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from '@/proto/ui/people';
+import { PersonAvatar, resolvePerson, usePeopleById } from '@/proto/ui/people';
 import { Icon } from '@/proto/ui/icons';
+import type { AssignableTeam } from '@/lib/teams/types';
 import { createRecordAction, type ActionState } from './actions';
 
 const initial: ActionState = { ok: false };
+
+/** A pick that is a team, not one of its people. */
+const WHOLE_TEAM = 'team';
 
 export function CreateRecordDialog({
   moduleSlug,
   moduleLabel,
   viewerId,
+  assignable,
 }: {
   moduleSlug: string;
   moduleLabel: string;
@@ -35,6 +40,8 @@ export function CreateRecordDialog({
    * be able to read the row it just wrote. Shown, pinned and not removable, so
    * the list on screen is the list that will exist. */
   viewerId: string;
+  /** What this viewer may assign: the same list as the drawer's picker. */
+  assignable: AssignableTeam[];
 }) {
   const [open, setOpen] = useState(false);
   /*
@@ -51,15 +58,21 @@ export function CreateRecordDialog({
    */
   const [state, action, isPending] = useActionState(createRecordAction.bind(null, moduleSlug), initial);
   const inputRef = useRef<HTMLInputElement>(null);
-  const people = usePeople();
   const byId = usePeopleById();
-  const [members, setMembers] = useState<string[]>([]);
+  /** Per team: the whole team, or one person from it. Never both, never two. */
+  const [picks, setPicks] = useState<Record<string, string>>({});
 
   const you = resolvePerson(viewerId, byId);
-  const others = people.filter((p) => p.id !== viewerId && !p.suspended);
+  // The creator takes their own team, so it has nothing left to offer here.
+  const teams = assignable.filter((t) => !t.own);
 
-  const toggle = (id: string) =>
-    setMembers((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const choose = (teamId: string, pick: string) =>
+    setPicks((prev) => {
+      const next = { ...prev };
+      if (next[teamId] === pick) delete next[teamId];
+      else next[teamId] = pick;
+      return next;
+    });
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -95,7 +108,7 @@ export function CreateRecordDialog({
     if (recordParam && recordParam !== paramAtSubmit.current) {
       paramAtSubmit.current = null;
       setOpen(false);
-      setMembers([]);
+      setPicks({});
     }
   }, [open, recordParam]);
 
@@ -183,62 +196,83 @@ export function CreateRecordDialog({
                 </p>
               )}
 
-              {/* The team, at creation. This is not a convenience field: it is
-                  the ONLY thing that decides who can see the record, so the
-                  dialog states that rather than leaving it to be discovered in
-                  the drawer afterwards. */}
+              {/* Who works the record, at creation. Team member(s) assigned is the
+                  one thing that decides who can see a record, so the dialog says
+                  so. The picker is the drawer's: only what this viewer may
+                  assign is here, and one person per team. */}
               <label className="mt-4 block text-[12px] font-semibold uppercase tracking-wide text-ink-400">
-                Team members
+                Assign
               </label>
               <p className="mt-1 text-[11.5px] text-ink-400">
-                Only these people can see the record. Everyone else — apart from admins — will not
-                find it at all.
+                You are always added. A team stays open until someone on it takes the record.
               </p>
 
-              <div className="mt-2 max-h-[190px] space-y-px overflow-y-auto rounded-md border border-line p-1">
+              <div className="mt-2 max-h-[220px] space-y-px overflow-y-auto rounded-md border border-line p-1">
                 <div className="flex items-center gap-2 rounded px-2 py-1.5 text-[13px] text-ink-500">
                   <PersonAvatar person={you} size={20} />
                   <span className="truncate font-medium text-ink-700">{you.name}</span>
                   <span className="ml-auto shrink-0 text-[11px] text-ink-400">you — always added</span>
                 </div>
 
-                {others.map((p) => {
-                  const on = members.includes(p.id);
+                {teams.map((t) => {
+                  const pick = picks[t.id];
                   return (
-                    <label
-                      key={p.id}
-                      className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] transition-colors ${
-                        on ? 'bg-brand-50' : 'hover:bg-canvas'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        name="memberIds"
-                        value={p.id}
-                        checked={on}
-                        disabled={isPending}
-                        onChange={() => toggle(p.id)}
-                        className="size-3.5 accent-[#1d4ed8]"
-                      />
-                      <PersonAvatar person={{ ...p, unknown: false }} size={20} />
-                      <span className="truncate font-medium text-ink-900">{p.name}</span>
-                      {/* Two colleagues can share a display name, or have none
-                          at all — the address is what makes the choice
-                          unambiguous, and getting it wrong here hands the wrong
-                          person a record. */}
-                      {p.email && p.email !== p.name ? (
-                        <span className="ml-auto shrink-0 truncate text-[11px] text-ink-400">{p.email}</span>
-                      ) : null}
-                    </label>
+                    <div key={t.id}>
+                      <label
+                        className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] transition-colors ${
+                          pick === WHOLE_TEAM ? 'bg-brand-50' : 'hover:bg-canvas'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pick === WHOLE_TEAM}
+                          disabled={isPending}
+                          onChange={() => choose(t.id, WHOLE_TEAM)}
+                          className="size-3.5 accent-[#1d4ed8]"
+                        />
+                        <Icon name="users" size={14} className="text-ink-400" />
+                        <span className="truncate font-medium text-ink-900">{t.label}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-ink-400">whole team</span>
+                      </label>
+                      {t.members.map((id) => {
+                        const p = resolvePerson(id, byId);
+                        return (
+                          <label
+                            key={id}
+                            className={`flex cursor-pointer items-center gap-2 rounded py-1 pl-6 pr-2 text-[13px] transition-colors ${
+                              pick === id ? 'bg-brand-50' : 'hover:bg-canvas'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={pick === id}
+                              disabled={isPending}
+                              onChange={() => choose(t.id, id)}
+                              className="size-3.5 accent-[#1d4ed8]"
+                            />
+                            <PersonAvatar person={p} size={20} />
+                            <span className="truncate text-ink-800">{p.name}</span>
+                            {/* Two colleagues can share a display name, or have none
+                                at all — the address is what makes the choice
+                                unambiguous, and getting it wrong here hands the wrong
+                                person a record. */}
+                            {p.email && p.email !== p.name ? (
+                              <span className="ml-auto shrink-0 truncate text-[11px] text-ink-400">{p.email}</span>
+                            ) : null}
+                          </label>
+                        );
+                      })}
+                    </div>
                   );
                 })}
-
-                {others.length === 0 ? (
-                  <p className="px-2 py-1.5 text-[12px] text-ink-400">
-                    Nobody else has an active account yet.
-                  </p>
-                ) : null}
               </div>
+              {Object.entries(picks).map(([teamId, pick]) =>
+                pick === WHOLE_TEAM ? (
+                  <input key={teamId} type="hidden" name="teamIds" value={teamId} />
+                ) : (
+                  <input key={teamId} type="hidden" name="memberIds" value={pick} />
+                ),
+              )}
 
               <div className="mt-5 flex justify-end gap-2">
                 <Button type="button" variant="ghost" disabled={isPending} onClick={() => setOpen(false)}>

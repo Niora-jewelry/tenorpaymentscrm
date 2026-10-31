@@ -15,10 +15,103 @@
  */
 import { useOptimistic, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import type { SettingGroup } from '@/lib/records/permissionSettings';
+import type { SettingGroup, SettingRow } from '@/lib/records/permissionSettings';
 import { setPermissionSettingAction, resetUserToTypeAction } from './templates/actions';
 
 const RANK: Record<string, number> = { no: 0, hidden: 0, own: 0, mine: 1, view: 1, yes: 2, all: 2, full: 2, org: 2, edit: 2 };
+
+/**
+ * The six per-team settings as a table: a setting on each row, a team in each
+ * column, the way the spec lays them out. 36 toggles in a list cannot be read;
+ * this can. Each cell behaves exactly like a row above it.
+ */
+function TeamMatrix({
+  rows,
+  mode,
+  shown,
+  typeValues,
+  ceiling,
+  actorIsSuper,
+  locked,
+  onSet,
+}: {
+  rows: SettingRow[];
+  mode: 'template' | 'user';
+  shown: Record<string, string>;
+  typeValues: Record<string, string>;
+  ceiling: Record<string, string>;
+  actorIsSuper: boolean;
+  locked: boolean;
+  onSet: (key: string, value: string | null) => void;
+}) {
+  const teams = [...new Map(rows.map((r) => [r.cell!.team, r.cell!.teamLabel])).entries()];
+  const settings = [...new Map(rows.map((r) => [r.cell!.setting, r.cell!])).values()];
+  const valueOf = (key: string) => shown[key] ?? (mode === 'user' ? typeValues[key] : undefined) ?? 'no';
+
+  return (
+    <div className="mt-3 overflow-x-auto rounded-lg border border-line-soft">
+      <table className="w-full min-w-[720px] border-collapse text-left">
+        <thead>
+          <tr className="border-b border-line-soft bg-canvas/60">
+            <th scope="col" className="px-3 py-2 text-[11.5px] font-semibold text-ink-500">Set for each team</th>
+            {teams.map(([key, label]) => (
+              <th key={key} scope="col" className="px-1.5 py-2 text-center text-[11.5px] font-semibold text-ink-700">{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line-soft">
+          {settings.map((s) => (
+            <tr key={s.setting}>
+              <th scope="row" className="px-3 py-1.5 font-normal">
+                <span className="block text-[13px] font-medium text-ink-800">{s.settingLabel}</span>
+                <span className="block text-[11.5px] leading-snug text-ink-400">{s.settingHint}</span>
+              </th>
+              {teams.map(([team, label]) => {
+                const key = `team.${team}.${s.setting}`;
+                const on = valueOf(key) === 'yes';
+                const isOverride = mode === 'user' && shown[key] !== undefined;
+                const tooHigh = !on && !actorIsSuper && (RANK[ceiling[key] ?? 'no'] ?? 0) < RANK.yes!;
+                // Rule 4: without See team, See users does nothing.
+                const inert = s.setting === 'see_users' && valueOf(`team.${team}.see_team`) !== 'yes';
+                return (
+                  <td key={team} className="px-1.5 py-1.5 text-center">
+                    <span className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={`${label}: ${s.settingLabel}`}
+                        disabled={locked || tooHigh}
+                        title={tooHigh ? 'Higher than your own level — you cannot give it' : inert ? 'Works only with See team when assigned' : undefined}
+                        onClick={() => onSet(key, on ? 'no' : 'yes')}
+                        className={`min-w-10 cursor-pointer rounded-md px-2 py-1 text-[12px] font-semibold ring-1 ring-inset transition-colors disabled:cursor-not-allowed ${
+                          on ? 'bg-brand-50 text-brand-700 ring-brand-200' : 'bg-white text-ink-400 ring-line hover:text-ink-900'
+                        } ${inert ? 'opacity-50' : ''} ${isOverride ? 'outline-2 outline-offset-1 outline-warn' : ''}`}
+                      >
+                        {on ? 'Yes' : 'No'}
+                      </button>
+                      {isOverride && !locked ? (
+                        <button
+                          type="button"
+                          aria-label={`Reset ${label}: ${s.settingLabel} to their type`}
+                          title="Back to their type"
+                          onClick={() => onSet(key, null)}
+                          className="grid size-5 cursor-pointer place-items-center rounded text-ink-400 hover:bg-canvas hover:text-ink-900"
+                        >
+                          <Icon name="rotate-ccw" size={10} />
+                        </button>
+                      ) : null}
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function SettingsPanel({
   mode,
@@ -119,7 +212,7 @@ export function SettingsPanel({
             <h3 className="text-[12px] font-semibold uppercase tracking-[.07em] text-ink-700">{g.title}</h3>
             <p className="mt-0.5 text-[12px] text-ink-400">{g.blurb}</p>
             <div className="mt-2.5 grid gap-x-8 gap-y-1 @container lg:grid-cols-2">
-              {g.rows.map((row) => {
+              {g.rows.filter((row) => !row.cell).map((row) => {
                 const own = shown[row.key];
                 // Nothing stored resolves to the most restrictive value, which
                 // every option list puts first (`user_perm`, migration 9810).
@@ -189,6 +282,18 @@ export function SettingsPanel({
                 );
               })}
             </div>
+            {g.rows.some((row) => row.cell) ? (
+              <TeamMatrix
+                rows={g.rows.filter((row) => row.cell)}
+                mode={mode}
+                shown={shown}
+                typeValues={typeValues}
+                ceiling={ceiling}
+                actorIsSuper={actorIsSuper}
+                locked={Boolean(locked)}
+                onSet={set}
+              />
+            ) : null}
           </div>
         ))}
       </div>

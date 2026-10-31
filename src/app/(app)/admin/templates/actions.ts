@@ -220,7 +220,7 @@ export async function setPermissionSettingAction(input: {
     .object({
       ownerKind: z.enum(['template', 'user']),
       ownerId: z.string().uuid(),
-      key: z.string().regex(/^(action|admin|items)\.[a-z_]+$|^(notifications|email|phone|communication)\.scope$|^module:[0-9a-f-]{36}$|^applications\.pdfs$/),
+      key: z.string().regex(/^team\.[a-z_]+\.[a-z_]+$|^(action|admin|items)\.[a-z_]+$|^(notifications|email|phone|communication)\.scope$|^module:[0-9a-f-]{36}$|^applications\.pdfs$/),
       value: z.string().regex(/^[a-z]+$/).max(10).nullable(),
     })
     .safeParse(input);

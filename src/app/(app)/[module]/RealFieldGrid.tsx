@@ -41,6 +41,7 @@ import { Button, CountPill, IconButton } from '@/proto/ui/kit';
 import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
 import { FieldHistoryButton } from './FieldHistory';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
+import { memberKey } from './fieldHits';
 import type { NotificationView } from '@/lib/records/notifications';
 import type { Field as ProtoField, FieldValue } from '@/proto/schema';
 import {
@@ -132,6 +133,17 @@ function RepeatGroupSection({ groupKey, flash, children }: { groupKey: string; f
     <section id={targetId.field(groupKey)} className={`rounded-lg transition-shadow ${flashing ? FLASH_CLASS : ''}`}>
       {children}
     </section>
+  );
+}
+
+/** One member's card. A search pick scrolls to the first instance and flashes
+ *  this member on all of them: the viewer asked for "Phone", not for owner 1's. */
+function RepeatMemberCell({ targetKey, first, flash, span, fullRow, children }: { targetKey: string; first: boolean; flash: boolean; span: string; fullRow: boolean; children: React.ReactNode }) {
+  const flashing = useFlashTarget(targetId.field(targetKey), flash);
+  return (
+    <div id={first ? targetId.field(targetKey) : undefined} style={{ gridColumn: span }} className={`${fieldCardClass({ fullRow })} ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}>
+      {children}
+    </div>
   );
 }
 
@@ -922,10 +934,13 @@ export function RealFieldGrid({
                         tab: '', columnIn: [],
                       };
                       return (
-                        <div
+                        <RepeatMemberCell
                           key={`${index}-${member.key}`}
-                          style={{ gridColumn: spanFor(memberField) }}
-                          className={fieldCardClass({ fullRow: isFullRow(memberField.type) })}
+                          targetKey={memberKey(group.key, member.key)}
+                          first={index === 0}
+                          flash={focusFieldKey === memberKey(group.key, member.key)}
+                          span={spanFor(memberField)}
+                          fullRow={isFullRow(memberField.type)}
                         >
                           <FieldLabelRow field={memberField} tone="muted" />
                           <div className={FIELD_VALUE_SLOT}>
@@ -938,7 +953,7 @@ export function RealFieldGrid({
                             onChange={(v) => handleMemberChange(group, index, member.key, v)}
                           />
                           </div>
-                        </div>
+                        </RepeatMemberCell>
                       );
                     })}
                   </div>

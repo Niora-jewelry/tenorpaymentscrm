@@ -18,6 +18,7 @@ import {
   getFileDownloadUrlAction,
 } from './actions';
 import type { FileRow, FileEntry } from '@/lib/records/files';
+import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 
 export function FilesPanel({
   moduleSlug,
@@ -26,6 +27,7 @@ export function FilesPanel({
   rows,
   filesByRow,
   editable,
+  focusRowId = null,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -33,6 +35,8 @@ export function FilesPanel({
   rows: FileRow[];
   filesByRow: Record<string, FileEntry[]>;
   editable: boolean;
+  /** A row the drawer's search landed on: scroll to it and flash. */
+  focusRowId?: string | null;
 }) {
   const complete = rows.filter((r) => (filesByRow[r.id]?.length ?? 0) > 0).length;
   const [addingRow, setAddingRow] = useState(false);
@@ -65,6 +69,7 @@ export function FilesPanel({
                 row={r}
                 files={filesByRow[r.id] ?? []}
                 editable={editable}
+                flash={focusRowId === r.id}
               />
             ))}
           </div>
@@ -177,13 +182,16 @@ function FileRowView({
   row,
   files,
   editable,
+  flash,
 }: {
   moduleSlug: string;
   recordId: string;
   row: FileRow;
   files: FileEntry[];
   editable: boolean;
+  flash: boolean;
 }) {
+  const flashing = useFlashTarget(targetId.field(row.id), flash);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -310,7 +318,7 @@ function FileRowView({
   };
 
   return (
-    <div className="grid grid-cols-[minmax(130px,.8fr)_2.4fr_minmax(130px,.9fr)] items-start gap-3 px-3 py-2">
+    <div id={targetId.field(row.id)} className={`grid grid-cols-[minmax(130px,.8fr)_2.4fr_minmax(130px,.9fr)] items-start gap-3 px-3 py-2 ${flashing ? `relative z-10 ${FLASH_CLASS}` : ''}`}>
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
         <span className="text-[13px] font-medium text-ink-900">{row.name}</span>
         {row.locked ? <Icon name="lock" size={10} className="text-ink-400" /> : null}

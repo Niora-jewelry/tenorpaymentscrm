@@ -36,7 +36,8 @@ import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
 import type { Note } from '@/lib/records/notes';
 import type { FieldAddress } from '@/lib/records/fieldAddresses';
-import { FieldSearch, type FieldHit } from './FieldSearch';
+import { FIELD_PICK_EVENT } from './FieldSearch';
+import type { FieldHit } from './fieldHits';
 import type { ApplicationsPanelData } from '@/lib/applications/service';
 import type { AgreementsPanelData } from '@/lib/agreements/service';
 import { AgreementsPanel } from './AgreementsPanel';
@@ -252,12 +253,17 @@ export function DrawerTabs({
     }
     setFocusFieldKey(openFieldKey);
   }
-  const landOn = (hit: FieldHit) => {
-    setActiveTabId(hit.tabId);
-    setActiveSubtabId(hit.subtabId ?? undefined);
-    setFocusFieldKey(null);
-    requestAnimationFrame(() => setFocusFieldKey(hit.key));
-  };
+  useEffect(() => {
+    const landOn = (e: Event) => {
+      const hit = (e as CustomEvent<FieldHit>).detail;
+      setActiveTabId(hit.tabId);
+      setActiveSubtabId(hit.subtabId ?? undefined);
+      setFocusFieldKey(null);
+      requestAnimationFrame(() => setFocusFieldKey(hit.key));
+    };
+    window.addEventListener(FIELD_PICK_EVENT, landOn);
+    return () => window.removeEventListener(FIELD_PICK_EVENT, landOn);
+  }, []);
 
   /*
    * ⚠️ THE EDITED VALUES LIVE HERE, not inside `RealFieldGrid`.
@@ -385,7 +391,6 @@ export function DrawerTabs({
             </button>
           );
         })}
-        <FieldSearch tabs={tabs} onPick={landOn} />
       </nav>
 
       {/*
@@ -551,6 +556,7 @@ export function DrawerTabs({
             rows={applicationRows}
             filesByRow={filesByRow}
             editable={activeTab.editable}
+            focusRowId={focusFieldKey}
           />
         ) : activeTab.kind === 'logins' ? (
           <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} />

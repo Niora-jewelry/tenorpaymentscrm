@@ -59,6 +59,8 @@ import { CreateRecordDialog } from './CreateRecordDialog';
 import { MembershipsForm, ArchiveButton } from './MembershipsForm';
 import { RecordsTable } from './RecordsTable';
 import { DrawerTabs, type TabPayload, type RepeatGroupDef } from './DrawerTabs';
+import { FieldSearch } from './FieldSearch';
+import { fieldHits } from './fieldHits';
 import { DrawerShell } from './DrawerShell';
 import { RealPipelineBar } from './RealPipelineBar';
 import type { FileRow, FileEntry } from '@/lib/records/files';
@@ -1101,8 +1103,10 @@ async function RecordDrawer({
       <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
       <DrawerFieldFiles moduleSlug={moduleSlug} recordId={record.id} filesByField={filesByField}>
       <ItemAccessProvider value={{ ...itemAccess, viewerId: ctx.userId }}>
-      {/* ── Band 1: title bar — record name, Archive, ••• menu, close. ── */}
-      <div className="flex items-start justify-between gap-4">
+      {/* ── Band 1: title bar — record name, field search, Archive, ••• menu,
+          close. The two `flex-1` ends keep the search in the middle; on a phone
+          width it takes its own line under them. ── */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {/* `min-w-0 flex-1` plus `truncate` on the heading. Without both, a long
             business name pushed the Archive and Close controls off the sheet
             and gave the whole drawer a horizontal scrollbar — an inline-flex
@@ -1115,7 +1119,8 @@ async function RecordDrawer({
             {record.dealName || '(untitled)'}
           </h2>
         </div>
-        <div className="flex items-center gap-3">
+        <FieldSearch hits={fieldHits(tabs, applicationRows)} />
+        <div className="flex shrink-0 items-center justify-end gap-3 @[40rem]:flex-1">
           {grant === 'edit' && canArchiveRecords && memberships.length > 0 ? (
             <ArchiveButton
               moduleSlug={moduleSlug}

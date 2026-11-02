@@ -40,7 +40,7 @@ export function AddOnlyFilesPanel({
 
   return (
     <div className="space-y-3">
-      <SavedNotice shown={saved} />
+      {saved ? <SavedNotice key={saved} /> : null}
 
       <div className="overflow-hidden rounded-xl border border-line bg-white">
         <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-line-soft bg-canvas px-3 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">

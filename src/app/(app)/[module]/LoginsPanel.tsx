@@ -35,7 +35,7 @@ export function LoginsPanel({
   if (addOnly) {
     return (
       <div className="space-y-3">
-        <SavedNotice shown={saved} />
+        {saved ? <SavedNotice key={saved} /> : null}
         {adding ? (
           <AddLoginForm
             moduleSlug={moduleSlug}

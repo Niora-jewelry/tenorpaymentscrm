@@ -7,17 +7,15 @@ import { Icon } from '@/proto/ui/icons';
  * What someone on Add only sees after a save (Add only spec, Confirmation). What
  * they saved has left their view, so this is the only sign it went through.
  *
- * `shown` counts saves: a second save restarts the timer.
+ * Keyed by the caller on a count of saves, so a second save starts it afresh.
  */
-export function SavedNotice({ shown }: { shown: number }) {
-  const [visible, setVisible] = useState(0);
+export function SavedNotice() {
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    if (!shown) return;
-    setVisible(shown);
-    const t = setTimeout(() => setVisible(0), 8000);
+    const t = setTimeout(() => setVisible(false), 8000);
     return () => clearTimeout(t);
-  }, [shown]);
+  }, []);
 
   if (!visible) return null;
   return (

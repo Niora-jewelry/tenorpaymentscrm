@@ -188,7 +188,7 @@ function GrantToggle({
       ? ['view', 'edit']
       : variant === 'full'
         ? ['hidden', 'edit']
-        : GRANT_LEVELS.filter((g) => g !== 'add_only' || reasonFor(g) === null);
+        : GRANT_LEVELS.filter((g) => g !== 'add_only' || (caps.kind === 'tab' && caps.addOnly));
   const options: { key: string; level: Grant | null; text: string }[] = [
     { key: 'unset', level: null, text: unsetText },
     ...levels.map((g) => ({ key: g, level: g as Grant | null, text: styleFor(variant, g).label })),

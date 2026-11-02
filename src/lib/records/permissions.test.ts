@@ -254,6 +254,9 @@ describe('resolveScope — one row, resolved the way both halves of the matrix r
  * accepts Hidden, saves it and then displays View has lied about who can see
  * what. 6c refuses the write; 6d makes the control unreachable.
  */
+/** Add only belongs to two tabs, and has its own block at the end of this file. */
+const ORDINARY_LEVELS = GRANT_LEVELS.filter((l) => l !== 'add_only');
+
 describe('grantWriteRefusal — refusing a grant the floors would cancel', () => {
   it('refuses Edit on a read-only field, and allows the two it can honour', () => {
     const readOnly = { kind: 'field', readOnly: true, frozenColumn: false } as const;
@@ -274,7 +277,7 @@ describe('grantWriteRefusal — refusing a grant the floors would cancel', () =>
     // for different reasons depending on who holds the template, and a template
     // is attached to nobody in particular while it is being edited. The matrix
     // marks it with a lock instead.
-    for (const level of GRANT_LEVELS) {
+    for (const level of ORDINARY_LEVELS) {
       expect(grantWriteRefusal({ kind: 'module', adminOnly: true }, level)).toBeNull();
       expect(grantWriteRefusal({ kind: 'tab' }, level)).toBeNull();
     }
@@ -282,7 +285,7 @@ describe('grantWriteRefusal — refusing a grant the floors would cancel', () =>
 
   it('allows every level on an ordinary field', () => {
     const plain = { kind: 'field', readOnly: false, frozenColumn: false } as const;
-    for (const level of GRANT_LEVELS) {
+    for (const level of ORDINARY_LEVELS) {
       expect(grantWriteRefusal(plain, level)).toBeNull();
     }
   });
@@ -315,7 +318,7 @@ describe('lockedGrantLevels — the greyed-out options, derived from the refusal
   it('locks exactly what the writer refuses, level by level, on every scope shape', () => {
     for (const caps of everyCaps) {
       const locked = new Map(lockedGrantLevels(caps).map((l) => [l.level, l.reason]));
-      for (const level of GRANT_LEVELS) {
+      for (const level of ORDINARY_LEVELS) {
         expect(locked.get(level) ?? null).toBe(grantWriteRefusal(caps, level));
       }
     }
@@ -381,6 +384,11 @@ describe('Add only', () => {
     expect(grantWriteRefusal({ kind: 'field', readOnly: false, frozenColumn: false }, 'add_only')).toMatch(/tab level/);
     expect(grantWriteRefusal({ kind: 'module', adminOnly: false }, 'add_only')).toMatch(/tab level/);
     expect(grantWriteRefusal({ kind: 'membership', adminOnly: false }, 'add_only')).toMatch(/tab level/);
+  });
+
+  it('is not a locked option on any row: rows that cannot take it never draw it', () => {
+    expect(lockedGrantLevels({ kind: 'tab' })).toEqual([]);
+    expect(lockedGrantLevels({ kind: 'module', adminOnly: false })).toEqual([]);
   });
 
   it('never reads as a field level', () => {

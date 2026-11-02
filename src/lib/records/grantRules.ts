@@ -472,7 +472,9 @@ export type GrantLock = { level: Grant; reason: string };
  * `deleteGrant` has no cap check for the same reason.
  */
 export function lockedGrantLevels(caps: ScopeCaps): GrantLock[] {
-  return GRANT_LEVELS.flatMap((level) => {
+  // Add only is not a greyed-out option anywhere: a row that can't take it never
+  // draws it, so it would be a padlock on every row of the matrix.
+  return GRANT_LEVELS.filter((level) => level !== 'add_only').flatMap((level) => {
     const reason = grantWriteRefusal(caps, level);
     return reason ? [{ level, reason }] : [];
   });

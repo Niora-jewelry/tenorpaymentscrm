@@ -43,7 +43,7 @@ import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
 import { uploadFile, uploadFieldFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
-import { addLogin, setPassword, revealPassword } from '@/lib/records/logins';
+import { addLogin, revealPassword } from '@/lib/records/logins';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
 import {
   setColumnOrder, resetColumnOrder, setFieldOrder, resetFieldOrder,
@@ -930,15 +930,24 @@ export async function deleteFileAction(moduleSlug: string, fileId: string): Prom
   revalidatePath(`/${moduleSlug}`);
 }
 
-export async function addFileRowAction(moduleSlug: string, recordId: string, formData: FormData): Promise<void> {
+const FileRowInput = z.object({
+  name: z.string().trim().min(1).max(200),
+  /* Anything that is not the Application section is the Other one. */
+  kind: z.string().nullable().transform((k) => (k === 'application' ? 'application' as const : 'other' as const)),
+});
+
+export async function addFileRowAction(moduleSlug: string, recordId: string, formData: FormData): Promise<UploadResult> {
   const ctx = await authorize();
-  const name = String(formData.get('name') ?? '').trim();
-  /* Anything that is not the Application section is the Other one — the union
-     has two members, and defaulting keeps an unexpected value out of the
-     insert rather than passing it through to the CHECK constraint. */
-  const kind = formData.get('kind') === 'application' ? 'application' : 'other';
-  if (name) await addFileRow(ctx, recordId, name, kind);
+  const parsed = FileRowInput.safeParse({ name: formData.get('name') ?? '', kind: formData.get('kind') });
+  if (!parsed.success) return { ok: false, message: 'Give the row a name.' };
+  try {
+    await addFileRow(ctx, recordId, parsed.data.name, parsed.data.kind);
+  } catch (e) {
+    const duplicate = (e as { code?: string }).code === '23505';
+    return { ok: false, message: duplicate ? 'A row with that name is already here.' : 'Could not add that row.' };
+  }
   revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
 }
 
 export async function ensureApplicationRowsAction(recordId: string): Promise<void> {
@@ -977,6 +986,14 @@ export async function getFileDownloadUrlAction(fileId: string): Promise<string> 
  * Logins
  * --------------------------------------------------------------------- */
 
+const LoginInput = z.object({
+  loginType: z.string().min(1).max(200),
+  link: z.string().max(2000).nullable(),
+  username: z.string().max(500).nullable(),
+  note: z.string().max(2000).nullable(),
+  password: z.string().max(2000).nullable(),
+});
+
 export async function addLoginAction(
   moduleSlug: string,
   recordId: string,
@@ -984,15 +1001,21 @@ export async function addLoginAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await authorize();
-  const loginType = String(formData.get('loginType') ?? '').trim();
-  if (!loginType) return { ok: false, message: 'Login type is required.' };
-  const link = String(formData.get('link') ?? '').trim() || null;
-  const username = String(formData.get('username') ?? '').trim() || null;
-  const note = String(formData.get('note') ?? '').trim() || null;
-  const password = String(formData.get('password') ?? '');
+  const text = (key: string) => String(formData.get(key) ?? '').trim() || null;
+  const parsed = LoginInput.safeParse({
+    loginType: text('loginType'),
+    link: text('link'),
+    username: text('username'),
+    note: text('note'),
+    password: String(formData.get('password') ?? '') || null,
+  });
+  if (!parsed.success) return { ok: false, message: 'Login type is required.' };
 
-  const row = await addLogin(ctx, recordId, loginType, link, username, note);
-  if (password) await setPassword(ctx, row.id, password);
+  try {
+    await addLogin(ctx, recordId, parsed.data);
+  } catch {
+    return { ok: false, message: 'Could not add that login.' };
+  }
 
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };

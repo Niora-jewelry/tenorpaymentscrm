@@ -73,6 +73,7 @@ import {
 
 const GRANT_STYLE: Record<Grant, { label: string; className: string }> = {
   hidden: { label: 'Hidden', className: 'border-[#f7cfd1] bg-[#fce9ea] text-[#b02a30]' },
+  add_only: { label: 'Add only', className: 'border-[#dcd3f5] bg-[#f1edfb] text-[#5b3fa8]' },
   view: { label: 'View', className: 'border-[#f7e0af] bg-[#fdf1d8] text-[#8a5a09]' },
   edit: { label: 'Edit', className: 'border-brand-100 bg-brand-50 text-brand-700' },
 };
@@ -97,6 +98,7 @@ const CELL_BASE = 'inline-flex items-center rounded-md border px-1.5 py-0.5 text
 type CellVariant = 'levels' | 'yesno' | 'full' | 'copy';
 const MEMBERSHIP_STYLE: Record<Grant, { label: string; className: string }> = {
   hidden: { label: 'No', className: GRANT_STYLE.hidden.className },
+  add_only: { label: 'No', className: GRANT_STYLE.hidden.className },
   view: { label: 'No', className: GRANT_STYLE.view.className },
   edit: { label: 'Yes', className: GRANT_STYLE.edit.className },
 };
@@ -180,8 +182,13 @@ function GrantToggle({
   // refuses for it (`grantWriteRefusal`), so it is not drawn at all rather
   // than drawn disabled with a tooltip explaining itself.
   // Likewise Marketing's View, which the spec does not offer.
+  // Add only is drawn on the two tabs that offer it, and nowhere else.
   const levels: readonly Grant[] =
-    variant === 'yesno' ? ['view', 'edit'] : variant === 'full' ? ['hidden', 'edit'] : GRANT_LEVELS;
+    variant === 'yesno'
+      ? ['view', 'edit']
+      : variant === 'full'
+        ? ['hidden', 'edit']
+        : GRANT_LEVELS.filter((g) => g !== 'add_only' || reasonFor(g) === null);
   const options: { key: string; level: Grant | null; text: string }[] = [
     { key: 'unset', level: null, text: unsetText },
     ...levels.map((g) => ({ key: g, level: g as Grant | null, text: styleFor(variant, g).label })),
@@ -1156,7 +1163,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
           }}
         >
           <BarAction icon="x" label="Clear setting" disabled={bulkBusy} onClick={() => applyBulk(null)} title="Remove the setting on every selected row — each then follows its tab (a tab goes back to Default)" />
-          {GRANT_LEVELS.map((g) => (
+          {GRANT_LEVELS.filter((g) => g !== 'add_only').map((g) => (
             <BarAction
               key={g}
               icon={g === 'hidden' ? 'eye-off' : g === 'view' ? 'eye' : 'pencil'}

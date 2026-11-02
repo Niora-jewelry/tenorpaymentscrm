@@ -22,7 +22,9 @@ import { VISIBILITY_FIELD_KEY } from '@/lib/records/grantRules';
 import { assignableTeams, teamsFor } from '@/lib/teams/service';
 import type { AssignableTeam, RecordTeams } from '@/lib/teams/types';
 import { AssignToMe, OpenRecordNotice, TeamAssignments } from './TeamAssignments';
+import { tabAccessById } from '@/lib/records/tabAccess';
 import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
+import { asFieldGrant } from '@/lib/records/grantRules';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -40,7 +42,7 @@ import { SEARCH_MAX } from '@/lib/records/search';
 import { SearchBox } from './SearchBox';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
-import { ensureApplicationRows, fileRowsFor, filesForRows, fieldFilesFor } from '@/lib/records/files';
+import { ensureApplicationRows, fileRowsFor, fileRowsForAdding, filesForRows, fieldFilesFor } from '@/lib/records/files';
 import { loginsFor } from '@/lib/records/logins';
 import { allPeriods, filesForRecord } from '@/lib/records/statements';
 import { residualsForRecord } from '@/lib/records/recordResiduals';
@@ -121,7 +123,7 @@ export default async function ModulePage({
     filtersFor(ctx, mod.id),
     columnVisibilityFor(ctx, mod.id),
   ]);
-  if (grant === 'hidden') redirect('/dashboard');
+  if (grant === 'hidden' || grant === 'add_only') redirect('/dashboard');
 
   // Layer 1 (admin order + selection) → layer 2 (this user's saved order) —
   // "admin default → user override → permission filter" (§16). Layer 3
@@ -188,7 +190,7 @@ export default async function ModulePage({
   // Capped by the module grant — a field's own grant decides what it is at
   // most, the module decides the ceiling. See `capGrant`.
   const grantByKey = Object.fromEntries(
-    visibleDbColumns.map((f) => [f.key, capGrant(grant, grants.get(f.id) ?? 'edit')]),
+    visibleDbColumns.map((f) => [f.key, asFieldGrant(capGrant(grant, grants.get(f.id) ?? 'edit'))]),
   );
 
   /*
@@ -654,6 +656,13 @@ async function RecordDrawer({
   const tabGrantById = new Map(
     allTabs.map((t) => [t.id, capGrant(grant, rawTabGrants.get(t.id) ?? 'edit')] as const),
   );
+  /* Add only answers to the record, as the database does: the tab is what the
+     person holds across its modules, so nothing offered here is refused on save. */
+  await Promise.all(
+    allTabs
+      .filter((t) => tabGrantById.get(t.id) === 'add_only')
+      .map(async (t) => tabGrantById.set(t.id, await tabAccessById(ctx, record.id, t.id))),
+  );
   // Cases = Hidden (Permissions spec) hides the Cases tab with the module.
   const viewerPerms = await permissionsFor(ctx);
   const casesHidden = !ctx.isAdmin && viewerPerms.settings['items.cases'] === 'hidden';
@@ -681,11 +690,14 @@ async function RecordDrawer({
     return (t ? tabGrantById.get(t.id) : undefined) ?? 'hidden';
   };
 
+  /** Add only opens the tab and reads nothing on it. */
+  const canRead = (kind: string) => shows(kind) && grantOfKind(kind) !== 'add_only';
+
   const [
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications, addressesRaw, agreements,
+    applications, addressesRaw, agreements, fileRowsAdding,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -722,14 +734,14 @@ async function RecordDrawer({
      * outcome for read-only access, and it is honest: it does not silently
      * perform a write on their behalf.
      */
-    shows('files')
+    canRead('files')
       ? (grantOfKind('files') === 'edit'
           ? ensureApplicationRows(ctx, record.id)
           : Promise.resolve()
         ).then(() => fileRowsFor(ctx, record.id, 'application'))
       : [],
-    shows('files') ? fileRowsFor(ctx, record.id, 'other') : [],
-    shows('logins') ? loginsFor(ctx, record.id) : [],
+    canRead('files') ? fileRowsFor(ctx, record.id, 'other') : [],
+    canRead('logins') ? loginsFor(ctx, record.id) : [],
     shows('statements') ? allPeriods() : [],
     shows('statements') ? filesForRecord(ctx, record.id) : [],
     shows('communication') ? messagesFor(ctx, record.id) : [],
@@ -762,6 +774,7 @@ async function RecordDrawer({
     fieldAddressesFor(ctx, record.id),
     // The Agreements (e-signature) panel, on whichever visible tab carries it.
     dbTabs.some((t) => t.showsAgreements) ? agreementsFor(ctx, record.id) : Promise.resolve(null),
+    grantOfKind('files') === 'add_only' ? fileRowsForAdding(ctx, record.id) : [],
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -879,7 +892,7 @@ async function RecordDrawer({
     // field's own setting → sub-tab's → tab's → Edit (`fieldGrant`), with the
     // module as the outer limit. Permissions spec: "The most specific setting
     // wins. A field or sub tab setting beats its tab setting."
-    grantByKey[f.key] = capGrant(grant, grants.get(f.id) ?? 'hidden');
+    grantByKey[f.key] = asFieldGrant(capGrant(grant, grants.get(f.id) ?? 'hidden'));
   }
 
   /* Files FIELDS — only fetched when this viewer can see at least one; RLS
@@ -1101,7 +1114,7 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
   }));
 
   return (
@@ -1240,6 +1253,7 @@ async function RecordDrawer({
         updates={updates}
         teamRoster={teamRoster}
         applicationRows={applicationRows}
+        fileRowsAdding={fileRowsAdding}
         filesByRow={filesByRow}
         logins={logins}
         statementPeriods={statementPeriods}

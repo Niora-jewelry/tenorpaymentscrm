@@ -7,6 +7,7 @@ import { requireEdit } from './permissions';
  * quietly testing nothing. */
 import {
   coalesceGrant,
+  asFieldGrant,
   capGrant,
   maxGrant,
   resolveModuleGrant,
@@ -355,5 +356,35 @@ describe('lockedGrantLevels — the greyed-out options, derived from the refusal
 
   it('locks nothing on an ordinary field', () => {
     expect(lockedGrantLevels({ kind: 'field', readOnly: false, frozenColumn: false })).toEqual([]);
+  });
+});
+
+describe('Add only', () => {
+  it('sits between Hidden and View', () => {
+    expect(GRANT_LEVELS).toEqual(['hidden', 'add_only', 'view', 'edit']);
+    expect(maxGrant('add_only', 'hidden')).toBe('add_only');
+    expect(maxGrant('add_only', 'view')).toBe('view');
+    expect(maxGrant('edit', 'add_only')).toBe('edit');
+  });
+
+  it('survives an Edit module, and goes where nothing can be added', () => {
+    expect(capGrant('edit', 'add_only')).toBe('add_only');
+    expect(capGrant('hidden', 'add_only')).toBe('hidden');
+    expect(capGrant('view', 'add_only')).toBe('hidden');
+    expect(capGrant('add_only', 'edit')).toBe('add_only');
+    expect(capGrant('add_only', 'hidden')).toBe('hidden');
+  });
+
+  it('is refused everywhere but a tab that offers it', () => {
+    expect(grantWriteRefusal({ kind: 'tab', addOnly: true }, 'add_only')).toBeNull();
+    expect(grantWriteRefusal({ kind: 'tab' }, 'add_only')).toMatch(/Logins and Files/);
+    expect(grantWriteRefusal({ kind: 'field', readOnly: false, frozenColumn: false }, 'add_only')).toMatch(/tab level/);
+    expect(grantWriteRefusal({ kind: 'module', adminOnly: false }, 'add_only')).toMatch(/tab level/);
+    expect(grantWriteRefusal({ kind: 'membership', adminOnly: false }, 'add_only')).toMatch(/tab level/);
+  });
+
+  it('never reads as a field level', () => {
+    expect(asFieldGrant('add_only')).toBe('hidden');
+    expect(asFieldGrant('view')).toBe('view');
   });
 });

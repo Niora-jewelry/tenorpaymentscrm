@@ -17,8 +17,140 @@ import {
   getFileUrlAction,
   getFileDownloadUrlAction,
 } from './actions';
-import type { FileRow, FileEntry } from '@/lib/records/files';
+import type { FileRow, FileEntry, FileRowForAdding } from '@/lib/records/files';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
+import { SavedNotice } from './SavedNotice';
+
+/**
+ * The Files tab on Add only: row names, an upload on each, and Add another file
+ * row. A file sent here leaves the viewer's sight at once, so the row shows only
+ * the check a preset row gets once it holds something.
+ */
+export function AddOnlyFilesPanel({
+  moduleSlug,
+  recordId,
+  rows,
+}: {
+  moduleSlug: string;
+  recordId: string;
+  rows: FileRowForAdding[];
+}) {
+  const [addingRow, setAddingRow] = useState(false);
+  const [saved, setSaved] = useState(0);
+
+  return (
+    <div className="space-y-3">
+      <SavedNotice shown={saved} />
+
+      <div className="overflow-hidden rounded-xl border border-line bg-white">
+        <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-line-soft bg-canvas px-3 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">
+          <span>File name</span>
+          <span>File upload</span>
+        </div>
+        <div className="divide-y divide-[#f0f4f8]">
+          {rows.map((r) => (
+            <AddOnlyFileRow key={r.id} moduleSlug={moduleSlug} recordId={recordId} row={r} onSaved={() => setSaved((n) => n + 1)} />
+          ))}
+        </div>
+      </div>
+
+      {addingRow ? (
+        <AddRowForm moduleSlug={moduleSlug} recordId={recordId} kind="application" onDone={() => setAddingRow(false)} />
+      ) : (
+        <Button size="sm" variant="ghost" icon="plus" onClick={() => setAddingRow(true)}>
+          Add another file row
+        </Button>
+      )}
+
+      <p className="text-[11.5px] text-ink-400">Up to 25MB each.</p>
+    </div>
+  );
+}
+
+function AddOnlyFileRow({
+  moduleSlug,
+  recordId,
+  row,
+  onSaved,
+}: {
+  moduleSlug: string;
+  recordId: string;
+  row: FileRowForAdding;
+  onSaved: () => void;
+}) {
+  const router = useRouter();
+  const [uploading, startUpload] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const upload = (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    const formData = new FormData();
+    formData.set('file', file);
+    startUpload(async () => {
+      try {
+        const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
+        if (!result.ok) {
+          setError(result.message ?? 'Upload failed.');
+          return;
+        }
+        onSaved();
+        router.refresh();
+      } catch {
+        setError('Could not upload that file.');
+      } finally {
+        if (inputRef.current) inputRef.current.value = '';
+      }
+    });
+  };
+
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2">
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-medium text-ink-900">{row.name}</span>
+          {row.hasFile ? (
+            <span title="This row has a file" className="grid size-4 shrink-0 place-items-center rounded-full bg-[#e3f4ea] text-[#1b7a45]">
+              <Icon name="check" size={10} aria-label="This row has a file" />
+            </span>
+          ) : null}
+        </div>
+        {error ? <p role="alert" className="mt-0.5 text-[11px] text-danger">{error}</p> : null}
+      </div>
+      <label
+        aria-busy={uploading}
+        className={`inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-1 text-[11.5px] font-semibold transition-colors ${
+          uploading
+            ? 'cursor-progress border-brand-600 bg-brand-50 text-brand-700'
+            : 'cursor-pointer border-line text-brand-700 hover:border-brand-600 hover:bg-brand-50'
+        }`}
+      >
+        {uploading ? (
+          <>
+            <span className="inline-block text-[10px] leading-none">
+              <Spinner />
+            </span>
+            Uploading…
+          </>
+        ) : (
+          <>
+            <Icon name="plus" size={10} />
+            Upload
+          </>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          aria-label={`Upload to ${row.name}`}
+          className="hidden"
+          disabled={uploading}
+          onChange={(e) => upload(e.target.files?.[0])}
+        />
+      </label>
+    </div>
+  );
+}
 
 export function FilesPanel({
   moduleSlug,
@@ -130,15 +262,13 @@ function AddRowForm({
     formData.set('name', name.trim());
     formData.set('kind', kind);
     startTransition(async () => {
-      /*
-       * `addFileRowAction` returns void and throws on refusal
-       * (`requireTabEdit`). Unguarded, the throw skipped both `router.refresh`
-       * and `onDone`, so the form stayed open with the typed name still in it
-       * and nothing said why — which looks like the Add button not working.
-       */
       try {
         setError(null);
-        await addFileRowAction(moduleSlug, recordId, formData);
+        const result = await addFileRowAction(moduleSlug, recordId, formData);
+        if (!result.ok) {
+          setError(result.message ?? 'Could not add that row.');
+          return;
+        }
         router.refresh();
         onDone();
       } catch {

@@ -31,6 +31,8 @@ export type Update = {
   mentionedUserIds: string[];
   /** Set when the entry is a field mention: the field it was sent from. */
   fieldKey: string | null;
+  /** Written by the system: read-only, whoever it names as its author. */
+  isLog: boolean;
 };
 
 /** A person who may be @mentioned here (see `mention_candidates`). */
@@ -48,6 +50,7 @@ function mapUpdate(r: Record<string, unknown>, mentionedUserIds: string[]): Upda
     editedAt: (r.edited_at as string | null) ?? null,
     mentionedUserIds,
     fieldKey: (r.field_key as string | null) ?? null,
+    isLog: r.is_log === true,
   };
 }
 
@@ -60,9 +63,26 @@ export async function updatesFor(_ctx: AuthContext, recordId: string): Promise<U
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((r) =>
-    mapUpdate(r, ((r.update_mentions ?? []) as { user_id: string }[]).map((m) => m.user_id)),
-  );
+
+  // A log entry's own body names nothing. RLS returns the versions that do, only
+  // where this viewer may see what they name, and the highest of those is theirs.
+  const detail = new Map<string, { rank: number; body: string }>();
+  if ((data ?? []).some((r) => r.is_log)) {
+    const { data: rows, error: detailError } = await supabase
+      .from('update_details')
+      .select('update_id, rank, body')
+      .eq('record_id', recordId);
+    if (detailError) throw detailError;
+    for (const d of rows ?? []) {
+      const seen = detail.get(d.update_id as string);
+      if (!seen || (d.rank as number) > seen.rank) detail.set(d.update_id as string, { rank: d.rank as number, body: d.body as string });
+    }
+  }
+
+  return (data ?? []).map((r) => ({
+    ...mapUpdate(r, ((r.update_mentions ?? []) as { user_id: string }[]).map((m) => m.user_id)),
+    body: detail.get(r.id as string)?.body ?? (r.body as string),
+  }));
 }
 
 /** Valid @mention targets for a record — everyone on its team (the same set

@@ -12,7 +12,7 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { serverEnv } from '@/lib/env.server';
 import type { AuthContext } from './permissions';
-import { requireTabEdit, requireTabEditVia, requireTabView, recordIdOf } from './tabAccess';
+import { requireTabAdd, requireTabView, recordIdOf } from './tabAccess';
 
 export type LoginRow = {
   id: string;
@@ -45,33 +45,25 @@ export async function loginsFor(_ctx: AuthContext, recordId: string): Promise<Lo
   return (data ?? []).map(mapLogin);
 }
 
+/**
+ * One call for the row and its password, and nothing read back: someone on Add
+ * only may not see what they just saved. Encrypted server-side, so the plaintext
+ * never appears in a Postgres statement the client could have crafted.
+ */
 export async function addLogin(
   ctx: AuthContext,
   recordId: string,
-  loginType: string,
-  link: string | null,
-  username: string | null,
-  note: string | null = null,
-): Promise<LoginRow> {
-  await requireTabEdit(ctx, recordId, 'logins');
+  login: { loginType: string; link: string | null; username: string | null; note: string | null; password: string | null },
+): Promise<void> {
+  await requireTabAdd(ctx, recordId, 'logins');
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('logins')
-    .insert({ record_id: recordId, login_type: loginType, link, username, note })
-    .select('id, record_id, login_type, link, username, note, position')
-    .single();
-  if (error) throw error;
-  return mapLogin(data);
-}
-
-/** Encrypts server-side and stores the ciphertext — the plaintext password
- * never appears in a Postgres statement the client could have crafted. */
-export async function setPassword(ctx: AuthContext, loginId: string, plaintext: string): Promise<void> {
-  await requireTabEditVia(ctx, 'logins', loginId, 'logins');
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('store_login_password', {
-    p_login_id: loginId,
-    p_plaintext: plaintext,
+  const { error } = await supabase.rpc('add_login', {
+    p_record: recordId,
+    p_type: login.loginType,
+    p_link: login.link,
+    p_username: login.username,
+    p_note: login.note,
+    p_plaintext: login.password,
     p_key: serverEnv.LOGIN_ENC_KEY,
   });
   if (error) throw error;

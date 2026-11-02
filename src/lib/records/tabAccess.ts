@@ -34,6 +34,7 @@ import { loadConfig } from './config';
 import {
   capGrant,
   fieldGrant,
+  maxGrant,
   moduleGrant,
   tabGrant,
   type AuthContext,
@@ -100,8 +101,8 @@ async function chainCapFor(
 
   // Read only until taken (Team Assignment). Asked only when there is an Edit
   // to take away, and the database's own checks say the same thing.
-  const editable = recordIds.filter((id) => out.get(id) === 'edit');
-  for (const id of await readOnlyRecords(ctx, editable)) out.set(id, 'view');
+  const writable = recordIds.filter((id) => out.get(id) === 'edit' || out.get(id) === 'add_only');
+  for (const id of await readOnlyRecords(ctx, writable)) out.set(id, capGrant('view', out.get(id)!));
   return out;
 }
 
@@ -130,13 +131,7 @@ async function capInModule(
 }
 
 function bestOf(mods: RecordModule[], capByModule: Map<string, Grant>): Grant {
-  let best: Grant = 'hidden';
-  for (const mod of mods) {
-    const g = capByModule.get(mod.id) ?? 'hidden';
-    if (g === 'edit') return 'edit';
-    if (g === 'view') best = 'view';
-  }
-  return best;
+  return mods.reduce<Grant>((best, mod) => maxGrant(best, capByModule.get(mod.id) ?? 'hidden'), 'hidden');
 }
 
 /**
@@ -323,7 +318,14 @@ export async function requireTabEdit(ctx: AuthContext, recordId: string, tabKey:
  * with the page — a revealed password, a signed download URL. */
 export async function requireTabView(ctx: AuthContext, recordId: string, tabKey: string): Promise<void> {
   const grant = await tabAccess(ctx, recordId, tabKey);
-  if (grant === 'hidden') throw new Error(`No access to this record's ${tabKey} tab.`);
+  if (grant !== 'view' && grant !== 'edit') throw new Error(`No access to this record's ${tabKey} tab.`);
+}
+
+/** May this viewer add to the tab: Edit, or Add only on Logins and Files. */
+export async function requireTabAdd(ctx: AuthContext, recordId: string, tabKey: string): Promise<'edit' | 'add_only'> {
+  const grant = await tabAccess(ctx, recordId, tabKey);
+  if (grant !== 'edit' && grant !== 'add_only') throw new Error(`No access to add to this record's ${tabKey} tab.`);
+  return grant;
 }
 
 /**

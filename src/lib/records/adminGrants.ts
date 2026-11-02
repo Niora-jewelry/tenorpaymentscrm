@@ -398,6 +398,7 @@ async function buildMatrix(
         kind: 'tab',
         hiddenOrFull: accessOptions.get(t.id) === 'hidden_full',
         viewCopies: t.kind === 'logins',
+        addOnly: t.allowsAddOnly ?? false,
       });
 
       const tabFields = (fieldsByTab.get(t.id) ?? []).sort((a, b) => a.position - b.position);
@@ -661,7 +662,7 @@ async function refuseCappedGrant(
       return { ok: false, message: 'This tab has no tab or sub-tab level — its setting in the Settings panel decides it.' };
     }
     if (scopeKind === 'subtab') return null;
-    const message = grantWriteRefusal({ kind: 'tab', hiddenOrFull: opts === 'hidden_full' }, level);
+    const message = grantWriteRefusal({ kind: 'tab', hiddenOrFull: opts === 'hidden_full', addOnly: config.tabs.find((t) => t.id === scopeId)?.allowsAddOnly ?? false }, level);
     return message ? { ok: false, message } : null;
   }
   if (scopeKind !== 'field') return null;

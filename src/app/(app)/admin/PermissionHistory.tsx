@@ -7,7 +7,7 @@ import type { AuditEntry } from '@/lib/records/permissionSettings';
 
 const LABEL: Record<string, string> = {
   no: 'No', yes: 'Yes', hidden: 'Hidden', mine: 'Only mine', all: 'All', full: 'Full access',
-  own: 'Own only', org: 'Whole org', view: 'View', edit: 'Edit',
+  own: 'Own only', org: 'Whole org', add_only: 'Add only', view: 'View', edit: 'Edit',
 };
 const show = (v: string | null) => (v === null ? 'Default' : LABEL[v] ?? v);
 

@@ -60,6 +60,7 @@ export {
   VISIBILITY_FIELD_KEY,
   coalesceGrant,
   capGrant,
+  maxGrant,
   resolveModuleGrant,
   resolveTabGrant,
   resolveSubtabGrant,

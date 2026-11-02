@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, IconButton, SpecNote } from '@/proto/ui/kit';
 import { addLoginAction, revealPasswordAction } from './actions';
+import { SavedNotice } from './SavedNotice';
 import type { LoginRow } from '@/lib/records/logins';
 
 export function LoginsPanel({
@@ -19,13 +20,39 @@ export function LoginsPanel({
   recordId,
   logins,
   editable,
+  addOnly = false,
 }: {
   moduleSlug: string;
   recordId: string;
   logins: LoginRow[];
   editable: boolean;
+  /** Add only: the button and nothing else. `logins` is empty, never fetched. */
+  addOnly?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const [saved, setSaved] = useState(0);
+
+  if (addOnly) {
+    return (
+      <div className="space-y-3">
+        <SavedNotice shown={saved} />
+        {adding ? (
+          <AddLoginForm
+            moduleSlug={moduleSlug}
+            recordId={recordId}
+            onDone={(didSave) => {
+              setAdding(false);
+              if (didSave) setSaved((n) => n + 1);
+            }}
+          />
+        ) : (
+          <Button size="sm" variant="ghost" icon="plus" onClick={() => setAdding(true)}>
+            Add login
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -180,7 +207,7 @@ function AddLoginForm({
 }: {
   moduleSlug: string;
   recordId: string;
-  onDone: () => void;
+  onDone: (saved: boolean) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -195,7 +222,7 @@ function AddLoginForm({
         return;
       }
       router.refresh();
-      onDone();
+      onDone(true);
     });
   };
 
@@ -238,7 +265,7 @@ function AddLoginForm({
         <Button size="sm" variant="primary" type="submit" loading={pending} loadingLabel="Saving…">
           Add login
         </Button>
-        <Button size="sm" variant="ghost" type="button" disabled={pending} onClick={onDone}>
+        <Button size="sm" variant="ghost" type="button" disabled={pending} onClick={() => onDone(false)}>
           Cancel
         </Button>
       </div>

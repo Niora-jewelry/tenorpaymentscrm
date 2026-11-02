@@ -10,7 +10,8 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
-import { requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { requireTabAdd, requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES_PER_ROW = 5;
@@ -42,6 +43,10 @@ export type FileEntry = {
   uploadedBy: string;
   uploadedAt: string;
 };
+
+/** All an Add only viewer gets of the Files tab. `hasFile` is only ever true on
+ *  a preset row. */
+export type FileRowForAdding = { id: string; kind: FileRowKind; name: string; hasFile: boolean };
 
 function mapFileRow(r: Record<string, unknown>): FileRow {
   return {
@@ -165,6 +170,21 @@ export async function ensureApplicationRows(_ctx: AuthContext, recordId: string)
   if (error) throw error;
 }
 
+/** The Files tab for someone on Add only. Makes the preset rows if this is the
+ *  record's first open, as `ensureApplicationRows` does for an editor. */
+export async function fileRowsForAdding(_ctx: AuthContext, recordId: string): Promise<FileRowForAdding[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('file_rows_for_adding', {
+    p_record: recordId,
+    p_names: [...APPLICATION_ROWS],
+    p_positions: APPLICATION_ROWS.map((_, i) => i * 10),
+  });
+  if (error) throw error;
+  return ((data ?? []) as { row_id: string; row_name: string; row_kind: FileRowKind; has_file: boolean }[]).map((r) => ({
+    id: r.row_id, kind: r.row_kind, name: r.row_name, hasFile: r.has_file,
+  }));
+}
+
 /**
  * Adds a file row to either section.
  *
@@ -190,16 +210,48 @@ export async function addFileRow(
   recordId: string,
   name: string,
   kind: FileRowKind = 'other',
-): Promise<FileRow> {
-  await requireTabEdit(ctx, recordId, 'files');
+): Promise<void> {
+  await requireTabAdd(ctx, recordId, 'files');
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('file_rows')
-    .insert({ record_id: recordId, kind, name, locked: false })
-    .select('*')
-    .single();
+  const { error } = await supabase.rpc('add_file_row', { p_record: recordId, p_name: name, p_kind: kind });
   if (error) throw error;
-  return mapFileRow(data);
+}
+
+/**
+ * The upload for someone on Add only. Storage has to read a new object back to
+ * write it, and this viewer may not read, so the bytes go in with the service
+ * role once the row has been checked. `record_file_upload` is still called as the
+ * viewer, and it is what decides.
+ */
+async function uploadForAdding(
+  ctx: AuthContext,
+  recordId: string,
+  fileRowId: string,
+  file: { name: string; bytes: Uint8Array; contentType: string },
+): Promise<{ ok: true; file: null } | { ok: false; error: 'too_large' | 'row_full' }> {
+  const row = (await fileRowsForAdding(ctx, recordId)).find((r) => r.id === fileRowId);
+  if (!row) throw new Error('Not found');
+  const supabase = await createSupabaseServerClient();
+  const { data: full, error: fullError } = await supabase.rpc('file_row_full', { p_file_row: row.id });
+  if (fullError) throw fullError;
+  if (full) return { ok: false, error: 'row_full' };
+
+  const path = `${recordId}/${row.kind}/${row.id}/${Date.now()}-${file.name}`;
+  const bucket = supabaseAdmin().storage.from('records');
+  const { error: uploadError } = await bucket.upload(path, file.bytes, { contentType: file.contentType, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { error } = await supabase.rpc('record_file_upload', {
+    p_file_row_id: row.id,
+    p_storage_path: path,
+    p_name: file.name,
+    p_size_bytes: file.bytes.byteLength,
+  });
+  if (error) {
+    await bucket.remove([path]);
+    throw error;
+  }
+  return { ok: true, file: null };
 }
 
 /**
@@ -221,11 +273,15 @@ export async function uploadFile(
    */
   fileRow: { id: string; kind: 'application' | 'other' | 'case' } | { id: string; kind: 'field'; fieldKey: string },
   file: { name: string; bytes: Uint8Array; contentType: string },
-): Promise<{ ok: true; file: FileEntry } | { ok: false; error: 'too_large' | 'row_full' }> {
+): Promise<{ ok: true; file: FileEntry | null } | { ok: false; error: 'too_large' | 'row_full' }> {
   // A Files FIELD is governed by the field's own grant (migration 9807), and
   // its path carries the field key so the bucket policy can ask the same.
   if (fileRow.kind === 'field') await requireFieldFilesEdit(recordId, fileRow.fieldKey);
-  else await requireTabEdit(ctx, recordId, fileRow.kind === 'case' ? 'cases' : 'files');
+  else if (fileRow.kind === 'case') await requireTabEdit(ctx, recordId, 'cases');
+  else if ((await requireTabAdd(ctx, recordId, 'files')) === 'add_only') {
+    if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
+    return uploadForAdding(ctx, recordId, fileRow.id, file);
+  }
   if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
 
   const existing = await filesFor(ctx, fileRow.id);
@@ -393,7 +449,7 @@ export async function uploadFieldFile(
   recordId: string,
   fieldKey: string,
   file: { name: string; bytes: Uint8Array; contentType: string },
-): Promise<{ ok: true; file: FileEntry } | { ok: false; error: 'too_large' | 'row_full' }> {
+): Promise<{ ok: true; file: FileEntry | null } | { ok: false; error: 'too_large' | 'row_full' }> {
   await requireFieldFilesEdit(recordId, fieldKey);
   const supabase = await createSupabaseServerClient();
   const { data: existing, error } = await supabase

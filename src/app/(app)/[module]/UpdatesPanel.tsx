@@ -289,7 +289,7 @@ function Thread({
             <span className="ml-auto flex items-center gap-0.5">
               <ShareItem kind="update" itemId={root.id} />
             </span>
-            {editable && !byAutomation && (mine || isAdmin) ? (
+            {editable && !byAutomation && !root.isLog && (mine || isAdmin) ? (
               <span className="flex gap-0.5">
                 {/* A field entry records what was sent; it can be removed, not rewritten. */}
                 {!root.fieldKey ? (

@@ -135,7 +135,7 @@ export async function attachToCase(
   caseId: string,
   point: CaseAttachmentPoint,
   file: { name: string; bytes: Uint8Array; contentType: string },
-): Promise<{ ok: true; file: FileEntry } | { ok: false; error: 'too_large' | 'row_full' }> {
+): Promise<{ ok: true; file: FileEntry | null } | { ok: false; error: 'too_large' | 'row_full' }> {
   // Resolved through the request's own RLS-bound client, so a case the viewer
   // cannot see throws here and the two answers "does not exist" and "not yours"
   // stay indistinguishable.

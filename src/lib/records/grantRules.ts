@@ -29,7 +29,12 @@
  * into the browser bundle.
  */
 
-export type Grant = 'hidden' | 'view' | 'edit';
+/**
+ * `add_only` (client spec of 1 Nov 2026) is a level on the Logins and Files tabs
+ * only: the person may add, and sees nothing that is already there. It ranks
+ * between Hidden and View, so every read asks for at least View.
+ */
+export type Grant = 'hidden' | 'add_only' | 'view' | 'edit';
 /**
  * `membership` (migration 9765) is the fifth kind: may this person add records
  * to, and remove them from, the module named by `scope_id`? It reuses the
@@ -40,14 +45,14 @@ export type Grant = 'hidden' | 'view' | 'edit';
 export type GrantScope = 'module' | 'tab' | 'subtab' | 'field' | 'membership';
 
 /**
- * The three levels as a runtime list, ordered least → most permissive.
+ * The levels as a runtime list, ordered least → most permissive.
  *
  * Same job `FIELD_TYPES` and `SWATCHES` do in `adminSchemas.ts`, pinned the
  * same way: a level added to the `permission_level` enum without being offered
  * here becomes a compile error rather than a level the admin silently can never
  * pick.
  */
-export const GRANT_LEVELS = ['hidden', 'view', 'edit'] as const satisfies readonly Grant[];
+export const GRANT_LEVELS = ['hidden', 'add_only', 'view', 'edit'] as const satisfies readonly Grant[];
 
 type MissingGrant = Exclude<Grant, (typeof GRANT_LEVELS)[number]>;
 const _everyGrantIsOffered: [MissingGrant] extends [never] ? true : { missing: MissingGrant } = true;
@@ -235,8 +240,18 @@ export function resolveFieldGrant(
  */
 export function capGrant(outer: Grant, inner: Grant): Grant {
   if (outer === 'hidden') return 'hidden';
+  if (outer === 'add_only') return inner === 'hidden' ? 'hidden' : 'add_only';
   if (outer === 'view' && inner === 'edit') return 'view';
+  // View over a record means nothing can be added, and Add only shows nothing else.
+  if (outer === 'view' && inner === 'add_only') return 'hidden';
   return inner;
+}
+
+/** A field has no Add only: the tabs that offer it hold no fields. If one ever
+ *  did, it reads as Hidden, never as something to show. */
+export type FieldGrant = Exclude<Grant, 'add_only'>;
+export function asFieldGrant(g: Grant): FieldGrant {
+  return g === 'add_only' ? 'hidden' : g;
 }
 
 /**
@@ -251,8 +266,7 @@ export function capGrant(outer: Grant, inner: Grant): Grant {
  * record actually appears in.
  */
 export function maxGrant(a: Grant, b: Grant): Grant {
-  const rank = { hidden: 0, view: 1, edit: 2 } as const;
-  return rank[a] >= rank[b] ? a : b;
+  return GRANT_LEVELS.indexOf(a) >= GRANT_LEVELS.indexOf(b) ? a : b;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -268,8 +282,9 @@ export function maxGrant(a: Grant, b: Grant): Grant {
 export type ScopeCaps =
   | { kind: 'module'; adminOnly: boolean }
   /** `hiddenOrFull`: a tab offering Hidden · Full access only (`tabs.access_options`,
-   *  migration 9821). `viewCopies`: View on this tab is "View / copy only". */
-  | { kind: 'tab'; hiddenOrFull?: boolean; viewCopies?: boolean }
+   *  migration 9821). `viewCopies`: View on this tab is "View / copy only".
+   *  `addOnly`: this tab offers Add only (`tabs.allows_add_only`, migration 9856). */
+  | { kind: 'tab'; hiddenOrFull?: boolean; viewCopies?: boolean; addOnly?: boolean }
   | { kind: 'field'; readOnly: boolean; frozenColumn: boolean }
   /** The add/remove-records setting for one module. Resolved by
    *  `resolveMembership` against that module's own effective grant. */
@@ -397,6 +412,9 @@ export function resolveScope(
  * Returns the reason, or null when the write is allowed.
  */
 export function grantWriteRefusal(caps: ScopeCaps, level: Grant): string | null {
+  if (level === 'add_only' && !(caps.kind === 'tab' && caps.addOnly)) {
+    return 'Add only is a tab level, for the Logins and Files tabs.';
+  }
   // The add/remove setting has two answers, Yes (edit) and No (view). Hidden
   // would store a level the resolver treats as No anyway — a no-op the screen
   // could not distinguish, which is the lie this function exists to refuse.

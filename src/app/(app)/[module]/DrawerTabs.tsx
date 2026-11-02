@@ -20,7 +20,7 @@ import { PanelErrorBoundary } from './PanelErrorBoundary';
 import { TabNotes } from './NoteThread';
 import { CasesPanel } from './CasesPanel';
 import { UpdatesPanel } from './UpdatesPanel';
-import { FilesPanel } from './FilesPanel';
+import { AddOnlyFilesPanel, FilesPanel } from './FilesPanel';
 import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
@@ -28,7 +28,7 @@ import { ResidualsPanel } from './ResidualsPanel';
 import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
-import type { FileRow, FileEntry } from '@/lib/records/files';
+import type { FileRow, FileEntry, FileRowForAdding } from '@/lib/records/files';
 import type { LoginRow } from '@/lib/records/logins';
 import type { StatementPeriod, StatementFile } from '@/lib/records/statements';
 import type { Message } from '@/lib/records/messages';
@@ -85,6 +85,8 @@ export type TabPayload = {
    * a module and View on one tab inside it. A Hidden tab never arrives here
    * at all; the page drops it from the strip. */
   editable: boolean;
+  /** Add only: the tab opens, its contents never reach the browser. */
+  addOnly?: boolean;
   count?: number;
   fieldCompleteness?: { have: number; need: number };
   subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean }[];
@@ -112,6 +114,7 @@ export function DrawerTabs({
   updates,
   teamRoster,
   applicationRows,
+  fileRowsAdding,
   filesByRow,
   logins,
   statementPeriods,
@@ -168,6 +171,8 @@ export function DrawerTabs({
   updates: Update[];
   teamRoster: TeamRosterEntry[];
   applicationRows: FileRow[];
+  /** The Files tab for someone on Add only; empty for everyone else. */
+  fileRowsAdding: FileRowForAdding[];
   filesByRow: Record<string, FileEntry[]>;
   logins: LoginRow[];
   statementPeriods: StatementPeriod[];
@@ -405,7 +410,7 @@ export function DrawerTabs({
         view-only is a TAB grant, and an admin looking for the setting needs to
         know which screen to open.
       */}
-      {!activeTab.editable ? (
+      {!activeTab.editable && !activeTab.addOnly ? (
         <div className="flex items-center gap-2 border-b border-line-soft bg-warn-bg px-3 py-1.5 text-[12px] leading-snug text-ink-700">
           <Icon name="lock" size={12} className="shrink-0 text-warn" />
           <span>
@@ -546,6 +551,8 @@ export function DrawerTabs({
             openMention={openMention?.sourceKind === 'mention_update' ? openMention : null}
             fieldPathByUpdate={fieldPathByUpdate}
           />
+        ) : activeTab.kind === 'files' && activeTab.addOnly ? (
+          <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} />
         ) : activeTab.kind === 'files' ? (
           <FilesPanel
             moduleSlug={moduleSlug}
@@ -559,7 +566,7 @@ export function DrawerTabs({
             focusRowId={focusFieldKey}
           />
         ) : activeTab.kind === 'logins' ? (
-          <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} />
+          <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} addOnly={activeTab.addOnly} />
         ) : activeTab.kind === 'statements' ? (
           <StatementsPanel
             moduleSlug={moduleSlug}
@@ -620,17 +627,19 @@ export function DrawerTabs({
           Communication → Text keep separate threads, which is what "each sub
           tab" means.
         */}
-        <div className="mt-4">
-          <TabNotes
-            moduleSlug={moduleSlug}
-            recordId={recordId}
-            scopeId={tabScopeId}
-            notes={notesByScope[`tab:${tabScopeId}`] ?? []}
-            authorNames={authorNames}
-            viewerId={viewerId}
-            isAdmin={isAdmin}
-          />
-        </div>
+        {activeTab.addOnly ? null : (
+          <div className="mt-4">
+            <TabNotes
+              moduleSlug={moduleSlug}
+              recordId={recordId}
+              scopeId={tabScopeId}
+              notes={notesByScope[`tab:${tabScopeId}`] ?? []}
+              authorNames={authorNames}
+              viewerId={viewerId}
+              isAdmin={isAdmin}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

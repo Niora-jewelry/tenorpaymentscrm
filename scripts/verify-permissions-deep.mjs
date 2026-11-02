@@ -62,7 +62,10 @@ let recordId = null;
 async function cleanup() {
   const { data } = await admin.auth.admin.listUsers();
   const existing = data?.users?.find((u) => u.email === EMAIL);
-  if (existing) await admin.auth.admin.deleteUser(existing.id);
+  if (existing) {
+    await db.query(`delete from permission_settings where owner_kind = 'user' and owner_id = $1`, [existing.id]);
+    await admin.auth.admin.deleteUser(existing.id);
+  }
   await db.query(`delete from invites where email = $1`, [EMAIL]);
   await db.query(`delete from profiles where email in ($1, 'zz-no-invite@tapdash.test')`, [EMAIL]);
   await db.query(
@@ -228,6 +231,18 @@ try {
     (await db.query(`select count(*)::int n from record_team_members where record_id=$1 and user_id=$2`, [recordId, userId])).rows[0].n,
     1);
 
+  // Module access is a setting now (Permissions spec: Hidden / Only mine / All),
+  // and a person with none set sees no module, so nothing below would be
+  // reachable. Every real user is given one through their user type. Only mine,
+  // so that being on the record's team is still what lets them see it.
+  const setModule = (moduleId, value) =>
+    db.query(
+      `insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, $2, $3)
+       on conflict (owner_kind, owner_id, key) do update set value = excluded.value`,
+      [userId, `module:${moduleId}`, value],
+    );
+  for (const m of [leads, deals]) await setModule(m.id, 'mine');
+
   // A signed-in client for the scratch user.
   const session = await (
     await fetch(`${SUPA}/auth/v1/token?grant_type=password`, {
@@ -306,16 +321,18 @@ try {
   check('hidden in BOTH modules hides it outright',
     await rpc('record_tab_grant', { rec: recordId, p_tab_key: 'overview' }), 'hidden');
 
-  /* A module set to view must cap an edit-level tab inside it. */
+  /* The module is still the ceiling. There is no "view-only module" any more
+     (modules are Hidden / Only mine / All), so the cap is tested as it now is:
+     hidden in one module, the tab still comes through the other; hidden in
+     both, an Edit tab inside them is gone. */
   await db.query(`delete from user_grants where user_id = $1 and scope_kind = 'tab'`, [userId]);
-  await db.query(`delete from user_grants where user_id = $1 and scope_kind = 'module'`, [userId]);
-  await db.query(
-    `insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id)
-     values ($1, 'module', $2, 'view', null), ($1, 'module', $3, 'view', null)`,
-    [userId, leads.id, deals.id],
-  );
-  check('a view-only module caps its tabs to view',
-    await rpc('record_tab_grant', { rec: recordId, p_tab_key: 'overview' }), 'view');
+  await setModule(leads.id, 'hidden');
+  check('a module set to Hidden leaves the tab to the other module',
+    await rpc('record_tab_grant', { rec: recordId, p_tab_key: 'overview' }), 'edit');
+  await setModule(deals.id, 'hidden');
+  check('both modules Hidden: the tab inside them is hidden',
+    await rpc('record_tab_grant', { rec: recordId, p_tab_key: 'overview' }), 'hidden');
+  for (const m of [leads, deals]) await setModule(m.id, 'mine');
 
   // ══════════════════════════════════════════════════════════════════════
   section('THE SECURITY BOUNDARY — hidden data must be ABSENT, not blank');
@@ -415,6 +432,12 @@ try {
     .from('user_grants')
     .insert({ user_id: userId, scope_kind: 'module', scope_id: leads.id, grant_level: 'edit' });
   check('cannot grant themselves permissions', escalate.error ? 'refused' : 'ALLOWED', 'refused');
+
+  // The settings table is where module access lives now: the same refusal there.
+  const escalateSetting = await asUser
+    .from('permission_settings')
+    .upsert({ owner_kind: 'user', owner_id: userId, key: 'admin.permissions', value: 'full' });
+  check('cannot give themselves a setting', escalateSetting.error ? 'refused' : 'ALLOWED', 'refused');
 
   const roleChange = await asUser
     .from('profiles')

@@ -5,6 +5,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 
 const DB_URL = process.env.SUPABASE_DB_URL;
 const suite = DB_URL ? describe : describe.skip;
@@ -75,6 +76,8 @@ suite('Files Required', () => {
     await db.connect();
     await q('begin');
     contacts = (await one<{ id: string }>(`select id from modules where slug = 'contacts'`)).id;
+    // The Add only spec's defaults (Files = Edit for everyone), applied at deploy.
+    await q(readFileSync('supabase/migrations/20260819009890_add_only_defaults.sql', 'utf8'));
     filesTab = (await one<{ id: string }>(`select id from tabs where key = 'files'`)).id;
     member = await makeUser('sales_agent');
     reconciler = await makeUser('accounting');

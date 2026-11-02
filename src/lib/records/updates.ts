@@ -67,16 +67,29 @@ export async function updatesFor(_ctx: AuthContext, recordId: string): Promise<U
   // A log entry's own body names nothing. RLS returns the versions that do, only
   // where this viewer may see what they name, and the highest of those is theirs.
   const detail = new Map<string, { rank: number; body: string }>();
+  // An entry in parts (a lock or hide over several items) names each one only
+  // to someone who can see it: "Locked: Pricing, Owner ID."
+  const parts = new Map<string, { verb: string; names: { rank: number; name: string }[] }>();
   if ((data ?? []).some((r) => r.is_log)) {
     const { data: rows, error: detailError } = await supabase
       .from('update_details')
-      .select('update_id, rank, body')
+      .select('update_id, rank, body, part')
       .eq('record_id', recordId);
     if (detailError) throw detailError;
     for (const d of rows ?? []) {
-      const seen = detail.get(d.update_id as string);
-      if (!seen || (d.rank as number) > seen.rank) detail.set(d.update_id as string, { rank: d.rank as number, body: d.body as string });
+      const id = d.update_id as string;
+      if (d.part) {
+        const p = parts.get(id) ?? { verb: d.part as string, names: [] };
+        p.names.push({ rank: d.rank as number, name: d.body as string });
+        parts.set(id, p);
+        continue;
+      }
+      const seen = detail.get(id);
+      if (!seen || (d.rank as number) > seen.rank) detail.set(id, { rank: d.rank as number, body: d.body as string });
     }
+  }
+  for (const [id, p] of parts) {
+    detail.set(id, { rank: 0, body: `${p.verb}: ${p.names.sort((a, b) => a.rank - b.rank).map((n) => n.name).join(', ')}.` });
   }
 
   return (data ?? []).map((r) => ({

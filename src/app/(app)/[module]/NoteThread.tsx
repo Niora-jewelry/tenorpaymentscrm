@@ -26,6 +26,7 @@ export function TabNotes({
   authorNames,
   viewerId,
   isAdmin,
+  readOnly = false,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -34,6 +35,8 @@ export function TabNotes({
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
+  /** Locked by an automation: read, not added to, changed or removed. */
+  readOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -46,6 +49,7 @@ export function TabNotes({
       >
         <Icon name="sticky-note" size={13} className="text-ink-400" />
         <span className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">Tab notes</span>
+        {readOnly ? <Icon name="lock" size={11} className="text-[#8a5a09]" aria-label="Locked by an automation" /> : null}
         {notes.length ? <CountPill n={notes.length} /> : null}
         <Icon
           name="chevron-down"
@@ -65,6 +69,7 @@ export function TabNotes({
             viewerId={viewerId}
             isAdmin={isAdmin}
             title="this tab"
+            readOnly={readOnly}
           />
         </div>
       ) : null}
@@ -83,6 +88,7 @@ export function NoteThread({
   isAdmin,
   title,
   compact,
+  readOnly = false,
 }: {
   moduleSlug: string;
   recordId: string;
@@ -94,6 +100,7 @@ export function NoteThread({
   isAdmin: boolean;
   title: string;
   compact?: boolean;
+  readOnly?: boolean;
 }) {
   const router = useRouter();
   const [now] = useState(() => new Date());
@@ -189,7 +196,7 @@ export function NoteThread({
                       {scopeKind === 'tab' ? (
                         <span className="ml-auto"><ShareItem kind="note" itemId={n.id} /></span>
                       ) : null}
-                      {mine || isAdmin ? (
+                      {!readOnly && (mine || isAdmin) ? (
                         <span className={`${scopeKind === 'tab' ? '' : 'ml-auto '}flex gap-0.5`}>
                           <IconButton
                             icon="pencil"
@@ -219,7 +226,7 @@ export function NoteThread({
         )}
       </div>
 
-      <div className="mt-1.5 flex gap-1.5">
+      {readOnly ? null : <div className="mt-1.5 flex gap-1.5">
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -231,7 +238,7 @@ export function NoteThread({
         <Button size="sm" icon="plus" loading={pending} loadingLabel="Adding…" disabled={!draft.trim()} onClick={submit}>
           Add
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }

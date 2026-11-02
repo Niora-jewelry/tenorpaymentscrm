@@ -13,6 +13,7 @@ import { Icon } from '@/proto/ui/icons';
 import { SectionLabel } from '@/proto/ui/kit';
 import { monthLabel } from '@/proto/ui/tokens';
 import { uploadStatementAction, deleteStatementAction, getStatementUrlAction } from './actions';
+import { useDownloadAllowed } from './Restrictions';
 import type { StatementPeriod, StatementFile } from '@/lib/records/statements';
 
 export function StatementsPanel({
@@ -21,13 +22,17 @@ export function StatementsPanel({
   periods,
   files,
   editable,
+  canAdd = editable,
 }: {
   moduleSlug: string;
   recordId: string;
+  /** A lock lets statements in and nothing else (spec). */
+  canAdd?: boolean;
   periods: StatementPeriod[];
   files: StatementFile[];
   editable: boolean;
 }) {
+  const canDownload = useDownloadAllowed(['tab:statements']);
   const years = useMemo(
     () => Array.from(new Set(periods.map((p) => p.year))).sort((a, b) => a - b),
     [periods],
@@ -73,6 +78,8 @@ export function StatementsPanel({
             period={period}
             files={filesByPeriod[period.id] ?? []}
             editable={editable}
+            canAdd={canAdd}
+            canDownload={canDownload}
           />
         ))}
       </div>
@@ -91,12 +98,16 @@ function PeriodRow({
   period,
   files,
   editable,
+  canAdd,
+  canDownload,
 }: {
   moduleSlug: string;
   recordId: string;
   period: StatementPeriod;
   files: StatementFile[];
   editable: boolean;
+  canAdd: boolean;
+  canDownload: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -177,8 +188,8 @@ function PeriodRow({
               <Icon name="file-text" size={11} className="text-ink-400 shrink-0" />
               <button
                 type="button"
-                title={`Open ${file.name}`}
-                disabled={opening === file.id}
+                title={canDownload ? `Open ${file.name}` : 'Download is off while this tab is locked'}
+                disabled={opening === file.id || !canDownload}
                 onClick={() => openStatement(file.id)}
                 className="truncate text-left underline decoration-line underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-600 disabled:opacity-60"
               >
@@ -197,7 +208,7 @@ function PeriodRow({
               ) : null}
             </span>
           ))}
-          {editable ? (
+          {canAdd ? (
             files.length === 0 ? (
               <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-line px-2 py-1 text-[11.5px] text-ink-400 transition-colors hover:border-brand-600 hover:text-brand-700">
                 <Icon name="upload" size={11} />

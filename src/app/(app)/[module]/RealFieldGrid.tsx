@@ -16,6 +16,7 @@
  * PLAN §13.3/§13.4's "value retained, red ring, inline reason" and "loser is
  * told, both values shown."
  */
+import { useRestrictions } from './Restrictions';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from 'react';
 import {
   DndContext,
@@ -168,6 +169,7 @@ function SortableFieldCell({
   return (
     <div
       ref={setNodeRef}
+      data-field={id}
       style={{
         gridColumn: span,
         transform: CSS.Transform.toString(transform),
@@ -196,6 +198,7 @@ export function RealFieldGrid({
   moduleSlug,
   recordId,
   tabId,
+  tabKey,
   subtabId,
   fields,
   repeatGroups,
@@ -223,6 +226,8 @@ export function RealFieldGrid({
 }: {
   moduleSlug: string;
   recordId: string;
+  /** For a lock on the whole tab: its key, which is what a lock names. */
+  tabKey?: string;
   tabId: string;
   /** The viewer's unread mentions on this tab's fields, by field key. */
   mentionsByField?: Record<string, NotificationView[]>;
@@ -282,6 +287,25 @@ export function RealFieldGrid({
    * quiet line rather than an alert. But not silence.
    */
   const [prefError, setPrefError] = useState<string | null>(null);
+
+  /*
+   * A lock that lands while someone is in a field (Lock & Hide spec): the page
+   * refreshes, the field turns read-only and what they typed goes, so say why.
+   * Worked out while rendering, from the grants before and after, as React asks
+   * for state that follows a prop.
+   */
+  const { marks } = useRestrictions();
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [lockNotice, setLockNotice] = useState<{ key: string; text: string } | null>(null);
+  const [seenGrants, setSeenGrants] = useState(grantByKey);
+  if (seenGrants !== grantByKey) {
+    setSeenGrants(grantByKey);
+    if (editingKey && seenGrants[editingKey] === 'edit' && grantByKey[editingKey] !== 'edit') {
+      const items = [`field:${editingKey}`, ...(subtabId ? [`subtab:${subtabId}`] : []), ...(tabKey ? [`tab:${tabKey}`] : [])];
+      const mark = marks.find((m) => m.kind === 'lock' && !m.lifted && items.includes(m.item));
+      if (mark) setLockNotice({ key: editingKey, text: `This field was just locked by Automation: ${mark.automationName}.` });
+    }
+  }
   const [, startTransition] = useTransition();
 
   /* Fields whose last write did not land. Derived from `conflicts` rather than
@@ -705,6 +729,15 @@ export function RealFieldGrid({
           {prefError}
         </p>
       ) : null}
+      {lockNotice ? (
+        <p role="alert" className="flex items-center gap-2 rounded-lg border border-[#f7e0af] bg-[#fdf1d8] px-3 py-2 text-[12.5px] font-medium text-[#8a5a09]">
+          <Icon name="lock" size={12} className="shrink-0" />
+          {lockNotice.text}
+          <button type="button" onClick={() => setLockNotice(null)} className="ml-auto text-[#8a5a09]/70 hover:text-[#8a5a09]" aria-label="Dismiss">
+            <Icon name="x" size={12} />
+          </button>
+        </p>
+      ) : null}
 
       {fields.length ? (
         <DndContext
@@ -714,6 +747,10 @@ export function RealFieldGrid({
           onDragEnd={handleFieldDragEnd}
         >
         <SortableContext items={fields.map((f) => f.id)} strategy={rectSortingStrategy}>
+        <div
+          className="contents"
+          onFocusCapture={(e) => setEditingKey((e.target as HTMLElement).closest('[data-field]')?.getAttribute('data-field') ?? null)}
+        >
         {sectionsOf(fields).map((sec) => (
         <section key={sec.key}>
           {sec.label ? <SectionHeading label={sec.label} /> : null}
@@ -851,6 +888,7 @@ export function RealFieldGrid({
               </div>
         </section>
         ))}
+        </div>
         </SortableContext>
         </DndContext>
       ) : null}

@@ -21,6 +21,7 @@ import { TabNotes } from './NoteThread';
 import { CasesPanel } from './CasesPanel';
 import { UpdatesPanel } from './UpdatesPanel';
 import { AddOnlyFilesPanel, FilesPanel } from './FilesPanel';
+import { ReapplyBar, RestrictionMarks, useRestrictions } from './Restrictions';
 import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
@@ -87,6 +88,10 @@ export type TabPayload = {
   editable: boolean;
   /** Add only: the tab opens, its contents never reach the browser. */
   addOnly?: boolean;
+  /** May add to it: Edit, or a lock over a permission that could. */
+  canAdd?: boolean;
+  /** An automation lock this viewer is under: the lock icon says it, not a banner. */
+  locked?: boolean;
   count?: number;
   fieldCompleteness?: { have: number; need: number };
   subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean }[];
@@ -115,6 +120,7 @@ export function DrawerTabs({
   teamRoster,
   applicationRows,
   fileRowsAdding,
+  hiddenFileRows,
   canMarkFilesRequired,
   filesByRow,
   logins,
@@ -174,6 +180,8 @@ export function DrawerTabs({
   applicationRows: FileRow[];
   /** The Files tab for someone on Add only; empty for everyone else. */
   fileRowsAdding: FileRowForAdding[];
+  /** Rows an automation hid from this viewer, who may still add to them. */
+  hiddenFileRows: FileRowForAdding[];
   canMarkFilesRequired: boolean;
   filesByRow: Record<string, FileEntry[]>;
   logins: LoginRow[];
@@ -200,6 +208,7 @@ export function DrawerTabs({
   teamSlot?: ReactNode;
   isAdmin: boolean;
 }) {
+  const { effects } = useRestrictions();
   const [activeTabId, setActiveTabId] = useState(openTabId ?? tabs[0]?.id ?? '');
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
@@ -360,8 +369,16 @@ export function DrawerTabs({
   /** The notes scope for whatever is on screen: one thread per tab, or per
    *  subtab where the tab has them. Matches the `tab:<id>` / `tab:<id>/<sub>`
    *  keys `allNotesFor` groups by. */
+  /* Tab notes are an item of their own, inside their tab and sub-tab (spec). A
+     hide on them never reaches the browser, so it only ever finds a lock here. */
+  const notesRestriction = (key: string, subtabId: string | null) => {
+    const items = [`notes:${key}`, `tab:${key}`, ...(subtabId ? [`subtab:${subtabId}`] : [])];
+    if (items.some((i) => effects[i] === 'hide')) return 'hide' as const;
+    return items.some((i) => effects[i] === 'lock') ? ('lock' as const) : null;
+  };
   const tabScopeId = activeSubtabId ? `${activeTab.id}/${activeSubtabId}` : activeTab.id;
   const activeSubtab = activeTab.subtabs.find((s) => s.id === activeSubtabId);
+  const notesEffect = notesRestriction(activeTab.key, activeSubtabId ?? null);
 
   return (
     <div className="mt-4">
@@ -378,10 +395,13 @@ export function DrawerTabs({
               }`}
             >
               {t.label}
+              <span className="ml-1 empty:hidden">
+                <RestrictionMarks item={`tab:${t.key}`} />
+              </span>
               {/* A tab the viewer cannot edit says so in the strip, so "why
                 * won't this save" is answered before they try. Hidden tabs
                 * never reach here — the page drops them entirely. */}
-              {!t.editable ? (
+              {!t.editable && !t.locked ? (
                 <Icon
                   name="lock"
                   size={11}
@@ -412,7 +432,8 @@ export function DrawerTabs({
         view-only is a TAB grant, and an admin looking for the setting needs to
         know which screen to open.
       */}
-      {!activeTab.editable && !activeTab.addOnly ? (
+      <ReapplyBar />
+      {!activeTab.editable && !activeTab.addOnly && !activeTab.locked ? (
         <div className="flex items-center gap-2 border-b border-line-soft bg-warn-bg px-3 py-1.5 text-[12px] leading-snug text-ink-700">
           <Icon name="lock" size={12} className="shrink-0 text-warn" />
           <span>
@@ -451,7 +472,7 @@ export function DrawerTabs({
                   active ? 'bg-brand-600 text-white' : 'text-ink-500 hover:bg-canvas'
                 }`}
               >
-                {s.label}
+                {s.label}<span className="ml-1 empty:hidden"><RestrictionMarks item={`subtab:${s.id}`} /></span>
                 {mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`] ? <MentionPill n={mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`]} onDark={active} /> : null}
               </button>
             );
@@ -494,6 +515,7 @@ export function DrawerTabs({
                   moduleSlug={moduleSlug}
                   recordId={recordId}
                   tabId={activeTab.id}
+                  tabKey={activeTab.key}
                   subtabId={activeSubtabId ?? null}
                   fields={fields}
                   repeatGroups={activeTab.repeatGroupsBySubtab[activeSubtabId ?? '_'] ?? []}
@@ -565,11 +587,13 @@ export function DrawerTabs({
             rows={applicationRows}
             filesByRow={filesByRow}
             editable={activeTab.editable}
+            canAdd={activeTab.canAdd ?? activeTab.editable}
+            hiddenRows={hiddenFileRows}
             canMark={canMarkFilesRequired}
             focusRowId={focusFieldKey}
           />
         ) : activeTab.kind === 'logins' ? (
-          <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} addOnly={activeTab.addOnly} />
+          <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} canAdd={activeTab.canAdd ?? activeTab.editable} addOnly={activeTab.addOnly} />
         ) : activeTab.kind === 'statements' ? (
           <StatementsPanel
             moduleSlug={moduleSlug}
@@ -577,6 +601,7 @@ export function DrawerTabs({
             periods={statementPeriods}
             files={statementFiles}
             editable={activeTab.editable}
+            canAdd={activeTab.canAdd ?? activeTab.editable}
           />
         ) : activeTab.kind === 'residuals' ? (
           /*
@@ -630,9 +655,10 @@ export function DrawerTabs({
           Communication → Text keep separate threads, which is what "each sub
           tab" means.
         */}
-        {activeTab.addOnly ? null : (
+        {activeTab.addOnly || notesEffect === 'hide' ? null : (
           <div className="mt-4">
             <TabNotes
+              readOnly={notesEffect === 'lock'}
               moduleSlug={moduleSlug}
               recordId={recordId}
               scopeId={tabScopeId}

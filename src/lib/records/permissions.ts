@@ -59,6 +59,7 @@ export {
   FROZEN_COLUMN_FIELD_KEY,
   VISIBILITY_FIELD_KEY,
   coalesceGrant,
+  capByRestriction,
   capGrant,
   maxGrant,
   resolveModuleGrant,

@@ -23,9 +23,11 @@ import { assignableTeams, teamsFor } from '@/lib/teams/service';
 import type { AssignableTeam, RecordTeams } from '@/lib/teams/types';
 import { AssignToMe, OpenRecordNotice, TeamAssignments } from './TeamAssignments';
 import { tabAccessById } from '@/lib/records/tabAccess';
-import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
+import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capByRestriction, capGrant, type Grant } from '@/lib/records/permissions';
 import { asFieldGrant } from '@/lib/records/grantRules';
 import { FILES_REQUIRED_KEY } from '@/lib/records/filesRequired';
+import { effectOf, fieldItems, restrictionsFor, tabBaseGrant } from '@/lib/records/restrictions';
+import { RestrictionsProvider } from './Restrictions';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -655,9 +657,17 @@ async function RecordDrawer({
    * shown here can be refused on save.
    */
   const allTabs = tabsForModule(config, moduleId);
+  /* Automation locks and hides on this record (Lock & Hide spec): a cap over each
+     grant below, never a change to anyone's permissions. */
+  const restrictions = await restrictionsFor(ctx, record.id);
+  const tabKeyById = new Map(config.tabs.map((t) => [t.id, t.key]));
+  const tabEffect = (t: { key: string }) => effectOf(restrictions, [`tab:${t.key}`]);
   const rawTabGrants = await tabGrants(ctx, allTabs.map((t) => t.id), moduleId);
   const tabGrantById = new Map(
-    allTabs.map((t) => [t.id, capGrant(grant, rawTabGrants.get(t.id) ?? 'edit')] as const),
+    allTabs.map((t) => [
+      t.id,
+      capByRestriction(capGrant(grant, rawTabGrants.get(t.id) ?? 'edit'), tabEffect(t), t.allowsAddOnly ?? false),
+    ] as const),
   );
   /* Add only answers to the record, as the database does: the tab is what the
      person holds across its modules, so nothing offered here is refused on save. */
@@ -680,7 +690,14 @@ async function RecordDrawer({
   const allSubtabs = dbTabs.flatMap((t) => subtabsForModule(config, moduleId, t.id));
   const rawSubtabGrants = await subtabGrants(ctx, allSubtabs, moduleId);
   const subtabGrantById = new Map(
-    allSubtabs.map((s) => [s.id, capGrant(grant, rawSubtabGrants.get(s.id) ?? 'edit')] as const),
+    allSubtabs.map((s) => [
+      s.id,
+      capByRestriction(
+        capGrant(grant, rawSubtabGrants.get(s.id) ?? 'edit'),
+        effectOf(restrictions, [`subtab:${s.id}`, `tab:${tabKeyById.get(s.tabId) ?? ''}`]),
+        false,
+      ),
+    ] as const),
   );
 
   /** Is the tab of this kind visible to this viewer? System tabs are one per
@@ -700,7 +717,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications, addressesRaw, agreements, fileRowsAdding,
+    applications, addressesRaw, agreements, fileRowsAdding, baseByTab,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -777,7 +794,17 @@ async function RecordDrawer({
     fieldAddressesFor(ctx, record.id),
     // The Agreements (e-signature) panel, on whichever visible tab carries it.
     dbTabs.some((t) => t.showsAgreements) ? agreementsFor(ctx, record.id) : Promise.resolve(null),
-    grantOfKind('files') === 'add_only' ? fileRowsForAdding(ctx, record.id) : [],
+    /* The add screen, and the rows an automation hid from someone who may still
+       add to them (spec, "Files exception"). */
+    grantOfKind('files') === 'add_only' || Object.entries(restrictions.effects).some(([i, e]) => i.startsWith('row:') && e === 'hide')
+      ? fileRowsForAdding(ctx, record.id).catch(() => [])
+      : [],
+    // Whether someone under a lock may still add: their normal permission.
+    Promise.all(
+      allTabs
+        .filter((t) => tabEffect(t) === 'lock' && tabGrantById.get(t.id) !== 'hidden')
+        .map(async (t) => [t.id, await tabBaseGrant(ctx, record.id, t.key)] as const),
+    ).then((list) => new Map(list)),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -895,7 +922,9 @@ async function RecordDrawer({
     // field's own setting → sub-tab's → tab's → Edit (`fieldGrant`), with the
     // module as the outer limit. Permissions spec: "The most specific setting
     // wins. A field or sub tab setting beats its tab setting."
-    grantByKey[f.key] = asFieldGrant(capGrant(grant, grants.get(f.id) ?? 'hidden'));
+    grantByKey[f.key] = asFieldGrant(
+      capByRestriction(capGrant(grant, grants.get(f.id) ?? 'hidden'), effectOf(restrictions, fieldItems(f, tabKeyById)), false),
+    );
   }
 
   /* Files FIELDS — only fetched when this viewer can see at least one; RLS
@@ -1117,14 +1146,24 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
   }));
+
+  /* What reaches the browser: the locks, and the hides on the two tabs that stay
+     open for adding. Not which fields a hide took away: those are simply absent. */
+  const browserRestrictions = {
+    ...restrictions,
+    effects: Object.fromEntries(
+      Object.entries(restrictions.effects).filter(([item, e]) => e === 'lock' || item.startsWith('row:') || item === 'tab:files' || item === 'tab:logins'),
+    ),
+  };
 
   return (
     <section className="@container min-h-full bg-white px-6 py-5">
       <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
       <DrawerFieldFiles moduleSlug={moduleSlug} recordId={record.id} filesByField={filesByField}>
       <ItemAccessProvider value={{ ...itemAccess, viewerId: ctx.userId }}>
+      <RestrictionsProvider value={{ moduleSlug, recordId: record.id, restrictions: browserRestrictions }}>
       {/* ── Band 1: title bar — record name, field search, Archive, ••• menu,
           close. The two `flex-1` ends keep the search in the middle; on a phone
           width it takes its own line under them. ── */}
@@ -1258,6 +1297,7 @@ async function RecordDrawer({
         teamRoster={teamRoster}
         applicationRows={applicationRows}
         fileRowsAdding={fileRowsAdding}
+        hiddenFileRows={grantOfKind('files') === 'add_only' ? [] : fileRowsAdding.filter((r) => !r.canSee)}
         canMarkFilesRequired={ctx.isAdmin || viewerPerms.settings['action.mark_files_required'] === 'yes'}
         filesByRow={filesByRow}
         logins={logins}
@@ -1280,6 +1320,7 @@ async function RecordDrawer({
         openMention={openMention}
         fieldPathByUpdate={fieldPathByUpdate}
       />
+      </RestrictionsProvider>
       </ItemAccessProvider>
       </DrawerFieldFiles>
       </DrawerFieldLinks>

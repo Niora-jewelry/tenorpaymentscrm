@@ -25,9 +25,9 @@ describe('the spec\'s own example', () => {
 });
 
 describe('triggers and modules', () => {
-  it('marks exactly the email, application and contract triggers as outside a module', () => {
+  it('marks exactly the email, application, contract and File uploaded triggers as outside a module', () => {
     const outside = Object.entries(TRIGGERS).filter(([, t]) => !t.inModule).map(([k]) => k).sort();
-    expect(outside).toEqual(['application_received', 'application_sent', 'contract_received', 'contract_sent', 'email_received', 'email_sent']);
+    expect(outside).toEqual(['application_received', 'application_sent', 'contract_received', 'contract_sent', 'email_received', 'email_sent', 'file_uploaded'].sort());
   });
 
   it('refuses Only in module with a trigger outside a module', () => {

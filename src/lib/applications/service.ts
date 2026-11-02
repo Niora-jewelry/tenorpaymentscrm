@@ -19,7 +19,8 @@ import { env } from '@/lib/env';
 import { loadConfig } from '@/lib/records/config';
 import { assertAdminPage } from '@/lib/records/adminConfig';
 import { permissionsFor, type AuthContext } from '@/lib/records/permissions';
-import { fieldCapsFor, hiddenFieldKeysFor, requireTabEdit, tabAccess } from '@/lib/records/tabAccess';
+import { fieldCapsFor, hiddenFieldKeysFor, requireTabAdd, tabAccess } from '@/lib/records/tabAccess';
+import { tabBaseGrant } from '@/lib/records/restrictions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { requireEmailAccess, EmailAccessError } from '@/lib/mail/access';
 import { rateLimit, RATE_LIMITS, userKey } from '@/lib/security/rate-limit';
@@ -68,7 +69,9 @@ export async function applicationsTab(): Promise<string | null> {
 async function requireApplicationsEdit(ctx: AuthContext, recordId: string): Promise<void> {
   const tab = await applicationsTab();
   if (!tab) throw new ApplicationError('Applications are not set up on any tab.');
-  await requireTabEdit(ctx, recordId, tab);
+  // The normal permission: blocked users of a locked tab still send the merchant
+  // a prefilled application (Lock & Hide spec). The fields themselves stay locked.
+  if ((await requireTabAdd(ctx, recordId, tab)) !== 'edit') throw new ApplicationError('No edit access to applications.');
 }
 
 export const linkFor = (token: string) => `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/apply/${token}`;
@@ -153,7 +156,7 @@ export async function applicationsFor(ctx: AuthContext, recordId: string): Promi
       .filter((f) => f.application_id === a.id)
       .map((f) => ({ id: f.id, name: f.name, sizeBytes: f.size_bytes, readable: f.readable, fieldsFound: f.fields_found, uploadedAt: f.uploaded_at, uploadedVia: f.uploaded_via })),
   }));
-  return { items, canEdit: grant === 'edit', canOpenPdfs, templateReady };
+  return { items, canEdit: grant === 'edit' || (await tabBaseGrant(ctx, recordId, tab!)) === 'edit', canOpenPdfs, templateReady };
 }
 
 // ── composing ───────────────────────────────────────────────────────────────

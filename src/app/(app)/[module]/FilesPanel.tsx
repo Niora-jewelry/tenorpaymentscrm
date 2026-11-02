@@ -27,6 +27,7 @@ import {
 import type { FileRow, FileEntry, FileRowForAdding, FileVersion } from '@/lib/records/files';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 import { SavedNotice } from './SavedNotice';
+import { RestrictionMarks, useDownloadAllowed, useRestrictions } from './Restrictions';
 
 /**
  * The Files tab on Add only: row names, an upload on each, and Add another file
@@ -174,6 +175,8 @@ export function FilesPanel({
   rows,
   filesByRow,
   editable,
+  canAdd = editable,
+  hiddenRows = [],
   canMark,
   focusRowId = null,
 }: {
@@ -185,11 +188,18 @@ export function FilesPanel({
   editable: boolean;
   /** Mark files required: its own permission, apart from `editable`. */
   canMark: boolean;
+  /** Adding files and rows, which a lock leaves open (spec). */
+  canAdd?: boolean;
+  /** Rows an automation hid from this viewer: named, so they can still add to them. */
+  hiddenRows?: FileRowForAdding[];
   /** A row the drawer's search landed on: scroll to it and flash. */
   focusRowId?: string | null;
 }) {
   const complete = rows.filter((r) => (filesByRow[r.id]?.length ?? 0) > 0).length;
   const [addingRow, setAddingRow] = useState(false);
+  const [saved, setSaved] = useState(0);
+  const { effects } = useRestrictions();
+  const rowLocked = (id: string) => effects[`row:${id}`] === 'lock';
 
   return (
     <div className="space-y-3">
@@ -208,7 +218,7 @@ export function FilesPanel({
           <span>Required</span>
           <span>File notes</span>
         </div>
-        {rows.length === 0 ? (
+        {rows.length === 0 && hiddenRows.length === 0 ? (
           <p className="px-3 py-6 text-center text-[12.5px] text-ink-400">No files in this section.</p>
         ) : (
           <div className="divide-y divide-[#f0f4f8]">
@@ -219,11 +229,15 @@ export function FilesPanel({
                 recordId={recordId}
                 row={r}
                 files={filesByRow[r.id] ?? []}
-                editable={editable}
+                editable={editable && !rowLocked(r.id)}
+                canAdd={canAdd}
                 canMark={canMark}
-                otherRows={rows.filter((x) => x.id !== r.id)}
+                otherRows={rows.filter((x) => x.id !== r.id && !rowLocked(x.id))}
                 flash={focusRowId === r.id}
               />
+            ))}
+            {hiddenRows.map((r) => (
+              <AddOnlyFileRow key={r.id} moduleSlug={moduleSlug} recordId={recordId} row={r} flash={focusRowId === r.id} onSaved={() => setSaved((n) => n + 1)} />
             ))}
           </div>
         )}
@@ -238,7 +252,8 @@ export function FilesPanel({
         — and a row added here is an ordinary unlocked one that happens to sit
         in the same list. See `addFileRow`.
       */}
-      {editable ? (
+      {saved ? <SavedNotice key={saved} /> : null}
+      {canAdd ? (
         addingRow ? (
           <AddRowForm
             moduleSlug={moduleSlug}
@@ -395,6 +410,7 @@ function FileRowView({
   row,
   files,
   editable,
+  canAdd,
   canMark,
   otherRows,
   flash,
@@ -404,11 +420,13 @@ function FileRowView({
   row: FileRow;
   files: FileEntry[];
   editable: boolean;
+  canAdd: boolean;
   canMark: boolean;
   otherRows: FileRow[];
   flash: boolean;
 }) {
   const flashing = useFlashTarget(targetId.field(row.id), flash);
+  const canDownload = useDownloadAllowed([`row:${row.id}`, 'tab:files']);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -618,6 +636,7 @@ function FileRowView({
           <span className="text-[13px] font-medium text-ink-900">{row.name}</span>
         )}
         {row.locked ? <Icon name="lock" size={10} className="text-ink-400" /> : null}
+        <RestrictionMarks item={`row:${row.id}`} />
         {editable && !row.locked && renaming === null ? (
           <span className="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
             <button type="button" title={`Rename ${row.name}`} aria-label={`Rename ${row.name}`} onClick={() => setRenaming(row.name)} className="rounded text-ink-400 hover:text-brand-700">
@@ -658,14 +677,14 @@ function FileRowView({
               */}
               <button
                 type="button"
-                title={`Open ${file.name}`}
-                disabled={opening === file.id}
+                title={canDownload ? `Open ${file.name}` : 'Download is off for this row'}
+                disabled={opening === file.id || !canDownload}
                 onClick={() => openFile(file.id)}
                 className="truncate text-left text-ink-700 underline decoration-line underline-offset-2 transition-colors hover:text-brand-700 hover:decoration-brand-600 disabled:opacity-60"
               >
                 {opening === file.id ? 'Opening…' : file.name}
               </button>
-              {file.version > 1 ? (
+              {file.version > 1 && canDownload ? (
                 <button
                   type="button"
                   title="Earlier versions"
@@ -682,7 +701,7 @@ function FileRowView({
                 grant underneath is the Files (or Cases) tab's View. It sits
                 outside the `editable` branch below for that reason.
               */}
-              <button
+              {canDownload ? <button
                 type="button"
                 title={`Download ${file.name}`}
                 aria-label={`Download ${file.name}`}
@@ -697,7 +716,7 @@ function FileRowView({
                 ) : (
                   <Icon name="download" size={11} />
                 )}
-              </button>
+              </button> : null}
               {editable && otherRows.length ? (
                 <button
                   type="button"
@@ -738,7 +757,7 @@ function FileRowView({
               ) : null}
             </span>
           ))}
-          {editable && files.length < 5 ? (
+          {canAdd && files.length < 5 ? (
             /*
               An upload is a round trip through a Server Action with the bytes
               in the body, so it is the slowest thing on this tab by a wide

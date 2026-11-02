@@ -247,6 +247,18 @@ export function capGrant(outer: Grant, inner: Grant): Grant {
   return inner;
 }
 
+/**
+ * An automation's lock or hide over a normal grant (Lock & Hide spec), the same
+ * rule as `restriction_cap` in SQL: a lock leaves at most View, a hide leaves
+ * nothing, except on Logins and Files, which stay open for adding to anyone who
+ * could add. It never gives more than the grant it caps.
+ */
+export function capByRestriction(base: Grant, effect: 'lock' | 'hide' | null, keepsAdding: boolean): Grant {
+  if (!effect) return base;
+  if (effect === 'lock') return base === 'edit' ? 'view' : base;
+  return keepsAdding && (base === 'edit' || base === 'add_only') ? 'add_only' : 'hidden';
+}
+
 /** A field has no Add only: the tabs that offer it hold no fields. If one ever
  *  did, it reads as Hidden, never as something to show. */
 export type FieldGrant = Exclude<Grant, 'add_only'>;

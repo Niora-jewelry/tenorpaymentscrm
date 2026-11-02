@@ -21,6 +21,7 @@ export const TRIGGERS = {
   field: { label: 'Field changed', inModule: true },
   module_assigned: { label: 'Module assigned', inModule: true },
   module_removed: { label: 'Module removed', inModule: true },
+  file_uploaded: { label: 'File uploaded', inModule: false },
 } as const;
 export type TriggerType = keyof typeof TRIGGERS;
 
@@ -50,6 +51,17 @@ export const ACTIONS = {
   create_ticket: 'Create ticket',
   send_notification: 'Send notification',
   mark_file_required: 'Mark file required',
+  lock: 'Lock',
+  hide: 'Hide',
+  unlock: 'Unlock',
+  unhide: 'Unhide',
+} as const;
+
+/** How often File uploaded may fire for one row of one record (spec). */
+export const FILE_FREQUENCIES = {
+  every: 'Every upload',
+  first: 'First upload only',
+  first_after_unlock: 'First upload, again after unlock',
 } as const;
 export type ActionType = keyof typeof ACTIONS;
 
@@ -82,6 +94,12 @@ export const triggerSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('field'), field: pick, value: z.string().max(500).default('') }),
   z.object({ id, type: tag('module_assigned'), moduleId: pick }),
   z.object({ id, type: tag('module_removed'), moduleId: pick }),
+  z.object({
+    id,
+    type: tag('file_uploaded'),
+    rows: z.array(z.string().max(120)).max(5).default([]),
+    frequency: z.enum(['every', 'first', 'first_after_unlock']).default('every'),
+  }),
 ]);
 export type TriggerStep = z.infer<typeof triggerSchema>;
 
@@ -118,6 +136,18 @@ const emailStep = z.object({
 });
 export type EmailStep = z.infer<typeof emailStep>;
 
+/**
+ * What a Lock or Hide covers: tab:<key>, subtab:<id>, field:<key>, notes:<tab key>
+ * or row:<preset row name>. Picking a tab or sub-tab covers what is inside it,
+ * fields added later included.
+ */
+const itemList = z.array(z.string().min(3).max(200)).max(500).default([]);
+/** Who a lock or hide leaves out: whole teams, and named people. */
+const group = z
+  .object({ teamIds: z.array(z.string().max(40)).max(50).default([]), userIds: z.array(z.string().max(40)).max(500).default([]) })
+  .default({ teamIds: [], userIds: [] });
+export type RestrictionGroup = z.infer<typeof group>;
+
 export const flowStepSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('wait'), amount: z.number().int().min(1).max(3650).default(1), unit: z.enum(['hours', 'days']).default('hours') }),
   z.object({ id, type: tag('change_stage'), moduleId: pick, pipelineId: pick, stepId: pick }),
@@ -132,6 +162,10 @@ export const flowStepSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('create_ticket'), title: z.string().max(200).default(''), issue: z.string().max(5000).default('') }),
   z.object({ id, type: tag('send_notification'), who: z.enum(['team_members', 'team', 'relationship_manager']).default('team_members'), teamId: pick, message: z.string().max(500).default('') }),
   z.object({ id, type: tag('mark_file_required'), rows: z.array(z.object({ name: z.string().max(120), needed: z.number().int().min(1).max(5).default(1) })).max(5).default([]) }),
+  z.object({ id, type: tag('lock'), items: itemList, canLift: group, allowDownload: z.boolean().default(true) }),
+  z.object({ id, type: tag('hide'), items: itemList, canLift: group, canSee: group, allowDownload: z.boolean().default(true) }),
+  z.object({ id, type: tag('unlock'), items: itemList }),
+  z.object({ id, type: tag('unhide'), items: itemList }),
 ]);
 export type FlowStep = z.infer<typeof flowStepSchema>;
 
@@ -173,6 +207,8 @@ function triggerProblem(t: TriggerStep): string | null {
     case 'module_assigned':
     case 'module_removed':
       return t.moduleId ? null : `${TRIGGERS[t.type].label}: choose the module.`;
+    case 'file_uploaded':
+      return t.rows.length ? null : 'File uploaded: choose at least one row.';
     default:
       return null;
   }
@@ -232,6 +268,11 @@ function flowProblem(s: FlowStep, needsModule: boolean): string | null {
       return s.who !== 'team' || s.teamId ? null : 'Send notification: choose the team.';
     case 'mark_file_required':
       return s.rows.length ? null : 'Mark file required: choose at least one row.';
+    case 'lock':
+    case 'hide':
+    case 'unlock':
+    case 'unhide':
+      return s.items.length ? null : `${ACTIONS[s.type]}: choose what it covers.`;
     default:
       return null;
   }

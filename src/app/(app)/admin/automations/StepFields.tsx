@@ -1,10 +1,12 @@
 'use client';
 
 /** The controls inside each step. Every list comes from the catalog. */
+import { RestrictionFields } from './RestrictionFields';
 import { useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import type { Catalog, CatalogField, Option } from '@/lib/automations/catalog';
 import type { AutomationFile } from '@/lib/automations/service';
 import type { ConditionStep, EmailStep, FlowStep, TriggerStep } from '@/lib/automations/steps';
+import { FILE_FREQUENCIES } from '@/lib/automations/steps';
 import { CONTACT_NAME, MERCHANT_NAME } from '@/lib/automations/template';
 import { Icon } from '@/proto/ui/icons';
 import { IconButton } from '@/proto/ui/kit';
@@ -92,6 +94,26 @@ export function TriggerFields({ step, catalog, onChange }: { step: TriggerStep; 
     case 'module_assigned':
     case 'module_removed':
       return <Pick label="Module" value={step.moduleId} onChange={(moduleId) => onChange({ ...step, moduleId })} options={catalog.modules} />;
+    case 'file_uploaded':
+      return (
+        <div className="space-y-3">
+          <div>
+            <span className={labelClass}>Rows</span>
+            <div className="grid max-w-[420px] gap-0.5 sm:grid-cols-2">
+              {catalog.fileRows.map((r) => (
+                <CheckRow key={r} label={r} checked={step.rows.includes(r)} onChange={(on) => onChange({ ...step, rows: on ? [...step.rows, r] : step.rows.filter((x) => x !== r) })} />
+              ))}
+            </div>
+            <p className="mt-1 text-[12px] text-ink-400">Preset rows only. Uploads by people count, the merchant’s included. Files sent together count once.</p>
+          </div>
+          <label className="block max-w-[320px]">
+            <span className={labelClass}>Can fire</span>
+            <select value={step.frequency} onChange={(e) => onChange({ ...step, frequency: e.target.value as typeof step.frequency })} className={inputClass}>
+              {Object.entries(FILE_FREQUENCIES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+      );
     case 'field': {
       const field = catalog.fields.find((f) => f.key === step.field);
       const changeable = catalog.fields.filter((f) => f.type !== 'file');
@@ -435,6 +457,11 @@ export function FlowFields({ step, catalog, onChange, stageModule, files, setFil
       );
     case 'mark_file_required':
       return <RequiredRows step={step} catalog={catalog} onChange={onChange} />;
+    case 'lock':
+    case 'hide':
+    case 'unlock':
+    case 'unhide':
+      return <RestrictionFields step={step} catalog={catalog} onChange={onChange} />;
     case 'send_notification':
       return (
         <div className="space-y-3">

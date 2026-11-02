@@ -359,6 +359,13 @@ async function ownedOpen(ctx: AuthContext, agreementId: string): Promise<Agreeme
 
 export async function voidAgreement(ctx: AuthContext, agreementId: string): Promise<void> {
   const a = await ownedOpen(ctx, agreementId);
+  const tab = await agreementsTab();
+  if (tab) {
+    const supabase = await createSupabaseServerClient();
+    const { data: locked, error } = await supabase.rpc('item_locked_for_viewer', { p_record: a.record_id, p_item: `tab:${tab}` });
+    if (error) throw error;
+    if (locked) throw new AgreementError('This tab is locked by an automation, so agreements can’t be voided.');
+  }
   if (!isOpen(a.status)) throw new AgreementError('That agreement is already closed.');
   if (a.vendor_document_id) {
     try {

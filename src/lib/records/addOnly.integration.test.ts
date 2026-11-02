@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { readFileSync } from 'node:fs';
 
 const DB_URL = process.env.SUPABASE_DB_URL;
 const suite = DB_URL ? describe : describe.skip;
@@ -72,6 +73,9 @@ suite('Add only', () => {
   });
 
   it('defaults: Sales and Reconcilers on Add only for Logins, everyone else Edit, all Edit on Files', async () => {
+    // Applied at deploy (see the migration's header), so run here, inside this
+    // test's transaction, until then.
+    await q(readFileSync('supabase/migrations/20260819009890_add_only_defaults.sql', 'utf8'));
     const rows = await q<{ user_type: string; key: string; grant_level: string }>(
       `select pt.user_type, t.key, g.grant_level from template_grants g
          join permission_templates pt on pt.id = g.template_id
@@ -135,7 +139,7 @@ suite('Add only', () => {
     const rows = await as(member, rowsForAdding);
     expect(rows.map((r) => r.row_name)).toEqual(ROWS);
     expect(rows.every((r) => !r.has_file)).toBe(true);
-    expect(Object.keys(rows[0]!).sort()).toEqual(['has_file', 'row_id', 'row_kind', 'row_name']);
+    expect(Object.keys(rows[0]!).sort()).toEqual(['can_see', 'has_file', 'row_id', 'row_kind', 'row_name']);
     expect(await as(member, () => q(`select id from file_rows where record_id = $1`, [rec]))).toHaveLength(0);
   });
 

@@ -49,7 +49,7 @@ export type FileEntry = {
 
 /** All an Add only viewer gets of the Files tab. `hasFile` is only ever true on
  *  a preset row. */
-export type FileRowForAdding = { id: string; kind: FileRowKind; name: string; hasFile: boolean };
+export type FileRowForAdding = { id: string; kind: FileRowKind; name: string; hasFile: boolean; canSee: boolean };
 
 function mapFileRow(r: Record<string, unknown>): FileRow {
   return {
@@ -186,8 +186,8 @@ export async function fileRowsForAdding(_ctx: AuthContext, recordId: string): Pr
     p_positions: APPLICATION_ROWS.map((_, i) => i * 10),
   });
   if (error) throw error;
-  return ((data ?? []) as { row_id: string; row_name: string; row_kind: FileRowKind; has_file: boolean }[]).map((r) => ({
-    id: r.row_id, kind: r.row_kind, name: r.row_name, hasFile: r.has_file,
+  return ((data ?? []) as { row_id: string; row_name: string; row_kind: FileRowKind; has_file: boolean; can_see: boolean }[]).map((r) => ({
+    id: r.row_id, kind: r.row_kind, name: r.row_name, hasFile: r.has_file, canSee: r.can_see,
   }));
 }
 
@@ -224,10 +224,11 @@ export async function addFileRow(
 }
 
 /**
- * The upload for someone on Add only. Storage has to read a new object back to
- * write it, and this viewer may not read, so the bytes go in with the service
- * role once the row has been checked. `record_file_upload` is still called as the
- * viewer, and it is what decides.
+ * Every upload to the Files tab. Someone on Add only, or adding under a lock or a
+ * hide, may not be able to read the row, and Storage reads a new object back to
+ * write it, so the bytes go in with the service role once the row has been
+ * checked. `record_file_upload` is still called as the viewer, and it is what
+ * decides.
  */
 async function uploadForAdding(
   ctx: AuthContext,
@@ -284,7 +285,11 @@ export async function uploadFile(
   // its path carries the field key so the bucket policy can ask the same.
   if (fileRow.kind === 'field') await requireFieldFilesEdit(recordId, fileRow.fieldKey);
   else if (fileRow.kind === 'case') await requireTabEdit(ctx, recordId, 'cases');
-  else if ((await requireTabAdd(ctx, recordId, 'files')) === 'add_only') {
+  else {
+    // The Files tab: Edit, Add only, or either under an automation's lock or
+    // hide. Adding is the normal permission's; what the row is like after is
+    // the database's to say.
+    await requireTabAdd(ctx, recordId, 'files');
     if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
     return uploadForAdding(ctx, recordId, fileRow.id, file);
   }
@@ -496,6 +501,9 @@ export async function signedUrlFor(
     if (level === 'hidden') throw new Error('Not found');
   } else {
     await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
+    const { data: allowed, error: allowError } = await supabase.rpc('file_download_allowed', { p_file: fileId });
+    if (allowError) throw allowError;
+    if (allowed === false) throw new Error('Download is off for this file.');
   }
 
   const { data: signed, error: signError } = await supabase.storage

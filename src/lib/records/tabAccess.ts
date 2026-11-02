@@ -32,6 +32,7 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { loadConfig } from './config';
 import {
+  capByRestriction,
   capGrant,
   fieldGrant,
   maxGrant,
@@ -227,7 +228,29 @@ export async function tabCapsFor(
   recordIds: string[],
   tabId: string,
 ): Promise<Map<string, Grant>> {
-  return chainCapFor(ctx, recordIds, [(moduleId) => tabGrant(ctx, tabId, moduleId)]);
+  const caps = await chainCapFor(ctx, recordIds, [(moduleId) => tabGrant(ctx, tabId, moduleId)]);
+  const tab = (await loadConfig()).tabs.find((t) => t.id === tabId);
+  return tab ? restrictedCaps(ctx, caps, [`tab:${tab.key}`], tab.allowsAddOnly ?? false) : caps;
+}
+
+/**
+ * Caps by any automation lock or hide on these items (migration 9860). Asked of
+ * the database in one call, which answers only for records that have one.
+ */
+async function restrictedCaps(
+  ctx: AuthContext,
+  caps: Map<string, Grant>,
+  items: string[],
+  keepsAdding: boolean,
+): Promise<Map<string, Grant>> {
+  if (ctx.isAdmin || !caps.size) return caps;
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('restriction_effects', { p_ids: [...caps.keys()], p_items: items });
+  if (error) throw error;
+  for (const r of (data ?? []) as { record_id: string; effect: 'lock' | 'hide' }[]) {
+    caps.set(r.record_id, capByRestriction(caps.get(r.record_id) ?? 'hidden', r.effect, keepsAdding));
+  }
+  return caps;
 }
 
 /**
@@ -250,7 +273,10 @@ export async function fieldCapsFor(
   // empty chain only covers a field deleted from config between render and
   // submit, where the module ceiling alone decides.
   const levels: ((moduleId: string) => Promise<Grant>)[] = field ? [(moduleId) => fieldGrant(ctx, field, moduleId)] : [];
-  return chainCapFor(ctx, recordIds, levels);
+  const caps = await chainCapFor(ctx, recordIds, levels);
+  if (!field) return caps;
+  const tab = (await loadConfig()).tabs.find((t) => t.id === field.tabId);
+  return restrictedCaps(ctx, caps, [`field:${field.key}`, ...(field.subtabId ? [`subtab:${field.subtabId}`] : []), ...(tab ? [`tab:${tab.key}`] : [])], false);
 }
 
 /**
@@ -299,6 +325,11 @@ export async function hiddenFieldKeysFor(
       if (bestOf(mods, capByModule) === 'hidden') hidden.add(f.key);
     }),
   );
+  // And what an automation hid on this record.
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('restriction_hidden_keys', { rec: recordId });
+  if (error) throw error;
+  for (const key of (data ?? []) as string[]) hidden.add(key);
   return hidden;
 }
 
@@ -321,11 +352,18 @@ export async function requireTabView(ctx: AuthContext, recordId: string, tabKey:
   if (grant !== 'view' && grant !== 'edit') throw new Error(`No access to this record's ${tabKey} tab.`);
 }
 
-/** May this viewer add to the tab: Edit, or Add only on Logins and Files. */
+/**
+ * May this viewer add to the tab: Edit, or Add only on Logins and Files. Asked of
+ * the normal permission, not the capped one: an automation's lock or hide doesn't
+ * stop adding (spec), it covers what's added.
+ */
 export async function requireTabAdd(ctx: AuthContext, recordId: string, tabKey: string): Promise<'edit' | 'add_only'> {
-  const grant = await tabAccess(ctx, recordId, tabKey);
-  if (grant !== 'edit' && grant !== 'add_only') throw new Error(`No access to add to this record's ${tabKey} tab.`);
-  return grant;
+  if (ctx.isAdmin) return 'edit';
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('record_tab_base_grant', { rec: recordId, p_tab_key: tabKey });
+  if (error) throw error;
+  if (data !== 'edit' && data !== 'add_only') throw new Error(`No access to add to this record's ${tabKey} tab.`);
+  return data;
 }
 
 /**

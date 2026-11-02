@@ -4,7 +4,7 @@
  * (spec), so this lists the whole configuration, for someone the gate let in.
  */
 import 'server-only';
-import { fieldsInTab, loadConfig, pipelineStatusFields, stepsForPipeline, subtabsForModule, type Field } from '@/lib/records/config';
+import { fieldsInTab, headerFieldsForModule, loadConfig, pipelineStatusFields, stepsForPipeline, subtabsForModule, type Field } from '@/lib/records/config';
 import { APPLICATION_ROWS } from '@/lib/records/files';
 import type { AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -13,7 +13,18 @@ import { assertAutomationsView } from './access';
 export type Option = { value: string; label: string; hint?: string };
 export type CatalogField = { key: string; label: string; where: string; type: string; choices: Option[] };
 export type CatalogPipeline = { id: string; label: string; moduleId: string; moduleLabel: string; steps: Option[] };
-export type CatalogTeam = { id: string; label: string; members: Option[] };
+/** `superAdmin`: always sees and lifts everything (Lock & Hide spec), so it isn't a choice in those groups. */
+export type CatalogTeam = { id: string; label: string; members: Option[]; superAdmin: boolean };
+export type RestrictableTab = {
+  key: string;
+  label: string;
+  /** How far down it can be picked: fields, Files rows, or the tab only. */
+  level: 'field' | 'row' | 'tab';
+  subtabs: { id: string; label: string; fields: Option[] }[];
+  /** Fields not in a sub-tab. */
+  fields: Option[];
+  hasNotes: boolean;
+};
 
 export type Catalog = {
   /** Display modules, for triggers and the Only in module condition. */
@@ -30,6 +41,10 @@ export type Catalog = {
   variables: CatalogField[];
   tabs: Option[];
   fileRows: string[];
+  /** What Lock and Hide can cover, as a tree (spec, "What can be locked or hidden"). */
+  restrictable: RestrictableTab[];
+  /** The Vital Info header's fields, picked one at a time. */
+  vitalFields: Option[];
   inboxes: Option[];
 };
 
@@ -120,6 +135,7 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     id: t.id as string,
     label: ((t.team_label as string | null) ?? (t.label as string)),
     members: people.filter((p) => templateOf.get(p.value) === t.id),
+    superAdmin: t.user_type === 'super_admin',
   }));
 
   const inboxes = new Map<string, Option>();
@@ -128,9 +144,34 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     if (!m.deleted_at && !m.deactivated_at) inboxes.set(m.id, { value: m.id, label: m.address, hint: m.display_name || undefined });
   }
 
+  // Deal Name is never hidden (permissions spec), so it isn't offered.
+  const pickable = (f: Field) => !f.archivedAt && f.key !== 'deal_name' && !synced.has(f.id);
+  const asOption = (f: Field): Option => ({ value: f.key, label: f.label });
+  const { data: levels } = await admin.from('tabs').select('id, restriction_level');
+  const levelOf = new Map((levels ?? []).map((t) => [t.id as string, t.restriction_level as string]));
+  const restrictable: RestrictableTab[] = config.tabs
+    .filter((t) => ['field', 'row', 'tab'].includes(levelOf.get(t.id) ?? 'none'))
+    .sort((a, b) => a.position - b.position)
+    .map((t) => {
+      const level = levelOf.get(t.id) as RestrictableTab['level'];
+      const subs = level === 'field' && firstDisplay ? subtabsForModule(config, firstDisplay, t.id) : [];
+      return {
+        key: t.key,
+        label: t.label,
+        level,
+        subtabs: subs.map((s) => ({ id: s.id, label: s.label, fields: fieldsInTab(config, t.id, s.id).filter(pickable).map(asOption) })),
+        fields: level === 'field' ? fieldsInTab(config, t.id, null).filter(pickable).map(asOption) : [],
+        hasNotes: level === 'field',
+      };
+    });
+  const vitalSeen = new Map<string, Option>();
+  for (const m of display) for (const f of headerFieldsForModule(config, m.id)) if (pickable(f)) vitalSeen.set(f.key, asOption(f));
+
   return {
     modules,
     movableModules,
+    restrictable,
+    vitalFields: [...vitalSeen.values()],
     statuses: [...seenStatus.values()],
     pipelines,
     teams,

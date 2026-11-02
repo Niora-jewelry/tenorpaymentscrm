@@ -47,6 +47,7 @@ import {
 } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
 import { addLogin, revealPassword } from '@/lib/records/logins';
+import { lockedFieldMessage } from '@/lib/records/restrictions';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
 import {
   setColumnOrder, resetColumnOrder, setFieldOrder, resetFieldOrder,
@@ -153,7 +154,15 @@ export async function setValueAction(
     value = decoded.value;
   }
 
-  const result = await setValue(ctx, recordId, field, value, expectedUpdatedAt);
+  let result: Awaited<ReturnType<typeof setValue>>;
+  try {
+    result = await setValue(ctx, recordId, field, value, expectedUpdatedAt);
+  } catch (e) {
+    // A lock that arrived while the field was open (Lock & Hide spec).
+    const locked = await lockedFieldMessage(ctx, recordId, field.key);
+    if (locked) return { ok: false, message: locked };
+    throw e;
+  }
 
   // Deliberately no `revalidatePath` here. `RealFieldGrid.tsx`'s `handleChange`
   // already shows the new value optimistically and rolls back on failure —
@@ -230,7 +239,16 @@ export async function setValuesAction(
     changes.push({ field, value });
   }
 
-  const result = await setValues(ctx, recordId, changes, expectedUpdatedAt);
+  let result: Awaited<ReturnType<typeof setValues>>;
+  try {
+    result = await setValues(ctx, recordId, changes, expectedUpdatedAt);
+  } catch (e) {
+    for (const change of input) {
+      const locked = await lockedFieldMessage(ctx, recordId, change.fieldKey);
+      if (locked) return { ok: false, message: locked };
+    }
+    throw e;
+  }
 
   if (!result.ok) {
     if ('refused' in result) return { ok: false, message: result.refused };

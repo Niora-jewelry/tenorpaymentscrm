@@ -15,7 +15,7 @@ import { unstable_cache } from 'next/cache';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
+import { requireTabAdd, requireTabEditVia, requireTabView } from './tabAccess';
 
 export type StatementPeriod = { id: string; year: number; month: number };
 export type StatementFile = {
@@ -100,14 +100,19 @@ export async function uploadStatement(
   period: { id: string; year: number; month: number },
   file: { name: string; bytes: Uint8Array; contentType: string },
 ): Promise<{ ok: true; file: StatementFile } | { ok: false; error: 'too_large' }> {
-  await requireTabEdit(ctx, recordId, 'statements');
+  // The normal permission: an automation's lock lets statements in (spec).
+  if ((await requireTabAdd(ctx, recordId, 'statements')) !== 'edit') throw new Error('No access to add statements.');
   if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
 
   const supabase = await createSupabaseServerClient();
   const yyyymm = `${period.year}-${String(period.month).padStart(2, '0')}`;
   const path = `${recordId}/statements/${yyyymm}/${Date.now()}-${file.name}`;
 
-  const { error: uploadError } = await supabase.storage.from('records').upload(path, file.bytes, {
+  // Under a lock this viewer can't read the tab's files back, which Storage
+  // needs to write one: the service role puts the bytes in, and
+  // `statement_file_upload`, called as the viewer, decides.
+  const bucket = supabaseAdmin().storage.from('records');
+  const { error: uploadError } = await bucket.upload(path, file.bytes, {
     contentType: file.contentType,
     upsert: false,
   });
@@ -122,7 +127,10 @@ export async function uploadStatement(
       p_size_bytes: file.bytes.byteLength,
     })
     .single();
-  if (error) throw error;
+  if (error) {
+    await bucket.remove([path]);
+    throw error;
+  }
 
   const fileId = data as string;
   const [entry] = (await filesForRecord(ctx, recordId)).filter((f) => f.id === fileId);

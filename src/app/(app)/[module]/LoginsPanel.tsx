@@ -20,12 +20,15 @@ export function LoginsPanel({
   recordId,
   logins,
   editable,
+  canAdd = editable,
   addOnly = false,
 }: {
   moduleSlug: string;
   recordId: string;
   logins: LoginRow[];
   editable: boolean;
+  /** Under an automation's lock, adding stays open to anyone who could add. */
+  canAdd?: boolean;
   /** Add only: the button and nothing else. `logins` is empty, never fetched. */
   addOnly?: boolean;
 }) {
@@ -83,7 +86,7 @@ export function LoginsPanel({
         )}
       </div>
 
-      {editable ? (
+      {canAdd ? (
         adding ? (
           <AddLoginForm moduleSlug={moduleSlug} recordId={recordId} onDone={() => setAdding(false)} />
         ) : (

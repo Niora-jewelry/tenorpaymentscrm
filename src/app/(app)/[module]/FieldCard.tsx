@@ -18,6 +18,7 @@
  * filled row empty" rule by itself: a `1 / -1` item cannot fit beside
  * anything, so it moves to the next row and nothing flows around it.
  */
+import { RestrictionMarks } from './Restrictions';
 import type { CSSProperties, ReactNode } from 'react';
 import type { Field as ProtoField } from '@/proto/schema';
 import { Icon } from '@/proto/ui/icons';
@@ -64,7 +65,7 @@ export function FieldLabelRow({
   children,
   tone = 'default',
 }: {
-  field: Pick<ProtoField, 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type'>;
+  field: Pick<ProtoField, 'id' | 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type'>;
   requiredEmpty?: boolean;
   /** The reorder handle, when the grid is sortable. */
   handle?: ReactNode;
@@ -85,6 +86,7 @@ export function FieldLabelRow({
         {field.required ? <span className="ml-0.5 text-warn" aria-label="required">*</span> : null}
       </span>
       <span className="flex shrink-0 items-center gap-1 pt-px">
+        <RestrictionMarks item={`field:${field.id}`} size={10} />
         {field.system || field.type === 'auto' ? (
           <Icon name="lock" size={10} className="text-ink-400" aria-label="Filled in automatically — not editable" />
         ) : null}

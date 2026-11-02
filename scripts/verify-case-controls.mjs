@@ -69,7 +69,7 @@ const consoleErrors = [];
 // Two messages every page logs regardless of this feature: the CSP
 // report-only notice, and the 403 from /api/twilio/token for an account with
 // no phone line. Anything else is reported.
-const KNOWN_NOISE = /upgrade-insecure-requests|status of 403/;
+const KNOWN_NOISE = /\[Report Only\]|upgrade-insecure-requests|status of 403/;
 // The Recycle Bin page logs a pre-existing React "unique key" warning of its
 // own (seen 16 Oct 2026; every map there has a key, so it is deeper than a
 // grep). This feature only visits that page to confirm the case is listed,

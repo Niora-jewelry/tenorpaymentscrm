@@ -6,7 +6,7 @@
  * sets. The rail says how many of the ten steps are used and what still stops
  * it from running. `steps.ts` holds the rules, so this and the server agree.
  */
-import { useMemo, useRef, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -107,7 +107,7 @@ function StepCard({ kind, title, onRemove, readOnly, handle, children }: { kind:
 
 function SortableFlow({ step, index, count, catalog, onChange, onRemove, readOnly, stageModule, files, setFiles, automationId }: {
   step: FlowStep; index: number; count: number; catalog: Catalog; onChange: (s: FlowStep) => void; onRemove: () => void; readOnly: boolean;
-  stageModule: boolean; files: AutomationFile[]; setFiles: (f: AutomationFile[]) => void; automationId: string | null;
+  stageModule: boolean; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id });
   const isWait = step.type === 'wait';
@@ -149,7 +149,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
   const [pending, run] = useTransition();
   const [askWaiting, setAskWaiting] = useState<number | null>(null);
   const [choice, setChoice] = useState<'old' | 'new'>('new');
-  const [dialog, setDialog] = useState<null | 'test' | 'off' | 'delete'>(null);
+  const [dialog, setDialog] = useState<null | 'test' | 'off' | 'draft' | 'delete'>(null);
 
   const status = automation?.status ?? 'draft';
   const used = stepCount(steps);
@@ -204,6 +204,8 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
       if ('needsChoice' in r.data) return setAskWaiting(r.data.needsChoice);
       setAskWaiting(null);
       setSaved(true);
+      // What was typed ({mid}) comes back from the server as {MID}: show that now.
+      setSteps(forEditing(prepared.steps, catalog));
       if (then) then(r.data.id);
       else if (!automation) router.replace(`/admin/automations/${r.data.id}`);
       else router.refresh();
@@ -224,7 +226,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
   const pickStatus = (next: AutomationStatus) => {
     if (next === status) return;
     if (next === 'test') return setDialog('test');
-    if ((next === 'off' || next === 'draft') && (automation?.waiting ?? 0) > 0) return setDialog('off');
+    if ((next === 'off' || next === 'draft') && (automation?.waiting ?? 0) > 0) return setDialog(next);
     changeStatus(next);
   };
 
@@ -474,8 +476,8 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
       ) : null}
 
       {dialog === 'test' ? <TestDialog onClose={() => setDialog(null)} onPick={(id) => changeStatus('test', id)} /> : null}
-      {dialog === 'off' ? (
-        <Dialog title="Stop what is waiting?" confirmLabel="Switch off" onConfirm={() => changeStatus('off')} onClose={() => setDialog(null)}>
+      {dialog === 'off' || dialog === 'draft' ? (
+        <Dialog title="Stop what is waiting?" confirmLabel={dialog === 'off' ? 'Switch off' : 'Move to Draft'} onConfirm={() => changeStatus(dialog)} onClose={() => setDialog(null)}>
           <p className="text-[13px] text-ink-600">{automation?.waiting} {automation?.waiting === 1 ? 'record is' : 'records are'} waiting on this automation. {automation?.waiting === 1 ? 'Its' : 'Their'} remaining steps won&rsquo;t run.</p>
         </Dialog>
       ) : null}

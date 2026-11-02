@@ -36,7 +36,6 @@ export type FileRow = {
 export type FileEntry = {
   id: string;
   fileRowId: string;
-  storagePath: string;
   name: string;
   sizeBytes: number;
   version: number;
@@ -54,7 +53,7 @@ function mapFileRow(r: Record<string, unknown>): FileRow {
 
 function mapFile(r: Record<string, unknown>): FileEntry {
   return {
-    id: r.id as string, fileRowId: r.file_row_id as string, storagePath: r.storage_path as string,
+    id: r.id as string, fileRowId: r.file_row_id as string, 
     name: r.name as string, sizeBytes: r.size_bytes as number, version: r.version as number,
     uploadedBy: r.uploaded_by as string, uploadedAt: r.uploaded_at as string,
   };

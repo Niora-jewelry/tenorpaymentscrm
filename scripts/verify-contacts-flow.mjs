@@ -182,7 +182,7 @@ check('updated_at moved (the trigger fired)', touched.rows[0].t, true);
 // ── 5. the automatic path ───────────────────────────────────────────────────
 console.log('\nthe automatic path:');
 const rec = await db.query(
-  `select r.id from records r where r.deleted_at is null and coalesce(r.values->>'deal_name','') <> '' limit 1`,
+  `select r.id from records r where r.deleted_at is null and coalesce(r.deal_name,'') <> '' limit 1`,
 );
 const realRecordId = rec.rows[0]?.id ?? null;
 

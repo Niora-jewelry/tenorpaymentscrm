@@ -7,12 +7,12 @@ import { describe, expect, it } from 'vitest';
  * anyone. So the source is read: every exported function that changes something
  * has to ask for Full edit first, and every other one at least for View only.
  */
-const source = readFileSync(resolve(process.cwd(), 'src/lib/automations/service.ts'), 'utf8');
+const source = readFileSync(resolve(process.cwd(), 'src/lib/automations/service.ts'), 'utf8').replace(/\r\n/g, '\n');
 
 const exported = [...source.matchAll(/export async function (\w+)\([^]*?\{\n([^]*?)\n\}\n/g)].map((m) => ({ name: m[1]!, firstLine: m[2]!.trim().split('\n')[0]! }));
 const byName = new Map(exported.map((f) => [f.name, f.firstLine]));
 
-const WRITES = ['saveAutomation', 'setAutomationStatus', 'deleteAutomation', 'searchRecords', 'addAutomationFile', 'removeAutomationFile', 'dismissAlert'];
+const WRITES = ['saveAutomation', 'setAutomationStatus', 'deleteAutomation', 'searchRecords', 'addAutomationFile', 'dismissAlert'];
 const READS = ['listAutomations', 'getAutomation', 'listRuns', 'listAlerts'];
 // Asked as the viewer: the SQL function checks the record and who may switch it off.
 const AS_THE_VIEWER = ['waitingOn', 'switchOffForRecord'];

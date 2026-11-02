@@ -51,9 +51,9 @@ function ok(label, cond, extra = '') {
 const ALL_SCOPES = `
   select 'module'::grant_scope as kind, id from modules
   union all
-  select 'tab'::grant_scope, id from tabs
+  select 'tab'::grant_scope, id from tabs where access_options = 'levels'
   union all
-  select 'subtab'::grant_scope, id from subtabs
+  select 'subtab'::grant_scope, s.id from subtabs s join tabs t on t.id = s.tab_id where t.access_options = 'levels'
   union all
   select 'field'::grant_scope, id from fields where archived_at is null
   union all

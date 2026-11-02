@@ -185,9 +185,9 @@ function conditionProblem(c: ConditionStep): string | null {
     case 'in_module':
       return c.moduleId ? null : 'Only in module: choose the module.';
     case 'date_is':
-      return c.field && c.date ? null : 'Date is: choose the date field and the date.';
+      return c.field && c.date && !c.field.includes('.') ? null : 'Date is: choose the date field and the date.';
     case 'days_from':
-      return c.field ? null : 'Days from date: choose the date field.';
+      return c.field && !c.field.includes('.') ? null : 'Days from date: choose the date field.';
   }
 }
 

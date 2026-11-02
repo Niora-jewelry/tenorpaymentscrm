@@ -39,7 +39,7 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { AuthContext } from './permissions';
+import { canOpenAdminPage, type AuthContext } from './permissions';
 
 /** What kind of thing a bin entry is. Drives the label, the icon and which
  *  restore function the row calls — nothing here branches on a module. */
@@ -69,7 +69,7 @@ function excerpt(body: string | null, fallback: string): string {
 }
 
 export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
-  if (!ctx.isAdmin) return [];
+  if (!(await canOpenAdminPage(ctx, 'recycle_bin'))) return [];
   const supabase = supabaseAdmin();
 
   /*
@@ -214,7 +214,7 @@ export async function restoreBinItem(
   kind: BinKind,
   id: string,
 ): Promise<BinRestoreResult> {
-  if (!ctx.isAdmin) return { ok: false, message: 'Admin only' };
+  if (!(await canOpenAdminPage(ctx, 'recycle_bin'))) return { ok: false, message: 'Admin only' };
   const spec = RESTORE_FN[kind];
   if (!spec) return { ok: false, message: 'That cannot be restored.' };
 

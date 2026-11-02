@@ -12,7 +12,6 @@ import {
   addAutomationFile,
   deleteAutomation,
   dismissAlert,
-  removeAutomationFile,
   saveAutomation,
   searchRecords,
   setAutomationStatus,
@@ -95,16 +94,6 @@ export async function uploadFileAction(formData: FormData): Promise<Result<Autom
   if (BLOCKED.test(file.name)) return { ok: false, message: 'That type of file can’t be attached.' };
   const ctx = await authorize();
   return run(async () => addAutomationFile(ctx, id.data, { name: file.name, type: file.type, bytes: Buffer.from(await file.arrayBuffer()) }), 'Could not upload the file.');
-}
-
-export async function removeFileAction(fileId: string): Promise<Result<null>> {
-  const parsed = uuid.safeParse(fileId);
-  if (!parsed.success) return { ok: false, message: 'That file is not valid.' };
-  const ctx = await authorize();
-  return run(async () => {
-    await removeAutomationFile(ctx, parsed.data);
-    return null;
-  }, 'Could not remove the file.');
 }
 
 export async function dismissAlertAction(runId: string): Promise<Result<null>> {

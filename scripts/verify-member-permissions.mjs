@@ -26,7 +26,7 @@ import pg from 'pg';
 const BASE = process.argv[2] || 'http://localhost:3221';
 const SUPA = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const ADMIN = 'admin@tapdash.test';
-const MEMBER = 'demo.rep@tapdash.test';
+const MEMBER = process.env.E2E_MEMBER || 'demo.rep@tapdash.test';
 if (!/@([a-z0-9-]+\.)*test$/i.test(ADMIN) || !/@([a-z0-9-]+\.)*test$/i.test(MEMBER)) process.exit(1);
 
 const db = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });

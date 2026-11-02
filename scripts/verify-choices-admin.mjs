@@ -211,7 +211,9 @@ try {
   }
 
   /* ── 5. MID takes any length ────────────────────────────────────────── */
-  [midRecord] = await q(`select id, values->>'mid' as mid from records where deal_name ilike '%Netzach%'`);
+  // A throwaway record: a client's MID is not a thing to type over.
+  [midRecord] = await q(`insert into records (deal_name, creator_user_id, values) values ('ZZ choices admin', $1, '{}') returning id, values->>'mid' as mid`, [me.id]);
+  await q(`insert into record_modules (record_id, module_id) select $1, id from modules where slug = 'contacts'`, [midRecord.id]);
   midBefore = midRecord.mid;
   const [mf] = await q(`select digits, hint from fields where key='mid'`);
   check('5a. MID has no digit-count rule', mf.digits === null, `hint: “${mf.hint}”`);
@@ -225,8 +227,10 @@ try {
   /* The same header-cell locator `verify-client-reports` has proven: the
      header strip is the first <dl> in the drawer, a cell is the div holding
      the exact label. */
-  const midCell = page.locator('dl').first().locator('div').filter({ has: page.getByText('MID', { exact: true }) }).first();
-  const midCtl = midCell.locator('input, button').first();
+  const more = page.getByRole('button', { name: /Show all/ });
+  if (await more.count()) { await more.first().click(); await page.waitForTimeout(300); }
+  const midCell = page.locator('[id^="vital-grid-"] > div').filter({ has: page.getByText('MID', { exact: true }) }).first();
+  const midCtl = midCell.getByText('Add value').first();
   if (await midCtl.count()) {
     await midCtl.click();
     await page.waitForTimeout(400);

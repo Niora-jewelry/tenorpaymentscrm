@@ -207,16 +207,6 @@ export async function addAutomationFile(ctx: AuthContext, automationId: string, 
   return { id: data.id as string, name: file.name, size: file.bytes.length };
 }
 
-export async function removeAutomationFile(ctx: AuthContext, fileId: string): Promise<void> {
-  await assertAutomationsEdit(ctx);
-  const admin = supabaseAdmin();
-  const { data } = await admin.from('automation_files').select('storage_path').eq('id', fileId).maybeSingle();
-  if (!data) return;
-  await admin.storage.from(FILES_BUCKET).remove([data.storage_path as string]);
-  const { error } = await admin.from('automation_files').delete().eq('id', fileId);
-  if (error) throw error;
-}
-
 // ── run history ──────────────────────────────────────────────────────────────
 /** A run's record opens in a module it is in, or the Records List if it is in none. */
 async function hrefsFor(recordIds: string[]): Promise<Map<string, string>> {
@@ -309,7 +299,11 @@ export type Waiting = { runId: string; name: string; resumeAt: string; canSwitch
 export async function waitingOn(_ctx: AuthContext, recordId: string): Promise<Waiting[]> {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.rpc('automation_waiting_on', { p_record: recordId });
-  if (error) throw error;
+  if (error) {
+    // The icon is a convenience: without it the record must still open.
+    console.error('[automations] waiting_on', error.code);
+    return [];
+  }
   return (data ?? []).map((r: { run_id: string; automation_name: string; resume_at: string; can_switch_off: boolean }) => ({
     runId: r.run_id,
     name: r.automation_name,

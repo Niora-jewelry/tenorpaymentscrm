@@ -109,6 +109,7 @@ async function deliver(job: Job): Promise<void> {
   const run = job.run_id!;
   const step = job.step!;
   const admin = supabaseAdmin();
+  let queued: string;
   if (!mailConfigured) {
     await stop(run, 'failed', 'Email is not set up on this server.');
     return;
@@ -143,6 +144,16 @@ async function deliver(job: Job): Promise<void> {
       field: (key) => valueText(config, key, key === 'deal_name' ? rec.deal_name : values[key]),
     };
 
+    // A field deleted, or made sensitive, since this was written must not print as a gap in a merchant's email.
+    const gone = [...`${step.subject} ${step.body}`.matchAll(/\{field:([^{}]+)\}/g)].map((m) => m[1]!).filter((key) => {
+      const f = config.fields.find((x) => x.key === key);
+      return !f || f.sensitive;
+    });
+    if (gone.length) {
+      await stop(run, 'failed', `This email uses a field it can no longer print: ${gone[0]}.`);
+      return;
+    }
+
     const attachments = await attachmentsFor(step, job.record_id!, sender.user_id, run);
     if (attachments.reduce((n, a) => n + a.size, 0) > MAX_ATTACHED) {
       await stop(run, 'failed', 'The attachments come to more than 35 MB.');
@@ -158,10 +169,15 @@ async function deliver(job: Job): Promise<void> {
       p_attachments: attachments,
     });
     if (error) throw new Error(error.message);
-    await sendDue({ only: outboxId as string, budgetMs: 30_000 });
+    queued = outboxId as string;
   } catch (e) {
     await stop(run, 'failed', e instanceof Error ? e.message : 'The email could not be built.');
+    return;
   }
+
+  // Once queued, its outcome is the sender's to report. A hiccup here leaves it
+  // for the mail tick; it must not mark a message failed that may well have gone.
+  await sendDue({ only: queued, budgetMs: 30_000 }).catch((e) => console.error('[automations] send', e instanceof Error ? e.message.slice(0, 200) : e));
 }
 
 /** Spec: the alert is also sent by email. Retried on each tick for a day: an address that always refuses must not be tried forever, and the alert still stands in the admin panel and Notifications. */
@@ -174,6 +190,9 @@ async function emailAlerts(): Promise<void> {
     .is('alert_email_at', null)
     .limit(10);
   for (const r of runs ?? []) {
+    // Claimed first, so two overlapping ticks can't both send it.
+    const { data: claimed } = await admin.from('automation_runs').update({ alert_email_at: new Date().toISOString() }).eq('id', r.id as string).is('alert_email_at', null).select('id');
+    if (!claimed?.length) continue;
     const { data: rows } = await admin.from('notifications').select('recipient:profiles!notifications_recipient_id_fkey (email)').eq('automation_run_id', r.id as string).eq('source_kind', 'automation_alert');
     const emails = [...new Set((rows ?? []).map((x) => (x.recipient as unknown as { email: string } | null)?.email).filter((e): e is string => Boolean(e)))];
     let sent = emails.length === 0;
@@ -186,7 +205,7 @@ async function emailAlerts(): Promise<void> {
       });
       sent = sent || res.ok;
     }
-    if (sent) await admin.from('automation_runs').update({ alert_email_at: new Date().toISOString() }).eq('id', r.id as string);
+    if (!sent) await admin.from('automation_runs').update({ alert_email_at: null }).eq('id', r.id as string);
   }
 }
 

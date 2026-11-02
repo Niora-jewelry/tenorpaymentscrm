@@ -97,6 +97,11 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     }
   }
 
+  // A variable is written by its label, so two fields can't share one.
+  const named = new Map<string, number>();
+  for (const f of variables) named.set(f.label.toLowerCase(), (named.get(f.label.toLowerCase()) ?? 0) + 1);
+  const uniqueVariables = variables.map((f) => (named.get(f.label.toLowerCase())! > 1 ? { ...f, label: `${f.label} (${f.where})` } : f));
+
   const [{ data: templates }, { data: profiles }, { data: links }, { data: connections }] = await Promise.all([
     admin.from('permission_templates').select('id, label, team_label, user_type').not('user_type', 'is', null).order('position'),
     admin.from('profiles').select('id, full_name, email').eq('status', 'active').is('deleted_at', null),
@@ -131,7 +136,7 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     teams,
     users: people,
     fields,
-    variables,
+    variables: uniqueVariables,
     tabs,
     fileRows: [...APPLICATION_ROWS],
     inboxes: [...inboxes.values()].sort((a, b) => a.label.localeCompare(b.label)),

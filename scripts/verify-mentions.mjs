@@ -21,7 +21,7 @@ import pg from 'pg';
 const BASE = process.argv[2] || 'http://localhost:3221';
 const SUPA = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const A_EMAIL = 'admin@tapdash.test';
-const B_EMAIL = 'demo.rep@tapdash.test';
+const B_EMAIL = process.env.E2E_MEMBER || 'demo.rep@tapdash.test';
 if (!/@([a-z0-9-]+\.)*test$/i.test(A_EMAIL) || !/@([a-z0-9-]+\.)*test$/i.test(B_EMAIL)) process.exit(1);
 
 /*
@@ -95,8 +95,6 @@ const [leads] = await q(`select id, slug from modules where slug = 'leads'`);
 const [dba] = await q(`select f.id, f.label, f.tab_id, f.subtab_id, t.key tab_key, s.key subtab_key, t.label tab_label, s.label subtab_label
                          from fields f join tabs t on t.id = f.tab_id left join subtabs s on s.id = f.subtab_id where f.key = 'dba'`);
 const [ein] = await q(`select f.id, f.label from fields f where f.key = 'ein'`);
-const [updatesTab] = await q(`select id from tabs where key = 'updates'`);
-const [casesTab] = await q(`select id from tabs where key = 'cases'`);
 const grant = (kind, id, level, mod) =>
   db.query(
     `insert into user_grants (user_id, scope_kind, scope_id, grant_level, module_id) values ($1, $2, $3, $4, $5)
@@ -108,8 +106,6 @@ await q(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) va
 await grant('tab', dba.tab_id, 'edit', leads.id);
 if (dba.subtab_id) await grant('subtab', dba.subtab_id, 'edit', leads.id);
 await grant('field', dba.id, 'edit', leads.id);
-await grant('tab', updatesTab.id, 'edit', leads.id);
-await grant('tab', casesTab.id, 'edit', leads.id);
 // EIN stays as B's template has it (hidden sub-tab): B must be absent from its picker.
 
 /* ── the probe record, B on its team ── */

@@ -87,6 +87,7 @@ export function Composer({
   const [askSubject, setAskSubject] = useState<null | { sendAt: string | null }>(null);
   const [askRecord, setAskRecord] = useState<null | { sendAt: string | null; choices: { id: string; label: string }[] }>(null);
   const [mainRecord, setMainRecord] = useState<string | null>(null);
+  const inFlight = useRef(false);
   const [scheduling, setScheduling] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -198,6 +199,17 @@ export function Composer({
   const invalid = [...to, ...cc, ...bcc].some((c) => c.invalid);
 
   const send = async (sendAt: string | null, skipSubjectCheck = false, mainRecordId?: string | null) => {
+    // Held Ctrl+Enter, or a second click during the record lookup, must not send twice.
+    if (inFlight.current) return;
+    inFlight.current = true;
+    try {
+      await sendOnce(sendAt, skipSubjectCheck, mainRecordId);
+    } finally {
+      inFlight.current = false;
+    }
+  };
+
+  const sendOnce = async (sendAt: string | null, skipSubjectCheck: boolean, mainRecordId?: string | null) => {
     setError(null);
     if (invalid) return setError('One of the addresses isn’t valid. Fix it or remove it, then send.');
     if (valid(to).length + valid(cc).length + valid(bcc).length === 0) return setError('Add at least one recipient.');
@@ -236,7 +248,7 @@ export function Composer({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
-        void send(null);
+        if (!e.repeat && !askRecord) void send(null);
       }
     };
     document.addEventListener('keydown', onKey);

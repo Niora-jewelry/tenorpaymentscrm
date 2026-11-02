@@ -79,7 +79,9 @@ const tab = async (name) => {
 };
 
 t('Communication opened', await tab('Communication'));
-const textTab = page.getByRole('button', { name: 'Text', exact: true }).first();
+await page.locator('section[class*="@container"]').first().getByRole('button', { name: 'Phone', exact: true }).first().click().catch(() => {});
+await page.waitForTimeout(800);
+const textTab = page.getByRole('tab', { name: /^Texts/ }).first();
 if (await textTab.count()) { await textTab.click(); await page.waitForTimeout(3000); }
 
 const body = await page.locator('body').innerText();

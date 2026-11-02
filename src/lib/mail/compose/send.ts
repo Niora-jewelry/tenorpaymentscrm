@@ -235,12 +235,12 @@ async function done(row: OutboxRow, address: string, draft: string): Promise<'se
     .from('mail_outbox')
     .update({ status: 'sent', sent_at: now, sent_graph_id: draft, lease_until: null, last_error_code: null, last_error: null, updated_at: now })
     .eq('id', row.id);
+  if (row.automation_run_id) await admin.rpc('automation_mail_result', { p_outbox: row.id, p_ok: true, p_error: null });
   if (row.draft_id) await admin.from('mail_drafts').update({ deleted_at: now }).eq('id', row.draft_id);
   const paths = (row.attachments ?? []).map((a) => a.path).filter(Boolean);
   if (paths.length) await admin.storage.from(OUTBOX_BUCKET).remove(paths);
   // Show it in Sent Items (and gone from Drafts) without waiting for the scheduler.
   await admin.rpc('mail_enqueue_hot', { p_mailbox_id: row.mailbox_id });
-  if (row.automation_run_id) await admin.rpc('automation_mail_result', { p_outbox: row.id, p_ok: true, p_error: null });
   mailLog('info', 'send', 'sent', { outboxId: row.id, mailbox: address.split('@')[1] ?? '' });
   return 'sent';
 }

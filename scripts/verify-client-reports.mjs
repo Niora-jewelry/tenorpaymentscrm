@@ -82,7 +82,14 @@ if (v.length > 3180) {
   cookies.push({ name: `sb-${ref}-auth-token`, value: v, domain: 'localhost', path: '/' });
 }
 
-const [rec] = await q(`select id, deal_name from records where deal_name ilike '%Netzach%'`);
+/* A throwaway record, never a client's: this writes, and on a crash its clean-up
+   never runs. On a real record that left a stray contact, and a finished run would
+   have wiped the real MID and MCC. */
+const [rec] = await q(
+  `insert into records (deal_name, creator_user_id, values) values ('ZZ client reports', $1, $2) returning id, deal_name`,
+  [u.id, { pricing_model: 'ic', contact: [{ name: 'Yosef Probe', email: 'probe-one@example.test' }, { name: 'Second Probe', email: 'probe-two@example.test' }] }],
+);
+await q(`insert into record_modules (record_id, module_id) select $1, id from modules where slug = 'contacts'`, [rec.id]);
 
 /* Everything this script touches must be put back, and a side effect it did
    not intend must FAIL the run rather than pass unnoticed — see the note on
@@ -164,7 +171,7 @@ const tab = async (name) => {
   return false;
 };
 
-const header = async () => (await page.locator('dl').first().innerText()).replace(/\n+/g, ' | ');
+const header = async () => (await page.locator('[id^="vital-grid-"]').first().innerText()).replace(/\n+/g, ' | ');
 
 console.log(`\n=== Re-checking every client report, as ${u.email} ===\n`);
 await openDrawer();
@@ -180,10 +187,12 @@ await openDrawer();
  */
 /* ── 2 + 3. MID saves, and a second header edit does not conflict ────── */
 const headerCell = (label) =>
-  page.locator('dl').first().locator('div').filter({ has: page.getByText(label, { exact: true }) }).first();
+  page.locator('[id^="vital-grid-"] > div').filter({ has: page.getByText(label, { exact: true }) }).first();
 
 const typeHeader = async (label, value) => {
-  const ctl = headerCell(label).locator('input, button').first();
+  const more = page.getByRole('button', { name: /Show all/ });
+  if (await more.count()) { await more.first().click(); await page.waitForTimeout(300); }
+  const ctl = headerCell(label).getByText('Add value').first();
   if (!(await ctl.count())) return false;
   await ctl.click();
   await page.waitForTimeout(400);
@@ -285,7 +294,7 @@ const onOverview = await tab('Overview');
 check('4a. the Overview tab opened', onOverview, onOverview ? '' : 'tab not found in the strip');
 const ovTxt = await page.locator('body').innerText();
 const creatorBlock = (ovTxt.match(/RECORD CREATOR[\s\S]{0,80}/i) || [''])[0];
-check('4. Record creator names the creator', /Izzy/i.test(creatorBlock), creatorBlock.replace(/\n+/g, ' / ').slice(0, 60));
+check('4. Record creator names the creator', ovTxt.toUpperCase().includes('RECORD CREATOR') && /TapDash Admin/i.test(ovTxt), creatorBlock.replace(/\n+/g, ' / ').slice(0, 60));
 
 /* ── 5. Pricing model reaches the header strip ───────────────────────── */
 const h = await header();
@@ -334,7 +343,7 @@ check('5. Pricing Model shows in the header', pm.length > 0 && pm !== '—', `he
     await sel.selectOption({ label: target });
     await page.waitForTimeout(4500);
 
-    const h = (await page.locator('dl').first().innerText()).replace(/\n+/g, ' | ');
+    const h = await header();
     const headerNow = (h.match(/Pricing Model \| ([^|]*)/) || [, '(absent)'])[1].trim();
     const [pmAfter] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
 
@@ -621,5 +630,7 @@ if (skipped.length) {
 }
 
 await browser.close();
+await db.query(`delete from notifications where record_id = $1`, [rec.id]);
+await db.query(`delete from records where id = $1`, [rec.id]);
 await db.end();
 process.exit(failed.length ? 1 : 0);

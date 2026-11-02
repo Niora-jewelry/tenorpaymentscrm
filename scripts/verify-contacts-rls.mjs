@@ -64,7 +64,7 @@ await db.connect();
 // ── two real users ──────────────────────────────────────────────────────────
 const { data: users } = await admin.auth.admin.listUsers();
 const alice = users.users.find((u) => u.email === 'brimesh@tapdash.com');
-const bob = users.users.find((u) => u.email === 'demo.rep@tapdash.test');
+const bob = users.users.find((u) => u.email === (process.env.E2E_MEMBER || 'demo.rep@tapdash.test'));
 if (!alice || !bob) throw new Error('need two existing users to test with');
 
 const A = rest(await tokenFor(alice.email));

@@ -1004,7 +1004,10 @@ async function RecordDrawer({
     Array.from(notesByScope.entries()).filter(([key]) => {
       const [kind, ...rest] = key.split(':');
       const scopeId = rest.join(':');
-      if (kind === 'tab') return visibleTabIds.has(scopeId.split('/')[0] ?? '');
+      if (kind === 'tab') {
+        const [tabId = '', subtabId] = scopeId.split('/');
+        return visibleTabIds.has(tabId) && (!subtabId || subtabGrantById.get(subtabId) !== 'hidden');
+      }
       if (kind === 'field') return grantByKey[scopeId] !== undefined && grantByKey[scopeId] !== 'hidden';
       return false;
     }),

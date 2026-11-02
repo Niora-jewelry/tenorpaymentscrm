@@ -323,8 +323,9 @@ const ChoicesInput = z.object({ addresses: z.array(z.string().max(254)).min(1).m
 
 /**
  * Automations spec: if an address belongs to more than one record, the person
- * writing the email is asked which is the main record. Empty means nothing to
- * ask. One record they can see is the answer, so that isn't a question either.
+ * writing the email is asked which is the main record. They are offered what
+ * they can see. Several means ask; one is the answer; none leaves it to the
+ * email's addresses, which is where it stands when each is on its own record.
  */
 export async function mainRecordChoicesAction(input: z.input<typeof ChoicesInput>): Promise<Result<{ id: string; label: string }[]>> {
   const parsed = ChoicesInput.safeParse(input);
@@ -341,9 +342,16 @@ export async function mainRecordChoicesAction(input: z.input<typeof ChoicesInput
     p_conversation: conversation,
   });
   if (error) return { ok: true, data: [] };
-  const seen = new Map<string, string>();
-  for (const r of (data ?? []) as { record_id: string; deal_name: string | null }[]) seen.set(r.record_id, r.deal_name ?? '(untitled)');
-  return { ok: true, data: [...seen].map(([id, label]) => ({ id, label })) };
+  const byAddress = new Map<string, Map<string, string>>();
+  for (const r of (data ?? []) as { address: string; record_id: string; deal_name: string | null }[]) {
+    if (!byAddress.has(r.address)) byAddress.set(r.address, new Map());
+    byAddress.get(r.address)!.set(r.record_id, r.deal_name ?? '(untitled)');
+  }
+  const all = [...byAddress.values()];
+  const shared = all.filter((records) => records.size > 1);
+  const pool = new Map((shared.length ? shared : all).flatMap((records) => [...records]));
+  if (!shared.length && pool.size > 1) return { ok: true, data: [] };
+  return { ok: true, data: [...pool].map(([id, label]) => ({ id, label })) };
 }
 
 export async function sendMailAction(input: z.input<typeof SendInput>): Promise<Result<{ outboxId: string; releaseAt: string; status: 'held' | 'scheduled' }>> {

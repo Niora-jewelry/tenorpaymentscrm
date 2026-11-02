@@ -415,6 +415,31 @@ suite('Automations', () => {
       expect((await one<{ n: number }>(`select count(*)::int n from notifications where recipient_id = $1 and automation_run_id = $2 and source_kind = 'automation_alert'`, [builder, run.id])).n).toBe(1);
     });
 
+    it('Off stops an email already queued', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [{ id: 'm', type: 'send_email', mailboxId: mailbox }, setStatus('low')] });
+      const rec = await record({ contact: [{ email: 'off@x.test' }] });
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      const run = await lastRun(a);
+      const { id } = await one<{ id: string }>(`select automation_mail_enqueue($1, $2, 'Hi', 'x', '[{"name":"R","address":"off@x.test"}]', '[]') as id`, [run.id, mailbox]);
+      await q(`select automation_set_status($1, 'off', null, $2)`, [a, builder]);
+      expect((await one<{ status: string }>(`select status from mail_outbox where id = $1`, [id])).status).toBe('cancelled');
+      expect((await lastRun(a)).status).toBe('cancelled');
+    });
+
+    it('A record purged while its email is out doesn\'t stop the tick', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [{ id: 'm', type: 'send_email', mailboxId: mailbox }, setStatus('low')] });
+      const rec = await record({ contact: [{ email: 'gone@x.test' }] });
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      const run = await lastRun(a);
+      const { id } = await one<{ id: string }>(`select automation_mail_enqueue($1, $2, 'Hi', 'x', '[{"name":"R","address":"gone@x.test"}]', '[]') as id`, [run.id, mailbox]);
+      await q(`update mail_outbox set status = 'sent' where id = $1`, [id]);
+      await q(`update automation_runs set record_id = null where id = $1`, [run.id]);
+      await work();
+      expect((await lastRun(a)).status).toBe('cancelled');
+    });
+
     it('An inbox with no working connection is a refusal, not a silent loss', async () => {
       const a = await automation({ triggers: [onStatus('high')], flow: [{ id: 'm', type: 'send_email', mailboxId: randomUUID() }] });
       const rec = await record();
@@ -1109,6 +1134,114 @@ suite('Automations', () => {
       await setValue(sales, rec, 'current_status', 'high');
       await work();
       expect(await statusOf(rec)).toBe('mid');
+    });
+  });
+
+  describe('found in review', () => {
+    it('A record that is an automation\'s Test record can still be purged, and the automation goes Off', async () => {
+      const rec = await record();
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('low')] }, 'test', rec);
+      await q(`savepoint s`);
+      await q(`delete from records where id = $1`, [rec]);
+      const row = await one<{ status: string; test_record_id: string | null }>(`select status, test_record_id from automations where id = $1`, [a]);
+      expect(row).toEqual({ status: 'off', test_record_id: null });
+      expect((await q(`select 1 from automation_triggers where automation_id = $1`, [a])).length).toBe(0);
+      await q(`rollback to savepoint s`);
+    });
+
+    it('A new value on a multi-select field: any choice in it', async () => {
+      const a = await automation({ triggers: [{ id: 't', type: 'field', field: 'services', value: 'card' }], flow: [setStatus('low')] });
+      const rec = await record();
+      await q(`select set_config('tapdash.event_actor', $1, true)`, [sales]);
+      await q(`update records set values = values || '{"services": ["ach"]}' where id = $1`, [rec]);
+      expect(await queued(a)).toBe(0);
+      await q(`update records set values = values || '{"services": ["ach", "card"]}' where id = $1`, [rec]);
+      expect(await queued(a)).toBe(1);
+    });
+
+    it('Saving On over On keeps the moment it went live', async () => {
+      const rec = await record();
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('low')] }, 'test', rec);
+      await q(`select automation_set_status($1, 'on', null, $2)`, [a, builder]);
+      await q(`update automations set activated_at = activated_at - interval '1 day' where id = $1`, [a]);
+      const before = (await one<{ at: string }>(`select activated_at::text at from automations where id = $1`, [a])).at;
+      await q(`select automation_set_status($1, 'on', null, $2)`, [a, builder]);
+      expect((await one<{ at: string }>(`select activated_at::text at from automations where id = $1`, [a])).at).toBe(before);
+    });
+
+    it('A deleted team fails with a reason, a step and an alert', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [{ id: 'x', type: 'send_notification', who: 'team', teamId: randomUUID() }] });
+      const rec = await record();
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      const run = await lastRun(a);
+      expect(run.status).toBe('failed');
+      expect(run.reason).toBe('That team no longer exists.');
+      expect((await one<{ n: number }>(`select count(*)::int n from automation_run_steps where run_id = $1`, [run.id])).n).toBe(1);
+      expect((await one<{ n: number }>(`select count(*)::int n from notifications where automation_run_id = $1`, [run.id])).n).toBe(1);
+    });
+
+    it('A deleted status stops the run instead of writing a key nothing can show', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('zz_gone')] });
+      const rec = await record();
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      expect((await lastRun(a)).reason).toBe('That status no longer exists.');
+      expect(await statusOf(rec)).toBe('high');
+    });
+
+    it('A run that can\'t start says so, and the rest of the tick carries on', async () => {
+      const bad = await automation({ triggers: [onStatus('high')], conditions: { join: 'and', groups: [group('and', { id: 'c', type: 'nonsense' })] }, flow: [setStatus('low')] });
+      const good = await automation({ triggers: [onStatus('high')], flow: [setStatus('mid')] });
+      const rec = await record();
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      const run = await lastRun(bad);
+      expect(run.status).toBe('failed');
+      expect(run.reason).toMatch(/Unknown condition/);
+      expect((await one<{ n: number }>(`select count(*)::int n from notifications where automation_run_id = $1 and source_kind = 'automation_alert'`, [run.id])).n).toBe(1);
+      expect((await lastRun(good)).status).toBe('completed');
+    });
+
+    it('An event from before it last went live doesn\'t start it', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('low')] });
+      const rec = await record();
+      await setValue(sales, rec, 'current_status', 'high');
+      await q(`update automations set activated_at = now() + interval '1 minute' where id = $1`, [a]);
+      await work();
+      expect(await runs(a)).toHaveLength(0);
+    });
+
+    it('An event for the record it used to test on doesn\'t start it', async () => {
+      const one1 = await record();
+      const two = await record();
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('low')] }, 'test', one1);
+      await setValue(sales, one1, 'current_status', 'high');
+      await q(`update automations set test_record_id = $2 where id = $1`, [a, two]);
+      await work();
+      expect(await runs(a)).toHaveLength(0);
+    });
+
+    it('A hidden field\'s value doesn\'t show in Updates', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('low')] });
+      const rec = await record({ team_members_assigned: [sales] });
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      expect((await lastRun(a)).status).toBe('completed');
+      expect(await as(sales, () => q(`select 1 from updates where record_id = $1`, [rec]))).toHaveLength(1);
+      const { id } = await one<{ id: string }>(`select id from fields where key = 'current_status'`);
+      await q(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'field', $2, 'hidden')`, [sales, id]);
+      expect(await as(sales, () => q(`select 1 from updates where record_id = $1`, [rec]))).toHaveLength(0);
+    });
+
+    it('The question shows only what the writer can see, and says nothing of the rest', async () => {
+      const shared = `seen-${randomUUID().slice(0, 6)}@x.test`;
+      const hidden = await newUser('Nell None', 'customer_service');
+      await q(`insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, $2, 'mine')`, [hidden, `module:${leads}`]);
+      const mine = await record({ contact: [{ email: shared }], team_members_assigned: [hidden] });
+      await record({ contact: [{ email: shared }] });
+      const rows = await as(hidden, () => q<{ record_id: string }>(`select * from mail_record_choices($1)`, [[shared]]));
+      expect(rows.map((r) => r.record_id)).toEqual([mine]);
     });
   });
 

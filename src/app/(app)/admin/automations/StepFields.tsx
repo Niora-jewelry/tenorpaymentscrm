@@ -1,14 +1,14 @@
 'use client';
 
 /** The controls inside each step. Every list comes from the catalog. */
-import { useRef, useState, useTransition } from 'react';
+import { useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import type { Catalog, CatalogField, Option } from '@/lib/automations/catalog';
 import type { AutomationFile } from '@/lib/automations/service';
 import type { ConditionStep, EmailStep, FlowStep, TriggerStep } from '@/lib/automations/steps';
 import { CONTACT_NAME, MERCHANT_NAME } from '@/lib/automations/template';
 import { Icon } from '@/proto/ui/icons';
 import { IconButton } from '@/proto/ui/kit';
-import { removeFileAction, uploadFileAction } from './actions';
+import { uploadFileAction } from './actions';
 
 export const inputClass =
   'mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-[13px] text-ink-900 outline-none transition-colors hover:border-ink-300 focus-field disabled:bg-canvas disabled:text-ink-500';
@@ -112,7 +112,8 @@ export function TriggerFields({ step, catalog, onChange }: { step: TriggerStep; 
 }
 
 export function ConditionFields({ step, catalog, onChange }: { step: ConditionStep; catalog: Catalog; onChange: (s: ConditionStep) => void }) {
-  const dates = catalog.fields.filter((f) => f.type === 'date' || f.type === 'datetime');
+  // A date inside a repeat group has one value per person, so it can't be "the date".
+  const dates = catalog.fields.filter((f) => (f.type === 'date' || f.type === 'datetime') && !f.key.includes('.'));
   switch (step.type) {
     case 'field_filled':
       return (
@@ -146,7 +147,14 @@ export function ConditionFields({ step, catalog, onChange }: { step: ConditionSt
       return (
         <div className="grid gap-3 sm:grid-cols-3">
           <FieldPick label="Date field" value={step.field} onChange={(field) => onChange({ ...step, field })} fields={dates} />
-          <Pick label="Is" value={step.op} none="on" onChange={(op) => onChange({ ...step, op: (op || 'on') as typeof step.op })} options={[{ value: 'before', label: 'before' }, { value: 'after', label: 'after' }]} />
+          <label className="block min-w-0">
+            <span className={labelClass}>Is</span>
+            <select value={step.op} onChange={(e) => onChange({ ...step, op: e.target.value as typeof step.op })} className={inputClass}>
+              <option value="before">before</option>
+              <option value="after">after</option>
+              <option value="on">on</option>
+            </select>
+          </label>
           <Text label="Date" type="date" value={step.date} onChange={(date) => onChange({ ...step, date })} />
         </div>
       );
@@ -212,7 +220,7 @@ function ChangeStage({ step, catalog, onChange, stageModule }: { step: Extract<F
   );
 }
 
-function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: { step: EmailStep; catalog: Catalog; onChange: (s: FlowStep) => void; files: AutomationFile[]; setFiles: (f: AutomationFile[]) => void; automationId: string | null }) {
+function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: { step: EmailStep; catalog: Catalog; onChange: (s: FlowStep) => void; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null }) {
   const body = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, run] = useTransition();
@@ -237,15 +245,13 @@ function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: {
       const r = await uploadFileAction(data);
       if (!r.ok) return setError(r.message);
       setError(null);
-      setFiles([...files, r.data]);
+      setFiles((list) => [...list, r.data]);
       onChange({ ...step, fileIds: [...step.fileIds, r.data.id] });
     });
   };
-  const detach = (id: string) => {
-    onChange({ ...step, fileIds: step.fileIds.filter((x) => x !== id) });
-    setFiles(files.filter((f) => f.id !== id));
-    void removeFileAction(id);
-  };
+  // Only the step lets go. The file stays: the saved version, or a record still
+  // finishing on an old one, may need it.
+  const detach = (id: string) => onChange({ ...step, fileIds: step.fileIds.filter((x) => x !== id) });
 
   return (
     <div className="space-y-3">
@@ -324,7 +330,7 @@ function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: {
 }
 
 export function FlowFields({ step, catalog, onChange, stageModule, files, setFiles, automationId }: {
-  step: FlowStep; catalog: Catalog; onChange: (s: FlowStep) => void; stageModule: boolean; files: AutomationFile[]; setFiles: (f: AutomationFile[]) => void; automationId: string | null;
+  step: FlowStep; catalog: Catalog; onChange: (s: FlowStep) => void; stageModule: boolean; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null;
 }) {
   switch (step.type) {
     case 'wait':

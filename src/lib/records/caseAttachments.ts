@@ -97,7 +97,7 @@ export async function attachmentsForCases(
   const byRow = new Map<string, FileEntry[]>();
   for (const f of files ?? []) {
     const entry: FileEntry = {
-      id: f.id, fileRowId: f.file_row_id, storagePath: f.storage_path, name: f.name,
+      id: f.id, fileRowId: f.file_row_id, name: f.name,
       sizeBytes: f.size_bytes, version: f.version, uploadedBy: f.uploaded_by, uploadedAt: f.uploaded_at,
     };
     const list = byRow.get(f.file_row_id);

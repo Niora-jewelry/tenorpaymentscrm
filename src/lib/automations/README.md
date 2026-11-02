@@ -1,6 +1,6 @@
 # Automations
 
-Client spec of 30 Oct 2026. Migrations 9847 to 9853 hold the rules; this folder is the layer on them.
+Client spec of 30 Oct 2026. Migrations 9847 to 9854 hold the rules; this folder is the layer on them.
 
 ## How a run goes
 

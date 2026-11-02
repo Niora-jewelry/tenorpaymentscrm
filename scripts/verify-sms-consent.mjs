@@ -122,7 +122,9 @@ t('the Communication tab opened', await tab('Communication'));
  * page-wide button match can hit by accident, and no module is called "Text"
  * — they are Leads, Deals, Contacts, Tickets, Residuals and Phone.
  */
-const textTab = page.getByRole('button', { name: 'Text', exact: true }).first();
+await page.locator('section[class*="@container"]').first().getByRole('button', { name: 'Phone', exact: true }).first().click().catch(() => {});
+await page.waitForTimeout(800);
+const textTab = page.getByRole('tab', { name: /^Texts/ }).first();
 const opened = (await textTab.count()) > 0;
 if (opened) { await textTab.click(); await page.waitForTimeout(3000); }
 t('the Text subtab opened', opened);

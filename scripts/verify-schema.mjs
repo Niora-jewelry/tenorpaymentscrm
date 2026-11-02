@@ -407,9 +407,22 @@ async function main() {
    * prebuilt July 2024 – December 2032 grid, which §3.6 says is append-only
    * and never user-created.
    */
+  /*
+   * Subtabs: 19 seeded, four retired on purpose since — Communication's Text,
+   * Recordings and Instantly folded into Phone (migration 9802), and the
+   * Financial sub-tab removed at the client's 30 Oct review (9836). Those four
+   * are checked gone below; the rest must still be here.
+   */
   const seedAtLeast = {
-    tabs: 13, subtabs: 19, pipelines: 4, pipeline_steps: 21,
+    tabs: 13, subtabs: 19 - 4, pipelines: 4, pipeline_steps: 21,
   };
+  {
+    const { rows } = await client.query(
+      `select count(*)::int as n from subtabs s join tabs t on t.id = s.tab_id
+        where (t.key = 'communication' and s.key in ('text', 'recordings', 'instantly'))`,
+    );
+    check('the retired Communication sub-tabs stay retired', rows[0].n === 0, `${rows[0].n} found`);
+  }
   for (const [table, expected] of Object.entries(seedAtLeast)) {
     const { rows } = await client.query(`select count(*)::int as n from ${table}`);
     check(

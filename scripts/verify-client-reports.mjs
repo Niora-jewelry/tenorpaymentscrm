@@ -222,7 +222,8 @@ await openDrawer();
 
 /* ── 1. "Contacts 91" and the vanished contact ───────────────────────── */
 await tab('Contact');
-const contactTxt = await page.locator('body').innerText();
+// The drawer only: the sidebar's own "Contacts 44" is the module's record count.
+const contactTxt = await page.locator('section').filter({ hasText: /VITAL INFO/i }).first().innerText();
 const countMatch = contactTxt.match(/CONTACTS\s+(\d+)/i);
 const shown = countMatch ? Number(countMatch[1]) : null;
 const [dbContacts] = await q(
@@ -262,11 +263,16 @@ let pricingToRestore = null;
   const addBtn = page.locator('button', { hasText: /Add contact/i }).first();
   if (await addBtn.count()) {
     await addBtn.click();
-    await page.waitForTimeout(3500);
-    const [after] = await q(
+    // The save is a round trip to a remote database: wait for it, up to 20 s.
+    const read = async () => (await q(
       `select jsonb_typeof(values->'contact') t,
               coalesce(jsonb_array_length(values->'contact'),0) n
-         from records where id=$1`, [rec.id]);
+         from records where id=$1`, [rec.id]))[0];
+    let after = await read();
+    for (let i = 0; i < 40 && after.n === before; i += 1) {
+      await page.waitForTimeout(500);
+      after = await read();
+    }
     check('1d. adding a contact keeps it an array',
       after.t === 'array' && after.n === before + 1,
       `type ${after.t}, length ${before} -> ${after.n}`);
@@ -316,39 +322,63 @@ check('5. Pricing Model shows in the header', pm.length > 0 && pm !== '—', `he
  */
 {
   const [pmBefore] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
-  const label = (k) => (k === 'dp' ? 'DP' : k === 'ic' ? 'IC+' : k === 'fr' ? 'FR' : '');
+  // The labels as configured, not as they once were (Dual Pricing and Flat Rate since 29 Oct).
+  const labels = Object.fromEntries((await q(
+    `select c.key::text k, c.value v from field_choices c join fields f on f.id = c.field_id
+      where f.key = 'pricing_model' and c.module_id is null`)).map((r) => [r.k, r.v]));
+  const label = (k) => labels[k] ?? '';
 
+  /* A dropdown is an open select box now, in the header strip and in the grid
+     card alike, so each is found as the select under its "Pricing Model"
+     label inside the drawer: [first] the header strip, [last] the grid card. */
   const tagged = await page.evaluate((cur) => {
-    const all = Array.prototype.slice.call(document.querySelectorAll('*'));
-    const labs = all.filter((e) => e.children.length === 0 && /^\s*Pricing Model\s*$/i.test(e.textContent || ''));
-    if (labs.length < 2) return false;                 // [0] header strip, [last] grid card
-    let n = labs[labs.length - 1];
-    for (let k = 0; k < 7 && n.parentElement; k += 1) {
-      n = n.parentElement;
-      const btns = Array.prototype.slice.call(n.querySelectorAll('button'));
-      const val = btns.find((b) => (b.textContent || '').trim() === cur);
-      if (val) { val.setAttribute('data-probe', 'grid-pm'); return true; }
-    }
-    return false;
-  }, label(pmBefore.pm));
+    const root = Array.prototype.slice.call(document.querySelectorAll('section')).find((s) => /VITAL INFO/i.test(s.innerText)) || document.body;
+    const all = Array.prototype.slice.call(root.querySelectorAll('*'));
+    // A field's label carries its name as a title, and may hold a required star.
+    const labs = all.filter((e) => /^\s*Pricing Model\s*$/i.test(e.getAttribute('title') || '') || (e.children.length === 0 && /^\s*Pricing Model\s*$/i.test(e.textContent || '')));
+    if (labs.length < 2) return false;
+    const selectNear = (label) => {
+      let n = label;
+      for (let k = 0; k < 7 && n.parentElement; k += 1) {
+        n = n.parentElement;
+        const s = Array.prototype.slice.call(n.querySelectorAll('select')).find((x) => x.value === cur);
+        if (s) return s;
+      }
+      return null;
+    };
+    const head = selectNear(labs[0]);
+    const grid = selectNear(labs[labs.length - 1]);
+    if (!head || !grid || head === grid) return false;
+    head.setAttribute('data-probe', 'header-pm');
+    grid.setAttribute('data-probe', 'grid-pm');
+    return true;
+  }, pmBefore.pm);
 
   if (!tagged) {
     check('5b. a grid edit reaches the header strip', false, 'could not find the grid Pricing Model control');
   } else {
-    await page.locator('[data-probe="grid-pm"]').click();
-    await page.waitForTimeout(1200);
-    const sel = page.locator('select').filter({ has: page.locator('option', { hasText: 'IC+' }) }).first();
-    const opts = (await sel.locator('option').allInnerTexts()).map((x) => x.trim()).filter(Boolean);
-    const target = opts.find((o) => o !== '—' && o !== label(pmBefore.pm));
-    await sel.selectOption({ label: target });
-    await page.waitForTimeout(4500);
-
-    const h = await header();
-    const headerNow = (h.match(/Pricing Model \| ([^|]*)/) || [, '(absent)'])[1].trim();
-    const [pmAfter] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
+    const sel = page.locator('[data-probe="grid-pm"]');
+    const target = Object.keys(labels).find((k) => k !== pmBefore.pm);
+    await sel.selectOption(target);
+    // The header follows with no reload: poll its select, up to 15 s.
+    let headerNow = '';
+    for (let i = 0; i < 30; i += 1) {
+      headerNow = await page.locator('[data-probe="header-pm"]').inputValue().catch(() => '');
+      if (headerNow === target) break;
+      await page.waitForTimeout(500);
+    }
+    // Edits close together are sent as one batch a moment later: the header shows
+    // it at once, and the database must have it shortly after.
+    let pmAfter = { pm: null };
+    for (let i = 0; i < 40; i += 1) {
+      [pmAfter] = await q(`select values->>'pricing_model' pm from records where id=$1`, [rec.id]);
+      if (pmAfter.pm === target) break;
+      await page.waitForTimeout(500);
+    }
 
     check('5b. a grid edit reaches the header strip', headerNow === target,
-      `grid set ${target}, header shows ${headerNow}, db ${pmAfter.pm}`);
+      `grid set ${label(target)}, header shows ${label(headerNow) || headerNow}`);
+    check('5c. and it is saved', pmAfter.pm === target, `db ${pmAfter.pm}`);
 
     /* Put it back through the UI so the record keeps a consistent token. */
     pricingToRestore = pmBefore.pm;

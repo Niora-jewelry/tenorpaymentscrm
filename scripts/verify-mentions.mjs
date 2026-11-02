@@ -21,8 +21,26 @@ import pg from 'pg';
 const BASE = process.argv[2] || 'http://localhost:3221';
 const SUPA = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const A_EMAIL = 'admin@tapdash.test';
-const B_EMAIL = process.env.E2E_MEMBER || 'demo.rep@tapdash.test';
+/* B: a member named by E2E_MEMBER, or a throwaway Sales agent made for the run
+   and removed after (the old demo accounts are gone). */
+const MADE_B = !process.env.E2E_MEMBER;
+const B_EMAIL = process.env.E2E_MEMBER || `zz-mention-${Date.now()}@tapdash.test`;
 if (!/@([a-z0-9-]+\.)*test$/i.test(A_EMAIL) || !/@([a-z0-9-]+\.)*test$/i.test(B_EMAIL)) process.exit(1);
+if (MADE_B) {
+  const admin = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+  const { data, error } = await admin.auth.admin.createUser({ email: B_EMAIL, password: 'ZzProbe-2026!mention', email_confirm: true });
+  if (error) throw error;
+  const c = new pg.Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
+  await c.connect();
+  const [role] = (await c.query(`select id from roles where not is_admin order by name limit 1`)).rows;
+  await c.query(`insert into profiles (id, email, full_name, role_id, status) values ($1, $2, 'Zz Mentioned', $3, 'active')
+    on conflict (id) do update set full_name = excluded.full_name, role_id = excluded.role_id, status = 'active'`, [data.user.id, B_EMAIL, role.id]);
+  await c.query(`insert into user_templates (user_id, template_id) select $1, id from permission_templates where user_type = 'sales_agent'
+    on conflict (user_id) do update set template_id = excluded.template_id`, [data.user.id]);
+  await c.query(`insert into permission_settings (owner_kind, owner_id, key, value) select 'user', $1, 'module:' || id, 'mine' from modules where kind = 'display'
+    on conflict (owner_kind, owner_id, key) do update set value = excluded.value`, [data.user.id]);
+  await c.end();
+}
 
 /*
  * The pooled connection has been cut mid-run more than once (a ten-minute
@@ -207,7 +225,10 @@ try {
   const dbaPick = await fieldMention(a, 'dba', dba.label, null);
   t('field picker offers B for a field B can see', dbaPick.offered.some((n) => n.includes(B.name)), dbaPick.offered.join(', '));
   t('field picker never offers the sender', !dbaPick.offered.some((n) => n.includes(A.name)));
-  // EIN lives in a sub-tab B's template hides.
+  // EIN, hidden from B here rather than assumed hidden by B's template: what a
+  // template hides is the client's to change. Put back with B's other grants.
+  await q(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) select $1, 'field', id, 'hidden' from fields where key = 'ein'
+           on conflict do nothing`, [B.id]);
   await a.getByRole('button', { name: 'Private', exact: true }).first().click().catch(() => {});
   await a.waitForTimeout(600);
   const einCell = a.locator('#field-ein');
@@ -496,6 +517,11 @@ try {
   const left = await q2(`select count(*)::int n from records where deal_name = 'ZZ mention probe'`);
   const grantsAfter = await q2(`select count(*)::int n from user_grants where user_id = $1`, [B.id]);
   notes.push(`cleanup: probe records left ${left[0].n}; B's grants ${grantsBefore.length} → ${grantsAfter[0].n}`);
+  if (MADE_B) {
+    await db2.query(`delete from permission_settings where owner_kind = 'user' and owner_id = $1`, [B.id]).catch(() => {});
+    await createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } }).auth.admin.deleteUser(B.id).catch(() => {});
+    notes.push(`cleanup: throwaway member ${B_EMAIL} removed`);
+  }
   await db2.end();
 }
 

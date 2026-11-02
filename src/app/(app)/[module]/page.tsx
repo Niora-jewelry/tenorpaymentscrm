@@ -756,7 +756,10 @@ async function RecordDrawer({
      */
     canRead('files')
       ? (grantOfKind('files') === 'edit'
-          ? ensureApplicationRows(ctx, record.id)
+          /* The database can still say no: a record this viewer reads through
+             someone else's access, say, is View there whatever this module
+             says. Opening must not fail on it, so the rows that exist show. */
+          ? ensureApplicationRows(ctx, record.id).catch(() => undefined)
           : Promise.resolve()
         ).then(() => fileRowsFor(ctx, record.id, 'application'))
       : [],

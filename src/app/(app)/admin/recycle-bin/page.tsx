@@ -43,7 +43,7 @@ export default async function RecycleBinPage() {
   ]);
 
   const of = (...kinds: BinItem[]['0']['kind'][]) => items.filter((i) => kinds.includes(i.kind));
-  const files = of('file');
+  const files = of('file', 'file_row');
   const posts = of('update', 'reply');
   const logins = of('login');
   const cases = of('case', 'case_reply');

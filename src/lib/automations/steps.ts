@@ -32,6 +32,8 @@ export const CONDITIONS = {
   in_module: 'Only in module',
   date_is: 'Date is',
   days_from: 'Days from date',
+  files_required_empty: 'Files Required is empty',
+  files_required_filled: 'Files Required is filled',
 } as const;
 export type ConditionType = keyof typeof CONDITIONS;
 
@@ -47,6 +49,7 @@ export const ACTIONS = {
   remove_module: 'Remove from module',
   create_ticket: 'Create ticket',
   send_notification: 'Send notification',
+  mark_file_required: 'Mark file required',
 } as const;
 export type ActionType = keyof typeof ACTIONS;
 
@@ -90,6 +93,8 @@ export const conditionSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('in_module'), moduleId: pick }),
   z.object({ id, type: tag('date_is'), field: pick, op: z.enum(['before', 'after', 'on']).default('on'), date: pick }),
   z.object({ id, type: tag('days_from'), field: pick, days: z.number().int().min(0).max(3650).default(0), direction: z.enum(['before', 'after']).default('after') }),
+  z.object({ id, type: tag('files_required_empty') }),
+  z.object({ id, type: tag('files_required_filled'), fileRow: pick }),
 ]);
 export type ConditionStep = z.infer<typeof conditionSchema>;
 
@@ -126,6 +131,7 @@ export const flowStepSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('remove_module'), moduleId: pick }),
   z.object({ id, type: tag('create_ticket'), title: z.string().max(200).default(''), issue: z.string().max(5000).default('') }),
   z.object({ id, type: tag('send_notification'), who: z.enum(['team_members', 'team', 'relationship_manager']).default('team_members'), teamId: pick, message: z.string().max(500).default('') }),
+  z.object({ id, type: tag('mark_file_required'), rows: z.array(z.object({ name: z.string().max(120), needed: z.number().int().min(1).max(5).default(1) })).max(5).default([]) }),
 ]);
 export type FlowStep = z.infer<typeof flowStepSchema>;
 
@@ -188,6 +194,9 @@ function conditionProblem(c: ConditionStep): string | null {
       return c.field && c.date && !c.field.includes('.') ? null : 'Date is: choose the date field and the date.';
     case 'days_from':
       return c.field && !c.field.includes('.') ? null : 'Days from date: choose the date field.';
+    case 'files_required_empty':
+    case 'files_required_filled':
+      return null;
   }
 }
 
@@ -221,6 +230,8 @@ function flowProblem(s: FlowStep, needsModule: boolean): string | null {
       return s.issue.trim() ? null : 'Create ticket: write the Issue.';
     case 'send_notification':
       return s.who !== 'team' || s.teamId ? null : 'Send notification: choose the team.';
+    case 'mark_file_required':
+      return s.rows.length ? null : 'Mark file required: choose at least one row.';
     default:
       return null;
   }

@@ -16,8 +16,15 @@ import {
   addFileRowAction,
   getFileUrlAction,
   getFileDownloadUrlAction,
+  getFileVersionUrlAction,
+  fileVersionsAction,
+  setFileRowRequiredAction,
+  renameFileRowAction,
+  deleteFileRowAction,
+  moveFileAction,
+  replaceFileAction,
 } from './actions';
-import type { FileRow, FileEntry, FileRowForAdding } from '@/lib/records/files';
+import type { FileRow, FileEntry, FileRowForAdding, FileVersion } from '@/lib/records/files';
 import { FLASH_CLASS, targetId, useFlashTarget } from './mentionTarget';
 import { SavedNotice } from './SavedNotice';
 
@@ -30,10 +37,12 @@ export function AddOnlyFilesPanel({
   moduleSlug,
   recordId,
   rows,
+  focusRowId = null,
 }: {
   moduleSlug: string;
   recordId: string;
   rows: FileRowForAdding[];
+  focusRowId?: string | null;
 }) {
   const [addingRow, setAddingRow] = useState(false);
   const [saved, setSaved] = useState(0);
@@ -49,7 +58,7 @@ export function AddOnlyFilesPanel({
         </div>
         <div className="divide-y divide-[#f0f4f8]">
           {rows.map((r) => (
-            <AddOnlyFileRow key={r.id} moduleSlug={moduleSlug} recordId={recordId} row={r} onSaved={() => setSaved((n) => n + 1)} />
+            <AddOnlyFileRow key={r.id} moduleSlug={moduleSlug} recordId={recordId} row={r} flash={focusRowId === r.id} onSaved={() => setSaved((n) => n + 1)} />
           ))}
         </div>
       </div>
@@ -71,42 +80,43 @@ function AddOnlyFileRow({
   moduleSlug,
   recordId,
   row,
+  flash,
   onSaved,
 }: {
   moduleSlug: string;
   recordId: string;
   row: FileRowForAdding;
+  flash: boolean;
   onSaved: () => void;
 }) {
-  const router = useRouter();
-  const [uploading, startUpload] = useTransition();
+  const flashing = useFlashTarget(targetId.field(row.id), flash);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const upload = (file: File | undefined) => {
+  const upload = async (file: File | undefined) => {
     if (!file) return;
     setError(null);
+    setUploading(true);
     const formData = new FormData();
     formData.set('file', file);
-    startUpload(async () => {
-      try {
-        const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
-        if (!result.ok) {
-          setError(result.message ?? 'Upload failed.');
-          return;
-        }
-        onSaved();
-        router.refresh();
-      } catch {
-        setError('Could not upload that file.');
-      } finally {
-        if (inputRef.current) inputRef.current.value = '';
+    try {
+      const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
+      if (!result.ok) {
+        setError(result.message ?? 'Upload failed.');
+        return;
       }
-    });
+      onSaved();
+    } catch {
+      setError('Could not upload that file.');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
   };
 
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2">
+    <div id={targetId.field(row.id)} className={`grid grid-cols-[1fr_auto] items-center gap-3 px-3 py-2 ${flashing ? `relative z-10 ${FLASH_CLASS}` : ''}`}>
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium text-ink-900">{row.name}</span>
@@ -145,12 +155,17 @@ function AddOnlyFileRow({
           aria-label={`Upload to ${row.name}`}
           className="hidden"
           disabled={uploading}
-          onChange={(e) => upload(e.target.files?.[0])}
+          onChange={(e) => void upload(e.target.files?.[0])}
         />
       </label>
     </div>
   );
 }
+
+/** Marks a drag as one of our files, so a row isn't a target for anything else. */
+const FILE_DRAG = 'application/x-tapdash-file';
+const GRID = 'grid grid-cols-[minmax(130px,.8fr)_2.2fr_minmax(150px,auto)_minmax(100px,.7fr)] gap-3';
+const CHIP_ACTION = 'shrink-0 rounded text-ink-400 opacity-0 transition-opacity focus:opacity-100 group-hover:opacity-100 disabled:opacity-60';
 
 export function FilesPanel({
   moduleSlug,
@@ -159,6 +174,7 @@ export function FilesPanel({
   rows,
   filesByRow,
   editable,
+  canMark,
   focusRowId = null,
 }: {
   moduleSlug: string;
@@ -167,6 +183,8 @@ export function FilesPanel({
   rows: FileRow[];
   filesByRow: Record<string, FileEntry[]>;
   editable: boolean;
+  /** Mark files required: its own permission, apart from `editable`. */
+  canMark: boolean;
   /** A row the drawer's search landed on: scroll to it and flash. */
   focusRowId?: string | null;
 }) {
@@ -184,9 +202,10 @@ export function FilesPanel({
       ) : null}
 
       <div className="overflow-hidden rounded-xl border border-line bg-white">
-        <div className="grid grid-cols-[minmax(130px,.8fr)_2.4fr_minmax(130px,.9fr)] gap-3 border-b border-line-soft bg-canvas px-3 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">
+        <div className={`${GRID} border-b border-line-soft bg-canvas px-3 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400`}>
           <span>File name</span>
           <span>File upload</span>
+          <span>Required</span>
           <span>File notes</span>
         </div>
         {rows.length === 0 ? (
@@ -201,6 +220,8 @@ export function FilesPanel({
                 row={r}
                 files={filesByRow[r.id] ?? []}
                 editable={editable}
+                canMark={canMark}
+                otherRows={rows.filter((x) => x.id !== r.id)}
                 flash={focusRowId === r.id}
               />
             ))}
@@ -306,12 +327,76 @@ function AddRowForm({
   );
 }
 
+/** Required, how many, and how far along. Kept per row so a tick shows at once. */
+function RequiredCell({ moduleSlug, row, have, canMark }: { moduleSlug: string; row: FileRow; have: number; canMark: boolean }) {
+  const [saving, setSaving] = useState(false);
+  const [required, setRequired] = useState(row.required);
+  const [needed, setNeeded] = useState(row.filesNeeded);
+  const [error, setError] = useState<string | null>(null);
+
+  /* Not a transition: that would hold these controls until the whole drawer had
+     re-rendered, long after the save itself was done. The action's response
+     brings the new page, so this asks for no second one. */
+  const save = async (nextRequired: boolean, nextNeeded: number) => {
+    setRequired(nextRequired);
+    setNeeded(nextNeeded);
+    setError(null);
+    setSaving(true);
+    const result = await setFileRowRequiredAction(moduleSlug, { rowId: row.id, required: nextRequired, needed: nextNeeded }).catch(() => ({ ok: false, message: undefined }));
+    setSaving(false);
+    if (!result.ok) {
+      setRequired(row.required);
+      setNeeded(row.filesNeeded);
+      setError(result.message ?? 'Could not change that row.');
+    }
+  };
+
+  return (
+    <div className="flex min-h-[30px] flex-col justify-center gap-0.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <input
+          type="checkbox"
+          aria-label={`${row.name} is required`}
+          checked={required}
+          disabled={!canMark || saving}
+          onChange={(e) => void save(e.target.checked, needed)}
+          className="size-3.5 accent-[#1d4ed8] disabled:opacity-60"
+        />
+        {required ? (
+          <>
+            <input
+              type="number"
+              min={1}
+              max={5}
+              aria-label={`Files needed on ${row.name}`}
+              value={needed}
+              disabled={!canMark}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (Number.isInteger(n) && n >= 1 && n <= 5) void save(true, n);
+              }}
+              className="w-10 rounded-md border border-line px-1 py-0.5 text-center text-[12px] text-ink-900 outline-none focus:border-brand-400 disabled:bg-canvas disabled:text-ink-500"
+            />
+            <span className="whitespace-nowrap text-[11.5px] text-ink-500">{have} of {needed}</span>
+            {row.received ? (
+              <span className="rounded-md bg-[#e3f4ea] px-1.5 py-[1px] text-[11px] font-semibold text-[#1b7a45]">Received</span>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+      {error ? <p role="alert" className="text-[11px] text-danger">{error}</p> : null}
+    </div>
+  );
+}
+
 function FileRowView({
   moduleSlug,
   recordId,
   row,
   files,
   editable,
+  canMark,
+  otherRows,
   flash,
 }: {
   moduleSlug: string;
@@ -319,14 +404,23 @@ function FileRowView({
   row: FileRow;
   files: FileEntry[];
   editable: boolean;
+  canMark: boolean;
+  otherRows: FileRow[];
   flash: boolean;
 }) {
   const flashing = useFlashTarget(targetId.field(row.id), flash);
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [moving, setMoving] = useState<FileEntry | null>(null);
+  const [moveTo, setMoveTo] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [versions, setVersions] = useState<{ fileId: string; list: FileVersion[] } | null>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
+  const replacing = useRef<string | null>(null);
   /* Its own flag, not `pending`: that one is also true while a DELETE runs,
      and labelling a delete "Uploading…" is worse than labelling it nothing. */
   const [uploading, setUploading] = useState(false);
@@ -409,49 +503,131 @@ function FileRowView({
 
   const upload = (file: File | undefined) => {
     if (!file) return;
-    setError(null);
-    setUploading(true);
     const formData = new FormData();
     formData.set('file', file);
-    startTransition(async () => {
-      try {
-        const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
-        if (!result.ok) setError(result.message ?? 'Upload failed.');
-        else router.refresh();
-      } finally {
-        /* In a finally so a thrown action cannot leave the control spinning
-           for the rest of the session with no way back. */
-        setUploading(false);
-        if (inputRef.current) inputRef.current.value = '';
-      }
+    setUploading(true);
+    void run(() => uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData), 'Upload failed.').finally(() => {
+      /* In a finally so a thrown action cannot leave the control spinning for the
+         rest of the session with no way back. */
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
     });
   };
 
-  const remove = (fileId: string) => {
-    startTransition(async () => {
-      /*
-       * Wrapped because these actions return void and THROW on refusal —
-       * `requireTabEdit` raises for a viewer without Edit on this tab. Left
-       * unguarded, the click did nothing at all: the throw skipped
-       * `router.refresh()`, the row stayed on screen, and no message appeared.
-       * A delete that silently does nothing is indistinguishable from a broken
-       * button.
-       */
-      try {
-        setError(null);
-        await deleteFileAction(moduleSlug, fileId);
-        router.refresh();
-      } catch {
-        setError('Could not delete that file.');
+  /* Not a transition, for the reason `RequiredCell` gives. */
+  const run = async (act: () => Promise<{ ok: boolean; message?: string }>, fallback: string, done?: () => void) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await act();
+      if (!result.ok) {
+        setError(result.message ?? fallback);
+        return;
       }
-    });
+      done?.();
+    } catch {
+      setError(fallback);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const move = (fileId: string, toRowId: string) =>
+    void run(() => moveFileAction(moduleSlug, { fileId, toRowId }), 'Could not move that file.', () => {
+      setMoving(null);
+      setMoveTo('');
+    });
+
+  const replace = (file: File | undefined) => {
+    const fileId = replacing.current;
+    if (!file || !fileId) return;
+    const formData = new FormData();
+    formData.set('file', file);
+    void run(() => replaceFileAction(moduleSlug, fileId, formData), 'Could not replace that file.');
+    if (replaceInput.current) replaceInput.current.value = '';
+  };
+
+  const showVersions = (fileId: string) => {
+    if (versions?.fileId === fileId) {
+      setVersions(null);
+      return;
+    }
+    void fileVersionsAction(fileId)
+      .then((list) => setVersions({ fileId, list }))
+      .catch(() => setError('Could not load the earlier versions.'));
+  };
+
+  const downloadVersion = async (versionId: string) => {
+    setError(null);
+    try {
+      const a = document.createElement('a');
+      a.href = await getFileVersionUrlAction(versionId);
+      a.download = '';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      setError('Could not download that version.');
+    }
+  };
+
+  const remove = (fileId: string) =>
+    void run(async () => {
+      await deleteFileAction(moduleSlug, fileId);
+      return { ok: true };
+    }, 'Could not delete that file.');
 
   return (
-    <div id={targetId.field(row.id)} className={`grid grid-cols-[minmax(130px,.8fr)_2.4fr_minmax(130px,.9fr)] items-start gap-3 px-3 py-2 ${flashing ? `relative z-10 ${FLASH_CLASS}` : ''}`}>
-      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-        <span className="text-[13px] font-medium text-ink-900">{row.name}</span>
+    <div
+      id={targetId.field(row.id)}
+      onDragOver={(e) => {
+        if (!editable || !e.dataTransfer.types.includes(FILE_DRAG)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDropping(true);
+      }}
+      onDragLeave={() => setDropping(false)}
+      onDrop={(e) => {
+        const fileId = e.dataTransfer.getData(FILE_DRAG);
+        setDropping(false);
+        if (!editable || !fileId) return;
+        e.preventDefault();
+        if (!files.some((f) => f.id === fileId)) move(fileId, row.id);
+      }}
+      className={`group/row ${GRID} items-start px-3 py-2 transition-colors ${dropping ? 'bg-brand-50 ring-2 ring-inset ring-brand-400' : ''} ${flashing ? `relative z-10 ${FLASH_CLASS}` : ''}`}
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-1">
+        {renaming !== null ? (
+          <input
+            autoFocus
+            value={renaming}
+            aria-label="Row name"
+            disabled={busy}
+            onChange={(e) => setRenaming(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setRenaming(null);
+              if (e.key === 'Enter' && renaming.trim()) {
+                void run(() => renameFileRowAction(moduleSlug, { rowId: row.id, name: renaming.trim() }), 'Could not rename that row.', () => setRenaming(null));
+              }
+            }}
+            onBlur={() => setRenaming(null)}
+            className="w-full rounded-md border border-line px-1.5 py-0.5 text-[13px] text-ink-900 outline-none focus:border-brand-400"
+          />
+        ) : (
+          <span className="text-[13px] font-medium text-ink-900">{row.name}</span>
+        )}
         {row.locked ? <Icon name="lock" size={10} className="text-ink-400" /> : null}
+        {editable && !row.locked && renaming === null ? (
+          <span className="flex items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
+            <button type="button" title={`Rename ${row.name}`} aria-label={`Rename ${row.name}`} onClick={() => setRenaming(row.name)} className="rounded text-ink-400 hover:text-brand-700">
+              <Icon name="pencil" size={11} />
+            </button>
+            <button type="button" title={`Delete ${row.name}`} aria-label={`Delete ${row.name}`} onClick={() => setConfirmingDelete(true)} className="rounded text-ink-400 hover:text-danger">
+              <Icon name="trash" size={11} />
+            </button>
+          </span>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1">
@@ -460,7 +636,12 @@ function FileRowView({
             <span
               key={file.id}
               title={`${file.name} · v${file.version}`}
-              className="group inline-flex max-w-[220px] items-center gap-1 rounded-md border border-line bg-canvas px-1.5 py-[3px] text-[11.5px] transition-colors hover:border-ink-400 hover:bg-white"
+              draggable={editable}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(FILE_DRAG, file.id);
+                e.dataTransfer.effectAllowed = 'move';
+              }}
+              className={`group inline-flex max-w-[260px] items-center gap-1 rounded-md border border-line bg-canvas px-1.5 py-[3px] text-[11.5px] transition-colors hover:border-ink-400 hover:bg-white ${editable ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
               <Icon name="file-text" size={11} className="text-ink-400 shrink-0" />
               {/*
@@ -485,9 +666,15 @@ function FileRowView({
                 {opening === file.id ? 'Opening…' : file.name}
               </button>
               {file.version > 1 ? (
-                <span className="shrink-0 rounded bg-white px-1 text-[10px] font-semibold text-ink-500">
+                <button
+                  type="button"
+                  title="Earlier versions"
+                  aria-expanded={versions?.fileId === file.id}
+                  onClick={() => showVersions(file.id)}
+                  className="shrink-0 rounded bg-white px-1 text-[10px] font-semibold text-ink-500 hover:text-brand-700"
+                >
                   v{file.version}
-                </span>
+                </button>
               ) : null}
               {/*
                 Download is available to anyone who can SEE the file, not only
@@ -511,13 +698,40 @@ function FileRowView({
                   <Icon name="download" size={11} />
                 )}
               </button>
+              {editable && otherRows.length ? (
+                <button
+                  type="button"
+                  title={`Move ${file.name}`}
+                  aria-label={`Move ${file.name}`}
+                  disabled={busy}
+                  onClick={() => setMoving(file)}
+                  className={`${CHIP_ACTION} hover:text-brand-700`}
+                >
+                  <Icon name="arrow-right" size={11} />
+                </button>
+              ) : null}
+              {editable ? (
+                <button
+                  type="button"
+                  title={`Replace ${file.name}`}
+                  aria-label={`Replace ${file.name}`}
+                  disabled={busy}
+                  onClick={() => {
+                    replacing.current = file.id;
+                    replaceInput.current?.click();
+                  }}
+                  className={`${CHIP_ACTION} hover:text-brand-700`}
+                >
+                  <Icon name="refresh-cw" size={10} />
+                </button>
+              ) : null}
               {editable ? (
                 <button
                   type="button"
                   title="Delete"
-                  disabled={pending}
+                  disabled={busy}
                   onClick={() => remove(file.id)}
-                  className="shrink-0 rounded text-ink-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger disabled:opacity-60"
+                  className={`${CHIP_ACTION} hover:text-danger`}
                 >
                   <Icon name="x" size={10} />
                 </button>
@@ -557,18 +771,72 @@ function FileRowView({
               <input
                 ref={inputRef}
                 type="file"
+                aria-label={`Upload to ${row.name}`}
                 className="hidden"
                 /* Disabled while one is in flight, so a second pick cannot
                    race the first and leave the row showing the wrong count. */
-                disabled={pending}
+                disabled={busy}
                 onChange={(e) => upload(e.target.files?.[0])}
               />
             </label>
           ) : null}
           {!editable && files.length === 0 ? <span className="text-ink-400/70">—</span> : null}
         </div>
-        {error ? <p className="text-[11px] text-danger">{error}</p> : null}
+        {editable ? <input ref={replaceInput} type="file" aria-label={`Replace a file on ${row.name}`} className="hidden" onChange={(e) => replace(e.target.files?.[0])} /> : null}
+        {moving ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas/60 px-2 py-1.5">
+            <span className="min-w-0 truncate text-[12px] text-ink-700">Move {moving.name} to</span>
+            <select
+              autoFocus
+              aria-label={`Move ${moving.name} to`}
+              value={moveTo}
+              onChange={(e) => setMoveTo(e.target.value)}
+              className="rounded-md border border-line bg-white px-1.5 py-1 text-[12.5px] text-ink-900 outline-none focus:border-brand-400"
+            >
+              <option value="">Choose a row…</option>
+              {otherRows.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+            <Button size="sm" variant="primary" loading={busy} loadingLabel="Moving…" disabled={!moveTo} onClick={() => move(moving.id, moveTo)}>
+              Move
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setMoving(null)}>
+              Cancel
+            </Button>
+          </div>
+        ) : null}
+        {versions ? (
+          <div className="mt-1 rounded-lg border border-line bg-canvas/60 px-2 py-1.5 text-[12px]">
+            <p className="mb-0.5 font-semibold text-ink-500">Earlier versions</p>
+            {versions.list.length === 0 ? <p className="text-ink-400">None to show.</p> : null}
+            {versions.list.map((v) => (
+              <button key={v.id} type="button" onClick={() => void downloadVersion(v.id)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-ink-700 hover:bg-white hover:text-brand-700">
+                <Icon name="download" size={11} className="shrink-0 text-ink-400" />
+                <span className="truncate">v{v.version} · {v.name}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {confirmingDelete ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas/60 px-2 py-1.5">
+            <span className="text-[12px] text-ink-700">Delete this row and its files? They go to the Recycle Bin.</span>
+            <Button
+              size="sm"
+              variant="primary"
+              loading={busy}
+              loadingLabel="Deleting…"
+              onClick={() => void run(() => deleteFileRowAction(moduleSlug, row.id), 'Could not delete that row.', () => setConfirmingDelete(false))}
+            >
+              Delete
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmingDelete(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : null}
+        {error ? <p role="alert" className="text-[11px] text-danger">{error}</p> : null}
       </div>
+
+      <RequiredCell key={`${row.id}:${row.required}:${row.filesNeeded}`} moduleSlug={moduleSlug} row={row} have={files.length} canMark={canMark} />
 
       <p className="pt-1 text-[12px] leading-snug text-ink-500">
         {row.note ?? <span className="text-ink-400/70">—</span>}

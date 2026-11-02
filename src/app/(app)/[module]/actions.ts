@@ -41,7 +41,10 @@ import { setFieldAddress, type FieldAddress } from '@/lib/records/fieldAddresses
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
-import { uploadFile, uploadFieldFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor } from '@/lib/records/files';
+import {
+  uploadFile, uploadFieldFile, deleteFile, addFileRow, ensureApplicationRows, signedUrlFor, signedVersionUrlFor,
+  setFileRowRequired, renameFileRow, deleteFileRow, moveFile, replaceFile, fileVersionsFor, type FileVersion,
+} from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
 import { addLogin, revealPassword } from '@/lib/records/logins';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
@@ -948,6 +951,106 @@ export async function addFileRowAction(moduleSlug: string, recordId: string, for
   }
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };
+}
+
+/** The database's refusals here are sentences for a person. A refusal of access
+ *  isn't, and reads the same whatever the cause. */
+const fileRefusal = (e: unknown, fallback: string): UploadResult => {
+  const { code, message } = e as { code?: string; message?: string };
+  return { ok: false, message: code === '23514' || code === '22023' ? message ?? fallback : fallback };
+};
+
+const RowRequiredInput = z.object({
+  rowId: z.string().uuid(),
+  required: z.boolean(),
+  needed: z.number().int().min(1).max(5),
+});
+
+export async function setFileRowRequiredAction(moduleSlug: string, input: z.input<typeof RowRequiredInput>): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsed = RowRequiredInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Files needed is from 1 to 5.' };
+  try {
+    await setFileRowRequired(ctx, parsed.data.rowId, parsed.data.required, parsed.data.needed);
+  } catch (e) {
+    return fileRefusal(e, 'Could not change that row.');
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+const RowNameInput = z.object({ rowId: z.string().uuid(), name: z.string().trim().min(1).max(200) });
+
+export async function renameFileRowAction(moduleSlug: string, input: z.input<typeof RowNameInput>): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsed = RowNameInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Give the row a name.' };
+  try {
+    await renameFileRow(ctx, parsed.data.rowId, parsed.data.name);
+  } catch (e) {
+    if ((e as { code?: string }).code === '23505') return { ok: false, message: 'A row with that name is already here.' };
+    return fileRefusal(e, 'Could not rename that row.');
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+export async function deleteFileRowAction(moduleSlug: string, rowId: string): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsed = z.string().uuid().safeParse(rowId);
+  if (!parsed.success) return { ok: false, message: 'Could not delete that row.' };
+  try {
+    await deleteFileRow(ctx, parsed.data);
+  } catch (e) {
+    return fileRefusal(e, 'Could not delete that row.');
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+const MoveInput = z.object({ fileId: z.string().uuid(), toRowId: z.string().uuid() });
+
+export async function moveFileAction(moduleSlug: string, input: z.input<typeof MoveInput>): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsed = MoveInput.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'Could not move that file.' };
+  try {
+    await moveFile(ctx, parsed.data.fileId, parsed.data.toRowId);
+  } catch (e) {
+    return fileRefusal(e, 'Could not move that file.');
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+export async function replaceFileAction(moduleSlug: string, fileId: string, formData: FormData): Promise<UploadResult> {
+  const ctx = await authorize();
+  const parsed = z.string().uuid().safeParse(fileId);
+  const file = formData.get('file');
+  if (!parsed.success || !(file instanceof File) || file.size === 0) return { ok: false, message: 'Choose a file first.' };
+  try {
+    const result = await replaceFile(ctx, parsed.data, {
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      contentType: file.type || 'application/octet-stream',
+    });
+    if (!result.ok) return { ok: false, message: 'That file is over the 25MB limit.' };
+  } catch {
+    return { ok: false, message: 'Could not replace that file.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+export async function fileVersionsAction(fileId: string): Promise<FileVersion[]> {
+  const ctx = await authorize();
+  const parsed = z.string().uuid().safeParse(fileId);
+  return parsed.success ? fileVersionsFor(ctx, parsed.data) : [];
+}
+
+export async function getFileVersionUrlAction(versionId: string): Promise<string> {
+  const ctx = await authorize();
+  return signedVersionUrlFor(ctx, z.string().uuid().parse(versionId));
 }
 
 export async function ensureApplicationRowsAction(recordId: string): Promise<void> {

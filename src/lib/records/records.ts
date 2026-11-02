@@ -12,6 +12,7 @@
  * hidden field's value never reaches the browser, dev tools, or a future
  * export, regardless of how the server-side fetch itself was shaped.
  */
+import { FILES_REQUIRED_EMPTY, FILES_REQUIRED_FILLED, FILES_REQUIRED_KEY, type FileRequiredItem } from './filesRequired';
 import 'server-only';
 import { likePattern } from './search';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -88,6 +89,8 @@ export type RecordRow = {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** Shown to everyone who can see the record: nothing here is gated on Files. */
+  filesRequired: FileRequiredItem[];
 };
 
 function mapRow(r: Record<string, unknown>): RecordRow {
@@ -101,6 +104,7 @@ function mapRow(r: Record<string, unknown>): RecordRow {
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
     deletedAt: (r.deleted_at as string | null) ?? null,
+    filesRequired: (r.files_required as FileRequiredItem[] | null) ?? [],
   };
 }
 
@@ -117,7 +121,7 @@ function mapRow(r: Record<string, unknown>): RecordRow {
  * failing loudly at the query is better than a column quietly going missing.
  */
 const RECORD_COLUMNS =
-  'id, deal_name, creator_kind, creator_user_id, creator_campaign_id, created_at, updated_at, deleted_at';
+  'id, deal_name, creator_kind, creator_user_id, creator_campaign_id, created_at, updated_at, deleted_at, files_required';
 
 /**
  * Stripped values for a page of records, in one round trip.
@@ -292,6 +296,14 @@ export async function listRecords(
     byId.set(f.id, f);
   }
   for (const filter of opts.filters ?? []) {
+    // A system column, not a field. Filled or empty, and any of these row names.
+    if (filter.fieldId === FILES_REQUIRED_KEY && filter.kind === 'values') {
+      if (filter.values.includes(FILES_REQUIRED_EMPTY)) query = query.eq('files_required_count', 0);
+      else if (filter.values.includes(FILES_REQUIRED_FILLED)) query = query.gt('files_required_count', 0);
+      const names = filter.values.filter((v) => v !== FILES_REQUIRED_EMPTY && v !== FILES_REQUIRED_FILLED);
+      if (names.length) query = query.overlaps('files_required_names', names);
+      continue;
+    }
     const field = byId.get(filter.fieldId);
     if (!field) continue;
     const path = `values->>${field.key}`;
@@ -355,7 +367,10 @@ export async function listRecords(
      value (number, date, option position) sorts; records without one go last;
      the name breaks ties so a page boundary is stable. */
   const sortField = opts.sort ? byId.get(opts.sort.fieldId) : undefined;
-  if (opts.sort?.fieldId === 'deal_name') {
+  if (opts.sort?.fieldId === FILES_REQUIRED_KEY) {
+    // Most outstanding first, always: the spec gives this column one order.
+    query = query.order('files_required_count', { ascending: false }).order('deal_name');
+  } else if (opts.sort?.fieldId === 'deal_name') {
     query = query.order('deal_name', { ascending: opts.sort.dir === 'asc' });
   } else if (sortField && SORTABLE_TYPES.has(sortField.type)) {
     query = query

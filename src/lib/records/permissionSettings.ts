@@ -64,6 +64,7 @@ export async function settingGroups(): Promise<SettingGroup[]> {
         { key: 'action.modules', label: 'Display / remove from modules', hint: 'The In modules chips.', options: YES_NO },
         { key: 'action.pipeline', label: 'Move records through pipeline stages', options: YES_NO },
         { key: 'action.pipeline_change', label: 'Change pipeline in drawer', hint: 'Move a record to a different pipeline, or remove it from one. Moving along the stages is the setting above.', options: YES_NO },
+        { key: 'action.mark_files_required', label: 'Mark files required', hint: 'Tick or untick Required and change files needed on any row. Doesn’t need Edit on the Files tab.', options: YES_NO },
       ],
     },
     {

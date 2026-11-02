@@ -172,6 +172,15 @@ export function ConditionFields({ step, catalog, onChange }: { step: ConditionSt
           </label>
         </div>
       );
+    case 'files_required_empty':
+      return <p className="text-[12.5px] text-ink-500">True when no row on the record is outstanding.</p>;
+    case 'files_required_filled':
+      return (
+        <div className="max-w-[320px]">
+          <Text label="Row name (optional)" value={step.fileRow} placeholder="Any row" onChange={(fileRow) => onChange({ ...step, fileRow })} />
+          <p className="mt-1.5 text-[12px] text-ink-400">Leave blank for any outstanding row.</p>
+        </div>
+      );
   }
 }
 
@@ -329,6 +338,40 @@ function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: {
   );
 }
 
+function RequiredRows({ step, catalog, onChange }: {
+  step: Extract<FlowStep, { type: 'mark_file_required' }>; catalog: Catalog; onChange: (s: FlowStep) => void;
+}) {
+  const set = (name: string, needed: number | null) =>
+    onChange({ ...step, rows: needed === null ? step.rows.filter((r) => r.name !== name) : [...step.rows.filter((r) => r.name !== name), { name, needed }] });
+  return (
+    <div>
+      <span className={labelClass}>Rows and files needed</span>
+      <ul className="max-w-[420px] space-y-1">
+        {catalog.fileRows.map((name) => {
+          const row = step.rows.find((r) => r.name === name);
+          return (
+            <li key={name} className="flex items-center justify-between gap-3">
+              <CheckRow label={name} checked={Boolean(row)} onChange={(on) => set(name, on ? 1 : null)} />
+              {row ? (
+                <input
+                  type="number"
+                  min={1}
+                  max={5}
+                  aria-label={`Files needed on ${name}`}
+                  value={row.needed}
+                  onChange={(e) => set(name, Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
+                  className="w-16 rounded-lg border border-line px-2 py-1 text-[13px] outline-none focus:border-brand-400"
+                />
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="mt-1.5 text-[12px] text-ink-400">Preset rows only: rows people add may not exist yet.</p>
+    </div>
+  );
+}
+
 export function FlowFields({ step, catalog, onChange, stageModule, files, setFiles, automationId }: {
   step: FlowStep; catalog: Catalog; onChange: (s: FlowStep) => void; stageModule: boolean; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null;
 }) {
@@ -390,6 +433,8 @@ export function FlowFields({ step, catalog, onChange, stageModule, files, setFil
           <p className="text-[12px] text-ink-500">Required, and can&rsquo;t be edited once saved, the same as a ticket opened by hand.</p>
         </div>
       );
+    case 'mark_file_required':
+      return <RequiredRows step={step} catalog={catalog} onChange={onChange} />;
     case 'send_notification':
       return (
         <div className="space-y-3">

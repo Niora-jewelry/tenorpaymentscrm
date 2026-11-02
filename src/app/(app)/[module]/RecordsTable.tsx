@@ -33,6 +33,10 @@ import { formatSort, type ListSort } from '@/lib/records/listSort';
 import { ColumnsPicker } from './ColumnsPicker';
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { FILES_REQUIRED_KEY, type FileRequiredItem } from '@/lib/records/filesRequired';
+import { APPLICATION_ROWS } from '@/lib/records/fileRowNames';
+import { FilesRequiredChips, FilesRequiredHeader, filesRequiredSummary } from './FilesRequiredColumn';
+import { useRecordPings } from './useRecordPings';
 import { DataTable, BulkBar, SkipReportPanel, type SkipReport as ProtoSkipReport } from '@/proto/ui/DataTable';
 import { Dialog, Button, NumberInput, SpecNote } from '@/proto/ui/kit';
 import { PersonAvatar, resolvePerson, usePeople, usePeopleById } from '@/proto/ui/people';
@@ -62,6 +66,7 @@ function toProtoReport(r: { applied: string[]; skipped: { id: string; reason: st
 
 export function RecordsTable({
   teamsByRecord,
+  filesRequiredByRecord,
   assignableTeams,
   viewerId,
   viewerIsAdmin,
@@ -114,6 +119,7 @@ export function RecordsTable({
   canEdit: boolean;
   /** Team member(s) assigned, as this viewer may see it, by record id. */
   teamsByRecord: Record<string, RecordTeams>;
+  filesRequiredByRecord: Record<string, FileRequiredItem[]>;
   assignableTeams: AssignableTeam[];
   viewerId: string;
   viewerIsAdmin: boolean;
@@ -247,6 +253,13 @@ export function RecordsTable({
     params.delete('page');
     router.replace(`/${moduleSlug}${params.toString() ? `?${params}` : ''}`);
   };
+
+  useRecordPings(useMemo(() => rows.map((r) => r.id), [rows]), viewerId);
+
+  const filesRequiredRowNames = useMemo(
+    () => [...new Set([...APPLICATION_ROWS, ...Object.values(filesRequiredByRecord).flat().map((i) => i.name)])],
+    [filesRequiredByRecord],
+  );
 
   const openRecord = (id: string, atMention = false) => {
     const params = new URLSearchParams(window.location.search);
@@ -631,6 +644,26 @@ export function RecordsTable({
         moduleSlug={moduleSlug}
         rows={localRows}
         columns={localColumns}
+        systemColumn={{
+          id: FILES_REQUIRED_KEY,
+          width: 300,
+          summary: filesRequiredSummary,
+          header: (
+            <FilesRequiredHeader
+              filter={filters[FILES_REQUIRED_KEY]}
+              onChange={(f) => {
+                const next = { ...filters };
+                if (f) next[FILES_REQUIRED_KEY] = f;
+                else delete next[FILES_REQUIRED_KEY];
+                commitFilters(next);
+              }}
+              sorted={sort?.fieldId === FILES_REQUIRED_KEY}
+              onSort={(on) => changeSort(on ? { fieldId: FILES_REQUIRED_KEY, dir: 'desc' } : null)}
+              rowNames={filesRequiredRowNames}
+            />
+          ),
+          render: (r) => <FilesRequiredChips recordId={r.id} items={filesRequiredByRecord[r.id] ?? []} fit={2} />,
+        }}
         cellOverride={(col, r) =>
           col.id === VISIBILITY_FIELD_KEY ? (
             <TeamAssignments

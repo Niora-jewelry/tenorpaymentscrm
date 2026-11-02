@@ -146,9 +146,7 @@ suite('Add only', () => {
     expect(await as(member, () => q(`select id from files where file_row_id = $1`, [owner.row_id]))).toHaveLength(0);
     const { id } = await one<{ id: string }>(`select id from files where file_row_id = $1`, [owner.row_id]);
     await refused(() => as(member, () => q(`select delete_file($1)`, [id])), /edit access/);
-    await as(member, async () => {
-      expect((await db.query(`update files set name = 'x' where id = $1`, [id])).rowCount).toBe(0);
-    });
+    await refused(() => as(member, () => q(`update files set name = 'x' where id = $1`, [id])), /permission denied/);
   });
 
   it('a new row keeps its name and takes files, and shows no check on a user row', async () => {

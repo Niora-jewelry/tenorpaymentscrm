@@ -12,14 +12,12 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { requireTabAdd, requireTabEdit, requireTabEditVia, requireTabView } from './tabAccess';
+import { APPLICATION_ROWS } from './fileRowNames';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_FILES_PER_ROW = 5;
 
-/** The 5 locked rows every record's Application Files subtab has —
- * "defined as a system structure," per the prototype's own framing, not
- * something a user adds or removes. */
-export const APPLICATION_ROWS = ['Owner ID', 'Bank statements', 'Processing statements', 'Corp docs', 'Voided check'] as const;
+export { APPLICATION_ROWS } from './fileRowNames';
 
 /** Which section of the Files tab a row belongs to. */
 export type FileRowKind = 'application' | 'other';
@@ -32,6 +30,11 @@ export type FileRow = {
   locked: boolean;
   note: string | null;
   position: number;
+  required: boolean;
+  /** 1 to 5, kept while a row is unticked, so ticking it again starts there. */
+  filesNeeded: number;
+  /** Required, and holding at least `filesNeeded` files. */
+  received: boolean;
 };
 
 export type FileEntry = {
@@ -53,6 +56,9 @@ function mapFileRow(r: Record<string, unknown>): FileRow {
     id: r.id as string, recordId: r.record_id as string, kind: r.kind as 'application' | 'other',
     name: r.name as string, locked: r.locked as boolean, note: (r.note as string | null) ?? null,
     position: r.position as number,
+    required: r.required === true,
+    filesNeeded: (r.files_needed as number | null) ?? 1,
+    received: r.received === true,
   };
 }
 
@@ -311,6 +317,98 @@ export async function uploadFile(
   const fileId = data as string;
   const [entry] = (await filesFor(ctx, fileRow.id)).filter((f) => f.id === fileId);
   return { ok: true, file: entry! };
+}
+
+/** Ticks or unticks Required. Its own permission, decided in the database: this
+ *  does not need Edit on the Files tab. */
+export async function setFileRowRequired(_ctx: AuthContext, rowId: string, required: boolean, needed: number): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('set_file_row_required', { p_row: rowId, p_required: required, p_needed: needed });
+  if (error) throw error;
+}
+
+/** A row someone added. The preset rows are the system's and refuse this. */
+export async function renameFileRow(_ctx: AuthContext, rowId: string, name: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('rename_file_row', { p_row: rowId, p_name: name });
+  if (error) throw error;
+}
+
+/** To the Recycle Bin, with its files and its Required setting. */
+export async function deleteFileRow(_ctx: AuthContext, rowId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('delete_file_row', { p_row: rowId });
+  if (error) throw error;
+}
+
+/** One file to another row. Name, uploader, date and versions go with it. */
+export async function moveFile(_ctx: AuthContext, fileId: string, toRowId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('move_file', { p_file: fileId, p_to_row: toRowId });
+  if (error) throw error;
+}
+
+/**
+ * A new version in the same place. The file's row stays put, so nothing that
+ * counts files can change, and what it replaces moves to `file_versions`.
+ */
+export async function replaceFile(
+  _ctx: AuthContext,
+  fileId: string,
+  file: { name: string; bytes: Uint8Array; contentType: string },
+): Promise<{ ok: true } | { ok: false; error: 'too_large' }> {
+  if (file.bytes.byteLength > MAX_FILE_BYTES) return { ok: false, error: 'too_large' };
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('files')
+    .select('file_row_id, file_rows!inner(record_id, kind)')
+    .eq('id', fileId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  const row = data as { file_row_id: string; file_rows: { record_id: string; kind: string } } | null;
+  if (!row) throw new Error('Not found');
+
+  const path = `${row.file_rows.record_id}/${row.file_rows.kind}/${row.file_row_id}/${Date.now()}-${file.name}`;
+  const bucket = supabase.storage.from('records');
+  const { error: uploadError } = await bucket.upload(path, file.bytes, { contentType: file.contentType, upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { error: replaceError } = await supabase.rpc('replace_file', {
+    p_file: fileId, p_storage_path: path, p_name: file.name, p_size_bytes: file.bytes.byteLength,
+  });
+  if (replaceError) {
+    await bucket.remove([path]);
+    throw replaceError;
+  }
+  return { ok: true };
+}
+
+export type FileVersion = { id: string; version: number; name: string; uploadedAt: string };
+
+/** What a file replaced, newest first. RLS answers to the file's own tab. */
+export async function fileVersionsFor(_ctx: AuthContext, fileId: string): Promise<FileVersion[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('file_versions')
+    .select('id, version, name, uploaded_at')
+    .eq('file_id', fileId)
+    .order('version', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((v) => ({ id: v.id as string, version: v.version as number, name: v.name as string, uploadedAt: v.uploaded_at as string }));
+}
+
+/** A 60-second download link for an earlier version, by its id. */
+export async function signedVersionUrlFor(_ctx: AuthContext, versionId: string): Promise<string> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.from('file_versions').select('storage_path, name').eq('id', versionId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Not found');
+  const { data: signed, error: signError } = await supabase.storage
+    .from('records')
+    .createSignedUrl(data.storage_path as string, 60, { download: data.name as string });
+  if (signError) throw signError;
+  return signed.signedUrl;
 }
 
 export async function deleteFile(ctx: AuthContext, fileId: string): Promise<void> {

@@ -859,7 +859,7 @@ export type AddStatementYearInput = z.infer<typeof addStatementYearSchema>;
  * an unchecked function name.
  */
 export const binItemSchema = z.object({
-  kind: z.enum(['file', 'update', 'reply', 'login', 'case', 'case_reply']),
+  kind: z.enum(['file', 'file_row', 'update', 'reply', 'login', 'case', 'case_reply']),
   id: uuid,
 });
 

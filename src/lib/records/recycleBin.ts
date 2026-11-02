@@ -43,7 +43,7 @@ import { canOpenAdminPage, type AuthContext } from './permissions';
 
 /** What kind of thing a bin entry is. Drives the label, the icon and which
  *  restore function the row calls — nothing here branches on a module. */
-export type BinKind = 'file' | 'update' | 'reply' | 'login' | 'case' | 'case_reply';
+export type BinKind = 'file' | 'file_row' | 'update' | 'reply' | 'login' | 'case' | 'case_reply';
 
 export type BinItem = {
   kind: BinKind;
@@ -80,10 +80,17 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
    * losing rows off the end of a page). The cap is explicit and the screen says
    * so.
    */
-  const [files, updates, logins, cases, replies, records] = await Promise.all([
+  const [files, fileRows, updates, logins, cases, replies, records] = await Promise.all([
     supabase
       .from('files')
       .select('id, name, deleted_at, file_row_id, file_rows!inner(record_id)')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false })
+      .limit(MAX_PER_KIND),
+    supabase
+      .from('file_rows')
+      .select('id, name, record_id, deleted_at')
+      .in('kind', ['application', 'other'])
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false })
       .limit(MAX_PER_KIND),
@@ -117,7 +124,7 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
     supabase.from('records').select('id, deal_name'),
   ]);
 
-  for (const r of [files, updates, logins, cases, replies, records]) {
+  for (const r of [files, fileRows, updates, logins, cases, replies, records]) {
     if (r.error) throw r.error;
   }
 
@@ -136,6 +143,10 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
     const row = f.file_rows as unknown as { record_id: string } | { record_id: string }[] | null;
     const recordId = Array.isArray(row) ? (row[0]?.record_id ?? null) : (row?.record_id ?? null);
     out.push({ kind: 'file', id: f.id, title: f.name, deletedAt: f.deleted_at, ...named(recordId) });
+  }
+
+  for (const r of fileRows.data ?? []) {
+    out.push({ kind: 'file_row', id: r.id, title: r.name, deletedAt: r.deleted_at, ...named(r.record_id) });
   }
 
   for (const u of updates.data ?? []) {
@@ -194,6 +205,7 @@ export type BinRestoreResult = { ok: true } | { ok: false; message: string };
  *  added to the list without deciding what restores it. */
 const RESTORE_FN: Record<BinKind, { fn: string; arg: string }> = {
   file: { fn: 'restore_file', arg: 'p_file_id' },
+  file_row: { fn: 'restore_file_row', arg: 'p_row_id' },
   update: { fn: 'restore_update', arg: 'p_update_id' },
   reply: { fn: 'restore_update', arg: 'p_update_id' },
   login: { fn: 'restore_login', arg: 'p_login_id' },

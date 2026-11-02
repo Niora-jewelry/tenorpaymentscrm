@@ -115,6 +115,7 @@ export function DrawerTabs({
   teamRoster,
   applicationRows,
   fileRowsAdding,
+  canMarkFilesRequired,
   filesByRow,
   logins,
   statementPeriods,
@@ -173,6 +174,7 @@ export function DrawerTabs({
   applicationRows: FileRow[];
   /** The Files tab for someone on Add only; empty for everyone else. */
   fileRowsAdding: FileRowForAdding[];
+  canMarkFilesRequired: boolean;
   filesByRow: Record<string, FileEntry[]>;
   logins: LoginRow[];
   statementPeriods: StatementPeriod[];
@@ -552,7 +554,7 @@ export function DrawerTabs({
             fieldPathByUpdate={fieldPathByUpdate}
           />
         ) : activeTab.kind === 'files' && activeTab.addOnly ? (
-          <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} />
+          <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} focusRowId={focusFieldKey} />
         ) : activeTab.kind === 'files' ? (
           <FilesPanel
             moduleSlug={moduleSlug}
@@ -563,6 +565,7 @@ export function DrawerTabs({
             rows={applicationRows}
             filesByRow={filesByRow}
             editable={activeTab.editable}
+            canMark={canMarkFilesRequired}
             focusRowId={focusFieldKey}
           />
         ) : activeTab.kind === 'logins' ? (

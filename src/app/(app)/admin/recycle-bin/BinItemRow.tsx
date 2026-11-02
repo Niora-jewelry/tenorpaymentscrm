@@ -20,6 +20,7 @@ import type { BinItem, BinKind } from '@/lib/records/recycleBin';
 
 const LABEL: Record<BinKind, string> = {
   file: 'File',
+  file_row: 'File row',
   update: 'Update',
   reply: 'Reply',
   login: 'Login',
@@ -29,6 +30,7 @@ const LABEL: Record<BinKind, string> = {
 
 const ICON: Record<BinKind, IconName> = {
   file: 'paperclip',
+  file_row: 'file-text',
   update: 'message-square',
   reply: 'reply',
   login: 'key',

@@ -147,6 +147,7 @@ describe('adaptRecordRow', () => {
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-02T00:00:00Z',
     deletedAt: null,
+      filesRequired: [],
   };
 
   it('maps a user-created record to a { kind: "user", id } creator', () => {

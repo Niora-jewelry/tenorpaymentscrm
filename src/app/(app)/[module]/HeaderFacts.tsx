@@ -64,6 +64,8 @@ import { Icon } from '@/proto/ui/icons';
 import { setValueAction } from './actions';
 import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention';
 import type { NotificationView } from '@/lib/records/notifications';
+import type { FileRequiredItem } from '@/lib/records/filesRequired';
+import { FilesRequiredChips } from './FilesRequiredColumn';
 import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
   publishValue, publishedValue, subscribeToValues, valuesSnapshot,
@@ -124,9 +126,12 @@ export function HeaderFacts({
   mentionsByField = {},
   openMention = null,
   onMentionRead = () => undefined,
+  filesRequired = [],
 }: {
   moduleSlug: string;
   recordId: string;
+  /** Outstanding Files rows: not a field, and not tied to the Files tab. */
+  filesRequired?: FileRequiredItem[];
   mentionsByField?: Record<string, NotificationView[]>;
   openMention?: NotificationView | null;
   onMentionRead?: (id: string) => void;
@@ -259,7 +264,7 @@ export function HeaderFacts({
     }
   };
 
-  if (facts.length === 0) return null;
+  if (facts.length === 0 && !filesRequired.length) return null;
 
   /*
    * ── ONE ROW UNTIL ASKED (UI spec 7.5, approved) ─────────────────────────
@@ -296,6 +301,12 @@ export function HeaderFacts({
         <p role="alert" className="mb-2 text-[11.5px] text-danger">
           {error}
         </p>
+      ) : null}
+      {filesRequired.length ? (
+        <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">Files Required</span>
+          <FilesRequiredChips recordId={recordId} items={filesRequired} />
+        </div>
       ) : null}
       <div id={`vital-grid-${recordId}`} className={FIELD_GRID}>
         {facts.map((fact, i) => {

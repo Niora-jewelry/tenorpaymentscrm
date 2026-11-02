@@ -25,6 +25,7 @@ import { AssignToMe, OpenRecordNotice, TeamAssignments } from './TeamAssignments
 import { tabAccessById } from '@/lib/records/tabAccess';
 import { permissionsFor, canDo, authorize, moduleGrant, membershipAllowed, fieldGrants, tabGrants, subtabGrants, capGrant, type Grant } from '@/lib/records/permissions';
 import { asFieldGrant } from '@/lib/records/grantRules';
+import { FILES_REQUIRED_KEY } from '@/lib/records/filesRequired';
 import {
   loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
@@ -184,6 +185,7 @@ export default async function ModulePage({
   const requestedSort = parseSort(sortParam);
   const sort =
     requestedSort && (requestedSort.fieldId === 'deal_name'
+      || requestedSort.fieldId === FILES_REQUIRED_KEY
       || visibleDbColumns.some((f) => f.key === requestedSort.fieldId && SORTABLE_TYPES.has(f.type)))
       ? requestedSort
       : null;
@@ -328,6 +330,7 @@ export default async function ModulePage({
           rows={rows}
           columns={columns}
           grantByKey={grantByKey}
+          filesRequiredByRecord={Object.fromEntries(dbRows.map((r) => [r.id, r.filesRequired]))}
           /* Only modules this viewer can open. This drives the bulk bar's
            * "add to module" picker, so an unfiltered list both offered a
            * module the gate in `setMemberships` refuses and named a module
@@ -395,7 +398,7 @@ export default async function ModulePage({
               openTabKey={tabKey ?? null}
               openSubtabKey={subtabKey ?? null}
               mentionKey={mentionKey}
-              fieldKey={typeof fieldParam === 'string' && /^[a-z0-9_]{1,80}$/i.test(fieldParam) ? fieldParam : null}
+              fieldKey={typeof fieldParam === 'string' && /^[a-z0-9_-]{1,80}$/i.test(fieldParam) ? fieldParam : null}
             />
           </Suspense>
         </DrawerShell>
@@ -1222,6 +1225,7 @@ async function RecordDrawer({
         teamSlot={teamSlot}
         mentionsByField={headerMentions}
         openMention={openMention?.fieldKey ? openMention : null}
+        filesRequired={record.filesRequired}
       />
 
       <DrawerTabs
@@ -1254,6 +1258,7 @@ async function RecordDrawer({
         teamRoster={teamRoster}
         applicationRows={applicationRows}
         fileRowsAdding={fileRowsAdding}
+        canMarkFilesRequired={ctx.isAdmin || viewerPerms.settings['action.mark_files_required'] === 'yes'}
         filesByRow={filesByRow}
         logins={logins}
         statementPeriods={statementPeriods}
@@ -1266,7 +1271,7 @@ async function RecordDrawer({
         smsMessages={smsMessages}
         notesByScope={notesByScopeObj}
         addressByField={addressByField}
-        openFieldKey={fieldHome && grantByKey[fieldHome.key] !== undefined && grantByKey[fieldHome.key] !== 'hidden' ? fieldHome.key : null}
+        openFieldKey={fieldHome && grantByKey[fieldHome.key] !== undefined && grantByKey[fieldHome.key] !== 'hidden' ? fieldHome.key : [...applicationRows, ...fileRowsAdding].some((r) => r.id === fieldKey) ? fieldKey : null}
         authorNames={authorNames}
         viewerId={ctx.userId}
         isAdmin={ctx.isAdmin}

@@ -569,6 +569,18 @@ type DataTableProps = {
   onSelectedChange: (s: Set<string>) => void;
   /** The Tickets module's hardcoded "Open case managers" column. */
   extraColumn?: { label: string; width: number; render: (r: RecordRow) => React.ReactNode };
+  /**
+   * A column that is no field and no one's setting: it sits right after Deal Name
+   * and can't be hidden or moved. `summary` labels its filter in the active
+   * filter bar, since no field does.
+   */
+  systemColumn?: {
+    id: string;
+    width: number;
+    header: ReactNode;
+    render: (r: RecordRow) => ReactNode;
+    summary: (f: Filter) => string;
+  };
   /** Decoupled from `useStore()` so this component works against either the
    * prototype's in-memory store or the real app's server-backed data —
    * "evolve, don't restart" (MODULE-2-PLAN's own build-order framing). */
@@ -1064,6 +1076,7 @@ export function DataTable({
   selected,
   onSelectedChange,
   extraColumn,
+  systemColumn,
   grantFor,
   hasCustomColumnOrder,
   onReorderColumns,
@@ -1161,7 +1174,8 @@ export function DataTable({
     CHECKBOX_WIDTH +
     DEAL_NAME_WIDTH +
     columns.reduce((sum, c) => sum + (c.width ?? 160), 0) +
-    (extraColumn?.width ?? 0);
+    (extraColumn?.width ?? 0) +
+    (systemColumn?.width ?? 0);
 
   /**
    * The overlay bar is as wide as the grid REALLY is, measured.
@@ -1297,7 +1311,7 @@ export function DataTable({
                 }}
                 className="inline-flex items-center gap-1.5 rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-[12px] font-semibold text-brand-700 transition-colors hover:bg-brand-100"
               >
-                {field ? filterSummary(fl, field, moduleSlug) : <span className="italic">Filter on a hidden column</span>}
+                {fl.fieldId === systemColumn?.id ? systemColumn.summary(fl) : field ? filterSummary(fl, field, moduleSlug) : <span className="italic">Filter on a hidden column</span>}
                 <Icon name="x" size={11} strokeWidth={2.2} className="text-brand-700/60" />
               </button>
             );
@@ -1361,6 +1375,15 @@ export function DataTable({
                   Deal Name
                 </div>
               </th>
+
+              {systemColumn ? (
+                <th
+                  className="sticky top-0 z-20 border-b border-line bg-canvas text-left"
+                  style={{ width: systemColumn.width, minWidth: systemColumn.width }}
+                >
+                  {systemColumn.header}
+                </th>
+              ) : null}
 
               {/* DndContext itself lives OUTSIDE the table (see below) — it
                   injects an accessibility live-region div as a sibling of
@@ -1545,6 +1568,12 @@ export function DataTable({
                       ) : null}
                     </div>
                   </td>
+
+                  {systemColumn ? (
+                    <td className={`border-b border-line-faint ${cellTone}`} style={{ width: systemColumn.width }}>
+                      <div className="flex h-10 items-center overflow-hidden px-3">{systemColumn.render(r)}</div>
+                    </td>
+                  ) : null}
 
                   {columns.map((col) => {
                     const readOnly = grantFor(col) === 'view';

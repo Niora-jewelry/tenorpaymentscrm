@@ -114,6 +114,8 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
     const sub = r.subtab_key as string | null;
     return `${base}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}${sub ? `&subtab=${encodeURIComponent(sub)}` : ''}&n=${r.id as string}`;
   }
+  // A ticket flow's Notify user names the ticket: it opens on the tickets' tab.
+  if (kind === 'automation' && r.case_id) return `${base}&tab=cases`;
   const target = TAB_FOR_PHONE[kind];
   if (!target) return base;
   return `${base}&tab=${encodeURIComponent(target.tab)}${target.subtab ? `&subtab=${encodeURIComponent(target.subtab)}` : ''}${target.view ? `&view=${encodeURIComponent(target.view)}` : ''}`;

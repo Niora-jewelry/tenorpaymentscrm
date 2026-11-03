@@ -5,6 +5,7 @@
  * it, what it checks once, then the waits and actions in the order the admin
  * sets. The rail says how many of the ten steps are used and what still stops
  * it from running. `steps.ts` holds the rules, so this and the server agree.
+ * One builder for both kinds: what it offers comes from `OFFERED[kind]`.
  */
 import { useMemo, useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import Link from 'next/link';
@@ -15,14 +16,16 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Catalog } from '@/lib/automations/catalog';
 import type { AutomationDetail, AutomationFile } from '@/lib/automations/service';
 import {
-  ACTIONS, CONDITIONS, EMPTY_STEPS, MAX_STEPS, STATUSES, TRIGGERS, conditionSchema, everyTriggerInModule, flowStepSchema, problemsIn, stepCount, triggerSchema,
-  type ActionType, type AutomationStatus, type AutomationSteps, type ConditionStep, type ConditionType, type FlowStep, type TriggerStep, type TriggerType,
+  CONDITIONS, EMPTY_STEPS, KINDS, MAX_STEPS, OFFERED, STATUSES, TRIGGERS, actionLabel, conditionSchema, conditionsIn, everyTriggerInModule, flowStepSchema,
+  problemsIn, stepCount, triggerSchema,
+  type ActionType, type AutomationKind, type AutomationStatus, type AutomationSteps, type ConditionStep, type ConditionType, type FlowStep, type TriggerStep,
+  type TriggerType,
 } from '@/lib/automations/steps';
-import { toLabels, toTokens } from '@/lib/automations/template';
+import { CONTACT_NAME, EMAIL_BODY, EMAIL_SUBJECT, MERCHANT_NAME, toLabels, toTokens } from '@/lib/automations/template';
 import { Icon } from '@/proto/ui/icons';
 import { Button, Dialog, IconButton } from '@/proto/ui/kit';
 import { MenuSurface } from '@/proto/ui/MenuSurface';
-import { deleteAutomationAction, saveAutomationAction, searchRecordsAction, setStatusAction } from './actions';
+import { deleteAutomationAction, saveAutomationAction, searchRecordsAction, searchTicketsAction, setStatusAction } from './actions';
 import { StatusBadge } from './bits';
 import { ConditionFields, FlowFields, TriggerFields, inputClass, labelClass, CheckRow } from './StepFields';
 
@@ -39,9 +42,18 @@ function forEditing(steps: AutomationSteps, catalog: Catalog): AutomationSteps {
   return { ...steps, flow: steps.flow.map((f) => (f.type === 'send_email' ? { ...f, subject: toLabels(f.subject, catalog.variables), body: toLabels(f.body, catalog.variables) } : f)) };
 }
 
+/** Open ticket fills these four in the database; nothing else means anything there. */
+const TICKET_TEXT_VARIABLES = [EMAIL_SUBJECT, EMAIL_BODY, MERCHANT_NAME, CONTACT_NAME].map((v) => v.toLowerCase());
+
 function forSaving(steps: AutomationSteps, catalog: Catalog): { steps: AutomationSteps; unknown: string[] } {
   const unknown: string[] = [];
   const flow = steps.flow.map((f) => {
+    if (f.type === 'open_ticket') {
+      for (const m of `${f.title} ${f.issue}`.matchAll(/\{([^{}]+)\}/g)) {
+        if (!TICKET_TEXT_VARIABLES.includes(m[1]!.trim().toLowerCase())) unknown.push(m[1]!.trim());
+      }
+      return f;
+    }
     if (f.type !== 'send_email') return f;
     const subject = toTokens(f.subject, catalog.variables);
     const body = toTokens(f.body, catalog.variables);
@@ -105,9 +117,10 @@ function StepCard({ kind, title, onRemove, readOnly, handle, children }: { kind:
   );
 }
 
-function SortableFlow({ step, index, count, catalog, onChange, onRemove, readOnly, stageModule, files, setFiles, automationId }: {
+function SortableFlow({ step, index, count, catalog, onChange, onRemove, readOnly, stageModule, files, setFiles, automationId, kind, hasEmailTrigger }: {
   step: FlowStep; index: number; count: number; catalog: Catalog; onChange: (s: FlowStep) => void; onRemove: () => void; readOnly: boolean;
   stageModule: boolean; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null;
+  kind: AutomationKind; hasEmailTrigger: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id });
   const isWait = step.type === 'wait';
@@ -116,7 +129,7 @@ function SortableFlow({ step, index, count, catalog, onChange, onRemove, readOnl
     <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={isDragging ? 'relative z-10 opacity-70' : ''}>
       <StepCard
         kind={position}
-        title={isWait ? `${step.amount} ${step.amount === 1 ? step.unit.replace(/s$/, '') : step.unit}` : ACTIONS[step.type]}
+        title={isWait ? `${step.amount} ${step.amount === 1 ? step.unit.replace(/s$/, '') : step.unit}` : actionLabel(step.type, kind)}
         onRemove={onRemove}
         readOnly={readOnly}
         handle={
@@ -129,15 +142,35 @@ function SortableFlow({ step, index, count, catalog, onChange, onRemove, readOnl
           )
         }
       >
-        <FlowFields step={step} catalog={catalog} onChange={onChange} stageModule={stageModule} files={files} setFiles={setFiles} automationId={automationId} />
+        <FlowFields step={step} catalog={catalog} onChange={onChange} stageModule={stageModule} files={files} setFiles={setFiles} automationId={automationId} kind={kind} hasEmailTrigger={hasEmailTrigger} />
       </StepCard>
     </li>
   );
 }
 
-export function Builder({ automation, catalog, canEdit }: { automation: AutomationDetail | null; catalog: Catalog; canEdit: boolean }) {
+/** Words that differ between the two builders. */
+const COPY: Record<AutomationKind, { when: string; then: string; stop: string; test: string; noun: string }> = {
+  record: {
+    when: 'Any one of these starts it. Only changes made by people count.',
+    then: 'One after another, in this order. If one is skipped or fails, it stops for that record and you get an alert.',
+    stop: 'While a record is waiting, these people can stop its remaining steps from the drawer. Everyone else sees the icon.',
+    test: STATUSES.test.meaning,
+    noun: 'record',
+  },
+  ticket: {
+    when: 'Any one of these starts it. Only people set it off: a user clicking the button, or a merchant or contact sending an email.',
+    then: 'One after another, in this order. If one is skipped or fails, it stops for that ticket and you get an alert. A wait ends the flow if the client emails during it.',
+    stop: 'While a ticket is waiting, these people can stop its remaining steps from the drawer. Everyone else sees the icon.',
+    test: 'Runs for real, but only on one ticket you pick.',
+    noun: 'ticket',
+  },
+};
+
+export function Builder({ automation, kind, catalog, canEdit }: { automation: AutomationDetail | null; kind: AutomationKind; catalog: Catalog; canEdit: boolean }) {
   const router = useRouter();
   const readOnly = !canEdit;
+  const copy = COPY[kind];
+  const listHref = kind === 'ticket' ? '/admin/automations?kind=ticket' : '/admin/automations';
   const start = useMemo(() => forEditing(automation?.steps ?? EMPTY_STEPS, catalog), [automation, catalog]);
   const [name, setName] = useState(automation?.name ?? '');
   const [steps, setSteps] = useState<AutomationSteps>(start);
@@ -154,7 +187,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
   const status = automation?.status ?? 'draft';
   const used = stepCount(steps);
   const full = used >= MAX_STEPS;
-  const problems = useMemo(() => problemsIn(steps), [steps]);
+  const problems = useMemo(() => problemsIn(steps, kind), [steps, kind]);
   const dirty =
     name !== (automation?.name ?? '') ||
     JSON.stringify(steps) !== JSON.stringify(start) ||
@@ -164,7 +197,9 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   const inModule = steps.triggers.length === 0 || everyTriggerInModule(steps);
-  const stageModule = steps.triggers.some((t) => !TRIGGERS[t.type].inModule);
+  const stageModule = kind === 'record' && steps.triggers.some((t) => !TRIGGERS[t.type].inModule);
+  const hasEmailTrigger = steps.triggers.some((t) => t.type === 'ticket_email');
+  const conditionTypes = conditionsIn(steps).map((c) => c.type);
 
   const patchTrigger = (id: string, next: TriggerStep) => setSteps((s) => ({ ...s, triggers: s.triggers.map((t) => (t.id === id ? next : t)) }));
   const patchFlow = (id: string, next: FlowStep) => setSteps((s) => ({ ...s, flow: s.flow.map((f) => (f.id === id ? next : f)) }));
@@ -176,10 +211,24 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
     else patchGroups([...steps.conditions.groups, { id: newId(), join: 'and', conditions: [c] }]);
   };
 
-  const conditionOptions = Object.entries(CONDITIONS).map(([value, label]) => ({
+  const conditionOff = (value: ConditionType): string | undefined => {
+    if (value === 'in_module' && !inModule) return 'Not available with an email, application or contract trigger';
+    if (value === 'email_connects' && !hasEmailTrigger) return 'Only with Email received';
+    if ((value === 'ticket_open' || value === 'ticket_not_open') && hasEmailTrigger && (conditionTypes.includes('ticket_open') || conditionTypes.includes('ticket_not_open'))) {
+      return 'An Email received flow has exactly one of these';
+    }
+    return undefined;
+  };
+  const conditionOptions = OFFERED[kind].conditions.map((value) => ({ value, label: CONDITIONS[value], off: conditionOff(value) }));
+  const triggerOptions = OFFERED[kind].triggers.map((value) => ({
     value,
-    label,
-    off: value === 'in_module' && !inModule ? 'Not available with an email, application or contract trigger' : undefined,
+    label: TRIGGERS[value].label,
+    off: kind === 'ticket' && steps.triggers.some((t) => t.type === value) ? 'Already added' : undefined,
+  }));
+  const actionOptions = OFFERED[kind].actions.map((value) => ({
+    value,
+    label: actionLabel(value, kind),
+    off: value === 'open_ticket' && !conditionTypes.includes('ticket_not_open') ? 'Only with the condition “And ticket is not open”' : undefined,
   }));
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
@@ -194,12 +243,12 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
   const save = (waiting: 'old' | 'new' | null, then?: (id: string) => void) => {
     const prepared = forSaving(steps, catalog);
     if (prepared.unknown.length) {
-      setError(`Send email: there is no variable called {${prepared.unknown[0]}}.`);
+      setError(`There is no variable called {${prepared.unknown[0]}}.`);
       return;
     }
     run(async () => {
       setError(null);
-      const r = await saveAutomationAction({ id: automation?.id ?? null, name, steps: prepared.steps, stopTeamIds: stopTeams, stopUserIds: stopUsers, waiting });
+      const r = await saveAutomationAction({ id: automation?.id ?? null, kind, name, steps: prepared.steps, stopTeamIds: stopTeams, stopUserIds: stopUsers, waiting });
       if (!r.ok) return setError(r.message);
       if ('needsChoice' in r.data) return setAskWaiting(r.data.needsChoice);
       setAskWaiting(null);
@@ -212,11 +261,11 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
     });
   };
 
-  const changeStatus = (next: AutomationStatus, testRecordId: string | null = null) => {
+  const changeStatus = (next: AutomationStatus, testRecordId: string | null = null, testCaseId: string | null = null) => {
     if (!automation) return;
     run(async () => {
       setError(null);
-      const r = await setStatusAction({ id: automation.id, status: next, testRecordId });
+      const r = await setStatusAction({ id: automation.id, status: next, testRecordId, testCaseId });
       if (!r.ok) return setError(r.message);
       setDialog(null);
       router.refresh();
@@ -235,13 +284,13 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
       if (!automation) return;
       const r = await deleteAutomationAction(automation.id);
       if (!r.ok) return setError(r.message);
-      router.push('/admin/automations');
+      router.push(listHref);
     });
 
   return (
     <div className="p-6">
-      <Link href="/admin/automations" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-500 hover:text-ink-900">
-        <Icon name="chevron-left" size={13} /> Automations
+      <Link href={listHref} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-ink-500 hover:text-ink-900">
+        <Icon name="chevron-left" size={13} /> {KINDS[kind].label}
       </Link>
 
       <div className="mt-2 flex flex-wrap items-center gap-3">
@@ -272,7 +321,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
       <div className="mt-5 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <fieldset disabled={readOnly} className="min-w-0 space-y-6">
           <section>
-            <SectionHead title="When" hint="Any one of these starts it. Only changes made by people count." />
+            <SectionHead title="When" hint={copy.when} />
             <ul className="space-y-2">
               {steps.triggers.map((t) => (
                 <li key={t.id}>
@@ -284,7 +333,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
             </ul>
             {!readOnly ? (
               <div className="mt-2">
-                <Menu label="Add trigger" disabled={full} options={Object.entries(TRIGGERS).map(([value, t]) => ({ value, label: t.label }))} onPick={(v) => setSteps((s) => ({ ...s, triggers: [...s.triggers, blankTrigger(v as TriggerType)] }))} />
+                <Menu label="Add trigger" disabled={full} options={triggerOptions} onPick={(v) => setSteps((s) => ({ ...s, triggers: [...s.triggers, blankTrigger(v as TriggerType)] }))} />
               </div>
             ) : null}
           </section>
@@ -340,7 +389,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
           </section>
 
           <section>
-            <SectionHead title="Then" hint="One after another, in this order. If one is skipped or fails, it stops for that record and you get an alert." />
+            <SectionHead title="Then" hint={copy.then} />
             <DndContext id="automation-flow" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={steps.flow.map((f) => f.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
@@ -356,6 +405,8 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
                       files={files}
                       setFiles={setFiles}
                       automationId={automation?.id ?? null}
+                      kind={kind}
+                      hasEmailTrigger={hasEmailTrigger}
                       onChange={(n) => patchFlow(f.id, n)}
                       onRemove={() => setSteps((s) => ({ ...s, flow: s.flow.filter((x) => x.id !== f.id) }))}
                     />
@@ -365,7 +416,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
             </DndContext>
             {!readOnly ? (
               <div className="mt-2 flex flex-wrap gap-2">
-                <Menu label="Add action" disabled={full} options={Object.entries(ACTIONS).map(([value, label]) => ({ value, label }))} onPick={(v) => setSteps((s) => ({ ...s, flow: [...s.flow, blankFlow(v as ActionType)] }))} />
+                <Menu label="Add action" disabled={full} options={actionOptions} onPick={(v) => setSteps((s) => ({ ...s, flow: [...s.flow, blankFlow(v as ActionType)] }))} />
                 <button
                   type="button"
                   disabled={full}
@@ -379,7 +430,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
           </section>
 
           <section>
-            <SectionHead title="Who can switch it off" hint="While a record is waiting, these people can stop its remaining steps from the drawer. Everyone else sees the icon." />
+            <SectionHead title="Who can switch it off" hint={copy.stop} />
             <div className="rounded-xl border border-line bg-white p-3.5">
               <p className={labelClass}>Teams</p>
               <div className="mt-1.5 grid gap-1 sm:grid-cols-2">
@@ -444,12 +495,19 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
                     className={`block w-full rounded-lg border px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed ${status === s ? 'border-brand-600 bg-brand-50' : 'border-line hover:border-ink-300 disabled:hover:border-line'}`}
                   >
                     <span className="block text-[13px] font-semibold text-ink-900">{STATUSES[s].label}</span>
-                    <span className="block text-[11.5px] leading-snug text-ink-500">{STATUSES[s].meaning}</span>
+                    <span className="block text-[11.5px] leading-snug text-ink-500">{s === 'test' ? copy.test : STATUSES[s].meaning}</span>
                   </button>
                 ))}
               </div>
-              {status === 'test' && automation.testRecordLabel ? <p className="mt-2 text-[12px] text-ink-500">Testing on <span className="font-semibold text-ink-700">{automation.testRecordLabel}</span></p> : null}
-              {automation.waiting > 0 ? <p className="mt-2 text-[12px] text-ink-500">{automation.waiting} {automation.waiting === 1 ? 'record is' : 'records are'} waiting.</p> : null}
+              {status === 'test' && (automation.testCaseLabel ?? automation.testRecordLabel) ? (
+                <p className="mt-2 text-[12px] text-ink-500">
+                  Testing on <span className="font-semibold text-ink-700">{automation.testCaseLabel ?? automation.testRecordLabel}</span>
+                  {automation.testCaseLabel && automation.testRecordLabel ? <> ({automation.testRecordLabel})</> : null}
+                </p>
+              ) : null}
+              {automation.waiting > 0 ? (
+                <p className="mt-2 text-[12px] text-ink-500">{automation.waiting} {automation.waiting === 1 ? `${copy.noun} is` : `${copy.noun}s are`} waiting.</p>
+              ) : null}
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-line-faint pt-2.5">
                 <Link href={`/admin/automations/runs?automation=${automation.id}`} className="text-[12.5px] font-medium text-brand-700 hover:underline">Run history</Link>
                 {canEdit ? <button type="button" onClick={() => setDialog('delete')} className="text-[12.5px] font-medium text-[#b02a30] hover:underline">Delete</button> : null}
@@ -463,7 +521,7 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
 
       {askWaiting !== null ? (
         <Dialog title="Records are waiting" confirmLabel="Save" onConfirm={() => save(choice)} onClose={() => setAskWaiting(null)}>
-          <p className="text-[13px] text-ink-600">{askWaiting} {askWaiting === 1 ? 'record is' : 'records are'} partway through a wait. How should {askWaiting === 1 ? 'it' : 'they'} finish?</p>
+          <p className="text-[13px] text-ink-600">{askWaiting} {askWaiting === 1 ? `${copy.noun} is` : `${copy.noun}s are`} partway through a wait. How should {askWaiting === 1 ? 'it' : 'they'} finish?</p>
           <div className="mt-3 space-y-1.5">
             {([['new', 'On the new version', 'The remaining steps follow what you just saved.'], ['old', 'On the old version', 'They finish the steps they started with.']] as const).map(([v, title, sub]) => (
               <label key={v} className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 ${choice === v ? 'border-brand-600 bg-brand-50' : 'border-line'}`}>
@@ -475,15 +533,21 @@ export function Builder({ automation, catalog, canEdit }: { automation: Automati
         </Dialog>
       ) : null}
 
-      {dialog === 'test' ? <TestDialog onClose={() => setDialog(null)} onPick={(id) => changeStatus('test', id)} /> : null}
+      {dialog === 'test' ? (
+        kind === 'ticket' ? (
+          <TicketTestDialog onClose={() => setDialog(null)} onPick={(id) => changeStatus('test', null, id)} />
+        ) : (
+          <TestDialog onClose={() => setDialog(null)} onPick={(id) => changeStatus('test', id)} />
+        )
+      ) : null}
       {dialog === 'off' || dialog === 'draft' ? (
         <Dialog title="Stop what is waiting?" confirmLabel={dialog === 'off' ? 'Switch off' : 'Move to Draft'} onConfirm={() => changeStatus(dialog)} onClose={() => setDialog(null)}>
-          <p className="text-[13px] text-ink-600">{automation?.waiting} {automation?.waiting === 1 ? 'record is' : 'records are'} waiting on this automation. {automation?.waiting === 1 ? 'Its' : 'Their'} remaining steps won&rsquo;t run.</p>
+          <p className="text-[13px] text-ink-600">{automation?.waiting} {automation?.waiting === 1 ? `${copy.noun} is` : `${copy.noun}s are`} waiting on this automation. {automation?.waiting === 1 ? 'Its' : 'Their'} remaining steps won&rsquo;t run.</p>
         </Dialog>
       ) : null}
       {dialog === 'delete' ? (
         <Dialog title="Delete this automation?" tone="danger" confirmLabel="Delete" onConfirm={remove} onClose={() => setDialog(null)}>
-          <p className="text-[13px] text-ink-600">It stops running, and any record waiting on it won&rsquo;t finish. Its run history stays.</p>
+          <p className="text-[13px] text-ink-600">It stops running, and any {copy.noun} waiting on it won&rsquo;t finish. Its run history stays.</p>
         </Dialog>
       ) : null}
     </div>
@@ -508,6 +572,50 @@ function JoinSwitch({ label, value, onChange }: { label: string; value: 'and' | 
         </button>
       ))}
     </div>
+  );
+}
+
+/** Test on one ticket: an open ticket, found by number, title or record name. */
+function TicketTestDialog({ onClose, onPick }: { onClose: () => void; onPick: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<{ id: string; label: string; hint: string }[]>([]);
+  const [picked, setPicked] = useState<{ id: string; label: string } | null>(null);
+  const [searching, run] = useTransition();
+
+  const search = (text: string) => {
+    setQ(text);
+    run(async () => {
+      const r = await searchTicketsAction(text);
+      if (r.ok) setHits(r.data);
+    });
+  };
+
+  return (
+    <Dialog title="Test on one ticket" confirmLabel="Start test" onConfirm={() => picked && onPick(picked.id)} onClose={onClose}>
+      <p className="text-[13px] text-ink-600">
+        It runs for real, but only on this ticket, and only when something happens on it after now. An Email received flow runs on emails from this
+        ticket&rsquo;s record.
+      </p>
+      <label className="mt-3 block">
+        <span className={labelClass}>Open ticket</span>
+        <input value={q} onChange={(e) => search(e.target.value)} placeholder="Ticket number, title or record name…" className={inputClass} autoFocus />
+      </label>
+      <ul className="mt-2 max-h-[220px] space-y-0.5 overflow-y-auto">
+        {hits.map((h) => (
+          <li key={h.id}>
+            <button
+              type="button"
+              onClick={() => setPicked(h)}
+              className={`block w-full rounded-lg px-2.5 py-1.5 text-left ${picked?.id === h.id ? 'bg-brand-50' : 'hover:bg-canvas'}`}
+            >
+              <span className={`block truncate text-[13px] ${picked?.id === h.id ? 'font-semibold text-brand-800' : 'text-ink-800'}`}>{h.label}</span>
+              {h.hint ? <span className="block truncate text-[11.5px] text-ink-400">{h.hint}</span> : null}
+            </button>
+          </li>
+        ))}
+        {!searching && q.trim() && hits.length === 0 ? <li className="px-2.5 py-1.5 text-[12.5px] text-ink-400">No open ticket matches.</li> : null}
+      </ul>
+    </Dialog>
   );
 }
 

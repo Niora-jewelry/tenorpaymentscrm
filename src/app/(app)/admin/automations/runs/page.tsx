@@ -21,10 +21,15 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
 
   const params = await searchParams;
   const page = Math.max(0, Number(params.page ?? 0) || 0);
-  const [{ runs, total, pageSize }, automations] = await Promise.all([
+  const [{ runs, total, pageSize }, records, tickets] = await Promise.all([
     listRuns(ctx, { automationId: params.automation, status: params.status, page }),
-    listAutomations(ctx),
+    listAutomations(ctx, 'record'),
+    listAutomations(ctx, 'ticket'),
   ]);
+  const automations = [
+    ...records.map((a) => ({ value: a.id, label: a.name, group: 'Record automations' })),
+    ...tickets.map((a) => ({ value: a.id, label: a.name, group: 'Ticket automations' })),
+  ];
   const pageHref = (p: number) => {
     const q = new URLSearchParams();
     if (params.automation) q.set('automation', params.automation);
@@ -41,10 +46,10 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
           <Icon name="chevron-left" size={13} /> Automations
         </Link>
         <h1 className="mt-1 text-xl font-semibold text-ink-900">Run history</h1>
-        <p className="text-[13px] text-ink-500">Every time an automation ran on a record.</p>
+        <p className="text-[13px] text-ink-500">Every time an automation ran on a record or a ticket.</p>
       </div>
 
-      <RunFilters automations={automations.map((a) => ({ value: a.id, label: a.name }))} statuses={RUN_STATUSES} automation={params.automation ?? ''} status={params.status ?? ''} />
+      <RunFilters automations={automations} statuses={RUN_STATUSES} automation={params.automation ?? ''} status={params.status ?? ''} />
 
       {runs.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line bg-white px-6 py-10 text-center text-[13px] text-ink-500">No runs to show.</p>
@@ -55,7 +60,10 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
               <details>
                 <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-canvas">
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13.5px] font-semibold text-ink-900">{r.recordLabel ?? 'No single record'}</span>
+                    <span className="block truncate text-[13.5px] font-semibold text-ink-900">
+                      {r.recordLabel ?? 'No single record'}
+                      {r.caseLabel ? <span className="font-medium text-ink-500"> · {r.caseLabel}</span> : null}
+                    </span>
                     <span className="block truncate text-[12px] text-ink-500">
                       {r.automationName}
                       {r.triggerKind && r.triggerKind in TRIGGERS ? ` · ${TRIGGERS[r.triggerKind as TriggerType].label}` : ''}
@@ -75,10 +83,13 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
                       </li>
                     ))}
                   </ol>
+                  {r.steps.length > 0 && r.reason && ['cancelled', 'expired', 'switched_off', 'choosing'].includes(r.status) ? (
+                    <p className="mt-2 text-[12px] text-ink-500">{r.reason}</p>
+                  ) : null}
                   {r.resumeAt ? <p className="mt-2 text-[12px] text-ink-500">Carries on {when(r.resumeAt)}.</p> : null}
                   {r.recordHref ? (
-                    <Link href={r.recordHref} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand-700 hover:underline">
-                      Open record <Icon name="arrow-right" size={12} />
+                    <Link href={r.caseLabel ? `${r.recordHref}&tab=cases` : r.recordHref} className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-medium text-brand-700 hover:underline">
+                      {r.caseLabel ? 'Open ticket' : 'Open record'} <Icon name="arrow-right" size={12} />
                     </Link>
                   ) : null}
                 </div>

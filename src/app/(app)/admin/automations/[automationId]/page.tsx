@@ -14,5 +14,5 @@ export default async function AutomationPage({ params }: { params: Promise<{ aut
   if (!z.uuid().safeParse(automationId).success) notFound();
   const [automation, catalog] = await Promise.all([getAutomation(ctx, automationId), automationCatalog(ctx)]);
   if (!automation) notFound();
-  return <Builder key={automation.id} automation={automation} catalog={catalog} canEdit={access === 'full'} />;
+  return <Builder key={automation.id} automation={automation} kind={automation.kind} catalog={catalog} canEdit={access === 'full'} />;
 }

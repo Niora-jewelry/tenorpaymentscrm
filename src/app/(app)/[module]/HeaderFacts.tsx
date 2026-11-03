@@ -66,6 +66,8 @@ import { FieldMentionButton, FieldMentionNote, valueText } from './FieldMention'
 import type { NotificationView } from '@/lib/records/notifications';
 import type { FileRequiredItem } from '@/lib/records/filesRequired';
 import { FilesRequiredChips } from './FilesRequiredColumn';
+import { TicketChoiceNote } from './TicketChoiceNote';
+import type { TicketChoice } from '@/lib/records/cases';
 import {
   seedRecordVersion, currentToken, commitToken, isOwnToken, enqueueWrite,
   publishValue, publishedValue, subscribeToValues, valuesSnapshot,
@@ -127,7 +129,10 @@ export function HeaderFacts({
   openMention = null,
   onMentionRead = () => undefined,
   filesRequired = [],
+  ticketChoices = [],
 }: {
+  /** Emails waiting for this viewer to choose their ticket (Tickets module only). */
+  ticketChoices?: TicketChoice[];
   moduleSlug: string;
   recordId: string;
   /** Outstanding Files rows: not a field, and not tied to the Files tab. */
@@ -302,6 +307,7 @@ export function HeaderFacts({
           {error}
         </p>
       ) : null}
+      {ticketChoices.length ? <TicketChoiceNote moduleSlug={moduleSlug} choices={ticketChoices} /> : null}
       {filesRequired.length ? (
         <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">Files Required</span>

@@ -7,6 +7,19 @@ import { z } from 'zod';
 
 export const MAX_STEPS = 10;
 
+/**
+ * Two builders, one engine. A record automation acts on records; a ticket
+ * automation (Ticket Automation Flow Builder spec) acts on tickets — the cases
+ * that place a record in the Tickets module — with its own triggers,
+ * conditions and actions. Waits, statuses, the ten-step limit and the run rules
+ * are shared.
+ */
+export const KINDS = {
+  record: { label: 'Record automations', noun: 'record' },
+  ticket: { label: 'Ticket automations', noun: 'ticket' },
+} as const;
+export type AutomationKind = keyof typeof KINDS;
+
 export const TRIGGERS = {
   status: { label: 'Status changes', inModule: true },
   stage: { label: 'Pipeline stage changes', inModule: true },
@@ -22,6 +35,8 @@ export const TRIGGERS = {
   module_assigned: { label: 'Module assigned', inModule: true },
   module_removed: { label: 'Module removed', inModule: true },
   file_uploaded: { label: 'File uploaded', inModule: false },
+  awaiting_client: { label: 'Button clicked: Awaiting client', inModule: false },
+  ticket_email: { label: 'Email received', inModule: false },
 } as const;
 export type TriggerType = keyof typeof TRIGGERS;
 
@@ -35,6 +50,9 @@ export const CONDITIONS = {
   days_from: 'Days from date',
   files_required_empty: 'Files Required is empty',
   files_required_filled: 'Files Required is filled',
+  ticket_open: 'And ticket is open',
+  ticket_not_open: 'And ticket is not open',
+  email_connects: 'Email connects to a record',
 } as const;
 export type ConditionType = keyof typeof CONDITIONS;
 
@@ -55,6 +73,9 @@ export const ACTIONS = {
   hide: 'Hide',
   unlock: 'Unlock',
   unhide: 'Unhide',
+  close_ticket: 'Close ticket',
+  open_ticket: 'Open ticket',
+  clear_awaiting: 'Clear Awaiting client',
 } as const;
 
 /** How often File uploaded may fire for one row of one record (spec). */
@@ -64,6 +85,30 @@ export const FILE_FREQUENCIES = {
   first_after_unlock: 'First upload, again after unlock',
 } as const;
 export type ActionType = keyof typeof ACTIONS;
+
+/** What each builder offers, in the order its spec lists them. */
+export const OFFERED: Record<AutomationKind, { triggers: TriggerType[]; conditions: ConditionType[]; actions: ActionType[] }> = {
+  record: {
+    triggers: ['status', 'stage', 'email_received', 'email_sent', 'team_assigned', 'team_removed', 'application_sent', 'application_received',
+      'contract_sent', 'contract_received', 'field', 'module_assigned', 'module_removed', 'file_uploaded'],
+    conditions: ['field_filled', 'all_filled', 'status_is', 'pipeline_is', 'in_module', 'date_is', 'days_from', 'files_required_empty', 'files_required_filled'],
+    actions: ['change_stage', 'change_status', 'send_email', 'assign_team', 'assign_user', 'round_robin', 'remove_team', 'add_module',
+      'remove_module', 'create_ticket', 'send_notification', 'mark_file_required', 'lock', 'hide', 'unlock', 'unhide'],
+  },
+  ticket: {
+    triggers: ['awaiting_client', 'ticket_email'],
+    conditions: ['ticket_open', 'ticket_not_open', 'email_connects'],
+    actions: ['send_email', 'close_ticket', 'send_notification', 'assign_team', 'open_ticket', 'clear_awaiting'],
+  },
+};
+
+/** The ticket builder's own words for the actions it shares (spec, Actions). */
+const TICKET_ACTION_LABELS: Partial<Record<ActionType, string>> = {
+  send_email: 'Send merchant an email',
+  send_notification: 'Notify user',
+  assign_team: 'Create a team assignment',
+};
+export const actionLabel = (type: ActionType, kind: AutomationKind): string => (kind === 'ticket' ? TICKET_ACTION_LABELS[type] : undefined) ?? ACTIONS[type];
 
 export const STATUSES = {
   draft: { label: 'Draft', meaning: 'Being built. Never runs.' },
@@ -100,6 +145,8 @@ export const triggerSchema = z.discriminatedUnion('type', [
     rows: z.array(z.string().max(120)).max(5).default([]),
     frequency: z.enum(['every', 'first', 'first_after_unlock']).default('every'),
   }),
+  z.object({ id, type: tag('awaiting_client') }),
+  z.object({ id, type: tag('ticket_email'), mailboxId: pick }),
 ]);
 export type TriggerStep = z.infer<typeof triggerSchema>;
 
@@ -113,6 +160,9 @@ export const conditionSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('days_from'), field: pick, days: z.number().int().min(0).max(3650).default(0), direction: z.enum(['before', 'after']).default('after') }),
   z.object({ id, type: tag('files_required_empty') }),
   z.object({ id, type: tag('files_required_filled'), fileRow: pick }),
+  z.object({ id, type: tag('ticket_open') }),
+  z.object({ id, type: tag('ticket_not_open') }),
+  z.object({ id, type: tag('email_connects') }),
 ]);
 export type ConditionStep = z.infer<typeof conditionSchema>;
 
@@ -160,12 +210,22 @@ export const flowStepSchema = z.discriminatedUnion('type', [
   z.object({ id, type: tag('add_module'), moduleId: pick }),
   z.object({ id, type: tag('remove_module'), moduleId: pick }),
   z.object({ id, type: tag('create_ticket'), title: z.string().max(200).default(''), issue: z.string().max(5000).default('') }),
-  z.object({ id, type: tag('send_notification'), who: z.enum(['team_members', 'team', 'relationship_manager']).default('team_members'), teamId: pick, message: z.string().max(500).default('') }),
+  z.object({
+    id,
+    type: tag('send_notification'),
+    who: z.enum(['team_members', 'team', 'relationship_manager', 'user']).default('team_members'),
+    teamId: pick,
+    userId: pick,
+    message: z.string().max(500).default(''),
+  }),
   z.object({ id, type: tag('mark_file_required'), rows: z.array(z.object({ name: z.string().max(120), needed: z.number().int().min(1).max(5).default(1) })).max(5).default([]) }),
   z.object({ id, type: tag('lock'), items: itemList, canLift: group, allowDownload: z.boolean().default(true) }),
   z.object({ id, type: tag('hide'), items: itemList, canLift: group, canSee: group, allowDownload: z.boolean().default(true) }),
   z.object({ id, type: tag('unlock'), items: itemList }),
   z.object({ id, type: tag('unhide'), items: itemList }),
+  z.object({ id, type: tag('close_ticket') }),
+  z.object({ id, type: tag('open_ticket'), title: z.string().max(200).default(''), issue: z.string().max(5000).default('') }),
+  z.object({ id, type: tag('clear_awaiting') }),
 ]);
 export type FlowStep = z.infer<typeof flowStepSchema>;
 
@@ -209,6 +269,8 @@ function triggerProblem(t: TriggerStep): string | null {
       return t.moduleId ? null : `${TRIGGERS[t.type].label}: choose the module.`;
     case 'file_uploaded':
       return t.rows.length ? null : 'File uploaded: choose at least one row.';
+    case 'ticket_email':
+      return t.mailboxId ? null : 'Email received: choose the inbox.';
     default:
       return null;
   }
@@ -232,11 +294,15 @@ function conditionProblem(c: ConditionStep): string | null {
       return c.field && !c.field.includes('.') ? null : 'Days from date: choose the date field.';
     case 'files_required_empty':
     case 'files_required_filled':
+    case 'ticket_open':
+    case 'ticket_not_open':
+    case 'email_connects':
       return null;
   }
 }
 
-function flowProblem(s: FlowStep, needsModule: boolean): string | null {
+function flowProblem(s: FlowStep, needsModule: boolean, kind: AutomationKind): string | null {
+  const name = (t: ActionType) => actionLabel(t, kind);
   switch (s.type) {
     case 'change_stage':
       if (needsModule && !s.moduleId) return 'Change pipeline stage: choose the module.';
@@ -244,17 +310,17 @@ function flowProblem(s: FlowStep, needsModule: boolean): string | null {
     case 'change_status':
       return s.value ? null : 'Change status: choose the status.';
     case 'send_email': {
-      if (!s.mailboxId) return 'Send email: choose the inbox it sends from.';
+      if (!s.mailboxId) return `${name('send_email')}: choose the inbox it sends from.`;
       if (s.to === 'custom') {
         const list = customAddresses(s.customTo);
-        if (!list.length || !list.every((a) => EMAIL.test(a))) return 'Send email: enter a valid email address.';
+        if (!list.length || !list.every((a) => EMAIL.test(a))) return `${name('send_email')}: enter a valid email address.`;
       }
-      if (!s.subject.trim()) return 'Send email: write a subject.';
-      return s.body.trim() ? null : 'Send email: write the body.';
+      if (!s.subject.trim()) return `${name('send_email')}: write a subject.`;
+      return s.body.trim() ? null : `${name('send_email')}: write the body.`;
     }
     case 'assign_team':
     case 'remove_team':
-      return s.teamId ? null : `${ACTIONS[s.type]}: choose the team.`;
+      return s.teamId ? null : `${name(s.type)}: choose the team.`;
     case 'assign_user':
       return s.userId ? null : 'Assign specific user: choose the user.';
     case 'round_robin':
@@ -265,7 +331,10 @@ function flowProblem(s: FlowStep, needsModule: boolean): string | null {
     case 'create_ticket':
       return s.issue.trim() ? null : 'Create ticket: write the Issue.';
     case 'send_notification':
-      return s.who !== 'team' || s.teamId ? null : 'Send notification: choose the team.';
+      if (s.who === 'user' && !s.userId) return `${name('send_notification')}: choose the user.`;
+      return s.who !== 'team' || s.teamId ? null : `${name('send_notification')}: choose the team.`;
+    case 'open_ticket':
+      return s.issue.trim() ? null : 'Open ticket: write the Issue.';
     case 'mark_file_required':
       return s.rows.length ? null : 'Mark file required: choose at least one row.';
     case 'lock':
@@ -278,18 +347,54 @@ function flowProblem(s: FlowStep, needsModule: boolean): string | null {
   }
 }
 
+/** Variables only a ticket flow has. */
+export const TICKET_VARIABLES = /\{(Ticket title|Ticket number)\}/i;
+export const EMAIL_VARIABLES = /\{(Email subject|Email body)\}/i;
+
+/** Spec, "Choosing a ticket": the steps that act on one ticket. Mirrors `automation_needs_ticket`. */
+export const usesTicket = (f: FlowStep): boolean =>
+  f.type === 'close_ticket' || f.type === 'assign_team' || f.type === 'clear_awaiting' ||
+  (f.type === 'send_email' && TICKET_VARIABLES.test(`${f.subject} ${f.body}`));
+
+/** The rules that are the ticket builder's own (spec, Conditions and Actions). */
+function ticketProblems(s: AutomationSteps): string[] {
+  const out: string[] = [];
+  const conditions = conditionsIn(s);
+  const email = s.triggers.some((t) => t.type === 'ticket_email');
+  const open = conditions.filter((c) => c.type === 'ticket_open').length;
+  const notOpen = conditions.filter((c) => c.type === 'ticket_not_open').length;
+  if (s.triggers.filter((t) => t.type === 'ticket_email').length > 1) out.push('Email received: a flow can use only one inbox.');
+  if (s.triggers.filter((t) => t.type === 'awaiting_client').length > 1) out.push('Button clicked: add it once.');
+  if (email && open + notOpen !== 1) out.push('Email received needs exactly one of “And ticket is open” or “And ticket is not open”.');
+  if (!email && conditions.some((c) => c.type === 'email_connects')) out.push('“Email connects to a record” works only with Email received.');
+  if (s.flow.some((f) => f.type === 'open_ticket') && notOpen === 0) out.push('Open ticket is only available with “And ticket is not open”.');
+  const emailWords = s.flow.some((f) =>
+    (f.type === 'send_email' && EMAIL_VARIABLES.test(`${f.subject} ${f.body}`)) || (f.type === 'open_ticket' && EMAIL_VARIABLES.test(`${f.title} ${f.issue}`)));
+  if (emailWords && !email) out.push('{Email subject} and {Email body} work only with Email received.');
+  return out;
+}
+
 /** Why this can't run yet. Empty means it can go to Test or On. */
-export function problemsIn(s: AutomationSteps): string[] {
+export function problemsIn(s: AutomationSteps, kind: AutomationKind = 'record'): string[] {
   const out: string[] = [];
   if (stepCount(s) > MAX_STEPS) out.push(`An automation can have up to ${MAX_STEPS} steps.`);
   if (s.triggers.length === 0) out.push('Add a trigger.');
   if (!s.flow.some((f) => f.type !== 'wait')) out.push('Add an action.');
+  // A step from the other builder can't be saved into this one by hand.
+  const offered = OFFERED[kind];
+  if (s.triggers.some((t) => !offered.triggers.includes(t.type))) out.push(`That trigger isn’t available in ${KINDS[kind].label}.`);
+  if (conditionsIn(s).some((c) => !offered.conditions.includes(c.type))) out.push(`That condition isn’t available in ${KINDS[kind].label}.`);
+  if (s.flow.some((f) => f.type !== 'wait' && !offered.actions.includes(f.type))) out.push(`That action isn’t available in ${KINDS[kind].label}.`);
+  if (kind === 'record' && s.flow.some((f) => f.type === 'send_notification' && f.who === 'user')) {
+    out.push('Send notification: a specific user is only offered in ticket automations.');
+  }
+  if (kind === 'ticket') out.push(...ticketProblems(s));
   if (conditionsIn(s).some((c) => c.type === 'in_module') && !everyTriggerInModule(s)) {
     out.push('“Only in module” can’t be used with an email, application or contract trigger.');
   }
   const needsModule = stageNeedsModule(s);
   for (const t of s.triggers) { const p = triggerProblem(t); if (p) out.push(p); }
   for (const c of conditionsIn(s)) { const p = conditionProblem(c); if (p) out.push(p); }
-  for (const f of s.flow) { const p = flowProblem(f, needsModule); if (p) out.push(p); }
+  for (const f of s.flow) { const p = flowProblem(f, needsModule, kind); if (p) out.push(p); }
   return [...new Set(out)];
 }

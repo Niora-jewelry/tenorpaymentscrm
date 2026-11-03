@@ -26,7 +26,7 @@ import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
 import { ResidualsPanel } from './ResidualsPanel';
-import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
+import type { CaseThread, CaseReply, CaseHandlingNote, CaseLogLine } from '@/lib/records/cases';
 import type { CaseAttachments as CaseAttachmentMap } from '@/lib/records/caseAttachments';
 import type { Update, TeamRosterEntry } from '@/lib/records/updates';
 import type { FileRow, FileEntry, FileRowForAdding } from '@/lib/records/files';
@@ -116,6 +116,8 @@ export function DrawerTabs({
   repliesByCase,
   managersByCase,
   attachmentsByCase,
+  logByCase,
+  canUseAwaitingClient,
   updates,
   teamRoster,
   applicationRows,
@@ -176,6 +178,10 @@ export function DrawerTabs({
   managersByCase: Record<string, string[]>;
   /** Files on each case's Issue, Solution and replies — Modules §3.7. */
   attachmentsByCase: Record<string, CaseAttachmentMap>;
+  /** Each ticket's log, oldest first. */
+  logByCase: Record<string, CaseLogLine[]>;
+  /** Use Awaiting client: the button and clearing the tag by hand. */
+  canUseAwaitingClient: boolean;
   updates: Update[];
   teamRoster: TeamRosterEntry[];
   applicationRows: FileRow[];
@@ -558,6 +564,8 @@ export function DrawerTabs({
             repliesByCase={repliesByCase}
             managersByCase={managersByCase}
             attachmentsByCase={attachmentsByCase}
+            logByCase={logByCase}
+            canUseAwaitingClient={canUseAwaitingClient}
             authorNames={authorNames}
             viewerId={viewerId}
             canDelete={canDeleteCases}

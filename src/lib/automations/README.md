@@ -68,3 +68,36 @@ Write functions don't take a module, so the server client sends the page path as
 - **Re-lock and Re-hide are on a bar above the tabs**, since the item's icon has gone once it is lifted. Only the action's groups see it. Approved by Izzy, 3 Nov.
 - **A user-added row picked by an automation can't be**, as with Mark file required: actions name preset rows.
 - **Deal Name isn't offered**: the permissions spec says it is never hidden.
+
+## Ticket automations (Ticket Automation Flow Builder spec, 1 Nov 2026)
+
+A second builder on the same engine. `automations.kind` is `record` or `ticket`, set when it is created and never changed; `OFFERED[kind]` in `steps.ts` is what each builder shows, and `problemsIn(steps, kind)` refuses a step from the other one. A ticket is a case: number, title, Issue, open or closed. Migrations 9893 and 9894.
+
+| Spec | Where |
+|---|---|
+| Awaiting client button, tag, permission, log by name | `set_awaiting_client` (the gate: can open the ticket + `action.awaiting_client`, default Yes for every type); `cases.awaiting_client_at/by`; `CasesPanel` |
+| The click starts flows on that ticket only; a tagged ticket starts nothing | `set_awaiting_client` queues with `case_id`; returns false when already tagged |
+| Email received in a chosen inbox; one inbox per flow | trigger `ticket_capture_mail` on `mail_messages`, match `{mailbox}`; `ticketProblems` |
+| Matching by main contact or owner | `record_contact_emails`, as record automations |
+| Emails always reach the Communication tab | `ticket_capture_mail` copies to `messages` for any inbox a ticket automation names (`ticket_inbox`), whatever its status |
+| No matching record: nothing runs, nothing is created | `automation_start_ticket` → `not_matched` with the reason |
+| And ticket is open / not open; Email connects to a record | `automation_ticket_condition`; exactly one ticket condition on an email flow (`ticketProblems`) |
+| Choosing a ticket for an email | `automation_start_ticket` → status `choosing` + `ticket_choices`; `ticket_choices_for` (Vital Info, `TicketChoiceNote`), `ticket_choice_records` (row badge), `ticket_choose`; asked = managers of the open tickets, else anyone who can open the record in Tickets (`ticket_choice_for_me`) |
+| Expires after 24 hours | `automation_work` → status `expired`, "Expired: no ticket chosen." |
+| A wait ends when the client emails, in any inbox | `ticket_capture_mail` → `cancelled`, "Cancelled: client replied." |
+| Send merchant an email, recorded in Communication and on the ticket | the record send path; `automation_mail_result` writes `messages` and `case_log` for ticket flows; `{Ticket title}` `{Ticket number}` `{Email subject}` `{Email body}` |
+| Close ticket, "Closed by Automation"; closed already = skip | `automation_close_ticket` |
+| Notify user, including a specific user | `automation_send_notification` (`who = 'user'`), notification carries `case_id` |
+| Create a team assignment | the record's team assignment, which is the ticket's row in Tickets |
+| Open ticket, only with And ticket is not open; later steps act on it | `automation_open_ticket` sets `automation_runs.case_id` |
+| Clear Awaiting client; not set = skip | `automation_clear_awaiting` |
+| Every action logged on the ticket and in Updates | `case_log` (`case_log_write`) and `automation_log` |
+| Test on one ticket | `automations.test_case_id`; `automation_set_status(..., p_test_case)` |
+
+### Decisions the spec left open
+
+- **Close ticket keeps a Solution a person already wrote.** A case can't close without one; an empty one becomes "Closed by Automation". Overwriting someone's words would lose them.
+- **Create a team assignment is the record's assignment.** Assignments live on the record, and the record is the ticket's row in Tickets; the ticket's log says it was done.
+- **A ticket inbox's copies go to every record the sender belongs to**, and show under the Communication tab's own rule (`communication.scope`): Org sees them, Own only sees mail of their own inboxes.
+- **Choosing is asked only when a step needs one ticket** (Close ticket, Create a team assignment, Clear Awaiting client, an email with ticket variables), as the spec lists. Otherwise the flow runs with no ticket.
+- **Open ticket's Title and Issue fill four variables**: Email subject, Email body, Merchant name, Contact name. Anything else in braces is refused when saving.

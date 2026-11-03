@@ -1548,6 +1548,31 @@ export function DataTable({
                         <OutlineChip icon="archive">Archived</OutlineChip>
                       ) : null}
                       {rowAction ? <span className="ml-auto shrink-0">{rowAction(r)}</span> : null}
+                      {r.ticketChoice ? (
+                        /* An email on this record waits for the viewer to pick its ticket (24 hours). */
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpen(r.id);
+                          }}
+                          title="An email needs you to choose its ticket — open"
+                          aria-label="An email needs you to choose its ticket — open"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#b66a00] px-1.5 py-px text-[10.5px] font-bold text-white hover:bg-[#9a5900]"
+                        >
+                          <Icon name="mail" size={9} strokeWidth={2.5} />
+                          Choose
+                        </button>
+                      ) : null}
+                      {r.awaitingClient ? (
+                        <span
+                          title="An open ticket here is marked Awaiting client"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#f2d49b] bg-[#fdf3dd] px-1.5 py-px text-[10.5px] font-semibold text-[#8a5a09]"
+                        >
+                          <Icon name="clock" size={9} strokeWidth={2.5} />
+                          Awaiting client
+                        </span>
+                      ) : null}
                       {r.mentions ? (
                         /* Only the viewer's own unread mentions — the count
                            came from a query keyed on them. Clicking lands on

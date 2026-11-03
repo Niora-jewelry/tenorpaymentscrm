@@ -10,7 +10,7 @@ export function RunFilters({
   automation,
   status,
 }: {
-  automations: { value: string; label: string }[];
+  automations: { value: string; label: string; group?: string }[];
   statuses: { value: string; label: string }[];
   automation: string;
   status: string;
@@ -30,8 +30,15 @@ export function RunFilters({
     <div className="flex flex-wrap gap-2">
       <select aria-label="Automation" value={automation} onChange={(e) => go({ automation: e.target.value })} className={selectClass}>
         <option value="">All automations</option>
-        {automations.map((a) => (
+        {automations.filter((a) => !a.group).map((a) => (
           <option key={a.value} value={a.value}>{a.label}</option>
+        ))}
+        {[...new Set(automations.filter((a) => a.group).map((a) => a.group!))].map((group) => (
+          <optgroup key={group} label={group}>
+            {automations.filter((a) => a.group === group).map((a) => (
+              <option key={a.value} value={a.value}>{a.label}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <select aria-label="Status" value={status} onChange={(e) => go({ status: e.target.value })} className={selectClass}>

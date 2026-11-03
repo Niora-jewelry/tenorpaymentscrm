@@ -116,10 +116,15 @@ async function deliver(job: Job): Promise<void> {
   }
 
   try {
-    const [{ data: rec }, config, { data: senders }] = await Promise.all([
+    const [{ data: rec }, config, { data: senders }, { data: runRow }] = await Promise.all([
       admin.from('records').select('values, deal_name').eq('id', job.record_id!).maybeSingle(),
       loadConfig(),
       admin.rpc('automation_mail_sender', { p_mailbox: step.mailboxId }),
+      admin
+        .from('automation_runs')
+        .select('ticket:cases (number, title), mail:mail_messages (subject, body_text, preview)')
+        .eq('id', run)
+        .maybeSingle(),
     ]);
     if (!rec) {
       await stop(run, 'failed', 'The record is gone.');
@@ -138,10 +143,21 @@ async function deliver(job: Job): Promise<void> {
     }
 
     const first = asRows(values.contact)[0] ?? {};
+    const ticket = (runRow?.ticket ?? null) as unknown as { number: number; title: string } | null;
+    const mail = (runRow?.mail ?? null) as unknown as { subject: string | null; body_text: string | null; preview: string | null } | null;
+    // A ticket flow's words. With no ticket to name, the email must not go out with a gap where it should be.
+    if (!ticket && /\{Ticket (title|number)\}/.test(`${step.subject} ${step.body}`)) {
+      await stop(run, 'skipped', 'There is no ticket for {Ticket title} or {Ticket number}.');
+      return;
+    }
     const fills: Values = {
       contact: text(first.name) || [text(first.first), text(first.last)].filter(Boolean).join(' '),
       merchant: merchantName(values, (rec.deal_name as string | null) ?? ''),
       field: (key) => valueText(config, key, key === 'deal_name' ? rec.deal_name : values[key]),
+      ticketTitle: ticket?.title ?? '',
+      ticketNumber: ticket ? `#${ticket.number}` : '',
+      emailSubject: mail?.subject ?? '',
+      emailBody: (mail?.body_text ?? mail?.preview ?? '').trim(),
     };
 
     // A field deleted, or made sensitive, since this was written must not print as a gap in a merchant's email.

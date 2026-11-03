@@ -38,7 +38,7 @@ import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { setFieldAddress, type FieldAddress } from '@/lib/records/fieldAddresses';
-import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases } from '@/lib/records/cases';
+import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases, setAwaitingClient, chooseTicket } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
 import {
@@ -437,6 +437,37 @@ export async function setCaseStateAction(moduleSlug: string, caseId: string, clo
     await setCaseState(ctx, caseId, close);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Could not change state.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+const awaitingSchema = z.object({ caseId: z.uuid(), on: z.boolean() });
+const chooseSchema = z.object({ choiceId: z.uuid(), caseId: z.uuid() });
+
+/** Which ticket an email is about, picked from the note in Vital Info. */
+export async function chooseTicketAction(moduleSlug: string, input: unknown): Promise<ActionState> {
+  const parsed = chooseSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That choice is not valid.' };
+  const ctx = await authorize();
+  try {
+    await chooseTicket(ctx, parsed.data.choiceId, parsed.data.caseId);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not choose the ticket.' };
+  }
+  revalidatePath(`/${moduleSlug}`);
+  return { ok: true };
+}
+
+/** Awaiting client on one ticket, by hand. */
+export async function setAwaitingClientAction(moduleSlug: string, input: unknown): Promise<ActionState> {
+  const parsed = awaitingSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That ticket is not valid.' };
+  const ctx = await authorize();
+  try {
+    await setAwaitingClient(ctx, parsed.data.caseId, parsed.data.on);
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : 'Could not change Awaiting client.' };
   }
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };

@@ -14,6 +14,7 @@ import {
   dismissAlert,
   saveAutomation,
   searchRecords,
+  searchTickets,
   setAutomationStatus,
   switchOffForRecord,
   type AutomationFile,
@@ -40,6 +41,7 @@ const refresh = () => revalidatePath('/admin/automations', 'layout');
 
 const saveSchema = z.object({
   id: uuid.nullable(),
+  kind: z.enum(['record', 'ticket']).default('record'),
   name: z.string().trim().min(1, 'Give the automation a name.').max(120),
   steps: stepsSchema,
   stopTeamIds: z.array(uuid).max(20),
@@ -56,13 +58,16 @@ export async function saveAutomationAction(input: unknown): Promise<Result<{ id:
   return r;
 }
 
-const statusSchema = z.object({ id: uuid, status: z.enum(['draft', 'test', 'on', 'off']), testRecordId: uuid.nullable() });
+const statusSchema = z.object({ id: uuid, status: z.enum(['draft', 'test', 'on', 'off']), testRecordId: uuid.nullable(), testCaseId: uuid.nullable().default(null) });
 
 export async function setStatusAction(input: unknown): Promise<Result<{ ended: number }>> {
   const parsed = statusSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: 'That status is not valid.' };
   const ctx = await authorize();
-  const r = await run(() => setAutomationStatus(ctx, parsed.data.id, parsed.data.status, parsed.data.testRecordId), 'Could not change the status.');
+  const r = await run(
+    () => setAutomationStatus(ctx, parsed.data.id, parsed.data.status, parsed.data.testRecordId, parsed.data.testCaseId),
+    'Could not change the status.',
+  );
   if (r.ok) refresh();
   return r;
 }
@@ -84,6 +89,13 @@ export async function searchRecordsAction(q: string): Promise<Result<{ id: strin
   if (!parsed.success) return { ok: false, message: 'Search is too long.' };
   const ctx = await authorize();
   return run(() => searchRecords(ctx, parsed.data), 'Could not search records.');
+}
+
+export async function searchTicketsAction(q: string): Promise<Result<{ id: string; label: string; hint: string }[]>> {
+  const parsed = z.string().max(120).safeParse(q);
+  if (!parsed.success) return { ok: false, message: 'Search is too long.' };
+  const ctx = await authorize();
+  return run(() => searchTickets(ctx, parsed.data), 'Could not search tickets.');
 }
 
 export async function uploadFileAction(formData: FormData): Promise<Result<AutomationFile>> {

@@ -6,6 +6,13 @@
 
 export const CONTACT_NAME = 'Contact name';
 export const MERCHANT_NAME = 'Merchant name';
+/** Ticket flows only (Ticket Automation Flow Builder spec). */
+export const TICKET_TITLE = 'Ticket title';
+export const TICKET_NUMBER = 'Ticket number';
+/** Ticket flows started by Email received only. */
+export const EMAIL_SUBJECT = 'Email subject';
+export const EMAIL_BODY = 'Email body';
+const FIXED = [CONTACT_NAME, MERCHANT_NAME, TICKET_TITLE, TICKET_NUMBER, EMAIL_SUBJECT, EMAIL_BODY];
 
 export type VariableField = { key: string; label: string };
 
@@ -23,8 +30,8 @@ export function toTokens(text: string, fields: VariableField[]): { text: string;
   const unknown: string[] = [];
   const out = text.replace(/\{([^{}]+)\}/g, (whole, name: string) => {
     const n = norm(name);
-    if (n === norm(CONTACT_NAME)) return `{${CONTACT_NAME}}`;
-    if (n === norm(MERCHANT_NAME)) return `{${MERCHANT_NAME}}`;
+    const fixed = FIXED.find((f) => norm(f) === n);
+    if (fixed) return `{${fixed}}`;
     const key = byLabel.get(n);
     if (key) return `{field:${key}}`;
     unknown.push(name.trim());
@@ -33,12 +40,24 @@ export function toTokens(text: string, fields: VariableField[]): { text: string;
   return { text: out, unknown: [...new Set(unknown)] };
 }
 
-export type Values = { contact: string; merchant: string; field: (key: string) => string };
+export type Values = {
+  contact: string;
+  merchant: string;
+  field: (key: string) => string;
+  ticketTitle?: string;
+  ticketNumber?: string;
+  emailSubject?: string;
+  emailBody?: string;
+};
 
 export function fill(text: string, v: Values): string {
   return text
     .replace(/\{Contact name\}/g, () => v.contact)
     .replace(/\{Merchant name\}/g, () => v.merchant)
+    .replace(/\{Ticket title\}/g, () => v.ticketTitle ?? '')
+    .replace(/\{Ticket number\}/g, () => v.ticketNumber ?? '')
+    .replace(/\{Email subject\}/g, () => v.emailSubject ?? '')
+    .replace(/\{Email body\}/g, () => v.emailBody ?? '')
     .replace(/\{field:([^{}]+)\}/g, (_, key: string) => v.field(key));
 }
 
@@ -46,7 +65,16 @@ const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').rep
 
 /** The body as written, with values filled in. Everything is escaped: a merchant's name is data, not markup. */
 export function bodyHtml(text: string, v: Values): string {
-  const safe: Values = { contact: escape(v.contact), merchant: escape(v.merchant), field: (k) => escape(v.field(k)) };
+  const opt = (s: string | undefined) => (s === undefined ? undefined : escape(s));
+  const safe: Values = {
+    contact: escape(v.contact),
+    merchant: escape(v.merchant),
+    field: (k) => escape(v.field(k)),
+    ticketTitle: opt(v.ticketTitle),
+    ticketNumber: opt(v.ticketNumber),
+    emailSubject: opt(v.emailSubject),
+    emailBody: opt(v.emailBody),
+  };
   return fill(escape(text), safe)
     .split(/\n{2,}/)
     .map((p) => `<p>${p.replace(/\n/g, '<br>')}</p>`)

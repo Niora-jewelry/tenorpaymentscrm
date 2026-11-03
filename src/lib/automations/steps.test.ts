@@ -25,9 +25,9 @@ describe('the spec\'s own example', () => {
 });
 
 describe('triggers and modules', () => {
-  it('marks exactly the email, application, contract and File uploaded triggers as outside a module', () => {
+  it('marks exactly the email, application, contract, File uploaded and ticket triggers as outside a module', () => {
     const outside = Object.entries(TRIGGERS).filter(([, t]) => !t.inModule).map(([k]) => k).sort();
-    expect(outside).toEqual(['application_received', 'application_sent', 'contract_received', 'contract_sent', 'email_received', 'email_sent', 'file_uploaded'].sort());
+    expect(outside).toEqual(['application_received', 'application_sent', 'awaiting_client', 'contract_received', 'contract_sent', 'email_received', 'email_sent', 'file_uploaded', 'ticket_email'].sort());
   });
 
   it('refuses Only in module with a trigger outside a module', () => {
@@ -90,5 +90,64 @@ describe('what stands between a Draft and running', () => {
   it('needs someone in a rotation', () => {
     const flow = stepsSchema.shape.flow.parse([{ id: 'r', type: 'round_robin' }]);
     expect(problemsIn(steps({ flow })).join()).toMatch(/who is in the rotation/);
+  });
+});
+
+describe('ticket automations (Ticket Automation Flow Builder spec)', () => {
+  const cond = (...types: string[]) => ({ join: 'and' as const, groups: [{ id: 'g', join: 'and' as const, conditions: types.map((type, i) => ({ id: `c${i}`, type })) }] });
+  const ticketSteps = (over: Record<string, unknown>) => stepsSchema.parse({ triggers: [], conditions: { join: 'and', groups: [] }, flow: [], ...over });
+  const button = [{ id: 'b', type: 'awaiting_client' }];
+  const inbox = [{ id: 'e', type: 'ticket_email', mailboxId: u }];
+
+  it('the spec’s first example is complete: button, wait, condition, email, wait, close', () => {
+    const s = ticketSteps({
+      triggers: button,
+      conditions: cond('ticket_open'),
+      flow: [{ id: 'w1', type: 'wait', amount: 3, unit: 'days' }, { ...email, subject: 'Just checking in' }, { id: 'w2', type: 'wait', amount: 4, unit: 'days' }, { id: 'c', type: 'close_ticket' }],
+    });
+    expect(problemsIn(s, 'ticket')).toEqual([]);
+    expect(stepCount(s)).toBe(6);
+  });
+
+  it('the spec’s second example is complete: email, not open, open ticket, team, notify', () => {
+    const s = ticketSteps({
+      triggers: inbox,
+      conditions: cond('ticket_not_open'),
+      flow: [{ id: 'o', type: 'open_ticket', issue: '{Email body}' }, { id: 'a', type: 'assign_team', teamId: u }, { id: 'n', type: 'send_notification', who: 'relationship_manager' }],
+    });
+    expect(problemsIn(s, 'ticket')).toEqual([]);
+  });
+
+  it('an Email received flow needs exactly one of the two ticket conditions', () => {
+    const flow = [{ id: 'n', type: 'send_notification', who: 'relationship_manager' }];
+    expect(problemsIn(ticketSteps({ triggers: inbox, flow }), 'ticket').join()).toMatch(/exactly one/);
+    expect(problemsIn(ticketSteps({ triggers: inbox, flow, conditions: cond('ticket_open', 'ticket_not_open') }), 'ticket').join()).toMatch(/exactly one/);
+    expect(problemsIn(ticketSteps({ triggers: inbox, flow, conditions: cond('ticket_open') }), 'ticket')).toEqual([]);
+  });
+
+  it('needs the inbox, and one inbox per flow', () => {
+    const flow = [{ id: 'n', type: 'send_notification', who: 'relationship_manager' }];
+    expect(problemsIn(ticketSteps({ triggers: [{ id: 'e', type: 'ticket_email' }], flow, conditions: cond('ticket_open') }), 'ticket').join()).toMatch(/choose the inbox/);
+    expect(problemsIn(ticketSteps({ triggers: [...inbox, { id: 'f', type: 'ticket_email', mailboxId: u }], flow, conditions: cond('ticket_open') }), 'ticket').join()).toMatch(/only one inbox/);
+  });
+
+  it('Open ticket only with And ticket is not open', () => {
+    const flow = [{ id: 'o', type: 'open_ticket', issue: 'x' }];
+    expect(problemsIn(ticketSteps({ triggers: inbox, flow, conditions: cond('ticket_open') }), 'ticket').join()).toMatch(/Open ticket is only available/);
+  });
+
+  it('Email connects to a record, and the email variables, need Email received', () => {
+    expect(problemsIn(ticketSteps({ triggers: button, conditions: cond('email_connects'), flow: [{ id: 'c', type: 'close_ticket' }] }), 'ticket').join()).toMatch(/only with Email received/);
+    expect(problemsIn(ticketSteps({ triggers: button, flow: [{ ...email, body: 'You wrote: {Email body}' }] }), 'ticket').join()).toMatch(/\{Email subject\} and \{Email body\}/);
+  });
+
+  it('Notify user needs the user when it names one', () => {
+    expect(problemsIn(ticketSteps({ triggers: button, flow: [{ id: 'n', type: 'send_notification', who: 'user' }] }), 'ticket').join()).toMatch(/Notify user: choose the user/);
+  });
+
+  it('each builder refuses the other’s steps, and uses its own words', () => {
+    expect(problemsIn(ticketSteps({ triggers: button, flow: [{ id: 's', type: 'change_status', value: 'x' }] }), 'ticket').join()).toMatch(/isn’t available in Ticket automations/);
+    expect(problemsIn(steps({ flow: stepsSchema.shape.flow.parse([{ id: 'c', type: 'close_ticket' }]) })).join()).toMatch(/isn’t available in Record automations/);
+    expect(problemsIn(ticketSteps({ triggers: button, flow: [{ ...email, subject: '' }] }), 'ticket').join()).toMatch(/Send merchant an email: write a subject/);
   });
 });

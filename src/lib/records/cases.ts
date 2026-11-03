@@ -27,6 +27,19 @@ export type CaseThread = {
   state: 'open' | 'closed';
   editedBy: string | null;
   createdAt: string;
+  /** The Awaiting client tag (Ticket Automation Flow Builder spec): when, and who set it. */
+  awaitingClientAt: string | null;
+  awaitingClientBy: string | null;
+};
+
+/** One line of a ticket's log: a person's click, or an action a flow took. */
+export type CaseLogLine = {
+  id: string;
+  caseId: string;
+  body: string;
+  actorId: string | null;
+  automationName: string | null;
+  createdAt: string;
 };
 
 export type CaseReply = { id: string; caseId: string; authorId: string; body: string; createdAt: string; mentionedUserIds: string[] };
@@ -47,6 +60,8 @@ function mapCase(r: Record<string, unknown>): CaseThread {
     state: r.state as 'open' | 'closed',
     editedBy: (r.edited_by as string | null) ?? null,
     createdAt: r.created_at as string,
+    awaitingClientAt: (r.awaiting_client_at as string | null) ?? null,
+    awaitingClientBy: (r.awaiting_client_by as string | null) ?? null,
   };
 }
 
@@ -117,6 +132,124 @@ export async function repliesForCases(
     });
   }
   return out;
+}
+
+/** The log of a SET of cases, oldest first, in one query. Read as the viewer:
+ * a line is seen by whoever sees its ticket. */
+export async function logForCases(_ctx: AuthContext, caseIds: string[]): Promise<Record<string, CaseLogLine[]>> {
+  const out: Record<string, CaseLogLine[]> = {};
+  for (const id of caseIds) out[id] = [];
+  if (!caseIds.length) return out;
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('case_log')
+    .select('id, case_id, body, actor_id, automation_name, created_at')
+    .in('case_id', caseIds)
+    .order('created_at');
+  if (error) throw error;
+  for (const r of data ?? []) {
+    (out[r.case_id as string] ??= []).push({
+      id: r.id as string,
+      caseId: r.case_id as string,
+      body: r.body as string,
+      actorId: (r.actor_id as string | null) ?? null,
+      automationName: (r.automation_name as string | null) ?? null,
+      createdAt: r.created_at as string,
+    });
+  }
+  return out;
+}
+
+/** An email on this record waiting for someone to choose its ticket. */
+export type TicketChoice = {
+  id: string;
+  automationName: string;
+  sender: string | null;
+  subject: string | null;
+  createdAt: string;
+  expiresAt: string;
+  tickets: { id: string; number: number; title: string }[];
+};
+
+/**
+ * The note in Vital Info (spec, "Choosing a ticket for an email"). The function
+ * answers only for the people it asks: the users assigned to the record's open
+ * tickets, or, when nobody is, everyone who can open the record in Tickets.
+ */
+export async function ticketChoicesFor(_ctx: AuthContext, recordId: string): Promise<TicketChoice[]> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('ticket_choices_for', { p_record: recordId });
+  if (error) {
+    // A note, not the record: the drawer must still open without it.
+    console.error('[tickets] choices', error.code);
+    return [];
+  }
+  return ((data ?? []) as { choice_id: string; automation_name: string; sender: string | null; subject: string | null; created_at: string; expires_at: string; tickets: TicketChoice['tickets'] }[]).map((r) => ({
+    id: r.choice_id,
+    automationName: r.automation_name,
+    sender: r.sender,
+    subject: r.subject,
+    createdAt: r.created_at,
+    expiresAt: r.expires_at,
+    tickets: r.tickets ?? [],
+  }));
+}
+
+/** The flow then runs on the chosen ticket. */
+export async function chooseTicket(_ctx: AuthContext, choiceId: string, caseId: string): Promise<void> {
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc('ticket_choose', { p_choice: choiceId, p_case: caseId });
+  if (error) {
+    if (error.code === '23514') throw new Error(error.message);
+    if (error.message === 'not found') throw new Error('That choice is not available to you.');
+    throw error;
+  }
+}
+
+/**
+ * For the rows of the module that shows open cases: which records have an open
+ * ticket marked Awaiting client (read as the viewer, so the tag shows to
+ * whoever can open that ticket), and which have an email waiting for the viewer
+ * to choose its ticket (the badge the spec puts on the row).
+ */
+export async function ticketFlagsFor(_ctx: AuthContext, recordIds: string[]): Promise<{ awaiting: Set<string>; choosing: Set<string> }> {
+  const out = { awaiting: new Set<string>(), choosing: new Set<string>() };
+  if (!recordIds.length) return out;
+  const supabase = await createSupabaseServerClient();
+  const [tagged, waiting] = await Promise.all([
+    supabase
+      .from('cases')
+      .select('record_id')
+      .in('record_id', recordIds)
+      .eq('state', 'open')
+      .is('deleted_at', null)
+      .not('awaiting_client_at', 'is', null),
+    supabase.rpc('ticket_choice_records'),
+  ]);
+  if (tagged.error) throw tagged.error;
+  for (const r of tagged.data ?? []) out.awaiting.add(r.record_id as string);
+  // The badge is a convenience: without it the list must still load.
+  if (waiting.error) console.error('[tickets] choice badges', waiting.error.code);
+  const wanted = new Set(recordIds);
+  for (const id of (waiting.data ?? []) as string[]) if (wanted.has(id)) out.choosing.add(id);
+  return out;
+}
+
+/**
+ * Awaiting client, set or cleared by hand. The function is the gate: anyone who
+ * can open the ticket and has Use Awaiting client. Setting it on an open ticket
+ * starts any flow that listens for the button; an already tagged ticket is left
+ * as it is and starts nothing. Returns whether anything changed.
+ */
+export async function setAwaitingClient(_ctx: AuthContext, caseId: string, on: boolean): Promise<boolean> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.rpc('set_awaiting_client', { p_case: caseId, p_on: on });
+  if (error) {
+    if (error.code === '42501' || error.code === '23514') throw new Error(error.message);
+    if (error.message === 'not found') throw new Error('That ticket is not available.');
+    throw error;
+  }
+  return Boolean(data);
 }
 
 /** Managers for a SET of cases, grouped by case, in one query. Same reasoning

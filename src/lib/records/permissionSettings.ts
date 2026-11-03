@@ -65,6 +65,7 @@ export async function settingGroups(): Promise<SettingGroup[]> {
         { key: 'action.pipeline', label: 'Move records through pipeline stages', options: YES_NO },
         { key: 'action.pipeline_change', label: 'Change pipeline in drawer', hint: 'Move a record to a different pipeline, or remove it from one. Moving along the stages is the setting above.', options: YES_NO },
         { key: 'action.mark_files_required', label: 'Mark files required', hint: 'Tick or untick Required and change files needed on any row. Doesn’t need Edit on the Files tab.', options: YES_NO },
+        { key: 'action.awaiting_client', label: 'Use Awaiting client', hint: 'Click Awaiting client on a ticket they can open, and clear the tag by hand. Anyone who can open the ticket sees the tag.', options: YES_NO },
       ],
     },
     {

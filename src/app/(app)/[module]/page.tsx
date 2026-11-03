@@ -36,7 +36,7 @@ import { repeatInstanceCount } from '@/lib/records/repeatGroups';
 import { listRecords, getRecord } from '@/lib/records/records';
 import { membershipsFor, membershipsForMany } from '@/lib/records/memberships';
 import { pipelineAssignment } from '@/lib/records/pipelines';
-import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor } from '@/lib/records/cases';
+import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor, logForCases, ticketFlagsFor, ticketChoicesFor, type TicketChoice } from '@/lib/records/cases';
 import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
 import { RecordHeaderMenu } from './RecordHeaderMenu';
 import { AutomationWaiting } from './AutomationWaiting';
@@ -241,12 +241,14 @@ export default async function ModulePage({
   });
   // Asked only for a viewer the column is shown to: absent, never blank.
   const showsTeams = columns.some((c) => c.id === VISIBILITY_FIELD_KEY);
-  const [membershipsByRecord, mentionCounts, teamsByRecord, assignable] = await Promise.all([
+  const [membershipsByRecord, mentionCounts, teamsByRecord, assignable, ticketFlags] = await Promise.all([
     membershipsForMany(ctx, dbRows.map((r) => r.id)),
     // The viewer's own unread @mentions per row — the "@ 3" badge.
     unreadMentionCounts(ctx, dbRows.map((r) => r.id)),
     showsTeams ? teamsFor(ctx, dbRows.map((r) => r.id)) : new Map<string, RecordTeams>(),
     showsTeams || canCreate ? assignableTeams(ctx) : ([] as AssignableTeam[]),
+    // Ticket flows (spec): the Awaiting client tag, and the "choose a ticket" badge, on the module of open tickets only.
+    mod.showsOpenCases ? ticketFlagsFor(ctx, dbRows.map((r) => r.id)) : null,
   ]);
   const moduleSlugById = new Map(config.modules.map((m) => [m.id, m.slug]));
   const rows = dbRows.map((r) => ({
@@ -255,6 +257,8 @@ export default async function ModulePage({
       (membershipsByRecord[r.id] ?? []).map((id) => moduleSlugById.get(id)).filter((s): s is string => Boolean(s)),
     ),
     mentions: mentionCounts[r.id] ?? 0,
+    awaitingClient: ticketFlags?.awaiting.has(r.id) ?? false,
+    ticketChoice: ticketFlags?.choosing.has(r.id) ?? false,
   }));
 
   return (
@@ -717,7 +721,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications, addressesRaw, agreements, fileRowsAdding, baseByTab,
+    applications, addressesRaw, agreements, fileRowsAdding, baseByTab, ticketChoices,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -808,6 +812,8 @@ async function RecordDrawer({
         .filter((t) => tabEffect(t) === 'lock' && tabGrantById.get(t.id) !== 'hidden')
         .map(async (t) => [t.id, await tabBaseGrant(ctx, record.id, t.key)] as const),
     ).then((list) => new Map(list)),
+    // An email waiting for its ticket: a note in Vital Info, in the module of open tickets only (spec).
+    config.modules.find((m) => m.id === moduleId)?.showsOpenCases ? ticketChoicesFor(ctx, record.id) : Promise.resolve([] as TicketChoice[]),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -839,13 +845,15 @@ async function RecordDrawer({
   // Two queries total, and they run together. This was two SEQUENTIAL waves of
   // one query per case: the replies wave had to finish before the managers
   // wave began, so a record with six cases cost twelve round trips in series.
-  const [repliesByCase, managersByCase, attachmentsByCase] = await Promise.all([
+  const [repliesByCase, managersByCase, attachmentsByCase, logByCase] = await Promise.all([
     repliesForCases(ctx, cases.map((c) => c.id)),
     managersForCases(ctx, cases.map((c) => c.id)),
     // Modules §3.7's Issue/Solution/reply attachments, in the same wave. Two
     // queries for the whole tab rather than one per attachment point, which on
     // a record with six cases and four replies each would be thirty.
     attachmentsForCases(ctx, record.id, cases.map((c) => c.id)),
+    // Each ticket's log: who clicked Awaiting client, what a flow did.
+    logForCases(ctx, cases.map((c) => c.id)),
   ]);
 
   // One name lookup for every author across notes/updates/cases/entries —
@@ -861,7 +869,9 @@ async function RecordDrawer({
     if (c.issueAuthor) authorIds.add(c.issueAuthor);
     if (c.solutionAuthor) authorIds.add(c.solutionAuthor);
     if (c.editedBy) authorIds.add(c.editedBy);
+    if (c.awaitingClientBy) authorIds.add(c.awaitingClientBy);
   }
+  for (const lines of Object.values(logByCase)) for (const l of lines) if (l.actorId) authorIds.add(l.actorId);
   for (const replies of Object.values(repliesByCase)) for (const r of replies) authorIds.add(r.authorId);
   for (const managers of Object.values(managersByCase)) for (const m of managers) authorIds.add(m);
 
@@ -1268,6 +1278,7 @@ async function RecordDrawer({
         mentionsByField={headerMentions}
         openMention={openMention?.fieldKey ? openMention : null}
         filesRequired={record.filesRequired}
+        ticketChoices={ticketChoices}
       />
 
       <DrawerTabs
@@ -1296,6 +1307,8 @@ async function RecordDrawer({
         repliesByCase={repliesByCase}
         managersByCase={managersByCase}
         attachmentsByCase={attachmentsByCase}
+        logByCase={logByCase}
+        canUseAwaitingClient={ctx.isAdmin || viewerPerms.settings['action.awaiting_client'] === 'yes'}
         updates={updates}
         teamRoster={teamRoster}
         applicationRows={applicationRows}

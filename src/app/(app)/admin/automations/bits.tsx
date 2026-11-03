@@ -12,12 +12,14 @@ const RUN_LABEL: Record<string, { label: string; swatch?: Swatch }> = {
   running: { label: 'Running', swatch: 'blue' },
   sending: { label: 'Sending email', swatch: 'blue' },
   waiting: { label: 'Waiting', swatch: 'amber' },
+  choosing: { label: 'Waiting for a ticket choice', swatch: 'amber' },
   completed: { label: 'Completed', swatch: 'green' },
   skipped: { label: 'Stopped: skipped', swatch: 'red' },
   failed: { label: 'Stopped: failed', swatch: 'red' },
   not_matched: { label: 'Didn’t run' },
   switched_off: { label: 'Switched off' },
   cancelled: { label: 'Cancelled' },
+  expired: { label: 'Expired: no ticket chosen' },
 };
 
 export function RunBadge({ status }: { status: string }) {

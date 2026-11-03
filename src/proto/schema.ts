@@ -412,6 +412,10 @@ export type RecordRow = {
   deleted?: boolean;
   /** Unread @mentions for the VIEWER on this record (nobody else's). */
   mentions?: number;
+  /** In the module that shows open cases: an open ticket is marked Awaiting client. */
+  awaitingClient?: boolean;
+  /** In that module: an email is waiting for the VIEWER to choose its ticket. */
+  ticketChoice?: boolean;
   createdAt: string;
 };
 

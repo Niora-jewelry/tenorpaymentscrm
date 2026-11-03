@@ -21,9 +21,10 @@ import {
   setCaseSolutionAction,
   setCaseHandlingNoteAction,
   deleteCaseAction,
+  setAwaitingClientAction,
   type ActionState,
 } from './actions';
-import type { CaseThread, CaseReply, CaseHandlingNote } from '@/lib/records/cases';
+import type { CaseThread, CaseReply, CaseHandlingNote, CaseLogLine } from '@/lib/records/cases';
 import type { Candidate, NotificationView } from '@/lib/records/notifications';
 import { MentionTextarea } from './MentionTextarea';
 import { RichText } from '@/proto/ui/richText';
@@ -40,6 +41,8 @@ export function CasesPanel({
   repliesByCase,
   managersByCase,
   attachmentsByCase,
+  logByCase = {},
+  canUseAwaitingClient = false,
   authorNames,
   viewerId,
   isAdmin,
@@ -63,6 +66,10 @@ export function CasesPanel({
   /** Files on each case's Issue, Solution and replies — Modules §3.7. Keyed by
    *  case id, then by attachment point (`issue`, `solution`, `reply:<id>`). */
   attachmentsByCase: Record<string, CaseAttachmentMap>;
+  /** Each ticket's log, oldest first. */
+  logByCase?: Record<string, CaseLogLine[]>;
+  /** Use Awaiting client (a yes/no permission): the button, and clearing the tag by hand. */
+  canUseAwaitingClient?: boolean;
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
@@ -196,6 +203,8 @@ export function CasesPanel({
               replies={repliesByCase[c.id] ?? []}
               managerIds={managersByCase[c.id] ?? []}
               attachments={attachmentsByCase[c.id] ?? {}}
+              log={logByCase[c.id] ?? []}
+              canUseAwaitingClient={canUseAwaitingClient}
               authorNames={authorNames}
               viewerId={viewerId}
               isAdmin={isAdmin}
@@ -218,6 +227,8 @@ function CaseCard({
   replies,
   managerIds,
   attachments,
+  log,
+  canUseAwaitingClient,
   authorNames,
   viewerId,
   isAdmin,
@@ -229,6 +240,8 @@ function CaseCard({
 }: {
   moduleSlug: string;
   c: CaseThread;
+  log: CaseLogLine[];
+  canUseAwaitingClient: boolean;
   replies: CaseReply[];
   roster: Candidate[];
   mentions: NotificationView[];
@@ -356,6 +369,25 @@ function CaseCard({
     });
   };
 
+  /*
+   * ── AWAITING CLIENT ──────────────────────────────────────────────────────
+   * Ticket Automation Flow Builder spec: a button on every open ticket. It sets
+   * a tag anyone who can open the ticket sees, and starts any flow listening
+   * for it. Clearing it by hand takes the same permission; an email never
+   * clears it. A second click on a tagged ticket does nothing.
+   */
+  const awaiting = Boolean(c.awaitingClientAt);
+  // Its own pending state: the card's would show the reply box as "Sending…".
+  const [awaitingPending, startAwaiting] = useTransition();
+  const setAwaiting = (on: boolean) => {
+    startAwaiting(async () => {
+      setError(null);
+      const result = await setAwaitingClientAction(moduleSlug, { caseId: c.id, on });
+      if (!result.ok) setError(result.message ?? 'Could not change Awaiting client.');
+      else router.refresh();
+    });
+  };
+
   const runDelete = () => {
     startTransition(async () => {
       const result = await deleteCaseAction(moduleSlug, c.id);
@@ -397,6 +429,27 @@ function CaseCard({
           ) : null}
         </button>
         <span className="ml-auto flex shrink-0 items-center gap-2">
+          {awaiting ? (
+            <AwaitingTag
+              since={c.awaitingClientAt!}
+              by={c.awaitingClientBy ? authorNames[c.awaitingClientBy] ?? null : null}
+              onClear={canUseAwaitingClient ? () => setAwaiting(false) : null}
+              pending={awaitingPending}
+              now={now}
+            />
+          ) : c.state === 'open' && canUseAwaitingClient ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              icon="clock"
+              loading={awaitingPending}
+              loadingLabel="Marking…"
+              title="Mark this ticket as waiting on the client. Starts any ticket automation that listens for it."
+              onClick={() => setAwaiting(true)}
+            >
+              Awaiting client
+            </Button>
+          ) : null}
           <CaseStatePill state={c.state} />
           {editable ? (
             <Button
@@ -635,6 +688,8 @@ function CaseCard({
             </div>
           </div>
 
+          {log.length ? <TicketLog lines={log} authorNames={authorNames} now={now} /> : null}
+
           <div className="flex flex-wrap items-center gap-3 border-t border-line-soft px-4 py-2.5">
             <span className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">Ticket managers</span>
             <span className="flex -space-x-1.5">
@@ -863,6 +918,63 @@ function CaseReplyRow({ r, mentioned, flash, children }: { r: CaseReply; mention
   return (
     <div id={targetId.reply(r.id)} className={`-mx-2 flex gap-2 rounded-lg px-2 py-1 transition-shadow ${mentioned ? 'bg-brand-50/50' : ''} ${flashing ? FLASH_CLASS : ''}`}>
       {children}
+    </div>
+  );
+}
+
+/** The tag, as everyone who can open the ticket sees it; a clear control for those who may. */
+function AwaitingTag({ since, by, onClear, pending, now }: { since: string; by: string | null; onClear: (() => void) | null; pending: boolean; now: Date }) {
+  return (
+    <span
+      title={`Awaiting client since ${relative(since, now)}${by ? `, set by ${by}` : ''}`}
+      className="inline-flex items-center gap-1 rounded-full border border-[#f2d49b] bg-[#fdf3dd] py-0.5 pl-2 pr-1 text-[11.5px] font-semibold text-[#8a5a09]"
+    >
+      <Icon name="clock" size={11} strokeWidth={2.4} />
+      Awaiting client
+      {onClear ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onClear}
+          aria-label="Clear Awaiting client"
+          title="Clear Awaiting client"
+          className="ml-0.5 grid size-4 place-items-center rounded-full text-[#8a5a09] transition-colors hover:bg-[#f6e2b6] disabled:opacity-50"
+        >
+          <Icon name="x" size={10} strokeWidth={2.6} />
+        </button>
+      ) : (
+        <span className="w-0.5" />
+      )}
+    </span>
+  );
+}
+
+/**
+ * The ticket's log (spec: "Every action a flow takes is logged on the ticket",
+ * and every click of Awaiting client "with the user's name"). Oldest first, the
+ * way the ticket happened.
+ */
+function TicketLog({ lines, authorNames, now }: { lines: CaseLogLine[]; authorNames: Record<string, string>; now: Date }) {
+  return (
+    <div className="border-t border-line-soft bg-canvas/50 px-4 py-3">
+      <SectionLabel>Ticket log</SectionLabel>
+      <ol className="mt-1.5 space-y-1.5">
+        {lines.map((l) => {
+          const robot = Boolean(l.automationName);
+          const who = robot ? `Automation · ${l.automationName}` : (l.actorId ? authorNames[l.actorId] : null) ?? 'Someone';
+          return (
+            <li key={l.id} className="flex items-start gap-2 text-[12.5px]">
+              <span className={`mt-[2px] grid size-[18px] shrink-0 place-items-center rounded-full ${robot ? 'bg-brand-50 text-brand-700' : 'bg-white text-ink-500 ring-1 ring-line'}`}>
+                <Icon name={robot ? 'route' : 'user'} size={10} strokeWidth={2.4} />
+              </span>
+              <span className="min-w-0 flex-1 leading-relaxed text-ink-700">
+                <span className="font-semibold text-ink-900">{who}</span> {l.body}
+              </span>
+              <time dateTime={l.createdAt} className="shrink-0 text-[11px] tabular-nums text-ink-400">{relative(l.createdAt, now)}</time>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

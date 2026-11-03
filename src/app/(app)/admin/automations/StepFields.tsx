@@ -5,9 +5,9 @@ import { RestrictionFields } from './RestrictionFields';
 import { useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react';
 import type { Catalog, CatalogField, Option } from '@/lib/automations/catalog';
 import type { AutomationFile } from '@/lib/automations/service';
-import type { ConditionStep, EmailStep, FlowStep, TriggerStep } from '@/lib/automations/steps';
+import type { AutomationKind, ConditionStep, EmailStep, FlowStep, TriggerStep } from '@/lib/automations/steps';
 import { FILE_FREQUENCIES } from '@/lib/automations/steps';
-import { CONTACT_NAME, MERCHANT_NAME } from '@/lib/automations/template';
+import { CONTACT_NAME, EMAIL_BODY, EMAIL_SUBJECT, MERCHANT_NAME, TICKET_NUMBER, TICKET_TITLE } from '@/lib/automations/template';
 import { Icon } from '@/proto/ui/icons';
 import { IconButton } from '@/proto/ui/kit';
 import { uploadFileAction } from './actions';
@@ -70,6 +70,9 @@ function Text({ label, value, onChange, placeholder, type = 'text' }: { label: s
 }
 
 const Row = ({ children }: { children: React.ReactNode }) => <div className="grid gap-3 sm:grid-cols-2">{children}</div>;
+
+/** A line of explanation under a step that has nothing to set. */
+const Note = ({ children }: { children: React.ReactNode }) => <p className="text-[12.5px] leading-relaxed text-ink-500">{children}</p>;
 
 export function CheckRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
@@ -140,6 +143,31 @@ export function TriggerFields({ step, catalog, onChange }: { step: TriggerStep; 
         </Row>
       );
     }
+    case 'ticket_email':
+      return (
+        <div className="space-y-2">
+          <div className="max-w-[420px]">
+            <Pick
+              label="Inbox"
+              value={step.mailboxId}
+              none={catalog.inboxes.length ? 'Choose an inbox…' : 'No inbox is connected'}
+              onChange={(mailboxId) => onChange({ ...step, mailboxId })}
+              options={catalog.inboxes}
+            />
+          </div>
+          <Note>
+            An email from a record&rsquo;s main contact or an owner starts it. Every such email in this inbox is added to the record&rsquo;s
+            Communication tab, whether or not the flow runs. An email that matches no record stays in the inbox. Emails the CRM sends never start it.
+          </Note>
+        </div>
+      );
+    case 'awaiting_client':
+      return (
+        <Note>
+          Starts when someone clicks <span className="font-semibold text-ink-700">Awaiting client</span> on an open ticket. The flow acts on that ticket
+          only. Clicking a ticket that is already tagged does nothing.
+        </Note>
+      );
     default:
       return null;
   }
@@ -215,6 +243,22 @@ export function ConditionFields({ step, catalog, onChange }: { step: ConditionSt
           <p className="mt-1.5 text-[12px] text-ink-400">Leave blank for any outstanding row.</p>
         </div>
       );
+    case 'ticket_open':
+      return (
+        <Note>
+          For an email: the record has at least one open ticket. If it has more than one and a step acts on a ticket, the assigned users are asked
+          which one. For the button: the ticket clicked is still open.
+        </Note>
+      );
+    case 'ticket_not_open':
+      return (
+        <Note>
+          For an email: the record has no open ticket. Use it with Open ticket for emails that need a new one. For the button: the ticket clicked has
+          been closed.
+        </Note>
+      );
+    case 'email_connects':
+      return <Note>The sender is a record&rsquo;s main contact or an owner. An email that matches no record never runs the flow.</Note>;
   }
 }
 
@@ -263,7 +307,10 @@ function ChangeStage({ step, catalog, onChange, stageModule }: { step: Extract<F
   );
 }
 
-function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: { step: EmailStep; catalog: Catalog; onChange: (s: FlowStep) => void; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null }) {
+function SendEmail({ step, catalog, onChange, files, setFiles, automationId, kind, hasEmailTrigger }: {
+  step: EmailStep; catalog: Catalog; onChange: (s: FlowStep) => void; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>;
+  automationId: string | null; kind: AutomationKind; hasEmailTrigger: boolean;
+}) {
   const body = useRef<HTMLTextAreaElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, run] = useTransition();
@@ -328,6 +375,18 @@ function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: {
           <option value="">Choose…</option>
           <option value={CONTACT_NAME}>{CONTACT_NAME}</option>
           <option value={MERCHANT_NAME}>{MERCHANT_NAME}</option>
+          {kind === 'ticket' ? (
+            <optgroup label="Ticket">
+              <option value={TICKET_TITLE}>{TICKET_TITLE}</option>
+              <option value={TICKET_NUMBER}>{TICKET_NUMBER}</option>
+            </optgroup>
+          ) : null}
+          {kind === 'ticket' && hasEmailTrigger ? (
+            <optgroup label="The email received">
+              <option value={EMAIL_SUBJECT}>{EMAIL_SUBJECT}</option>
+              <option value={EMAIL_BODY}>{EMAIL_BODY}</option>
+            </optgroup>
+          ) : null}
           <optgroup label="Fields">
             {catalog.variables.map((f) => <option key={f.key} value={f.label}>{f.label}</option>)}
           </optgroup>
@@ -367,7 +426,10 @@ function SendEmail({ step, catalog, onChange, files, setFiles, automationId }: {
           ))}
         </div>
       </div>
-      <p className="text-[12px] text-ink-500">Sent as a new message, not a reply. If a chosen Files row is empty, the email doesn&rsquo;t go and you get an alert.</p>
+      <p className="text-[12px] text-ink-500">
+        Sent as a new message, not a reply. If a chosen Files row is empty, the email doesn&rsquo;t go and you get an alert.
+        {kind === 'ticket' ? ' The sent email appears on the record’s Communication tab, and a line is added to the ticket’s log.' : null}
+      </p>
     </div>
   );
 }
@@ -406,8 +468,46 @@ function RequiredRows({ step, catalog, onChange }: {
   );
 }
 
-export function FlowFields({ step, catalog, onChange, stageModule, files, setFiles, automationId }: {
+/** Title and Issue of a ticket a flow opens: the variables Open ticket can fill. */
+function OpenTicket({ step, onChange, hasEmailTrigger }: { step: Extract<FlowStep, { type: 'open_ticket' }>; onChange: (s: FlowStep) => void; hasEmailTrigger: boolean }) {
+  const issue = useRef<HTMLTextAreaElement>(null);
+  const [lastBox, setLastBox] = useState<'title' | 'issue'>('issue');
+  const names = [MERCHANT_NAME, CONTACT_NAME, ...(hasEmailTrigger ? [EMAIL_SUBJECT, EMAIL_BODY] : [])];
+  const insert = (name: string) => {
+    if (!name) return;
+    const token = `{${name}}`;
+    if (lastBox === 'title') return onChange({ ...step, title: `${step.title}${token}` });
+    const at = issue.current?.selectionStart ?? step.issue.length;
+    onChange({ ...step, issue: `${step.issue.slice(0, at)}${token}${step.issue.slice(at)}` });
+  };
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className={labelClass}>Title</span>
+        <input value={step.title} maxLength={200} placeholder="Taken from the Issue if left empty" onFocus={() => setLastBox('title')} onChange={(e) => onChange({ ...step, title: e.target.value })} className={inputClass} />
+      </label>
+      <label className="block">
+        <span className={labelClass}>Issue</span>
+        <textarea ref={issue} rows={3} value={step.issue} onFocus={() => setLastBox('issue')} onChange={(e) => onChange({ ...step, issue: e.target.value })} className={inputClass} />
+      </label>
+      <label className="block max-w-[320px]">
+        <span className={labelClass}>Insert a variable</span>
+        <select value="" onChange={(e) => insert(e.target.value)} className={inputClass}>
+          <option value="">Choose…</option>
+          {names.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+      <p className="text-[12px] text-ink-500">
+        Creates a new ticket on the record. The Issue is required and can&rsquo;t be edited once saved, the same as a ticket opened by hand. Later
+        steps act on the new ticket. If the record already has an open ticket, the step is skipped and the flow stops.
+      </p>
+    </div>
+  );
+}
+
+export function FlowFields({ step, catalog, onChange, stageModule, files, setFiles, automationId, kind = 'record', hasEmailTrigger = false }: {
   step: FlowStep; catalog: Catalog; onChange: (s: FlowStep) => void; stageModule: boolean; files: AutomationFile[]; setFiles: Dispatch<SetStateAction<AutomationFile[]>>; automationId: string | null;
+  kind?: AutomationKind; hasEmailTrigger?: boolean;
 }) {
   switch (step.type) {
     case 'wait':
@@ -428,12 +528,16 @@ export function FlowFields({ step, catalog, onChange, stageModule, files, setFil
     case 'change_status':
       return <Pick label="Status" value={step.value} onChange={(value) => onChange({ ...step, value })} options={catalog.statuses} />;
     case 'send_email':
-      return <SendEmail step={step} catalog={catalog} onChange={onChange} files={files} setFiles={setFiles} automationId={automationId} />;
+      return <SendEmail step={step} catalog={catalog} onChange={onChange} files={files} setFiles={setFiles} automationId={automationId} kind={kind} hasEmailTrigger={hasEmailTrigger} />;
     case 'assign_team':
       return (
         <>
           <Pick label="Team" value={step.teamId} onChange={(teamId) => onChange({ ...step, teamId })} options={teamOptions(catalog)} />
-          <p className="mt-2 text-[12px] text-ink-500">It shows as Open until someone takes it.</p>
+          <p className="mt-2 text-[12px] text-ink-500">
+            {kind === 'ticket'
+              ? 'Assigns a team to the ticket’s record in the Tickets module. It shows as Open until someone on that team takes it. No specific user, no round robin.'
+              : 'It shows as Open until someone takes it.'}
+          </p>
         </>
       );
     case 'remove_team':
@@ -469,6 +573,12 @@ export function FlowFields({ step, catalog, onChange, stageModule, files, setFil
       );
     case 'mark_file_required':
       return <RequiredRows step={step} catalog={catalog} onChange={onChange} />;
+    case 'close_ticket':
+      return <Note>Closes the ticket with the reason &ldquo;Closed by Automation&rdquo;. The merchant isn&rsquo;t emailed. If the ticket is already closed, the step is skipped and the flow stops.</Note>;
+    case 'open_ticket':
+      return <OpenTicket step={step} onChange={onChange} hasEmailTrigger={hasEmailTrigger} />;
+    case 'clear_awaiting':
+      return <Note>Removes the Awaiting client tag from the ticket the flow is running on. If the tag isn&rsquo;t set, the step is skipped and the flow stops.</Note>;
     case 'lock':
     case 'hide':
     case 'unlock':
@@ -484,9 +594,11 @@ export function FlowFields({ step, catalog, onChange, stageModule, files, setFil
                 <option value="team_members">The assigned team member(s)</option>
                 <option value="team">An assigned team</option>
                 <option value="relationship_manager">The relationship manager</option>
+                {kind === 'ticket' || step.who === 'user' ? <option value="user">A specific user</option> : null}
               </select>
             </label>
             {step.who === 'team' ? <Pick label="Team" value={step.teamId} onChange={(teamId) => onChange({ ...step, teamId })} options={teamOptions(catalog)} /> : null}
+            {step.who === 'user' ? <Pick label="User" value={step.userId} onChange={(userId) => onChange({ ...step, userId })} options={catalog.users} /> : null}
           </Row>
           <Text label="Message (optional)" value={step.message} placeholder="Says which automation ran, if left empty" onChange={(message) => onChange({ ...step, message })} />
           <p className="text-[12px] text-ink-500">Notifications panel only, no email.</p>

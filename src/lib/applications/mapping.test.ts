@@ -295,3 +295,91 @@ describe('helpers and catalog', () => {
     expect(answerKeys().has('sales_method_internet')).toBe(true);
   });
 });
+
+/**
+ * The client's "app fields.xlsx" (CRM field → application question), row by
+ * row. Every row that names an application question: the answer lands in that
+ * CRM field, and the CRM field prefills that question. The sheet itself is a
+ * client document and stays out of the repository, so its rows live here.
+ */
+describe('app fields.xlsx: every application question and its CRM field', () => {
+  const address = { street: '1 Main St', street2: '', city: 'Austin', state: 'TX', zip: '78701' };
+  const answers = {
+    legal_business_name: 'Acme Holdings LLC', dba: 'Joe Pizza', merchant_address: address, retail_address: address,
+    contact_email: 'joe@acme.test', contact_phone: '5125550100', merchant_website: 'https://acme.test', business_founded_date: '2019-04-02',
+    entity_type: ['partnership'], building_ownership: 'Own', area_zoned: ['commercial'], square_footage: ['1_1000'],
+    seasonal: 'Yes', seasonal_details: 'June, July', inventory: ['on_site'], advertising_method: 'Instagram',
+    product_received_time: '2-5 days', return_policy: 'Refunds within 30 days', bankruptcy: 'No', cc_termination: 'No',
+    customer_type_b2c: '100', customer_profile_local: '100', sales_method_in_person: '100', payment_codes_ccd: '100',
+    monthly_acq_volume: '50000', average_transaction_amount: '40', maximum_transaction_amount: '900',
+    ach_monthly_returns: '2', ach_refunds: 'Yes',
+    owner1_first: 'Joe', owner1_last: 'Berg', owner1_title: 'CEO', owner1_phone: '5125550100', owner1_email: 'joe@acme.test', owner1_percentage: '60',
+    owner1_ssn: '123-45-6789', prior_processor: 'Square', prior_pos: 'Clover',
+  };
+  const landed = new Set(proposalsFrom(answers, {}, labels).map((p) => targetKey(p.target)));
+
+  // [sheet row ("Cells"), the application question, where it must land]
+  const ROWS: [string, string, string][] = [
+    ['Merchant Address', 'Address', 'field:merchant_address'],
+    ['Contact Email', 'Business email address', 'member:contact.0.email'],
+    ['Contact Phone', 'business phone number', 'member:contact.0.phone'],
+    ['Legal Business Name', 'Legal/corporate name', 'field:legal_business_name'],
+    ['Merchant Website', 'Website address', 'field:merchant_website'],
+    ['ACH Return', 'Do you issue refunds via ACH? (its own field since 30 Oct)', 'field:ach_refunds'],
+    ['Retail Address', 'Retail address', 'field:retail_address'],
+    ['DBA', 'DBA', 'field:dba'],
+    ['Entity Type', 'Type of entity', 'field:entity_type'],
+    ['Business Founded Date', 'Business founded date', 'field:business_founded_date'],
+    ['Seasonal', 'Is the business seasonal', 'field:seasonal'],
+    ['Seasonal', '(add notes section also)', 'note:seasonal'],
+    ['How Long After Order Is Product Received', 'How long after order is service/product received', 'field:order_to_service'],
+    ['Building Ownership', 'Do you own, lease or rent the property', 'field:building_ownership'],
+    ['Area Zoned', 'How is the property zoned', 'field:area_zoned'],
+    ['Square Footage', 'Estimated square footage', 'field:square_footage'],
+    ['Inventory', 'Where is your inventory stored (select all applicable)?', 'field:inventory'],
+    ['Advertising Method', 'List your primary advertising methods', 'field:advertising_method'],
+    ['Bankruptcy', 'has the business or any of its principals ever filed for bankruptcy', 'field:bankruptcy'],
+    ['Customer Type', 'breakdown of your customer base (must equal 100%)', 'field:customer_type'],
+    ['Customer Profile', 'customers geographic distribution (must equal 100%)', 'field:customer_profile'],
+    ['Sales Method', 'breakdown of credit card payment type (must equal 100%)', 'field:sales_method'],
+    ['Return policy', 'What is your return policy (enter N/A if none)?', 'field:refund_policy'],
+    ['Monthly ACQ Volume', 'Average monthly credit card volume / ACH volume', 'field:monthly_acq_volume'],
+    ['Average Transaction Amount', 'Average ticket / Average ACH transaction amount', 'field:avg_transaction'],
+    ['Maximum Transaction Amount', 'High ticket / Maximum ACH transaction amount', 'field:max_transaction'],
+    ['CC Termination', 'ever been terminated from accepting bank cards?', 'field:cc_termination'],
+    ['ACH Monthly Returns', '# of Monthly ACH Returns', 'field:ach_monthly_returns'],
+    ['Payment Codes', 'percentage of your ACH transactions by type (must total 100%)', 'field:payment_codes'],
+    ['SSN', 'Social security number', 'member:owner_private.0.ssn'],
+    ['First Name', 'Corporate officer/Owner name', 'member:owner_ownership.0.first'],
+    ['Last Name', 'Corporate officer/Owner name', 'member:owner_ownership.0.last'],
+    ['Title', 'Title', 'member:owner_ownership.0.title'],
+    ['Phone', 'Phone number', 'member:owner_ownership.0.phone'],
+    ['Email', 'Email address', 'member:owner_ownership.0.email'],
+    ['Percentage', 'Ownership %', 'member:owner_ownership.0.percentage'],
+    ['Prior Processor', 'Current processing company', 'field:prior_processor'],
+    ['Prior POS', 'Current terminal type or POS', 'field:prior_pos'],
+  ];
+
+  it.each(ROWS)('%s ← “%s” lands in %s', (_cell, _question, target) => {
+    expect(landed.has(target)).toBe(true);
+  });
+
+  it('and the CRM fields prefill those questions', () => {
+    const crm: CrmValues = {
+      legal_business_name: 'Acme Holdings LLC', dba: 'Joe', merchant_address: address, retail_address: address,
+      contact: [{ email: 'joe@acme.test', phone: '5125550100' }], merchant_website: 'https://acme.test', business_founded_date: '2019-04-02',
+      entity_type: 'partnership', building_ownership: 'owns', area_zoned: 'commercial', seasonal: ['jun', 'jul'],
+      inventory: ['on_site'], advertising_method: 'Instagram', refund_policy: '30 days', bankruptcy: 'never', cc_termination: 'no',
+      monthly_acq_volume: '50000', avg_transaction: '40', max_transaction: '900', ach_monthly_returns: '2', ach_refunds: 'yes',
+      owner_ownership: [{ first: 'Joe', last: 'Berg', title: 'CEO', percentage: '60', email: 'joe@acme.test', phone: '5125550100' }],
+      prior_processor: 'Square', prior_pos: 'Clover',
+    };
+    const a = prefillAnswers(crm, labels);
+    for (const id of ['legal_business_name', 'dba', 'merchant_address', 'retail_address', 'contact_email', 'contact_phone', 'merchant_website',
+      'business_founded_date', 'entity_type', 'building_ownership', 'area_zoned', 'seasonal', 'inventory', 'advertising_method', 'return_policy',
+      'bankruptcy', 'cc_termination', 'monthly_acq_volume', 'average_transaction_amount', 'maximum_transaction_amount', 'ach_monthly_returns',
+      'ach_refunds', 'owner1_first', 'owner1_last', 'owner1_title', 'owner1_percentage', 'owner1_email', 'owner1_phone', 'prior_processor', 'prior_pos']) {
+      expect(a[id], id).toBeTruthy();
+    }
+  });
+});

@@ -42,6 +42,8 @@ import type { FieldHit } from './fieldHits';
 import type { ApplicationsPanelData } from '@/lib/applications/service';
 import type { AgreementsPanelData } from '@/lib/agreements/service';
 import { AgreementsPanel } from './AgreementsPanel';
+import type { ProposalsPanelData } from '@/lib/proposals/service';
+import { ProposalsPanel } from './ProposalsPanel';
 import { ApplicationsPanel } from './ApplicationsPanel';
 import type { RecordResiduals } from '@/lib/records/recordResiduals';
 
@@ -102,6 +104,8 @@ export type TabPayload = {
   showsApplications?: boolean;
   /** Carries the Agreements (e-signature) panel above its fields. */
   showsAgreements?: boolean;
+  /** Carries the Proposals panel (`tabs.shows_proposals`). */
+  showsProposals?: boolean;
 };
 
 export function DrawerTabs({
@@ -132,6 +136,7 @@ export function DrawerTabs({
   residuals,
   applications = null,
   agreements = null,
+  proposals = null,
   messages,
   phoneCalls,
   smsMessages,
@@ -204,6 +209,8 @@ export function DrawerTabs({
   /** The record's applications, when a visible tab carries them. */
   applications?: ApplicationsPanelData | null;
   agreements?: AgreementsPanelData | null;
+  /** The record's proposals, when a visible tab carries them. */
+  proposals?: ProposalsPanelData | null;
   messages: Message[];
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
@@ -521,6 +528,7 @@ export function DrawerTabs({
               <div className="space-y-4">
                 {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
                 {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
+                {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
                 <RealFieldGrid
                   teamSlot={teamSlot}
                   moduleSlug={moduleSlug}
@@ -596,6 +604,7 @@ export function DrawerTabs({
           {/* The Send agreement panel lives on Files since the Field-Tab Review:
               which tab carries it is the `shows_agreements` flag, not this code. */}
           {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
+          {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
           <FilesPanel
             moduleSlug={moduleSlug}
             recordId={recordId}

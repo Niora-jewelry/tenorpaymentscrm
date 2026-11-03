@@ -109,7 +109,7 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   if (kind === 'automation_alert') return '/admin/automations/runs';
   if (!recordId || !mod) return kind in TAB_FOR_PHONE ? '/phone' : null;
   const base = `/${mod.slug}?record=${recordId}`;
-  if (kind.startsWith('mention_') || kind === 'agreement') {
+  if (kind.startsWith('mention_') || kind === 'agreement' || kind === 'proposal') {
     const tab = r.tab_key as string | null;
     const sub = r.subtab_key as string | null;
     return `${base}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}${sub ? `&subtab=${encodeURIComponent(sub)}` : ''}&n=${r.id as string}`;

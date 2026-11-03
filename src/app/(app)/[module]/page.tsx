@@ -56,6 +56,7 @@ import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
 import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
 import { agreementsFor } from '@/lib/agreements/service';
+import { proposalsFor } from '@/lib/proposals/service';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
 import { columnOrderFor, columnVisibilityFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
@@ -721,7 +722,7 @@ async function RecordDrawer({
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
     messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
-    applications, addressesRaw, agreements, fileRowsAdding, baseByTab, ticketChoices,
+    applications, addressesRaw, agreements, fileRowsAdding, baseByTab, ticketChoices, proposals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
     shows('cases') ? casesFor(ctx, record.id) : [],
@@ -814,6 +815,8 @@ async function RecordDrawer({
     ).then((list) => new Map(list)),
     // An email waiting for its ticket: a note in Vital Info, in the module of open tickets only (spec).
     config.modules.find((m) => m.id === moduleId)?.showsOpenCases ? ticketChoicesFor(ctx, record.id) : Promise.resolve([] as TicketChoice[]),
+    // The Proposals panel, on whichever visible tab carries it.
+    dbTabs.some((t) => t.showsProposals) ? proposalsFor(ctx, record.id) : Promise.resolve(null),
   ]);
 
   /* Both kinds still read: "Other files" was folded into Application by
@@ -1159,7 +1162,7 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false };
   }));
 
   /* What reaches the browser: the locks, and the hides on the two tabs that stay
@@ -1323,6 +1326,7 @@ async function RecordDrawer({
         residuals={residuals}
         applications={applications}
         agreements={agreements}
+        proposals={proposals}
         messages={messages}
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}

@@ -38,6 +38,8 @@ function whereOf(n: NotificationView): { icon: IconName; label: string; detail?:
       return { icon: 'file-pen', label: `Field: ${n.fieldLabel ?? n.fieldKey ?? ''}` };
     case 'agreement':
       return { icon: 'file-pen', label: 'Agreement' };
+    case 'proposal':
+      return { icon: 'file-text', label: 'Proposal' };
     case 'automation':
       return { icon: 'route', label: 'Automation' };
     case 'automation_alert':

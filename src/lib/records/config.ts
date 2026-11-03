@@ -67,6 +67,8 @@ export type Tab = {
   showsApplications?: boolean;
   /** Carries the Agreements (e-signature) panel. A flag, so no code names the tab. */
   showsAgreements?: boolean;
+  /** Carries the Proposals panel (`tabs.shows_proposals`). */
+  showsProposals?: boolean;
   /** Offers the Add only level (migration 9856). */
   allowsAddOnly?: boolean;
 };
@@ -205,6 +207,7 @@ const loadConfigCached = unstable_cache(
         isSystem: t.is_system, acceptsFields: t.accepts_fields, position: t.position,
         showsApplications: t.shows_applications ?? false,
         showsAgreements: t.shows_agreements ?? false,
+        showsProposals: t.shows_proposals ?? false,
         allowsAddOnly: t.allows_add_only ?? false,
       })),
       subtabs: subtabs.data!.map((s) => ({

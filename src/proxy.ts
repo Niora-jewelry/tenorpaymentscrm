@@ -203,8 +203,21 @@ export function isMerchantApplicationPath(pathname: string): boolean {
   return MERCHANT_APPLICATION.test(pathname);
 }
 
+/** A merchant's proposal link: the same rule, under /proposal. */
+const MERCHANT_PROPOSAL = /^\/proposal\/[A-Za-z0-9_-]{43}$/;
+
+export function isMerchantProposalPath(pathname: string): boolean {
+  return MERCHANT_PROPOSAL.test(pathname);
+}
+
 function isPublic(pathname: string): boolean {
-  return PUBLIC_PATHS.has(pathname) || PUBLIC_API_PATHS.has(pathname) || isPrototypePath(pathname) || isMerchantApplicationPath(pathname);
+  return (
+    PUBLIC_PATHS.has(pathname) ||
+    PUBLIC_API_PATHS.has(pathname) ||
+    isPrototypePath(pathname) ||
+    isMerchantApplicationPath(pathname) ||
+    isMerchantProposalPath(pathname)
+  );
 }
 
 /**

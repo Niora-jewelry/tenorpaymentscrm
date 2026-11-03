@@ -10,7 +10,8 @@ import type { AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { assertAutomationsView } from './access';
 
-export type Option = { value: string; label: string; hint?: string };
+/** `group`: a heading in the list, where a field's options differ by module. */
+export type Option = { value: string; label: string; hint?: string; group?: string };
 export type CatalogField = { key: string; label: string; where: string; type: string; choices: Option[] };
 export type CatalogPipeline = { id: string; label: string; moduleId: string; moduleLabel: string; steps: Option[] };
 /** `superAdmin`: always sees and lifts everything (Lock & Hide spec), so it isn't a choice in those groups. */
@@ -59,11 +60,6 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
   const modules = display.map((m) => ({ value: m.id, label: m.label }));
   const movableModules = display.filter((m) => !m.showsOpenCases).map((m) => ({ value: m.id, label: m.label }));
 
-  const statusField = config.fields.find((f) => f.key === 'current_status');
-  const seenStatus = new Map<string, Option>();
-  for (const c of config.choices.filter((x) => x.fieldId === statusField?.id).sort((a, b) => a.position - b.position)) {
-    if (!seenStatus.has(c.key)) seenStatus.set(c.key, { value: c.key, label: c.value });
-  }
 
   const pipelines = config.pipelines
     .slice()
@@ -77,13 +73,34 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     }));
 
   const synced = pipelineStatusFields(config);
+  /*
+   * A field's options can differ by module, and a module with none of its own
+   * uses the field's general list. Flattened, Current Status read as one list of
+   * unrelated words with nothing to say where each belongs, so they are grouped:
+   * modules sharing a list share a heading.
+   */
+  const everyModule = config.modules.slice().sort((a, b) => a.position - b.position);
   const choicesOf = (f: Field): Option[] => {
+    const own = config.choices.filter((x) => x.fieldId === f.id).sort((a, b) => a.position - b.position);
+    const general = own.filter((c) => c.moduleId === null);
+    if (own.length === general.length) return general.map((c) => ({ value: c.key, label: c.value }));
+    const lists = new Map<string, { modules: string[]; choices: typeof own }>();
+    for (const m of everyModule) {
+      const mine = own.filter((c) => c.moduleId === m.id);
+      const choices = mine.length ? mine : general;
+      if (!choices.length) continue;
+      const shape = choices.map((c) => `${c.key}=${c.value}`).join('|');
+      const list = lists.get(shape) ?? { modules: [], choices };
+      list.modules.push(m.label);
+      lists.set(shape, list);
+    }
     const seen = new Map<string, Option>();
-    for (const c of config.choices.filter((x) => x.fieldId === f.id).sort((a, b) => a.position - b.position)) {
-      if (!seen.has(c.key)) seen.set(c.key, { value: c.key, label: c.value });
+    for (const { modules, choices } of lists.values()) {
+      for (const c of choices) if (!seen.has(c.key)) seen.set(c.key, { value: c.key, label: c.value, group: modules.join(', ') });
     }
     return [...seen.values()];
   };
+  const statusField = config.fields.find((f) => f.key === 'current_status');
 
   const fields: CatalogField[] = [];
   const variables: CatalogField[] = [];
@@ -172,7 +189,7 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     movableModules,
     restrictable,
     vitalFields: [...vitalSeen.values()],
-    statuses: [...seenStatus.values()],
+    statuses: statusField ? choicesOf(statusField) : [],
     pipelines,
     teams,
     users: people,

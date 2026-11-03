@@ -43,6 +43,7 @@ export function CasesPanel({
   authorNames,
   viewerId,
   isAdmin,
+  canDelete,
   editable,
   handlingNote,
   caseRoster = [],
@@ -65,6 +66,8 @@ export function CasesPanel({
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
+  /** Admins, of either kind: delete a case. */
+  canDelete: boolean;
   /** The Cases tab resolved to Edit for this viewer. False makes the thread
    * read-only — no new case, no reply, no solution, no state change. The
    * matching refusals live in `lib/records/cases.ts`; this only stops an
@@ -196,6 +199,7 @@ export function CasesPanel({
               authorNames={authorNames}
               viewerId={viewerId}
               isAdmin={isAdmin}
+              canDelete={canDelete}
               editable={editable}
               roster={caseRoster}
               mentions={mentionsByCase[c.id] ?? []}
@@ -217,6 +221,7 @@ function CaseCard({
   authorNames,
   viewerId,
   isAdmin,
+  canDelete,
   editable,
   roster,
   mentions,
@@ -235,6 +240,8 @@ function CaseCard({
   authorNames: Record<string, string>;
   viewerId: string;
   isAdmin: boolean;
+  /** Admins, of either kind: delete a case. */
+  canDelete: boolean;
   editable: boolean;
 }) {
   const router = useRouter();
@@ -412,7 +419,7 @@ function CaseCard({
             </Button>
           ) : null}
           <ShareItem kind="case" itemId={c.id} />
-          {isAdmin && editable ? (
+          {canDelete && editable ? (
             <IconButton
               icon="trash"
               tone="danger"

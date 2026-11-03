@@ -1571,7 +1571,8 @@ export function DataTable({
 
                   {systemColumn ? (
                     <td className={`border-b border-line-faint ${cellTone}`} style={{ width: systemColumn.width }}>
-                      <div className="flex h-10 items-center overflow-hidden px-3">{systemColumn.render(r)}</div>
+                      {/* A set width: left to the table, the column grows to fit its content. */}
+                      <div className="flex h-10 items-center overflow-hidden px-3" style={{ width: systemColumn.width, maxWidth: systemColumn.width }}>{systemColumn.render(r)}</div>
                     </td>
                   ) : null}
 

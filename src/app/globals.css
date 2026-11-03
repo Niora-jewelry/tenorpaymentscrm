@@ -512,3 +512,18 @@ input:-webkit-autofill:focus {
   height: 0;
   pointer-events: none;
 }
+
+/* The Files Required cell: chips run across on hover, resting at each end long
+   enough to read. `--ticker-shift` is set only when they don't all fit. */
+@keyframes files-ticker {
+  0%, 6% { transform: translateX(0); }
+  94%, 100% { transform: translateX(var(--ticker-shift, 0)); }
+}
+.files-ticker:hover .files-ticker-track {
+  animation: files-ticker var(--ticker-time, 3s) linear infinite alternate;
+}
+.files-ticker:hover .files-ticker-more { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .files-ticker:hover .files-ticker-track { animation: none; }
+  .files-ticker:hover .files-ticker-more { visibility: visible; }
+}

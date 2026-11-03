@@ -3,14 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
-import { liftRestriction, reapplyRestriction } from '@/lib/records/restrictions';
+import { liftRestrictions, reapplyRestriction } from '@/lib/records/restrictions';
 
 export type RestrictionResult = { ok: boolean; message?: string };
 
 const Lift = z.object({
   moduleSlug: z.string().min(1).max(60),
   recordId: z.uuid(),
-  item: z.string().min(3).max(200),
+  items: z.array(z.string().min(3).max(200)).min(1).max(500),
   kind: z.enum(['lock', 'hide']),
 });
 
@@ -19,7 +19,7 @@ export async function liftRestrictionAction(input: z.input<typeof Lift>): Promis
   const parsed = Lift.safeParse(input);
   if (!parsed.success) return { ok: false, message: 'That can’t be lifted.' };
   try {
-    await liftRestriction(ctx, parsed.data.recordId, parsed.data.item, parsed.data.kind);
+    await liftRestrictions(ctx, parsed.data.recordId, parsed.data.items, parsed.data.kind);
   } catch {
     return { ok: false, message: parsed.data.kind === 'lock' ? 'Could not unlock that.' : 'Could not unhide that.' };
   }

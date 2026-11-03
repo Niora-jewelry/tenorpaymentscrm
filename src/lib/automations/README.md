@@ -1,6 +1,6 @@
 # Automations
 
-Client spec of 30 Oct 2026, with Files Required and Lock & Hide (1 Nov). Migrations 9847 to 9861 hold the rules; this folder is the layer on them.
+Client spec of 30 Oct 2026, with Files Required and Lock & Hide (1 Nov). Migrations 9847 to 9862 and 9891 hold the rules; this folder is the layer on them.
 
 ## How a run goes
 
@@ -59,12 +59,12 @@ Write functions don't take a module, so the server client sends the page path as
 - A lock or hide is a row in `record_restrictions` per item per record (`tab:<key>`, `subtab:<id>`, `field:<key>`, `notes:<tab key>`, `row:<id>`). Nobody's permissions change: `user_record_scope_grant` and `user_record_field_grant` cap the normal grant by what is active, so every policy, write and @mention obeys it, and lifting one leaves exactly what was under it.
 - Adding goes by the normal grant (`record_tab_base_grant`): a lock or hide doesn't stop someone adding logins, files, rows or statements, and covers what they add.
 - Which tabs can be picked, and how deep, is `tabs.restriction_level`, not code.
-- File uploaded fires from `record_file_upload` and `move_file` for preset rows, for a person only. Files a person sends within the same minute to the same row are one upload. `automation_file_fires` remembers the last fire per row for the two "first upload" options.
+- File uploaded fires from `record_file_upload` and `move_file` for preset rows, for a person only. It waits for the uploads to stop: the queue row is held by `not_before`, and each further file from that person to that row pushes it back a minute, so one batch is one run and its conditions read the finished row. `automation_file_fires` remembers the last fire per row for the two "first upload" options.
 
 ### Decisions the spec left open
 
-- **A lock or hide stops someone with Allow download = No from opening the file as well as saving it.** A file opened in the browser is a download by another name.
-- **Unlocking by hand lifts what the whole action locked**, not only the item clicked, and any other lock of that kind on the item. The confirmation lists what it covers.
-- **Re-lock and Re-hide are on a bar above the tabs**, since the item's icon has gone once it is lifted. Only the action's groups see it.
+- **A lock or hide stops someone with Allow download = No from opening the file as well as saving it.** A file opened in the browser is a download by another name. Approved by Izzy, 3 Nov.
+- **Unlocking by hand: the person chooses what to unlock** from what that action covered (Izzy, 3 Nov). The item clicked starts ticked. Choosing an item also takes off any other lock of that kind on it.
+- **Re-lock and Re-hide are on a bar above the tabs**, since the item's icon has gone once it is lifted. Only the action's groups see it. Approved by Izzy, 3 Nov.
 - **A user-added row picked by an automation can't be**, as with Mark file required: actions name preset rows.
 - **Deal Name isn't offered**: the permissions spec says it is never hidden.

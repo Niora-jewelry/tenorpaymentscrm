@@ -95,19 +95,23 @@ function AddOnlyFileRow({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const upload = async (file: File | undefined) => {
-    if (!file) return;
+  const upload = async (list: FileList | null) => {
+    const picked = [...(list ?? [])];
+    if (!picked.length) return;
     setError(null);
     setUploading(true);
-    const formData = new FormData();
-    formData.set('file', file);
     try {
-      const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
-      if (!result.ok) {
-        setError(result.message ?? 'Upload failed.');
-        return;
+      // One at a time, in the order picked: the row holds five, and the server counts.
+      for (const file of picked) {
+        const formData = new FormData();
+        formData.set('file', file);
+        const result = await uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData);
+        if (!result.ok) {
+          setError(result.message ?? 'Upload failed.');
+          return;
+        }
+        onSaved();
       }
-      onSaved();
     } catch {
       setError('Could not upload that file.');
     } finally {
@@ -155,8 +159,9 @@ function AddOnlyFileRow({
           type="file"
           aria-label={`Upload to ${row.name}`}
           className="hidden"
+          multiple
           disabled={uploading}
-          onChange={(e) => void upload(e.target.files?.[0])}
+          onChange={(e) => void upload(e.target.files)}
         />
       </label>
     </div>
@@ -519,12 +524,18 @@ function FileRowView({
     }
   };
 
-  const upload = (file: File | undefined) => {
-    if (!file) return;
-    const formData = new FormData();
-    formData.set('file', file);
+  const upload = (list: FileList | null) => {
+    const picked = [...(list ?? [])];
+    if (!picked.length) return;
     setUploading(true);
-    void run(() => uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData), 'Upload failed.').finally(() => {
+    void (async () => {
+      // One at a time, in the order picked, stopping at the first refusal.
+      for (const file of picked) {
+        const formData = new FormData();
+        formData.set('file', file);
+        if (!(await run(() => uploadFileAction(moduleSlug, recordId, row.id, row.kind, formData), 'Upload failed.'))) break;
+      }
+    })().finally(() => {
       /* In a finally so a thrown action cannot leave the control spinning for the
          rest of the session with no way back. */
       setUploading(false);
@@ -533,18 +544,20 @@ function FileRowView({
   };
 
   /* Not a transition, for the reason `RequiredCell` gives. */
-  const run = async (act: () => Promise<{ ok: boolean; message?: string }>, fallback: string, done?: () => void) => {
+  const run = async (act: () => Promise<{ ok: boolean; message?: string }>, fallback: string, done?: () => void): Promise<boolean> => {
     setError(null);
     setBusy(true);
     try {
       const result = await act();
       if (!result.ok) {
         setError(result.message ?? fallback);
-        return;
+        return false;
       }
       done?.();
+      return true;
     } catch {
       setError(fallback);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -794,8 +807,9 @@ function FileRowView({
                 className="hidden"
                 /* Disabled while one is in flight, so a second pick cannot
                    race the first and leave the row showing the wrong count. */
+                multiple
                 disabled={busy}
-                onChange={(e) => upload(e.target.files?.[0])}
+                onChange={(e) => upload(e.target.files)}
               />
             </label>
           ) : null}

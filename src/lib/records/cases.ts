@@ -7,7 +7,7 @@
  */
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import type { AuthContext } from './permissions';
+import { permissionsFor, type AuthContext } from './permissions';
 import { requireTabEdit, requireTabEditVia } from './tabAccess';
 import { mentionCandidates, reconcileMentions, type Candidate } from './notifications';
 
@@ -268,8 +268,14 @@ export async function setCaseSolution(ctx: AuthContext, caseId: string, solution
  * enforced inside the function; this check only gives the refusal a sentence
  * before the round trip.
  */
+/** Izzy, 3 Nov 2026: only admins delete and restore a case. Super admin or Admin;
+ *  `auth_case_admin` is the same answer in the database. */
+export async function canDeleteCases(ctx: AuthContext): Promise<boolean> {
+  return ctx.isAdmin || (await permissionsFor(ctx)).userType === 'admin';
+}
+
 export async function deleteCase(ctx: AuthContext, caseId: string): Promise<void> {
-  if (!ctx.isAdmin) throw new Error('Only an admin can delete a case.');
+  if (!(await canDeleteCases(ctx))) throw new Error('Only an admin can delete a case.');
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc('delete_case', { p_case_id: caseId });
   if (error) throw error;

@@ -1302,6 +1302,7 @@ async function RecordDrawer({
         fileRowsAdding={fileRowsAdding}
         hiddenFileRows={grantOfKind('files') === 'add_only' ? [] : fileRowsAdding.filter((r) => !r.canSee)}
         canMarkFilesRequired={ctx.isAdmin || viewerPerms.settings['action.mark_files_required'] === 'yes'}
+        canDeleteCases={ctx.isAdmin || viewerPerms.userType === 'admin'}
         filesByRow={filesByRow}
         logins={logins}
         statementPeriods={statementPeriods}

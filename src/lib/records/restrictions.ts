@@ -19,8 +19,8 @@ export type RestrictionMark = {
   appliedAt: string;
   /** May lift it, or put it back. */
   canLift: boolean;
-  /** Every item the same action covered, by name: what a lift takes off. */
-  batchItems: string[];
+  /** Its name, where this viewer may see it. */
+  label: string | null;
   batchId: string;
   /** Lifted by hand, and can be put back. */
   lifted: boolean;
@@ -40,7 +40,7 @@ export const NO_RESTRICTIONS: ViewerRestrictions = { effects: {}, marks: [], noD
 type Row = {
   item: string; kind: RestrictionKind; effect: RestrictionKind | null; automation_name: string | null;
   applied_at: string | null; can_lift: boolean; allow_download: boolean; batch_id: string | null;
-  batch_items: string[] | null; lifted: boolean;
+  lifted: boolean; label: string | null;
 };
 
 export async function restrictionsFor(ctx: AuthContext, recordId: string): Promise<ViewerRestrictions> {
@@ -63,7 +63,7 @@ export async function restrictionsFor(ctx: AuthContext, recordId: string): Promi
     if (r.automation_name && r.applied_at && r.batch_id) {
       marks.push({
         item: r.item, kind: r.kind, automationName: r.automation_name, appliedAt: r.applied_at,
-        canLift: r.can_lift, batchItems: r.batch_items ?? [], batchId: r.batch_id, lifted: r.lifted,
+        canLift: r.can_lift, label: r.label, batchId: r.batch_id, lifted: r.lifted,
       });
     }
   }
@@ -93,9 +93,10 @@ export async function lockedFieldMessage(ctx: AuthContext, recordId: string, fie
   return mark ? `This field was just locked by Automation: ${mark.automationName}.` : null;
 }
 
-export async function liftRestriction(_ctx: AuthContext, recordId: string, item: string, kind: RestrictionKind): Promise<void> {
+/** The items chosen, for everyone. What else the action covered stays on. */
+export async function liftRestrictions(_ctx: AuthContext, recordId: string, items: string[], kind: RestrictionKind): Promise<void> {
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.rpc('lift_restriction', { p_record: recordId, p_item: item, p_kind: kind });
+  const { error } = await supabase.rpc('lift_restrictions', { p_record: recordId, p_items: items, p_kind: kind });
   if (error) throw error;
 }
 

@@ -207,24 +207,52 @@ suite('Lock & Hide', () => {
     await act(rec, { type: 'lock', items: ['field:mid'], canLift: groups(['customer_service']), allowDownload: true }, 'B');
     expect(await fieldGrant(cs, rec, 'mid')).toBe('edit');
     expect(await fieldGrant(uw, rec, 'mid')).toBe('edit');
-    await refused(() => as(sales, () => q(`select lift_restriction($1, 'field:mid', 'lock')`, [rec])), /can.t lift/);
-    await as(cs, () => q(`select lift_restriction($1, 'field:mid', 'lock')`, [rec]));
+    await refused(() => as(sales, () => q(`select lift_restrictions($1, array['field:mid'], 'lock')`, [rec])), /can.t lift/);
+    await as(cs, () => q(`select lift_restrictions($1, array['field:mid'], 'lock')`, [rec]));
     expect(await fieldGrant(sales, rec, 'mid')).toBe('edit');
   });
 
-  it('a lift by hand covers what the action covered, and Re-lock puts back the same items and groups', async () => {
+  it('a lift by hand takes off what was chosen, and the rest stays (Izzy, 3 Nov)', async () => {
     const rec = await record();
     await act(rec, { type: 'lock', items: ['field:mid', 'field:legal_business_name'], canLift: groups(['underwriter']), allowDownload: true });
-    await as(uw, () => q(`select lift_restriction($1, 'field:mid', 'lock')`, [rec]));
-    expect(await fieldGrant(sales, rec, 'legal_business_name')).toBe('edit');
-    const back = await as(uw, () => q<{ batch_id: string; lifted: boolean }>(`select batch_id, lifted from viewer_restrictions($1)`, [rec]));
-    expect(back.length).toBeGreaterThan(0);
-    expect(back.every((b) => b.lifted)).toBe(true);
-    expect(await as(sales, () => q(`select 1 from viewer_restrictions($1)`, [rec]))).toHaveLength(0);
-    await as(uw, () => q(`select reapply_restriction($1, $2)`, [rec, back[0]!.batch_id]));
-    expect(await fieldGrant(sales, rec, 'mid')).toBe('view');
+    const offered = await as(uw, () => q<{ item: string; label: string; can_lift: boolean }>(`select item, label, can_lift from viewer_restrictions($1) order by item`, [rec]));
+    expect(offered.map((o) => [o.item, o.can_lift])).toEqual([['field:legal_business_name', true], ['field:mid', true]]);
+    expect(offered.every((o) => o.label)).toBe(true);
+
+    await as(uw, () => q(`select lift_restrictions($1, array['field:mid'], 'lock')`, [rec]));
+    expect(await fieldGrant(sales, rec, 'mid')).toBe('edit');
     expect(await fieldGrant(sales, rec, 'legal_business_name')).toBe('view');
+  });
+
+  it('you can only choose what you may lift, and one refused item refuses the lot', async () => {
+    const rec = await record();
+    await act(rec, { type: 'lock', items: ['field:mid'], canLift: groups(['underwriter']), allowDownload: true }, 'A');
+    await act(rec, { type: 'lock', items: ['field:legal_business_name'], canLift: groups(['customer_service']), allowDownload: true }, 'B');
+    await refused(() => as(uw, () => q(`select lift_restrictions($1, array['field:mid', 'field:legal_business_name'], 'lock')`, [rec])), /can.t lift/);
+    expect(await fieldGrant(sales, rec, 'mid')).toBe('view');
+  });
+
+  it('Re-lock puts back what was lifted, with the same groups, while the rest is still on', async () => {
+    const rec = await record();
+    await act(rec, { type: 'lock', items: ['field:mid', 'field:legal_business_name'], canLift: groups(['underwriter']), allowDownload: true });
+    await as(uw, () => q(`select lift_restrictions($1, array['field:mid'], 'lock')`, [rec]));
+    const seen = await as(uw, () => q<{ item: string; batch_id: string; lifted: boolean }>(`select item, batch_id, lifted from viewer_restrictions($1)`, [rec]));
+    const lifted = seen.filter((b) => b.lifted);
+    expect(lifted.map((b) => b.item)).toEqual(['field:mid']);
+    expect(await as(sales, () => q(`select 1 from viewer_restrictions($1) where lifted`, [rec]))).toHaveLength(0);
+    await as(uw, () => q(`select reapply_restriction($1, $2)`, [rec, lifted[0]!.batch_id]));
+    expect(await fieldGrant(sales, rec, 'mid')).toBe('view');
     expect(await fieldGrant(uw, rec, 'mid')).toBe('edit');
+  });
+
+  it('someone who can lift but can\'t see a field isn\'t told its name', async () => {
+    const rec = await record();
+    const mid = await one<{ id: string }>(`select id from fields where key = 'mid'`);
+    await q(`insert into user_grants (user_id, scope_kind, scope_id, grant_level) values ($1, 'field', $2, 'hidden')`, [uw, mid.id]);
+    await act(rec, { type: 'lock', items: ['field:mid', 'field:legal_business_name'], canLift: groups(['underwriter']), allowDownload: true });
+    const rows = await as(uw, () => q<{ item: string; label: string | null; batch_items: string[] }>(`select item, label, batch_items from viewer_restrictions($1)`, [rec]));
+    expect(rows.find((r) => r.item === 'field:mid')?.label).toBeNull();
+    expect(rows.flatMap((r) => r.batch_items)).not.toContain('MID');
   });
 
   it('a viewer hidden from an item learns nothing of it but its key', async () => {
@@ -392,6 +420,18 @@ suite('Lock & Hide', () => {
     expect(await fieldGrant(sales, rec, 'mid')).toBe('view');
   });
 
+  it('only admins delete and restore a case (Izzy, 3 Nov), whatever pages someone holds', async () => {
+    const rec = await record();
+    const { id } = await one<{ id: string }>(`insert into cases (record_id, title, issue, issue_author) values ($1, 'ZZ', 'x', $2) returning id`, [rec, admin]);
+    await q(`insert into permission_settings (owner_kind, owner_id, key, value) values ('user', $1, 'admin.recycle_bin', 'full') on conflict (owner_kind, owner_id, key) do update set value = 'full'`, [cs]);
+    await refused(() => as(cs, () => q(`select delete_case($1)`, [id])), /Only an admin/);
+    await as(admin, () => q(`select delete_case($1)`, [id]));
+    await refused(() => as(cs, () => q(`select restore_case($1)`, [id])), /Only an admin/);
+    const typed = await newUser('admin');
+    await as(typed, () => q(`select restore_case($1)`, [id]));
+    expect((await one<{ gone: boolean }>(`select deleted_at is not null gone from cases where id = $1`, [id])).gone).toBe(false);
+  });
+
   describe('File uploaded', () => {
     let a: string;
     const save = async (frequency: string, flow: unknown[]) => {
@@ -412,6 +452,59 @@ suite('Lock & Hide', () => {
       await as(sales, () => q(`select record_file_upload($1, $2, 'a.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
       await as(sales, () => q(`select record_file_upload($1, $2, 'b.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
       expect(await queued(a)).toBe(1);
+    });
+
+    it('waits for the uploads to stop, so conditions read the finished row (Izzy, 3 Nov)', async () => {
+      // The spec's own example: Bank statements needs 3, and "only if Files Required is empty".
+      const auto = await save('every', [{ id: 'f1', type: 'lock', items: ['tab:pricing'], canLift: { teamIds: [], userIds: [] }, allowDownload: true }]);
+      const steps = await one<{ s: Record<string, unknown> }>(`select v.steps s from automations x join automation_versions v on v.id = x.current_version_id where x.id = $1`, [auto]);
+      await q(`update automation_versions set steps = $2 where id = (select current_version_id from automations where id = $1)`, [auto, {
+        ...steps.s,
+        conditions: { join: 'and', groups: [{ id: 'g', join: 'and', conditions: [{ id: 'c', type: 'files_required_empty' }] }] },
+      }]);
+      const rec = await record();
+      const bank = await rowId(rec, 'Bank statements');
+      await as(sales, () => q(`select set_file_row_required($1, true, 3)`, [bank]));
+
+      await as(sales, () => q(`select record_file_upload($1, $2, 'a.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      const first = await one<{ not_before: Date }>(`select not_before from automation_queue where automation_id = $1`, [auto]);
+      expect(first.not_before.getTime()).toBeGreaterThan(Date.now() - 5000);
+
+      // Not due yet: the worker leaves it.
+      await q(`select * from automation_work(50)`);
+      await q(`select set_config('tapdash.automation', '', true), set_config('tapdash.event_actor', '', true)`);
+      expect(await q(`select 1 from automation_runs where automation_id = $1`, [auto])).toHaveLength(0);
+
+      await as(sales, () => q(`select record_file_upload($1, $2, 'b.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      await as(sales, () => q(`select record_file_upload($1, $2, 'c.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      const held = await q<{ not_before: Date }>(`select not_before from automation_queue where automation_id = $1`, [auto]);
+      expect(held).toHaveLength(1);
+      expect(held[0]!.not_before.getTime()).toBeGreaterThanOrEqual(first.not_before.getTime());
+
+      // Due: one run, and the condition sees all three files.
+      await q(`update automation_queue set not_before = now() - interval '1 second' where automation_id = $1`, [auto]);
+      await q(`delete from automation_queue where automation_id <> $1`, [auto]);
+      await q(`select * from automation_work(50)`);
+      await q(`select set_config('tapdash.automation', '', true), set_config('tapdash.event_actor', '', true)`);
+      const runs = await q<{ status: string }>(`select status from automation_runs where automation_id = $1`, [auto]);
+      expect(runs).toEqual([{ status: 'completed' }]);
+    });
+
+    it('someone else uploading to the row is their own upload', async () => {
+      const rec = await record();
+      const bank = await rowId(rec, 'Bank statements');
+      await as(sales, () => q(`select record_file_upload($1, $2, 'a.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      await as(uw, () => q(`select record_file_upload($1, $2, 'b.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      expect(await queued(a)).toBe(2);
+    });
+
+    it('a later upload, once the first has run, fires again', async () => {
+      const rec = await record();
+      const bank = await rowId(rec, 'Bank statements');
+      await as(sales, () => q(`select record_file_upload($1, $2, 'a.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      await q(`update automation_queue set done_at = now() where automation_id = $1`, [a]);
+      await as(sales, () => q(`select record_file_upload($1, $2, 'b.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
+      expect((await one<{ n: number }>(`select count(*)::int n from automation_queue where automation_id = $1 and done_at is null`, [a])).n).toBe(1);
     });
 
     it('never for another row, a user-added row, or a system save', async () => {
@@ -465,6 +558,7 @@ suite('Lock & Hide', () => {
       const bank = await rowId(rec, 'Bank statements');
       await as(sales, () => q(`select record_file_upload($1, $2, 'go.pdf', 1)`, [bank, `zz/${randomUUID()}`]));
       await q(`delete from automation_queue where record_id <> $1`, [rec]);
+      await q(`update automation_queue set not_before = now() - interval '1 second' where record_id = $1`, [rec]);
       await q(`select * from automation_work(50)`);
       await q(`select set_config('tapdash.automation', '', true), set_config('tapdash.event_actor', '', true)`);
       const runRow = await one<{ status: string; id: string }>(`select status, id from automation_runs where automation_id = $1 and record_id = $2`, [a, rec]);

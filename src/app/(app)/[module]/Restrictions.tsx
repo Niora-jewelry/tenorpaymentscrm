@@ -8,8 +8,9 @@
  * `restrictionsFor`): the fields a hide takes away never reach this page at all.
  */
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '@/proto/ui/icons';
-import { Button, Popover } from '@/proto/ui/kit';
+import { Button } from '@/proto/ui/kit';
 import type { RestrictionMark, ViewerRestrictions } from '@/lib/records/restrictions';
 import { liftRestrictionAction, reapplyRestrictionAction } from './restrictionActions';
 
@@ -81,22 +82,115 @@ function Mark({ ctx, kind, marks, size }: { ctx: Ctx; kind: 'lock' | 'hide'; mar
     </span>
   );
   if (!marks.some((m) => m.canLift)) return icon;
+  return <LiftPopup ctx={ctx} kind={kind} marks={marks} icon={icon} />;
+}
+
+const POPUP_WIDTH = 300;
+const EDGE = 12;
+
+/**
+ * Over the page rather than inside the item: a tab's icon sits in a strip that
+ * scrolls sideways, and a field's can be at the drawer's edge, either of which
+ * would cut a panel off. Placed from the icon, and kept on screen.
+ */
+function LiftPopup({ ctx, kind, marks, icon }: { ctx: Ctx; kind: 'lock' | 'hide'; marks: RestrictionMark[]; icon: ReactNode }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  const close = () => setAt(null);
+
+  const open = () => {
+    const r = trigger.current!.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - EDGE - 6;
+    const above = r.top - EDGE - 6;
+    const left = Math.max(EDGE, Math.min(r.left, window.innerWidth - POPUP_WIDTH - EDGE));
+    setAt(below >= 280 || below >= above
+      ? { left, top: r.bottom + 6, maxHeight: below }
+      : { left, bottom: window.innerHeight - r.top + 6, maxHeight: above });
+  };
+
+  useEffect(() => {
+    if (!at) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!panel.current?.contains(t) && !trigger.current?.contains(t)) setAt(null);
+    };
+    // Caught on the way down, so Escape closes this and not the drawer under it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setAt(null);
+    };
+    // It is placed once, so it goes when what it points at moves.
+    const onScroll = (e: Event) => {
+      if (!panel.current?.contains(e.target as Node)) setAt(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [at]);
+
   return (
-    <Popover width={290} trigger={() => icon}>
-      {(close) => <LiftPanel ctx={ctx} kind={kind} marks={marks} close={close} />}
-    </Popover>
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        aria-expanded={Boolean(at)}
+        aria-label={kind === 'lock' ? 'Choose what to unlock' : 'Choose what to unhide'}
+        onClick={() => (at ? close() : open())}
+        className="block rounded p-0.5 hover:bg-canvas"
+      >
+        {icon}
+      </button>
+      {at
+        ? createPortal(
+            <div
+              ref={panel}
+              role="dialog"
+              aria-label={kind === 'lock' ? 'Unlock' : 'Unhide'}
+              style={{ position: 'fixed', zIndex: 200, width: POPUP_WIDTH, left: at.left, top: at.top, bottom: at.bottom, maxHeight: at.maxHeight }}
+              className="overflow-y-auto rounded-xl border border-line bg-white shadow-[0_8px_28px_rgba(8,32,47,.18)]"
+            >
+              <LiftPanel ctx={ctx} kind={kind} marks={marks} close={close} />
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
 function LiftPanel({ ctx, kind, marks, close }: { ctx: Ctx; kind: 'lock' | 'hide'; marks: RestrictionMark[]; close: () => void }) {
+  const clicked = marks[0]!.item;
+  // What the same automation covered, for the viewer to choose from: named, and theirs to lift.
+  const batches = new Set(marks.map((m) => m.batchId));
+  const choices = new Map<string, string>();
+  for (const m of ctx.restrictions.marks) {
+    if (!m.lifted && m.kind === kind && m.canLift && m.label && batches.has(m.batchId)) choices.set(m.item, m.label);
+  }
+  const [chosen, setChosen] = useState(() => new Set([clicked]));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const items = [...new Set(marks.flatMap((m) => m.batchItems))];
   const verb = kind === 'lock' ? 'Unlock' : 'Unhide';
+  const toggle = (item: string, on: boolean) =>
+    setChosen((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(item);
+      else next.delete(item);
+      return next;
+    });
+  const allChosen = chosen.size === choices.size;
   const lift = async () => {
     setBusy(true);
     setError(null);
-    const result = await liftRestrictionAction({ moduleSlug: ctx.moduleSlug, recordId: ctx.recordId, item: marks[0]!.item, kind });
+    const result = await liftRestrictionAction({ moduleSlug: ctx.moduleSlug, recordId: ctx.recordId, items: [...chosen], kind });
     setBusy(false);
     if (!result.ok) setError(result.message ?? `Could not ${verb.toLowerCase()} that.`);
     else close();
@@ -106,16 +200,30 @@ function LiftPanel({ ctx, kind, marks, close }: { ctx: Ctx; kind: 'lock' | 'hide
       {marks.map((m) => (
         <p key={m.batchId} className="text-ink-500">{sentence(m)}</p>
       ))}
-      <p>
-        {verb} {items.length === 1 ? 'this' : 'these'} for everyone on this record, in every module:
-      </p>
-      <ul className="list-disc space-y-0.5 pl-4 font-medium text-ink-900">
-        {items.map((i) => <li key={i}>{i}</li>)}
+      <p>Choose what to {verb.toLowerCase()}, for everyone on this record, in every module:</p>
+      <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+        {[...choices].map(([item, label]) => (
+          <li key={item}>
+            <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 font-medium text-ink-900 hover:bg-canvas">
+              <input type="checkbox" className="size-3.5 accent-[#1d4ed8]" checked={chosen.has(item)} onChange={(e) => toggle(item, e.target.checked)} />
+              <span className="min-w-0 truncate">{label}</span>
+            </label>
+          </li>
+        ))}
       </ul>
+      {choices.size > 1 ? (
+        <button
+          type="button"
+          onClick={() => setChosen(allChosen ? new Set() : new Set(choices.keys()))}
+          className="text-[12px] font-semibold text-brand-700 hover:underline"
+        >
+          {allChosen ? 'Clear all' : 'Select all'}
+        </button>
+      ) : null}
       {error ? <p role="alert" className="text-[11.5px] text-danger">{error}</p> : null}
       <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" variant="primary" loading={busy} loadingLabel={`${verb}ing…`} onClick={() => void lift()}>
-          {verb}
+        <Button size="sm" variant="primary" disabled={!chosen.size} loading={busy} loadingLabel={`${verb}ing…`} onClick={() => void lift()}>
+          {chosen.size > 1 ? `${verb} ${chosen.size}` : verb}
         </Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={close}>
           Cancel
@@ -135,8 +243,13 @@ export function ReapplyBar() {
   const [error, setError] = useState<string | null>(null);
   if (!ctx) return null;
   // The server sends lifted rows only to people who may put them back.
-  const lifted = new Map<string, RestrictionMark>();
-  for (const m of ctx.restrictions.marks) if (m.lifted && !lifted.has(m.batchId)) lifted.set(m.batchId, m);
+  const lifted = new Map<string, { mark: RestrictionMark; names: string[] }>();
+  for (const m of ctx.restrictions.marks) {
+    if (!m.lifted) continue;
+    const entry = lifted.get(m.batchId) ?? { mark: m, names: [] };
+    if (m.label && !entry.names.includes(m.label)) entry.names.push(m.label);
+    lifted.set(m.batchId, entry);
+  }
   if (!lifted.size) return null;
 
   const reapply = async (m: RestrictionMark) => {
@@ -149,11 +262,11 @@ export function ReapplyBar() {
 
   return (
     <div className="mt-3 space-y-1.5">
-      {[...lifted.values()].map((m) => (
+      {[...lifted.values()].map(({ mark: m, names }) => (
         <div key={m.batchId} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-canvas/60 px-3 py-1.5 text-[12.5px]">
           <Icon name={m.kind === 'lock' ? 'lock' : 'eye-off'} size={12} className="shrink-0 text-ink-400" />
           <span className="min-w-0 flex-1 text-ink-700">
-            {m.kind === 'lock' ? 'Unlocked' : 'Unhidden'}: <span className="font-medium text-ink-900">{m.batchItems.join(', ')}</span>
+            {m.kind === 'lock' ? 'Unlocked' : 'Unhidden'}: <span className="font-medium text-ink-900">{names.join(', ')}</span>
             <span className="text-ink-400"> · from Automation: {m.automationName}</span>
           </span>
           <Button size="sm" variant="ghost" icon={m.kind === 'lock' ? 'lock' : 'eye-off'} loading={busy === m.batchId} loadingLabel="Putting back…" onClick={() => void reapply(m)}>

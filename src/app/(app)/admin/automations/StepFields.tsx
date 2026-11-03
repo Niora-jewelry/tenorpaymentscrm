@@ -22,8 +22,15 @@ function Pick({ label, value, onChange, options, none = 'Choose…' }: { label: 
       <span className={labelClass}>{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
         <option value="">{none}</option>
-        {options.map((o) => (
+        {options.filter((o) => !o.group).map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+        {[...new Set(options.filter((o) => o.group).map((o) => o.group!))].map((group) => (
+          <optgroup key={group} label={group}>
+            {options.filter((o) => o.group === group).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </label>
@@ -80,7 +87,12 @@ const stepOptions = (c: Catalog, pipelineId: string): Option[] => c.pipelines.fi
 export function TriggerFields({ step, catalog, onChange }: { step: TriggerStep; catalog: Catalog; onChange: (s: TriggerStep) => void }) {
   switch (step.type) {
     case 'status':
-      return <Pick label="Changes to" value={step.value} onChange={(value) => onChange({ ...step, value })} options={catalog.statuses} />;
+      return (
+        <div>
+          <Pick label="Changes to" value={step.value} onChange={(value) => onChange({ ...step, value })} options={catalog.statuses} />
+          <p className="mt-1.5 text-[12px] text-ink-400">This is Current Status, whose options are set per module. For a pipeline’s status use Pipeline stage changes. For any other field, such as Risk Level, use Field changed.</p>
+        </div>
+      );
     case 'stage':
       return (
         <Row>

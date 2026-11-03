@@ -122,6 +122,7 @@ export function DrawerTabs({
   fileRowsAdding,
   hiddenFileRows,
   canMarkFilesRequired,
+  canDeleteCases,
   filesByRow,
   logins,
   statementPeriods,
@@ -183,6 +184,7 @@ export function DrawerTabs({
   /** Rows an automation hid from this viewer, who may still add to them. */
   hiddenFileRows: FileRowForAdding[];
   canMarkFilesRequired: boolean;
+  canDeleteCases: boolean;
   filesByRow: Record<string, FileEntry[]>;
   logins: LoginRow[];
   statementPeriods: StatementPeriod[];
@@ -386,8 +388,8 @@ export function DrawerTabs({
         {tabs.map((t) => {
           const active = t.id === activeTab.id;
           return (
+            <span key={t.id} className="flex shrink-0 items-center">
             <button
-              key={t.id}
               type="button"
               onClick={() => selectTab(t.id)}
               className={`flex shrink-0 items-center whitespace-nowrap border-b-2 px-2.5 py-2 text-[13px] font-medium transition-colors duration-150 ${
@@ -395,9 +397,6 @@ export function DrawerTabs({
               }`}
             >
               {t.label}
-              <span className="ml-1 empty:hidden">
-                <RestrictionMarks item={`tab:${t.key}`} />
-              </span>
               {/* A tab the viewer cannot edit says so in the strip, so "why
                 * won't this save" is answered before they try. Hidden tabs
                 * never reach here — the page drops them entirely. */}
@@ -416,6 +415,10 @@ export function DrawerTabs({
                 </span>
               ) : null}
             </button>
+            <span className="-ml-1 pr-1 empty:hidden">
+              <RestrictionMarks item={`tab:${t.key}`} />
+            </span>
+            </span>
           );
         })}
       </nav>
@@ -464,17 +467,19 @@ export function DrawerTabs({
           {activeTab.subtabs.map((s) => {
             const active = s.id === activeSubtabId;
             return (
+              <span key={s.id} className="inline-flex shrink-0 items-center gap-0.5">
               <button
-                key={s.id}
                 type="button"
                 onClick={() => setActiveSubtabId(s.id)}
                 className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors duration-150 ${
                   active ? 'bg-brand-600 text-white' : 'text-ink-500 hover:bg-canvas'
                 }`}
               >
-                {s.label}<span className="ml-1 empty:hidden"><RestrictionMarks item={`subtab:${s.id}`} /></span>
+                {s.label}
                 {mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`] ? <MentionPill n={mentionsByTab.bySubtab[`${activeTab.key}/${s.key}`]} onDark={active} /> : null}
               </button>
+              <RestrictionMarks item={`subtab:${s.id}`} />
+              </span>
             );
           })}
         </div>
@@ -555,6 +560,7 @@ export function DrawerTabs({
             attachmentsByCase={attachmentsByCase}
             authorNames={authorNames}
             viewerId={viewerId}
+            canDelete={canDeleteCases}
             isAdmin={isAdmin}
             editable={activeTab.editable}
             caseRoster={caseRoster}

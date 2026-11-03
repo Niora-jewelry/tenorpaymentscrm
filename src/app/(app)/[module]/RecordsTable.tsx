@@ -35,7 +35,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FILES_REQUIRED_KEY, type FileRequiredItem } from '@/lib/records/filesRequired';
 import { APPLICATION_ROWS } from '@/lib/records/fileRowNames';
-import { FilesRequiredChips, FilesRequiredHeader, filesRequiredSummary } from './FilesRequiredColumn';
+import { FilesRequiredHeader, FilesRequiredTicker, filesRequiredSummary } from './FilesRequiredColumn';
 import { useRecordPings } from './useRecordPings';
 import { DataTable, BulkBar, SkipReportPanel, type SkipReport as ProtoSkipReport } from '@/proto/ui/DataTable';
 import { Dialog, Button, NumberInput, SpecNote } from '@/proto/ui/kit';
@@ -646,7 +646,7 @@ export function RecordsTable({
         columns={localColumns}
         systemColumn={{
           id: FILES_REQUIRED_KEY,
-          width: 300,
+          width: 360,
           summary: filesRequiredSummary,
           header: (
             <FilesRequiredHeader
@@ -662,7 +662,7 @@ export function RecordsTable({
               rowNames={filesRequiredRowNames}
             />
           ),
-          render: (r) => <FilesRequiredChips recordId={r.id} items={filesRequiredByRecord[r.id] ?? []} fit={2} />,
+          render: (r) => <FilesRequiredTicker recordId={r.id} items={filesRequiredByRecord[r.id] ?? []} />,
         }}
         cellOverride={(col, r) =>
           col.id === VISIBILITY_FIELD_KEY ? (

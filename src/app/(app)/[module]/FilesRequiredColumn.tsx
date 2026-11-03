@@ -5,7 +5,7 @@
  * header. A system column, so none of this reads a field or a column setting, and
  * nothing here depends on the viewer's Files tab (Files Required spec).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
@@ -22,34 +22,71 @@ import {
 
 const CHIP = 'inline-flex max-w-full items-center truncate rounded-md border border-[#f7e0af] bg-[#fdf1d8] px-1.5 py-[2px] text-[11.5px] font-medium text-[#8a5a09] transition-colors hover:border-[#e6c67d] hover:bg-[#fbe8c0]';
 
-export function FilesRequiredChips({
-  recordId,
-  items,
-  fit,
-}: {
-  recordId: string;
-  items: FileRequiredItem[];
-  /** How many fit; the rest read "+2 more" and show on hover. All, if absent. */
-  fit?: number;
-}) {
+/** The chips as links. Shown whole in Vital Info; the list uses `FilesRequiredTicker`. */
+export function FilesRequiredChips({ recordId, items }: { recordId: string; items: FileRequiredItem[] }) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
   if (!items.length) return null;
-
-  const shown = fit ? items.slice(0, fit) : items;
-  const rest = items.length - shown.length;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      {shown.map((i) => (
+      {items.map((i) => (
         <Link key={i.id} href={fileRowLink(search, pathname, recordId, i.id)} scroll={false} title={chipText(i)} className={CHIP}>
           <span className="truncate">{chipText(i)}</span>
         </Link>
       ))}
-      {rest > 0 ? (
-        <span title={items.map(chipText).join('\n')} className="shrink-0 cursor-default text-[11.5px] font-semibold text-ink-500">
-          +{rest} more
+    </span>
+  );
+}
+
+/**
+ * The list cell. One line, so a row keeps its height: what fits, then "+2 more".
+ * On hover the chips run across the cell so the rest can be read and clicked (the
+ * ticker Izzy asked for), and the title holds the whole list for anyone who would
+ * rather not chase it, or whose settings ask for less motion.
+ */
+export function FilesRequiredTicker({ recordId, items }: { recordId: string; items: FileRequiredItem[] }) {
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const box = useRef<HTMLSpanElement>(null);
+  const track = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+  const [hidden, setHidden] = useState(0);
+
+  useEffect(() => {
+    const boxEl = box.current;
+    const trackEl = track.current;
+    if (!boxEl || !trackEl) return;
+    const measure = new ResizeObserver(() => {
+      const width = boxEl.clientWidth;
+      setShift(Math.max(0, trackEl.scrollWidth - width));
+      setHidden([...trackEl.children].filter((c) => (c as HTMLElement).offsetLeft + (c as HTMLElement).offsetWidth > width).length);
+    });
+    measure.observe(boxEl);
+    measure.observe(trackEl);
+    return () => measure.disconnect();
+  }, [items]);
+
+  if (!items.length) return null;
+  return (
+    <span
+      className="files-ticker relative flex w-full min-w-0 items-center"
+      title={items.map(chipText).join('\n')}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span ref={box} className="min-w-0 flex-1 overflow-hidden">
+        <span
+          ref={track}
+          className="files-ticker-track inline-flex w-max items-center gap-1"
+          style={shift ? ({ '--ticker-shift': `-${shift}px`, '--ticker-time': `${Math.max(2.5, shift / 70 + 1)}s` } as React.CSSProperties) : undefined}
+        >
+          {items.map((i) => (
+            <Link key={i.id} href={fileRowLink(search, pathname, recordId, i.id)} scroll={false} className={`${CHIP} shrink-0`}>
+              {chipText(i)}
+            </Link>
+          ))}
         </span>
-      ) : null}
+      </span>
+      {hidden > 0 ? <span className="files-ticker-more ml-1.5 shrink-0 text-[11.5px] font-semibold text-ink-500">+{hidden} more</span> : null}
     </span>
   );
 }

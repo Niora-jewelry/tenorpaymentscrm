@@ -147,11 +147,17 @@ const SHARE_TO_CODE = { 90: 1, 80: 2, 70: 3 };
  *
  * Removing the entry here is all it takes once they have.
  */
-const HELD_BACK = {
-  '30119900929':
-    'Listed twice with different volume rates (0.047619 vs 0.038462) under two ' +
-    'site names. A note says it should become 4.76%; that needs confirming.',
-};
+const HELD_BACK = {};
+
+/**
+ * A MID the sheet lists twice, and the row that stands. Izzy, 3 Nov 2026: House
+ * Of Tacos is 4.76%. The second row's own note says the same ("We need to change
+ * to 4.76%"), and every other cell on the two rows agrees.
+ */
+const ROW_THAT_STANDS = { '30119900929': (cells) => Number(cells[7]) === 0.047619 };
+
+/** `--only=<mid>`: one merchant, leaving every other rate alone. */
+const ONLY = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length) ?? null;
 
 /**
  * A cell as decimal TEXT, or null — under the THREE-state rule.
@@ -251,6 +257,8 @@ async function main() {
     const mid = String(cells?.[0] ?? '').replace(/[^0-9]/g, '');
     if (!mid) continue;
 
+    if (ONLY && mid !== ONLY) continue;
+    if (ROW_THAT_STANDS[mid] && !ROW_THAT_STANDS[mid](cells)) continue;
     if (HELD_BACK[mid]) {
       if (!held.has(mid)) held.set(mid, HELD_BACK[mid]);
       continue;

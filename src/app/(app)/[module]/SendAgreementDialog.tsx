@@ -184,6 +184,19 @@ export function SendAgreementDialog({
               <p className="mt-1 text-[11.5px] text-ink-400">Owners at 25% or more, then the next largest until at least 51% is listed. Each signs in three places and gets their own email.</p>
             </div>
 
+            <p className="flex items-start gap-2 rounded-lg border border-line bg-canvas px-3 py-2 text-[12.5px] leading-relaxed text-ink-600">
+              <Icon name="file-text" size={13} className="mt-[3px] shrink-0 text-ink-400" />
+              {check.achAuthorization ? (
+                <span>
+                  The <span className="font-semibold text-ink-800">ACH Authorization Form</span> is added as the last page: a monthly debit of{' '}
+                  <span className="font-semibold text-ink-800">{check.achAuthorization.amount}</span>
+                  {check.achAuthorization.signer ? <>, signed by {check.achAuthorization.signer}</> : null}.
+                </span>
+              ) : (
+                <span>No ACH Authorization Form: the Monthly Dashboard Fee is empty.</span>
+              )}
+            </p>
+
             <p className="text-[12.5px] text-ink-600">
               <Icon name="clock" size={12} className="mr-1 inline text-ink-400" />
               Expires after {check.expiresDays} days. Reminders go out automatically to anyone who has not signed.

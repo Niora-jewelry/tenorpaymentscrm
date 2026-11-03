@@ -34,7 +34,8 @@ const FULL: Record<string, unknown> = {
   charge_to_service: '2_days', order_to_service: '2_5_days', when_charged: 'time_of_order', advertising_method: 'Google', seasonal: ['Jun', 'Jul'],
   pricing_model: 'ic', td_vmd_volume: 2.95, td_pin_debit_volume: 1.1, td_amex_volume: 3.5, td_ebt_volume: '', td_ebt_auth_fee: '', td_pin_debit_auth_fee: 0.1,
   td_vmd_auth_fee: 0.1, td_batch_fee: 0.25, td_vmd_transaction_fee: '', td_chargeback_fee: 25, td_avs_fee: 0.05, td_monthly_fee: 10, td_pci_fee: 9.95,
-  vtd_gateway_provider: 'Authorize.net', ovmp_pos_provider: 'Clover', td_gateway_provider_mav: 'authorize.NET',
+  vtd_gateway_provider: 'Authorize.net', td_gateway_provider_mav: 'authorize.NET',
+  merchant_direct_relationships: [{ Provider: 'Clover', 'Provider type': 'POS', Item: 'Station Duo' }, { Provider: 'Comcast', Item: 'Internet' }],
   owner_ownership: [
     { first: 'Jane', last: 'Doe', title: 'CEO', email: 'jane@zz.test', phone: '5125550101', percentage: 60, address: { street: '2 Oak', street2: '', city: 'Austin', state: 'TX', zip: '78702' }, dob: '1980-01-02' },
     { first: 'John', last: 'Roe', title: 'CFO', email: 'john@zz.test', phone: '5125550102', percentage: 40 },

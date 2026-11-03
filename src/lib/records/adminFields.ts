@@ -33,7 +33,7 @@ import { assertAdminPage, slugifyKey, UNIQUE_VIOLATION, CHECK_VIOLATION, type Re
 import type { ChangeFieldTypeInput, CreateFieldInput, FieldSetupInput, UpdateFieldInput } from './adminSchemas';
 import { normaliseChoices } from './adminChoices';
 
-export type GridColumn = { label: string; type: FieldType };
+export type GridColumn = { label: string; type: FieldType; options?: string[] };
 export type RepeatMember = { key: string; label: string; type: FieldType; sensitive?: boolean };
 
 export type AdminFieldRow = {

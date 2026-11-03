@@ -2147,6 +2147,10 @@ function GridControl({
   onChange: (v: FieldValue) => void;
 }) {
   const cols = field.columns ?? [];
+  // Widths by kind: a tick needs little room, notes need the most. A grid wider
+  // than the drawer scrolls sideways rather than squeezing every column.
+  const template = `${cols.map((c) => GRID_WIDTH[c.type] ?? 'minmax(96px,1fr)').join(' ')} 34px`;
+  const minWidth = cols.reduce((n, c) => n + (GRID_MIN[c.type] ?? 96), 34);
 
   const setCell = (i: number, label: string, v: string) => {
     onChange(rows.map((r, k) => (k === i ? { ...r, [label]: v } : r)));
@@ -2156,15 +2160,17 @@ function GridControl({
 
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-white">
+    <div className="overflow-x-auto">
+    <div style={{ minWidth }}>
       <div
         className="grid gap-px border-b border-line-soft bg-canvas"
-        style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0,1fr)) 34px` }}
+        style={{ gridTemplateColumns: template }}
       >
         {cols.map((c) => (
           <span
             key={c.label}
             className={`truncate bg-canvas px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[.04em] text-ink-500 ${
-              c.type === 'currency' ? 'text-right' : ''
+              GRID_RIGHT.has(c.type) ? 'text-right' : c.type === 'checkbox' ? 'text-center' : ''
             }`}
             title={c.label}
           >
@@ -2191,7 +2197,7 @@ function GridControl({
           <div
             key={i}
             className="grid items-stretch gap-px border-b border-line-soft bg-line-soft last:border-0"
-            style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0,1fr)) 34px` }}
+            style={{ gridTemplateColumns: template }}
           >
             {cols.map((c) => (
               <GridCell
@@ -2210,6 +2216,8 @@ function GridControl({
           </div>
         ))
       )}
+    </div>
+    </div>
 
       {!readOnly ? (
         <div className="border-t border-line-soft p-1.5">
@@ -2221,6 +2229,16 @@ function GridControl({
     </div>
   );
 }
+
+/** Grid column widths by type, and the least each needs before the grid scrolls. */
+const GRID_WIDTH: Partial<Record<FieldType, string>> = {
+  checkbox: 'minmax(76px,.55fr)',
+  long_text: 'minmax(160px,1.7fr)',
+  dropdown: 'minmax(112px,1fr)',
+};
+const GRID_MIN: Partial<Record<FieldType, number>> = { checkbox: 76, long_text: 160, dropdown: 112 };
+/** Numbers read from the right. */
+const GRID_RIGHT = new Set<FieldType>(['currency', 'percentage', 'number']);
 
 /**
  * A money cell: formatted at rest, a plain number input while being edited.
@@ -2295,7 +2313,7 @@ function GridCell({
   readOnly,
   onChange,
 }: {
-  column: { label: string; type: FieldType };
+  column: { label: string; type: FieldType; options?: string[] };
   value: string;
   readOnly: boolean;
   onChange: (v: string) => void;
@@ -2319,6 +2337,74 @@ function GridCell({
   if (column.type === 'currency') {
     return (
       <CurrencyGridCell value={value} readOnly={readOnly} base={base} onChange={onChange} />
+    );
+  }
+
+  if (column.type === 'percentage' || column.type === 'number') {
+    return (
+      <span className="relative flex h-full bg-white">
+        <input
+          type="number"
+          inputMode="decimal"
+          step="any"
+          value={value}
+          readOnly={readOnly}
+          placeholder={readOnly ? undefined : column.type === 'percentage' ? '0' : column.label}
+          aria-label={column.label}
+          onChange={(e) => onChange(e.currentTarget.value)}
+          className={`${base} tabular text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none ${column.type === 'percentage' ? 'pr-6' : ''}`}
+        />
+        {column.type === 'percentage' ? <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-ink-400">%</span> : null}
+      </span>
+    );
+  }
+
+  if (column.type === 'checkbox') {
+    const on = value === 'Yes';
+    return (
+      <span className="flex h-full items-center justify-center bg-white">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={readOnly}
+          aria-label={column.label}
+          onChange={(e) => onChange(e.currentTarget.checked ? 'Yes' : '')}
+          className="size-4 cursor-pointer accent-[var(--color-brand-700)] disabled:cursor-default"
+        />
+      </span>
+    );
+  }
+
+  if (column.type === 'dropdown') {
+    const options = column.options ?? [];
+    return (
+      <select
+        value={value}
+        disabled={readOnly}
+        aria-label={column.label}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        className={`${base} cursor-pointer disabled:cursor-default disabled:bg-white`}
+      >
+        <option value="">{readOnly ? '' : 'Choose…'}</option>
+        {value && !options.includes(value) ? <option value={value}>{value}</option> : null}
+        {options.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (column.type === 'long_text') {
+    return (
+      <textarea
+        value={value}
+        readOnly={readOnly}
+        rows={1}
+        placeholder={readOnly ? undefined : column.label}
+        aria-label={column.label}
+        onChange={(e) => onChange(e.currentTarget.value)}
+        className={`${base} min-h-full resize-none leading-snug [field-sizing:content]`}
+      />
     );
   }
 

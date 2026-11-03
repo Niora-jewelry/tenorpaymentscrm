@@ -266,7 +266,8 @@ export type Field = {
    * label. Reuses the ordinary field-type registry rather than inventing a
    * second one — a grid column IS a field, just one that repeats per row.
    */
-  columns?: { label: string; type: FieldType }[];
+  /** A grid's columns. `options` is a dropdown column's choices. */
+  columns?: { label: string; type: FieldType; options?: string[] }[];
   /** "Can click a button to add new owner – up to 5 owners." */
   repeatGroup?: { key: string; max: number };
   /** The spreadsheet's own annotation, shown under the field. */

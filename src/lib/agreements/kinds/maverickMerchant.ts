@@ -99,8 +99,8 @@ const mapping: MappingEntry[] = [
   {
     pdf: 'ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC',
     fill: (src) => ({
-      text: equipmentList(EQUIPMENT_KEYS.map((k) => v(src, k))),
-      used: EQUIPMENT_KEYS.map((k) => ({ fieldKey: k, kind: 'value' as const })),
+      text: equipmentList([...EQUIPMENT_KEYS.map((k) => v(src, k)), ...directProviders(src.values[DIRECT_KEY])]),
+      used: [...EQUIPMENT_KEYS, DIRECT_KEY].map((k) => ({ fieldKey: k, kind: 'value' as const })),
     }),
   },
   { pdf: 'ONSITE', fill: (src) => ({ check: inventory(src).includes('on_site'), used: used('inventory') }) },
@@ -166,12 +166,24 @@ const mapping: MappingEntry[] = [
   text('Merchant Legal Name of Business', 'legal_business_name'),
 ];
 
-/** The seven equipment/software provider fields, in the spec's order. */
-const EQUIPMENT_KEYS = [
-  'vtd_gateway_provider', 'vtd_terminal_provider',
-  'td_gateway_provider_mav', 'td_terminal_provider_mav',
-  'ovmp_gateway_provider', 'ovmp_terminal_provider', 'ovmp_pos_provider',
-];
+/**
+ * The equipment/software providers, in the spec's order: the four provider
+ * fields, then the merchant's own gateway, terminal and POS providers. Those
+ * three were fields until the Field-Tab Review (3 Nov 2026) made them rows of
+ * Merchant Direct Relationships.
+ */
+const EQUIPMENT_KEYS = ['vtd_gateway_provider', 'vtd_terminal_provider', 'td_gateway_provider_mav', 'td_terminal_provider_mav'];
+const DIRECT_KEY = 'merchant_direct_relationships';
+const DIRECT_TYPES = ['Gateway', 'Terminal', 'POS'];
+
+/** Providers of the Gateway, Terminal and POS rows, in that order. */
+export function directProviders(rows: unknown): string[] {
+  if (!Array.isArray(rows)) return [];
+  const list = rows.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object');
+  return DIRECT_TYPES.flatMap((type) =>
+    list.filter((r) => r['Provider type'] === type).map((r) => (typeof r.Provider === 'string' ? r.Provider : '')),
+  );
+}
 
 function addressLineOf(a: unknown): string {
   const p = addressParts(a);

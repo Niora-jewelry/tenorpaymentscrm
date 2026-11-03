@@ -165,7 +165,7 @@ void _everyFieldTypeIsOffered;
  * Charges spec asks for (vendor/paid-by/notes text, charge amount currency,
  * date).
  */
-export const GRID_COLUMN_TYPES = ['text', 'currency', 'date'] as const satisfies readonly FieldType[];
+export const GRID_COLUMN_TYPES = ['text', 'long_text', 'currency', 'percentage', 'number', 'date', 'checkbox', 'dropdown'] as const satisfies readonly FieldType[];
 
 /** Member types inside a `repeat_group`'s inline schema. Scalars only — a
  * choice-backed or structural member would need storage (`field_choices` rows,
@@ -212,10 +212,14 @@ const gridColumnsSchema = z.preprocess(
   parseJsonList,
   z
     .array(
-      z.object({
-        label: z.string().trim().min(1, 'Every grid column needs a label.').max(60),
-        type: z.enum(GRID_COLUMN_TYPES),
-      }),
+      z
+        .object({
+          label: z.string().trim().min(1, 'Every grid column needs a label.').max(60),
+          type: z.enum(GRID_COLUMN_TYPES),
+          /** A dropdown column's choices, stored with the column (no field_choices rows). */
+          options: z.array(z.string().trim().min(1).max(60)).max(30).optional(),
+        })
+        .refine((c) => c.type !== 'dropdown' || (c.options?.length ?? 0) > 0, 'A dropdown column needs its options.'),
     )
     .max(12, 'A grid can have at most 12 columns.'),
 );

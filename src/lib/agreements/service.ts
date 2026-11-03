@@ -29,6 +29,7 @@ import { openBytes, openText, sealBytes, sealText } from './crypto';
 import { describeSignerProblem, selectSigners, type Signer, type SignerProblem } from './signers';
 import { ownerName, ownersOf, renderAgreement, requiredProblems, signerDetailProblems } from './mapping';
 import { agreementFileName, fillAndFlatten, loadTemplate, signatureSpots, templateInstalled, TemplateMissingError } from './pdf';
+import { achAuthorization, appendAchAuthorization } from './achAuthorization';
 import { buildSnapshot, diffSnapshot, showValue, type Snapshot } from './snapshot';
 import { agreementsConfigured, signwellTestMode, vendor } from './vendor';
 import { VendorError } from './vendor/types';
@@ -158,6 +159,8 @@ export type PreSendResult = {
   testMode: boolean;
   configured: boolean;
   templateReady: boolean;
+  /** The ACH Authorization Form's monthly debit when the page is added; null when it isn't. */
+  achAuthorization: { amount: string; signer: string } | null;
 };
 
 function fillTemplate(text: string, vars: Record<string, string>): string {
@@ -187,6 +190,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
 
   const picked = selectSigners(ownerInputs(src.values));
   const problems = sendProblems(kind, src, picked);
+  const ach = achAuthorization(src, picked.signers);
   if (open) problems.push({ fieldKey: 'owner_ownership', message: `This ${kind.label.toLowerCase()} is already out (${agrLabel(open.number)}). Void it first.` });
 
   // A problem on a field the viewer cannot see is named by its place, not its value.
@@ -214,6 +218,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     testMode: signwellTestMode,
     configured: agreementsConfigured,
     templateReady,
+    achAuthorization: ach.include ? { amount: ach.amount, signer: ach.signer?.name ?? '' } : null,
   };
 }
 
@@ -242,8 +247,16 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
   const settings = await agreementSettings();
   const { pdf: template, fields } = await loadTemplate(kind);
   const rendered = renderAgreement(kind, src, picked.signers);
-  const flat = await fillAndFlatten(kind, template, rendered.byPdfField);
-  const spots = signatureSpots(kind, fields, picked.signers);
+  const filled = await fillAndFlatten(kind, template, rendered.byPdfField);
+  // The ACH Authorization Form, as the last page, when there is a Monthly Dashboard Fee to debit.
+  const ach = achAuthorization(src, picked.signers);
+  const withAch = ach.include ? await appendAchAuthorization(filled, ach) : null;
+  const flat = withAch?.bytes ?? filled;
+  const spots = [...signatureSpots(kind, fields, picked.signers), ...(withAch?.spots ?? [])];
+  if (withAch) {
+    rendered.used.push(...ach.used);
+    rendered.usedFieldKeys = [...new Set([...rendered.usedFieldKeys, ...ach.used.map((u) => u.fieldKey)])];
+  }
   const name = merchantName(src.values, dealName);
   const fileName = agreementFileName(name, kind.fileLabel);
 

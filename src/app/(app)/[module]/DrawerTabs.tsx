@@ -592,6 +592,10 @@ export function DrawerTabs({
         ) : activeTab.kind === 'files' && activeTab.addOnly ? (
           <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} focusRowId={focusFieldKey} />
         ) : activeTab.kind === 'files' ? (
+          <div className="space-y-4">
+          {/* The Send agreement panel lives on Files since the Field-Tab Review:
+              which tab carries it is the `shows_agreements` flag, not this code. */}
+          {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
           <FilesPanel
             moduleSlug={moduleSlug}
             recordId={recordId}
@@ -606,6 +610,7 @@ export function DrawerTabs({
             canMark={canMarkFilesRequired}
             focusRowId={focusFieldKey}
           />
+          </div>
         ) : activeTab.kind === 'logins' ? (
           <LoginsPanel moduleSlug={moduleSlug} recordId={recordId} logins={logins} editable={activeTab.editable} canAdd={activeTab.canAdd ?? activeTab.editable} addOnly={activeTab.addOnly} />
         ) : activeTab.kind === 'statements' ? (

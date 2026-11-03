@@ -109,8 +109,8 @@ suite('Lock & Hide', () => {
   it('only the spec\'s tabs can be locked or hidden, and only at their level', async () => {
     const t = await q<{ key: string; restriction_level: string }>(`select key, restriction_level from tabs where key in ('contact','overview','pricing','application','equipment','agreements','files','logins','statements','marketing','communication','updates','cases','residual_figures') order by key`);
     expect(Object.fromEntries(t.map((r) => [r.key, r.restriction_level]))).toEqual({
-      agreements: 'field', application: 'field', cases: 'none', communication: 'none', contact: 'field', equipment: 'field',
-      files: 'row', logins: 'tab', marketing: 'none', overview: 'field', pricing: 'field', residual_figures: 'none', statements: 'tab', updates: 'none',
+      application: 'field', cases: 'none', communication: 'none',
+      files: 'row', logins: 'tab', overview: 'field', pricing: 'field', residual_figures: 'none', statements: 'tab', updates: 'none',
     });
   });
 
@@ -276,7 +276,7 @@ suite('Lock & Hide', () => {
     expect(salesSees.u).toEqual([{ body: 'Hid items.', automation_name: 'ZZ Hider' }]);
     expect(salesSees.d).toEqual([]);
     const csSees = await read(cs);
-    expect(csSees.d.map((d) => d.body).sort()).toEqual(['MID', 'Pricing'].sort());
+    expect(csSees.d.map((d) => d.body).sort()).toEqual(['MID', 'Merchant setup'].sort());
   });
 
   it('a deleted item is skipped and the rest still applies', async () => {
@@ -565,7 +565,7 @@ suite('Lock & Hide', () => {
       expect(runRow.status).toBe('completed');
       expect(await tabGrant(sales, rec, 'pricing')).toBe('view');
       const step = await one<{ detail: string }>(`select detail from automation_run_steps where run_id = $1 order by at desc limit 1`, [runRow.id]);
-      expect(step.detail).toBe('Locked: Pricing.');
+      expect(step.detail).toBe('Locked: Merchant setup.');
     });
   });
 });

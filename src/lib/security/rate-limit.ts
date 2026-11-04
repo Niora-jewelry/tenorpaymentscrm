@@ -58,6 +58,13 @@ export const RATE_LIMITS = {
   mailBackfillPerMailbox: { limit: 6, windowSeconds: 3600 },
   mailTickPerIp: { limit: 120, windowSeconds: 60 },
   mailNotifyPerSubscription: { limit: 600, windowSeconds: 60 },
+
+  /* Calendar and Chat. Every one of these is a call to Microsoft under someone's own account. */
+  teamsSendPerUserMinute: { limit: 40, windowSeconds: 60 },
+  teamsActionPerUser: { limit: 120, windowSeconds: 60 },
+  teamsReadPerUser: { limit: 240, windowSeconds: 60 },
+  teamsLinkPreviewPerUser: { limit: 60, windowSeconds: 60 },
+  teamsNewTeamPerUserHour: { limit: 10, windowSeconds: 3600 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export type RateLimitResult = {

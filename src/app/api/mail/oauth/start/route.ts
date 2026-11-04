@@ -42,6 +42,8 @@ const Query = z.object({
     .optional()
     .or(z.literal('').transform(() => undefined)),
   return: z.string().max(512).optional(),
+  /** Approving Calendar and Chat on an account already connected: Microsoft skips the account picker's guesswork. */
+  hint: z.string().trim().toLowerCase().max(254).pipe(z.email()).optional().or(z.literal('').transform(() => undefined)),
 });
 
 function back(req: NextRequest, path: string, code: ConnectErrorCode): NextResponse {
@@ -78,6 +80,7 @@ export async function GET(req: NextRequest) {
     kind: sp.get('kind') ?? undefined,
     address: sp.get('address') ?? undefined,
     return: sp.get('return') ?? undefined,
+    hint: sp.get('hint') ?? undefined,
   });
   if (!parsed.success || (parsed.data.kind === 'shared' && !parsed.data.address)) {
     return back(req, returnPath, 'bad_address');
@@ -103,6 +106,7 @@ export async function GET(req: NextRequest) {
       redirectUri: cfg.redirectUri,
       state: nonce,
       challenge: challengeFor(verifier),
+      loginHint: parsed.data.hint,
     }),
     303,
   );

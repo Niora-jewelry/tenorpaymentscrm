@@ -7,7 +7,7 @@
  * Confidential web client: every token request carries the client secret AND
  * the PKCE verifier. Pure apart from `fetchImpl`, so it is unit-tested.
  */
-import { MAIL_SCOPE_PARAM, grantedScopes } from './scopes';
+import { FULL_SCOPE_PARAM, MAIL_SCOPE_PARAM, grantedScopes } from './scopes';
 import { classifyGraphError, type Classified } from './errors';
 import type { MailEndpoints } from './graph/endpoints';
 
@@ -46,7 +46,7 @@ export function authorizeUrl(
     response_type: 'code',
     redirect_uri: args.redirectUri,
     response_mode: 'query',
-    scope: MAIL_SCOPE_PARAM,
+    scope: FULL_SCOPE_PARAM,
     state: args.state,
     code_challenge: args.challenge,
     code_challenge_method: 'S256',
@@ -124,7 +124,7 @@ export function exchangeCode(
       code: args.code,
       redirect_uri: args.redirectUri,
       code_verifier: args.verifier,
-      scope: MAIL_SCOPE_PARAM,
+      scope: FULL_SCOPE_PARAM,
     },
     fetchImpl,
     now,
@@ -137,6 +137,8 @@ export function refreshTokens(
   refreshToken: string,
   fetchImpl: typeof fetch = fetch,
   now = Date.now(),
+  /** What this sign-in approved: see `scopeParamFor`. */
+  scopeParam: string = MAIL_SCOPE_PARAM,
 ): Promise<TokenSet> {
   return tokenRequest(
     ep,
@@ -145,7 +147,7 @@ export function refreshTokens(
       client_secret: creds.clientSecret,
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      scope: MAIL_SCOPE_PARAM,
+      scope: scopeParam,
     },
     fetchImpl,
     now,

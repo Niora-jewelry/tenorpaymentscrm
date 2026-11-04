@@ -27,7 +27,12 @@ export type EditorHandle = {
   getHTML: () => string;
   isEmpty: () => boolean;
   insertHTML: (html: string) => void;
+  /** Inserts words as they are: nothing in them is read as markup. */
+  insertText: (text: string) => void;
   focus: () => void;
+  /** Replaces everything, e.g. putting an unsent chat message back. */
+  setHTML: (html: string) => void;
+  clear: () => void;
 };
 
 const COLOURS = ['#0e1c34', '#b02a30', '#c07714', '#1a7a3c', '#1e4080', '#6b28ac', '#6b8699'];
@@ -40,6 +45,8 @@ export default function Editor({
   handleRef,
   minHeight = 220,
   toolbarExtra,
+  onEnter,
+  onAt,
 }: {
   initialHTML: string;
   placeholder: string;
@@ -49,6 +56,10 @@ export default function Editor({
   handleRef: Ref<EditorHandle>;
   minHeight?: number;
   toolbarExtra?: React.ReactNode;
+  /** Chat: Enter sends (Shift+Enter is a new line). Without it, Enter is a new paragraph. */
+  onEnter?: () => void;
+  /** Chat: an @ was typed, so the list of people can open. The @ itself is still typed. */
+  onAt?: () => void;
 }) {
   const editor = useEditor({
     immediatelyRender: false,
@@ -71,6 +82,15 @@ export default function Editor({
     onUpdate: () => onChange(),
     editorProps: {
       attributes: { class: 'mail-editor-content', spellcheck: 'true', 'aria-label': 'Message', role: 'textbox', 'aria-multiline': 'true' },
+      handleKeyDown: (_view, event) => {
+        if (event.key === '@' && onAt) onAt();
+        if (event.key === 'Enter' && onEnter && !event.shiftKey && !event.isComposing) {
+          event.preventDefault();
+          onEnter();
+          return true;
+        }
+        return false;
+      },
       handlePaste: (_view, event) => {
         const files = Array.from(event.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
         if (!files.length || !onFiles) return false;
@@ -96,8 +116,17 @@ export default function Editor({
       insertHTML: (html: string) => {
         editor?.chain().focus().insertContent(html).run();
       },
+      insertText: (text: string) => {
+        if (text) editor?.chain().focus().insertContent({ type: 'text', text }).run();
+      },
       focus: () => {
         editor?.commands.focus('end');
+      },
+      setHTML: (html: string) => {
+        editor?.commands.setContent(html);
+      },
+      clear: () => {
+        editor?.commands.clearContent(true);
       },
     }),
     [editor],

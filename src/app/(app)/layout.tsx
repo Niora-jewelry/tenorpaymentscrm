@@ -21,6 +21,7 @@ import { ImpersonationBanner } from './ImpersonationBanner';
 import { CallEndedToast } from './phone/CallEndedToast';
 import { canSeeEmail } from '@/lib/mail/access';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { storedCounts } from '@/lib/msteams/counts';
 
 /** Unread across the person's own Inboxes, or null when Email is not theirs to see. */
 async function emailUnreadFor(ctx: Awaited<ReturnType<typeof authorize>>): Promise<number | null> {
@@ -49,6 +50,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     teamDirectory(ctx),
     emailUnreadFor(ctx),
   ]);
+  // Calendar and Chat ride on the same Microsoft setup as Email. The kept numbers draw
+  // at once; the sidebar asks Microsoft for fresh ones after the page is up.
+  const teamsCounts = emailUnread === null ? null : await storedCounts(ctx.userId).catch(() => ({ calendar: 0, chat: 0 }));
 
   // The nav is filtered by the SAME gate the module page itself uses, rather
   // than by `kind`/`adminOnly` alone. `[module]/page.tsx` has always redirected
@@ -124,6 +128,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userId={ctx.userId}
         initialCounts={counts0}
         emailUnread={emailUnread}
+        teamsCounts={teamsCounts}
       />
       <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       <CallBar />

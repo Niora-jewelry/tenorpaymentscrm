@@ -20,6 +20,9 @@ import { SettingsNav } from './SettingsNav';
 import { ComposeSettings } from './ComposeSettings';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { templatesAction } from '../composeActions';
+import { canHideOwn, identitiesOf, toAccountView } from '@/lib/msteams/access';
+import { isWaitingForAdmin } from '@/lib/msteams/approvals';
+import { TeamsSettings } from './TeamsSettings';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -69,6 +72,7 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
           sections={[
             { id: 'mailboxes', label: 'Mailboxes', icon: 'inbox' },
             ...(impersonating ? [] : [{ id: 'connect', label: 'Connect', icon: 'plus' as const }]),
+            { id: 'teams', label: 'Calendar and Chat', icon: 'calendar' as const },
             ...(writing
               ? [
                   { id: 'sending', label: 'Sending', icon: 'send' as const },
@@ -87,10 +91,32 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
             banner={banner}
             justConnected={justConnected}
           />
+          {await teamsSettings(ctx, Boolean(impersonating))}
           {writing ? await writingSettings(ctx.userId, ctx.isAdmin, mailboxes) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Which accounts feed Calendar and Chat, and the Admin-only hide switches. */
+async function teamsSettings(ctx: Awaited<ReturnType<typeof authorize>>, readOnly: boolean) {
+  const supabase = await createSupabaseServerClient();
+  const [identities, waiting, canHide, { data: settings }] = await Promise.all([
+    identitiesOf(ctx.userId),
+    isWaitingForAdmin(ctx.userId),
+    canHideOwn(ctx),
+    supabase.from('mail_user_settings').select('hide_my_calendar, hide_my_chat').eq('user_id', ctx.userId).maybeSingle(),
+  ]);
+  return (
+    <TeamsSettings
+      accounts={identities.map(toAccountView)}
+      waiting={waiting}
+      canHide={canHide}
+      hideCalendar={Boolean(settings?.hide_my_calendar)}
+      hideChat={Boolean(settings?.hide_my_chat)}
+      readOnly={readOnly}
+    />
   );
 }
 

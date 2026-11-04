@@ -16,6 +16,7 @@ import { requireEmailAccess, EmailAccessError } from '@/lib/mail/access';
 import { MAIL_OAUTH_COOKIE, MAIL_OAUTH_COOKIE_PATH, verifyState } from '@/lib/mail/oauthState';
 import { completeConnect } from '@/lib/mail/connect';
 import { mailLog } from '@/lib/mail/log';
+import { clearWaitingForAdmin, waitingForAdmin } from '@/lib/msteams/approvals';
 import type { ConnectErrorCode } from '@/lib/mail/messages';
 
 export const runtime = 'nodejs';
@@ -43,8 +44,30 @@ function finish(req: NextRequest, path: string, params: Record<string, string>):
 const fail = (req: NextRequest, path: string, code: ConnectErrorCode, extra: Record<string, string> = {}) =>
   finish(req, path, { mail_error: code, ...extra });
 
+/**
+ * Microsoft sends an admin here after they approve (or refuse) the app for their whole
+ * organization, from the link in the "waiting for admin approval" request. That admin
+ * may not use the CRM at all and has no state cookie, so this answers before the
+ * session and state checks with a fixed page. Nothing from the URL is echoed.
+ */
+function adminConsentReturn(approved: boolean): NextResponse {
+  const text = approved
+    ? 'Approved. Everyone in your organization can now connect their Microsoft account to Tenor Payments CRM. You can close this page.'
+    : 'The approval was not completed. Nothing was changed. You can close this page.';
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Microsoft approval</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px;color:#102347"><h1 style="font-size:1.25rem">Microsoft approval</h1><p>${text}</p></body></html>`;
+  return new NextResponse(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" },
+  });
+}
+
 export async function GET(req: NextRequest) {
   if (!(await mailReady())) return new NextResponse(null, { status: 404 });
+
+  const adminConsent = req.nextUrl.searchParams.get('admin_consent');
+  if (adminConsent !== null && !req.nextUrl.searchParams.get('code')) {
+    return adminConsentReturn(adminConsent.toLowerCase() === 'true' && !req.nextUrl.searchParams.get('error'));
+  }
 
   let ctx;
   try {
@@ -80,6 +103,7 @@ export async function GET(req: NextRequest) {
             ? 'cancelled'
             : 'failed';
     mailLog('info', 'oauth', 'microsoft_error', { error: msError, mapped: code });
+    if (code === 'consent_required') await waitingForAdmin(ctx.userId);
     return fail(req, state.returnPath, code, shared);
   }
 
@@ -107,7 +131,11 @@ export async function GET(req: NextRequest) {
     return fail(req, state.returnPath, 'failed', shared);
   }
 
-  if (!result.ok) return fail(req, state.returnPath, result.reason, shared);
+  if (!result.ok) {
+    if (result.reason === 'consent_required') await waitingForAdmin(ctx.userId);
+    return fail(req, state.returnPath, result.reason, shared);
+  }
+  await clearWaitingForAdmin(ctx.userId);
   return finish(req, state.returnPath, {
     connected: result.mailboxId,
     ...(result.reconnected ? { reconnected: '1' } : {}),

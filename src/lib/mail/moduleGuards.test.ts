@@ -55,7 +55,12 @@ describe('Email module source guards', () => {
     const listed = [...proxy.matchAll(/'(\/api\/mail[^']*)'/g)].map((m) => m[1]);
     const allowed = new Set(['/api/mail/tick', '/api/mail/graph/notifications', '/api/mail/graph/lifecycle']);
     expect(listed).toContain('/api/mail/tick');
-    expect(listed.filter((p) => !allowed.has(p))).toEqual([]);
+    // The OAuth callback opens only for an admin coming back from Microsoft's consent
+    // page: admin_consent present and no code, and it then shows a fixed page.
+    const consent = /function isAdminConsentReturn[^{]*\{\s*return pathname === '\/api\/mail\/oauth\/callback' && params\.has\('admin_consent'\) && !params\.has\('code'\);\s*\}/;
+    expect(proxy).toMatch(consent);
+    const outside = proxy.replace(consent, '');
+    expect([...outside.matchAll(/'(\/api\/mail[^']*)'/g)].map((m) => m[1]).filter((p) => !allowed.has(p))).toEqual([]);
     // Never a prefix: that would also open the OAuth, attachment and image routes.
     expect(proxy).not.toMatch(/startsWith\(\s*'\/api\/mail/);
   });

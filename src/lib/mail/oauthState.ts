@@ -139,7 +139,8 @@ export function verifyState(
  */
 export function safeEmailReturnPath(raw: string | null | undefined): string {
   if (!raw) return '/email';
-  if (!/^\/email(?:[/?#]|$)/.test(raw)) return '/email';
+  // Calendar and Chat connect through the same sign-in, and come back to where they were.
+  if (!/^\/(?:email|calendar|chat)(?:[/?#]|$)/.test(raw)) return '/email';
   if (raw.includes('//') || raw.includes('\\') || /[\u0000-\u001f\u007f]/.test(raw)) return '/email';
   return raw.slice(0, 512);
 }

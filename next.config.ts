@@ -84,6 +84,9 @@ export function contentSecurityPolicy(): string {
   // pattern above and would otherwise be listed twice.
   const posthog = [...new Set([posthogOrigin, posthogAssets].filter(Boolean))].join(' ');
 
+  // Local runs only: file uploads go straight from the browser to the mock Microsoft.
+  const mockGraph = process.env.MAIL_PROVIDER === 'mock' ? (process.env.MAIL_MOCK_BASE_URL ?? '') : '';
+
   return [
     "default-src 'self'",
     // Next.js requires 'unsafe-inline' for its bootstrap in dev; tighten to a
@@ -111,7 +114,7 @@ export function contentSecurityPolicy(): string {
      * (chunderw-vpc-gll-us1, -ie1, -au1 …) and pinning one would break the
      * moment the account's edge changed.
      */
-    `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://*.twilio.com wss://*.twilio.com ${posthog}`.trim(),
+    `connect-src 'self' ${supabaseOrigin} ${supabaseWs} https://*.twilio.com wss://*.twilio.com https://*.sharepoint.com https://*.sharepoint-df.com ${mockGraph} ${posthog}`.trim(),
     /*
      * Call recordings are played from short-lived Supabase Storage URLs. Without
      * an explicit media-src this falls back to default-src 'self' and every

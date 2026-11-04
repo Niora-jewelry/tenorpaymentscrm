@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_SUPABASE_URL: 'https://x.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'k', NEXT_PUBLIC_APP_URL: 'http://localhost' } }));
-const { isMerchantApplicationPath, isMerchantProposalPath, isMerchantSignPath } = await import('./proxy');
+const { isAdminConsentReturn, isMerchantApplicationPath, isMerchantProposalPath, isMerchantSignPath } = await import('./proxy');
 
 const token = 'A'.repeat(20) + 'b-_'.repeat(5) + '0123456789'.slice(0, 8);
 
@@ -46,5 +46,20 @@ describe('agreement signer links are the only public /sign paths', () => {
   it('a sign path is neither an application nor a proposal path', () => {
     expect(isMerchantApplicationPath(`/sign/${token}`)).toBe(false);
     expect(isMerchantProposalPath(`/sign/${token}`)).toBe(false);
+  });
+});
+
+describe('Microsoft admin-approval return is public only in its exact shape', () => {
+  const cb = '/api/mail/oauth/callback';
+  const p = (q: string) => new URLSearchParams(q);
+  it('the callback with admin_consent and no code', () => {
+    expect(isAdminConsentReturn(cb, p('admin_consent=True&tenant=t'))).toBe(true);
+    expect(isAdminConsentReturn(cb, p('admin_consent=False&error=access_denied'))).toBe(true);
+  });
+  it('a real sign-in return, another path, or no admin_consent stays private', () => {
+    expect(isAdminConsentReturn(cb, p('admin_consent=True&code=abc&state=s'))).toBe(false);
+    expect(isAdminConsentReturn(cb, p('code=abc&state=s'))).toBe(false);
+    expect(isAdminConsentReturn('/api/mail/oauth/start', p('admin_consent=True'))).toBe(false);
+    expect(isAdminConsentReturn(`${cb}/x`, p('admin_consent=True'))).toBe(false);
   });
 });

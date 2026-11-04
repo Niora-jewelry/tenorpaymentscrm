@@ -105,6 +105,7 @@ export function Sidebar({
   userId,
   initialCounts,
   emailUnread,
+  teamsCounts,
 }: {
   /** Admin pages this person has Full access to (Permissions spec). */
   adminPages?: string[];
@@ -119,6 +120,8 @@ export function Sidebar({
   initialCounts: UnreadCounts;
   /** null = Email is not available to this person (no nav item at all). */
   emailUnread: number | null;
+  /** Calendar and Chat's numbers; null when Microsoft is not set up here. */
+  teamsCounts: { calendar: number; chat: number } | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   // Starts from the server's count; the Email page's polls keep it current
@@ -135,6 +138,7 @@ export function Sidebar({
     window.addEventListener('tapdash:email-unread', on);
     return () => window.removeEventListener('tapdash:email-unread', on);
   }, []);
+  const teams = useTeamsCounts(teamsCounts);
   const pathname = usePathname();
   const initial = (userName.trim().charAt(0) || '?').toUpperCase();
 
@@ -271,6 +275,28 @@ export function Sidebar({
             collapsed={collapsed}
           />
         ) : null}
+        {/* One number each, no pop-ups or sounds (Teams spec): invitations not
+            answered, and chats with something unread. */}
+        {teams ? (
+          <>
+            <NavItem
+              href="/calendar"
+              icon="calendar"
+              label="Calendar"
+              count={teams.calendar > 0 ? teams.calendar : undefined}
+              active={pathname === '/calendar'}
+              collapsed={collapsed}
+            />
+            <NavItem
+              href="/chat"
+              icon="message-square"
+              label="Chat"
+              count={teams.chat > 0 ? teams.chat : undefined}
+              active={pathname === '/chat'}
+              collapsed={collapsed}
+            />
+          </>
+        ) : null}
         {/* Missed calls, voicemails and recordings not yet looked at. The bell
             used to carry these; opening the Phone page clears them. */}
         <NavItem
@@ -373,6 +399,45 @@ function GroupLabel({ children, collapsed }: { children: React.ReactNode; collap
       {children}
     </p>
   );
+}
+
+/**
+ * Calendar and Chat's numbers. Asked of the server every minute (it asks Microsoft at
+ * most about that often), and the Chat screen pushes its own total the moment a chat is
+ * read, so the number does not lag behind what the person just did.
+ */
+function useTeamsCounts(initial: { calendar: number; chat: number } | null) {
+  const [counts, setCounts] = useState(initial);
+  const enabled = initial !== null;
+  useEffect(() => {
+    if (!enabled) return;
+    // Aborted on unmount, so a request this effect no longer wants is closed rather
+    // than left open with an unread body.
+    const abort = new AbortController();
+    const load = async () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+      try {
+        const res = await fetch('/api/msteams/counts', { cache: 'no-store', signal: abort.signal });
+        const body = res.ok ? ((await res.json()) as { calendar: number; chat: number }) : null;
+        if (body && !abort.signal.aborted) setCounts(body);
+      } catch {
+        // Aborted, offline or refused: the last number stays.
+      }
+    };
+    void load();
+    const timer = setInterval(() => void load(), 60_000);
+    const onChat = (e: Event) => {
+      const n = (e as CustomEvent<number>).detail;
+      if (typeof n === 'number' && Number.isFinite(n)) setCounts((c) => (c ? { ...c, chat: n } : c));
+    };
+    window.addEventListener('tapdash:chat-unread', onChat);
+    return () => {
+      abort.abort();
+      clearInterval(timer);
+      window.removeEventListener('tapdash:chat-unread', onChat);
+    };
+  }, [enabled]);
+  return counts;
 }
 
 function NavItem({

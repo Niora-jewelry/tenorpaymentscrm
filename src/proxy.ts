@@ -222,8 +222,20 @@ export function isMerchantSignPath(pathname: string): boolean {
   return MERCHANT_SIGN.test(pathname) || SIGN_PAGES.has(pathname);
 }
 
-function isPublic(pathname: string): boolean {
+/**
+ * Microsoft's return from an admin approving the app for their organization: the
+ * approving admin may have no CRM session, so the callback answers it with a fixed
+ * page before any session or state check. Only the exact shape is public: the
+ * callback with `admin_consent` and no `code`. A real sign-in return (with `code`)
+ * stays session-gated.
+ */
+export function isAdminConsentReturn(pathname: string, params: URLSearchParams): boolean {
+  return pathname === '/api/mail/oauth/callback' && params.has('admin_consent') && !params.has('code');
+}
+
+function isPublic(pathname: string, params: URLSearchParams): boolean {
   return (
+    isAdminConsentReturn(pathname, params) ||
     PUBLIC_PATHS.has(pathname) ||
     PUBLIC_API_PATHS.has(pathname) ||
     isPrototypePath(pathname) ||
@@ -342,7 +354,7 @@ export async function proxy(request: NextRequest) {
       );
 
       if (!demoSession) {
-        if (isPublic(pathname)) return response;
+        if (isPublic(pathname, request.nextUrl.searchParams)) return response;
         return rejectUnauthenticated();
       }
 
@@ -400,7 +412,7 @@ export async function proxy(request: NextRequest) {
     const user = userData.user;
 
     if (!user) {
-      if (isPublic(pathname)) return response;
+      if (isPublic(pathname, request.nextUrl.searchParams)) return response;
       return rejectUnauthenticated();
     }
 
@@ -460,7 +472,7 @@ export async function proxy(request: NextRequest) {
     return response;
   } catch {
     // Fail closed. Never fall through to the page on error.
-    if (isPublic(pathname)) return response;
+    if (isPublic(pathname, request.nextUrl.searchParams)) return response;
     return rejectUnauthenticated();
   }
 }

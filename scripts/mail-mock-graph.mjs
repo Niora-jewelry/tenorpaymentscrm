@@ -67,6 +67,7 @@
  */
 import http from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
+import { createTeamsMock } from './mail-mock-teams.mjs';
 
 const PORT = Number(process.env.MOCK_PORT || 4555);
 const CONSUMER = '9188040d-6c67-4c5b-b112-36a304b66dad';
@@ -74,6 +75,7 @@ const CONSUMER = '9188040d-6c67-4c5b-b112-36a304b66dad';
 const ACCOUNTS = {
   'owner@mock.test': { oid: 'oid-owner', tid: 'tid-tapdash', name: 'Olive Owner', mailbox: true },
   'other@mock.test': { oid: 'oid-other', tid: 'tid-elsewhere', name: 'Otto Other', mailbox: true },
+  'mate@mock.test': { oid: 'oid-mate', tid: 'tid-tapdash', name: 'Mae Mate', mailbox: true },
   'nobox@mock.test': { oid: 'oid-nobox', tid: 'tid-tapdash', name: 'Nora Nobox', mailbox: false },
   'person@outlook.test': { oid: 'oid-person', tid: CONSUMER, name: 'Pat Person', mailbox: true },
 };
@@ -106,7 +108,11 @@ const WELL_KNOWN_KEYS = new Set(['inbox', 'drafts', 'sentitems', 'deleteditems',
 const codes = new Map(); // code → { email, challenge, redirectUri, used }
 const access = new Map(); // access token → email
 const refresh = new Map(); // refresh token → email
-const NO_FAULT = { refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0, sendFail: null, failSend: 0, rejectRules: false };
+/*
+ * Calendar and Chat: `mailOnlyGrant` makes a sign-in approve mail only (an account connected
+ * before Chat existed); `consentPending` makes Microsoft say an admin must approve first.
+ */
+const NO_FAULT = { mailOnlyGrant: false, consentPending: false, refresh: null, expireDelta: false, throttle: 0, notifyBadClientState: false, failOps: 0, sendFail: null, failSend: 0, rejectRules: false };
 let fault = { ...NO_FAULT };
 
 // -- subscriptions ------------------------------------------------------------
@@ -574,12 +580,19 @@ const idToken = (email) => {
   const a = ACCOUNTS[email];
   return `${b64url(JSON.stringify({ alg: 'none' }))}.${b64url(JSON.stringify({ oid: a.oid, tid: a.tid, preferred_username: email, name: a.name }))}.`;
 };
-function mint(email) {
+/** Tokens that carry the Calendar and Chat permissions (the rest carry mail only). */
+const teamsTokens = new Set();
+const asksTeams = (scope) => /\bChat\.ReadWrite\b/i.test(String(scope ?? ''));
+function mint(email, teams = false) {
   const at = `mock-at-${randomBytes(12).toString('hex')}`;
   const rt = `mock-rt-${randomBytes(12).toString('hex')}`;
   access.set(at, email);
   refresh.set(rt, email);
-  return { access_token: at, refresh_token: rt, expires_in: 3600, token_type: 'Bearer', scope: GRANTED, id_token: idToken(email) };
+  if (teams) {
+    teamsTokens.add(at);
+    teamsTokens.add(rt);
+  }
+  return { access_token: at, refresh_token: rt, expires_in: 3600, token_type: 'Bearer', scope: teams ? `${GRANTED} ${TEAMS_GRANTED}` : GRANTED, id_token: idToken(email) };
 }
 const GRANTED = [
   'https://graph.microsoft.com/User.Read', 'https://graph.microsoft.com/Mail.ReadWrite', 'https://graph.microsoft.com/Mail.ReadWrite.Shared',
@@ -587,6 +600,11 @@ const GRANTED = [
   'https://graph.microsoft.com/Calendars.ReadWrite', 'https://graph.microsoft.com/Calendars.ReadWrite.Shared', 'https://graph.microsoft.com/Contacts.Read',
   'openid', 'profile', 'email', 'offline_access',
 ].join(' ');
+const TEAMS_GRANTED = [
+  'Chat.ReadWrite', 'ChatMessage.Send', 'ChannelMessage.Send', 'ChannelMessage.ReadWrite', 'ChannelMessage.Read.All', 'Channel.ReadBasic.All',
+  'Channel.Create', 'ChannelMember.Read.All', 'Team.ReadBasic.All', 'Team.Create', 'TeamMember.ReadWrite.All', 'Files.ReadWrite.All',
+  'User.ReadBasic.All', 'People.Read', 'OnlineMeetings.ReadWrite',
+].map((s) => `https://graph.microsoft.com/${s}`).join(' ');
 
 function send(res, status, body, headers = {}) {
   const isHtml = typeof body === 'string';
@@ -594,6 +612,7 @@ function send(res, status, body, headers = {}) {
   res.end(isHtml ? body : body === undefined ? '' : JSON.stringify(body));
 }
 const graphErr = (status, code, message = code) => ({ status, body: { error: { code, message } } });
+const teams = createTeamsMock({ PORT, ACCOUNTS, graphErr });
 
 async function readBody(req) {
   const chunks = [];
@@ -614,8 +633,13 @@ function authorizePage(url) {
     return u.toString();
   };
   const links = Object.keys(ACCOUNTS).map((email) => {
+    // An organization that requires an admin to approve new permissions: Microsoft sends
+    // the person back with consent_required instead of a code.
+    if (fault.consentPending && asksTeams(p.get('scope')) && ACCOUNTS[email].tid === 'tid-tapdash') {
+      return `<li><a data-account="${email}" href="${back({ error: 'consent_required', error_description: 'AADSTS65001: The user or administrator has not consented to use the application.' })}">${email}</a></li>`;
+    }
     const code = `mock-code-${randomBytes(10).toString('hex')}`;
-    codes.set(code, { email, challenge: p.get('code_challenge'), redirectUri: p.get('redirect_uri'), used: false });
+    codes.set(code, { email, challenge: p.get('code_challenge'), redirectUri: p.get('redirect_uri'), used: false, teams: asksTeams(p.get('scope')) && !fault.mailOnlyGrant });
     return `<li><a data-account="${email}" href="${back({ code })}">${email}</a></li>`;
   });
   return `<!doctype html><title>Mock Microsoft sign-in</title><h1>Pick an account</h1><ul>${links.join('')}</ul>
@@ -633,15 +657,22 @@ function token(form) {
     if (b64url(createHash('sha256').update(verifier).digest()) !== c.challenge) {
       return { status: 400, body: { error: 'invalid_grant', error_description: 'AADSTS501481: PKCE verification failed' } };
     }
-    return { status: 200, body: mint(c.email) };
+    return { status: 200, body: mint(c.email, c.teams) };
   }
   if (form.get('grant_type') === 'refresh_token') {
     if (fault.refresh === 'secret') return { status: 401, body: { error: 'invalid_client', error_description: 'AADSTS7000215: Invalid client secret provided.' } };
-    const email = refresh.get(form.get('refresh_token') ?? '');
+    const rt = form.get('refresh_token') ?? '';
+    const email = refresh.get(rt);
     if (!email || fault.refresh === 'invalid_grant') {
       return { status: 400, body: { error: 'invalid_grant', error_description: 'AADSTS700082: The refresh token has expired' } };
     }
-    return { status: 200, body: mint(email) };
+    // Asking a refresh for more than the sign-in approved is refused, as Microsoft does.
+    const hasTeams = teamsTokens.has(rt);
+    if (!form.get('scope')) return { status: 400, body: { error: 'invalid_request', error_description: 'AADSTS900144: scope is required' } };
+    if (asksTeams(form.get('scope')) && !hasTeams) {
+      return { status: 400, body: { error: 'invalid_grant', error_description: 'AADSTS65001: The user or administrator has not consented to use the application.' } };
+    }
+    return { status: 200, body: mint(email, hasTeams) };
   }
   return { status: 400, body: { error: 'unsupported_grant_type' } };
 }
@@ -671,9 +702,17 @@ function folderJson(address, [key, name, parent]) {
   };
 }
 
-function graph(caller, method, pathAndQuery, pageSize = 10, body = null) {
+function graph(caller, method, pathAndQuery, pageSize = 10, body = null, teamsScope = false) {
   const url = new URL(pathAndQuery, 'http://mock');
   const parts = url.pathname.replace(/^\/v1\.0/, '').split('/').filter(Boolean);
+  const t = teams.handle(caller, method, url, body);
+  if (t) {
+    // A token approved for mail only is refused Chat paths, as Graph refuses a missing scope.
+    const p = url.pathname.replace(/^\/v1\.0/, '');
+    const mailScoped = /^\/(me|users\/[^/]+)\/(calendars?|calendarView|events)(\/|$)/.test(p) || (parts[0] === 'users' && parts.length === 2);
+    if (!mailScoped && !teamsScope) return graphErr(403, 'Forbidden', 'Missing scope permissions on the request.');
+    return t;
+  }
   if (method === 'GET' && parts.length === 1 && parts[0] === 'me') {
     const a = ACCOUNTS[caller];
     return { status: 200, body: { id: a.oid, displayName: a.name, mail: a.mailbox ? caller : null, userPrincipalName: caller } };
@@ -860,6 +899,7 @@ const server = http.createServer(async (req, res) => {
       events.clear();
       contacts.clear();
       responsesSent.length = 0;
+      teams.reset();
       fault = { ...NO_FAULT };
       log.length = 0;
       return send(res, 200, { ok: true });
@@ -922,6 +962,30 @@ const server = http.createServer(async (req, res) => {
       const drafts = [...messages.values()].filter((m) => m.mailbox === mailbox && m.isDraft);
       return send(res, 200, { drafts: drafts.map((m) => ({ id: m.id, subject: m.subject, body: m.body, to: m.to ?? [] })) });
     }
+    if (await teams.hooks(req, res, url, readBody, send)) return;
+    // The page a Microsoft admin approves the app on, for the whole organization.
+    if (/^(\/[^/]+)?\/v2\.0\/adminconsent$/.test(url.pathname)) {
+      const back = new URL(url.searchParams.get('redirect_uri') ?? 'http://invalid/');
+      if (url.searchParams.get('decision') === 'approve') {
+        fault.consentPending = false;
+        back.searchParams.set('admin_consent', 'True');
+        back.searchParams.set('tenant', 'tid-tapdash');
+        res.writeHead(302, { Location: back.toString() });
+        return res.end();
+      }
+      if (url.searchParams.get('decision') === 'refuse') {
+        back.searchParams.set('error', 'access_denied');
+        back.searchParams.set('admin_consent', 'False');
+        res.writeHead(302, { Location: back.toString() });
+        return res.end();
+      }
+      const here = (d) => {
+        const u = new URL(url);
+        u.searchParams.set('decision', d);
+        return u.pathname + u.search;
+      };
+      return send(res, 200, `<!doctype html><title>Mock admin approval</title><h1>Approve for your organization</h1><p>${url.searchParams.get('client_id') ? 'The app asks for mail, calendar and chat.' : 'Missing client_id'}</p><a data-decision="approve" href="${here('approve')}">Accept</a> <a data-decision="refuse" href="${here('refuse')}">Cancel</a>`);
+    }
     const up = /^\/upload\/([0-9a-f]+)$/.exec(url.pathname);
     if (up && req.method === 'PUT') return uploadChunk(req, res, up[1]);
     if (url.pathname === '/__mock/message' && req.method === 'POST') return send(res, 200, { id: addMessage(JSON.parse(await readBody(req))) });
@@ -934,7 +998,9 @@ const server = http.createServer(async (req, res) => {
       return send(res, r.status, r.body);
     }
     if (url.pathname.startsWith('/v1.0/')) {
-      const caller = access.get((req.headers.authorization ?? '').replace(/^Bearer /, ''));
+      const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      const caller = access.get(bearer);
+      const teamsScope = teamsTokens.has(bearer);
       if (!caller) return send(res, 401, { error: { code: 'InvalidAuthenticationToken', message: 'Access token is empty or invalid.' } });
       const prefer = String(req.headers.prefer ?? '');
       if (!prefer.includes('IdType="ImmutableId"')) return send(res, 400, { error: { code: 'MockStrict', message: 'Prefer IdType="ImmutableId" missing' } });
@@ -968,7 +1034,7 @@ const server = http.createServer(async (req, res) => {
         const { requests = [] } = JSON.parse(await readBody(req));
         if (requests.length > 20) return send(res, 400, { error: { code: 'BadRequest', message: 'More than 20 requests' } });
         const responses = requests.map((r) => {
-          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`, pageSize, r.body ?? null);
+          const out = graph(caller, r.method, `/v1.0${r.url.startsWith('/') ? '' : '/'}${r.url}`, pageSize, r.body ?? null, teamsScope);
           log.push(`batch:${r.method} ${r.url.split('?')[0]} ${out.status}`);
           return { id: r.id, status: out.status, headers: {}, body: out.body };
         });
@@ -976,13 +1042,13 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, { responses });
       }
       const raw = req.method === 'GET' ? '' : await readBody(req);
-      const out = graph(caller, req.method, url.pathname + url.search, pageSize, raw ? JSON.parse(raw) : null);
+      const out = graph(caller, req.method, url.pathname + url.search, pageSize, raw ? JSON.parse(raw) : null, teamsScope);
       log.push(`${req.method} ${url.pathname} ${out.status}`);
       if (out.raw) {
         res.writeHead(out.status, { 'Content-Type': out.type ?? 'application/octet-stream', 'Content-Length': out.raw.length });
         return res.end(out.raw);
       }
-      return send(res, out.status, out.body);
+      return send(res, out.status, out.body, out.headers ?? {});
     }
     send(res, 404, { error: 'not found' });
   } catch (e) {

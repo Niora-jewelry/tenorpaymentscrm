@@ -103,12 +103,14 @@ export async function settingGroups(): Promise<SettingGroup[]> {
     },
     {
       id: 'inboxes',
-      title: 'Notifications, Email and Phone',
-      blurb: 'Own only = their own notifications, inbox and phone line. All users = everyone’s.',
+      title: 'Notifications, Email, Phone, Calendar and Chat',
+      blurb: 'Own only = their own notifications, inbox, phone line, calendar and chats. All users = everyone’s. Calendar and Chat are look only for anyone else’s.',
       rows: [
         { key: 'notifications.scope', label: 'Notifications', options: OWN_ALL },
         { key: 'email.scope', label: 'Email', options: OWN_ALL },
         { key: 'phone.scope', label: 'Phone', options: OWN_ALL },
+        { key: 'calendar.scope', label: 'Calendar', options: OWN_ALL },
+        { key: 'chat.scope', label: 'Chat', options: OWN_ALL },
       ],
     },
     {

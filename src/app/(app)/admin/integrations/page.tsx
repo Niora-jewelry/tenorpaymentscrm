@@ -27,8 +27,7 @@
  * ── WHAT IS STILL HONESTLY NOT BUILT ─────────────────────────────────────
  * Mail deposited onto RECORDS (the drawer's Email tab) remains a real READ
  * of the `messages` table with nothing writing it — the Email module is
- * deliberately standalone (spec). Teams has no provider. DocuSign has never
- * been specified. Instantly was removed outright (UI/UX Redesign spec §5).
+ * deliberately standalone (spec). DocuSign has never been specified. Instantly was removed outright (UI/UX Redesign spec §5).
  */
 import { redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
@@ -123,8 +122,14 @@ function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
       state: 'read-only',
     },
     {
-      name: 'Teams',
-      what: 'Meetings surface',
+      name: 'Microsoft Teams',
+      what: 'Calendar and Chat, through each person’s own Microsoft account',
+      where: 'Calendar and Chat in the sidebar',
+      state: mail ? 'live' : 'needs-config',
+    },
+    {
+      name: 'Teams on records',
+      what: 'Kept for later: not linked to records in this version',
       where: 'Communication → Teams',
       state: 'coming-soon',
     },

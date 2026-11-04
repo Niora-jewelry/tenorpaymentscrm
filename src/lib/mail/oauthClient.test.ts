@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authorizeUrl, exchangeCode, refreshTokens, readIdClaims, OAuthError } from './oauthClient';
 import { endpointsFor } from './graph/endpoints';
-import { grantedScopes, missingScopes, GRAPH_SCOPES, MAIL_SCOPE_PARAM } from './scopes';
+import { grantedScopes, missingScopes, GRAPH_SCOPES, MAIL_SCOPE_PARAM, FULL_SCOPE_PARAM, TEAMS_SCOPES, scopeParamFor, teamsGranted } from './scopes';
 
 /** The error a promise rejects with; fails the test if it resolves instead. */
 async function rejection<E>(p: Promise<unknown>): Promise<E> {
@@ -40,6 +40,26 @@ describe('scopes', () => {
   it('asks for offline_access (no background sync without a refresh token)', () => {
     expect(MAIL_SCOPE_PARAM.split(' ')).toContain('offline_access');
   });
+
+  it('connects with mail, calendar and chat together, so one sign-in feeds all three modules', () => {
+    const full = FULL_SCOPE_PARAM.split(' ');
+    for (const s of [...MAIL_SCOPE_PARAM.split(' '), ...TEAMS_SCOPES]) expect(full).toContain(s);
+  });
+
+  it('refreshes with exactly what the sign-in approved: one scope more and Microsoft refuses, breaking Email too', () => {
+    const mailOnly = grantedScopes(MAIL_SCOPE_PARAM);
+    expect(teamsGranted(mailOnly)).toBe(false);
+    expect(scopeParamFor(mailOnly)).toBe(MAIL_SCOPE_PARAM);
+    const all = grantedScopes(FULL_SCOPE_PARAM.split(' ').map((s) => (s.includes('.') ? `https://graph.microsoft.com/${s}` : s)).join(' '));
+    expect(teamsGranted(all)).toBe(true);
+    expect(scopeParamFor(all)).toBe(FULL_SCOPE_PARAM);
+    // Missing one Teams scope is still mail-only.
+    expect(teamsGranted(all.filter((s) => s !== 'Chat.ReadWrite'))).toBe(false);
+  });
+
+  it('does not call an older mailbox degraded for lacking the Teams scopes', () => {
+    expect(missingScopes(grantedScopes(MAIL_SCOPE_PARAM))).toEqual([]);
+  });
 });
 
 describe('authorizeUrl', () => {
@@ -51,7 +71,7 @@ describe('authorizeUrl', () => {
     expect(u.searchParams.get('state')).toBe('n1');
     expect(u.searchParams.get('response_type')).toBe('code');
     expect(u.searchParams.get('prompt')).toBe('select_account');
-    expect(u.searchParams.get('scope')).toBe(MAIL_SCOPE_PARAM);
+    expect(u.searchParams.get('scope')).toBe(FULL_SCOPE_PARAM);
     // The verifier itself never appears in the URL.
     expect(u.toString()).not.toContain('verifier');
   });
@@ -102,6 +122,14 @@ describe('token requests', () => {
   it('refuses a 200 without an access token', async () => {
     const err = await rejection<OAuthError>(refreshTokens(ep, creds, 'rt', jsonFetch(200, { token_type: 'Bearer' })));
     expect(err).toBeInstanceOf(OAuthError);
+  });
+
+  it('refreshes with mail scopes by default, and with the full set when given it', async () => {
+    const cap: { url?: string; init?: RequestInit } = {};
+    await refreshTokens(ep, creds, 'rt', jsonFetch(200, { access_token: 'a', expires_in: 60 }, cap));
+    expect(new URLSearchParams(String(cap.init?.body)).get('scope')).toBe(MAIL_SCOPE_PARAM);
+    await refreshTokens(ep, creds, 'rt', jsonFetch(200, { access_token: 'a', expires_in: 60 }, cap), Date.now(), FULL_SCOPE_PARAM);
+    expect(new URLSearchParams(String(cap.init?.body)).get('scope')).toBe(FULL_SCOPE_PARAM);
   });
 
   it('keeps refreshToken null when Microsoft did not rotate it', async () => {

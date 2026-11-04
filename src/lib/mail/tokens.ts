@@ -28,6 +28,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { mailConfig, tokenAad, mailApp } from './config';
 import { seal, open, toBytea, fromBytea } from './crypto';
 import { refreshTokens, OAuthError, type TokenSet } from './oauthClient';
+import { scopeParamFor } from './scopes';
 import { createGraphTransport, GraphError, type GraphTransport } from './graph/transport';
 import { mailLog } from './log';
 
@@ -106,7 +107,7 @@ async function mint(identityId: string, forceRefresh: boolean): Promise<string> 
 
   const { data: ident, error: identErr } = await admin
     .from('mail_identities')
-    .select('id, user_id, microsoft_user_id, status, deleted_at')
+    .select('id, user_id, microsoft_user_id, status, deleted_at, scopes')
     .eq('id', identityId)
     .maybeSingle();
   if (identErr) throw new GraphError(0, { code: 'provider_down', reaction: 'reschedule', detail: 'db' }, null);
@@ -153,7 +154,7 @@ async function mint(identityId: string, forceRefresh: boolean): Promise<string> 
 
   let set: TokenSet;
   try {
-    set = await refreshTokens(cfg.endpoints, (await mailApp()).creds, refreshToken);
+    set = await refreshTokens(cfg.endpoints, (await mailApp()).creds, refreshToken, fetch, Date.now(), scopeParamFor((ident.scopes as string[] | null) ?? []));
   } catch (e) {
     if (!(e instanceof OAuthError)) throw e;
     const c = e.classified;

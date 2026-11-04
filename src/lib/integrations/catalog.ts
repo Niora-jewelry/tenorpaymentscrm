@@ -56,7 +56,7 @@ export const SETTINGS: readonly SettingDef[] = [
     label: 'Allowed tenants',
     kind: 'text',
     required: false,
-    help: 'Only mailboxes from these tenants can connect. Separate with commas. Leave empty to allow any work account.',
+    help: 'Only accounts from these tenants can connect. Separate with commas. Leave empty to allow any work account, which is what lets people from other organizations connect.',
     check: (v) => (v.split(',').map((t) => t.trim()).filter(Boolean).every((t) => UUID.test(t)) ? null : 'Enter tenant IDs separated by commas.'),
   },
 

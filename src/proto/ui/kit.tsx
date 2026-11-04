@@ -10,7 +10,7 @@
  * Popovers and dialogs animate in AND out — see `motion.tsx` for why that needs
  * more than a CSS class.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import type { Swatch, User } from '../schema';
 import { SWATCHES, NEUTRAL } from './tokens';
 import { PersonAvatar, resolvePerson, usePeopleById } from './people';
@@ -557,6 +557,8 @@ export function Dialog({
    */
   const [open, setOpen] = useState(true);
   const { mounted, state } = usePresence(open, 130);
+  // The title names the dialog for screen readers.
+  const titleId = useId();
 
   const dismiss = useCallback(() => setOpen(false), []);
 
@@ -581,6 +583,7 @@ export function Dialog({
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
         style={{ maxWidth: width }}
         className={`relative w-full rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)] ${anim(state, 'animate-dialog-in', 'animate-dialog-out')}`}
       >
@@ -591,6 +594,7 @@ export function Dialog({
             </span>
           ) : null}
           <h2
+            id={titleId}
             className={`text-[16px] font-semibold ${tone === 'danger' ? 'text-[#b02a30]' : 'text-ink-900'}`}
           >
             {title}

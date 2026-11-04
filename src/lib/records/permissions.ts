@@ -349,7 +349,7 @@ export async function moduleScope(ctx: AuthContext, moduleId: string): Promise<M
 
 /** One of the own/all scopes — notifications, email, phone — or the
  *  Communication tab's own/whole-org. */
-export async function seesAll(ctx: AuthContext, what: 'notifications' | 'email' | 'phone' | 'communication'): Promise<boolean> {
+export async function seesAll(ctx: AuthContext, what: 'notifications' | 'email' | 'phone' | 'communication' | 'calendar' | 'chat'): Promise<boolean> {
   if (ctx.isAdmin) return true;
   const v = (await permissionsFor(ctx)).settings[`${what}.scope`];
   return v === 'all' || v === 'org';

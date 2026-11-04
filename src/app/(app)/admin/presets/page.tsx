@@ -39,6 +39,8 @@ import { ApplicationSection } from './ApplicationSection';
 import { readApplicationSettings } from '@/lib/applications/service';
 import { AgreementSection } from './AgreementSection';
 import { readAgreementSettings } from '@/lib/agreements/service';
+import { readSendingInboxSettings } from '@/lib/mail/sendingInbox';
+import { SendingInboxSection } from './SendingInboxSection';
 import { PresetsTabs, type PresetSection } from './PresetsTabs';
 import { ReloadConfigButton } from './ReloadConfigButton';
 
@@ -46,7 +48,7 @@ export default async function AdminPresetsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'presets'))) redirect('/dashboard');
 
-  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements, applicationSettings, agreementSettings] = await Promise.all([
+  const [tabs, subtabs, modules, fields, assignable, selections, choiceFields, pipelines, tabOrder, subtabOrder, statements, applicationSettings, agreementSettings, sendingInbox] = await Promise.all([
     listTabsForAdmin(ctx),
     listSubtabsForAdmin(ctx),
     listModulesForAdmin(ctx),
@@ -60,6 +62,7 @@ export default async function AdminPresetsPage() {
     statementGrid(ctx),
     readApplicationSettings(ctx),
     readAgreementSettings(ctx),
+    readSendingInboxSettings(ctx),
   ]);
 
   /*
@@ -166,6 +169,13 @@ export default async function AdminPresetsPage() {
       icon: 'file-pen',
       description: 'The agreements sent for e-signature: how long signers have, reminders, the sender name, and the email they receive.',
       content: <AgreementSection key="agreement" initial={agreementSettings} />,
+    },
+    {
+      key: 'sending-inbox',
+      label: 'Sending inbox',
+      icon: 'inbox',
+      description: 'Which inbox applications, proposals and agreements are emailed from — each sender’s own, or one company inbox such as office@.',
+      content: <SendingInboxSection key="sending-inbox" settings={sendingInbox} />,
     },
   ];
 

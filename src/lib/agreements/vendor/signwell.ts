@@ -35,7 +35,14 @@ const TIMEOUT_MS = 45_000;
 /** SignWell field geometry is CSS pixels at 96 dpi; the template's is PDF points. */
 const PX_PER_PT = 96 / 72;
 
-const Recipient = z.object({ id: z.string(), email: z.string().default(''), name: z.string().default(''), status: z.string().nullish(), bounced: z.boolean().nullish() });
+const Recipient = z.object({
+  id: z.string(),
+  email: z.string().default(''),
+  name: z.string().default(''),
+  status: z.string().nullish(),
+  bounced: z.boolean().nullish(),
+  embedded_signing_url: z.string().nullish(),
+});
 const Document = z.object({
   id: z.string(),
   status: z.string().default(''),
@@ -58,7 +65,15 @@ function toDoc(d: z.infer<typeof Document>): VendorDocument {
     documentId: d.id,
     status: d.status.toLowerCase(),
     declineMessage: d.decline_message ?? null,
-    recipients: d.recipients.map((r) => ({ vendorId: r.id, email: r.email, name: r.name, status: r.status?.toLowerCase() ?? null, bounced: r.bounced === true })),
+    recipients: d.recipients.map((r) => ({
+      vendorId: r.id,
+      email: r.email,
+      name: r.name,
+      status: r.status?.toLowerCase() ?? null,
+      bounced: r.bounced === true,
+      // Only ever a SignWell page: anything else is not followed.
+      signingUrl: r.embedded_signing_url && /^https:\/\/(www\.)?signwell\.com\//.test(r.embedded_signing_url) ? r.embedded_signing_url : null,
+    })),
     metadata: Object.fromEntries(Object.entries(d.metadata ?? {}).filter((e): e is [string, string] => typeof e[1] === 'string')),
   };
 }
@@ -127,7 +142,9 @@ export class SignWell implements ESignVendor {
       recipients,
       fields: [fields],
       expires_in: req.expiresDays,
-      reminders: req.reminders,
+      // Embedded: SignWell emails nobody (send_email stays false) and the CRM sends the reminders.
+      reminders: req.embedded ? false : req.reminders,
+      ...(req.embedded ? { embedded_signing: true, redirect_url: req.embedded.redirectUrl, decline_redirect_url: req.embedded.declineRedirectUrl } : {}),
       allow_decline: true,
       allow_reassign: false,
       apply_signing_order: false,

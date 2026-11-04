@@ -62,6 +62,9 @@ type OutboxRow = {
   internet_message_id: string | null;
   attempts: number;
   automation_run_id: string | null;
+  /** A CRM email (application, proposal, agreement link): what it was for, and who asked. */
+  crm_ref: string | null;
+  requested_by: string | null;
 };
 
 export type SendSummary = { sent: number; failed: number; retried: number };
@@ -270,6 +273,17 @@ async function fail(row: OutboxRow, code: string, address: string | null): Promi
     body: `${subject} to ${first} didn't send. ${why}`.slice(0, 500),
   });
   if (row.automation_run_id) await admin.rpc('automation_mail_result', { p_outbox: row.id, p_ok: false, p_error: why.slice(0, 300) });
+  // A CRM email from a company inbox: the person who asked hears of it, and so does the record it was for.
+  if (row.requested_by && row.requested_by !== row.user_id) {
+    await admin.from('mail_notices').insert({
+      user_id: row.requested_by,
+      mailbox_id: row.mailbox_id,
+      outbox_id: row.id,
+      kind: 'send_failed',
+      body: `${subject} to ${first} didn't send. ${why}`.slice(0, 500),
+    });
+  }
+  if (row.crm_ref) await admin.rpc('crm_mail_failed', { p_outbox: row.id, p_reason: why.slice(0, 300) });
   return 'failed';
 }
 

@@ -263,7 +263,7 @@ function AgreementRowView({
   const signed = a.files.find((f) => f.kind === 'completed');
   const sentCopy = a.files.find((f) => f.kind === 'sent_copy');
 
-  const facts: string[] = [`Sent ${date(a.sentAt)}`];
+  const facts: string[] = [`Sent ${date(a.sentAt)}${a.sentFrom ? ` from ${a.sentFrom}` : ''}`];
   if (live) facts.push(`Expires ${date(a.expiresAt)}`);
   if (a.status === 'completed' && a.completedAt) facts.push(`Completed ${date(a.completedAt)}`);
   if (a.status === 'declined' && a.declinedAt) facts.push(`Declined ${date(a.declinedAt)}${a.declineReason ? ` — “${a.declineReason}”` : ''}`);

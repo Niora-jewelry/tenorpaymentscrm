@@ -15,7 +15,7 @@ type Initial = { expiresDays: number; reminders: boolean; requesterName: string;
 
 const PLACEHOLDERS: { key: string; means: string; sample: string }[] = [
   { key: 'agreement', means: 'Which agreement it is', sample: 'merchant agreement' },
-  { key: 'signer_name', means: 'The first signer’s first name', sample: 'Jane' },
+  { key: 'signer_name', means: 'The signer’s first name (the first signer’s when SignWell sends the email)', sample: 'Jane' },
   { key: 'merchant', means: 'The DBA, or the legal name', sample: 'Joe’s Pizza' },
   { key: 'expires', means: 'The day the signing link stops working', sample: 'November 28, 2026' },
   { key: 'sender_name', means: 'The name of the person sending', sample: 'Alex Morgan' },

@@ -36,6 +36,10 @@ import { VendorError } from './vendor/types';
 import type { AgreementKindDef, AgreementProblem, AgreementSource } from './kinds/types';
 import { activeKinds, agreementById, agreementSettings, agrLabel, isOpen, newId, openAgreementFor, signersFor, type AgreementRow, type AgreementStatus, type Settings, type SignerRow, type SignerStatus } from './store';
 import { storeCompletedPdf } from './download';
+import { deliveryFor, DeliveryError, emailNewLink, emailSigningLinks, emailWithdrawn, newSignerLink, remindSigners, signingRedirects } from './outlook';
+import { sendingInboxFor } from '@/lib/mail/sendingInbox';
+import { fromOptions } from '@/lib/mail/compose/sender';
+import type { FromOption } from '@/lib/mail/viewTypes';
 
 export class AgreementError extends Error {
   constructor(message: string) {
@@ -161,6 +165,14 @@ export type PreSendResult = {
   templateReady: boolean;
   /** The ACH Authorization Form's monthly debit when the page is added; null when it isn't. */
   achAuthorization: { amount: string; signer: string } | null;
+  /**
+   * How it reaches the signers (Presets › Sending inbox): SignWell's own email,
+   * or the CRM's, from the company inbox or the sender's own mailbox.
+   */
+  delivery:
+    | { mode: 'signwell' }
+    | { mode: 'company'; address: string; ready: boolean }
+    | { mode: 'own'; from: FromOption[] };
 };
 
 function fillTemplate(text: string, vars: Record<string, string>): string {
@@ -177,14 +189,21 @@ async function kindOrThrow(kindKey: string): Promise<AgreementKindDef> {
 export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: string): Promise<PreSendResult> {
   await requireSend(ctx, recordId);
   const kind = await kindOrThrow(kindKey);
-  const [config, found, settings, templateReady, open, me] = await Promise.all([
+  const [config, found, settings, templateReady, open, me, inbox] = await Promise.all([
     loadConfig(),
     sourceFor(recordId),
     agreementSettings(),
     templateInstalled(kind),
     openAgreementFor(recordId, kind.key),
     supabaseAdmin().from('profiles').select('full_name, email').eq('id', ctx.userId).maybeSingle(),
+    sendingInboxFor('agreements'),
   ]);
+  const delivery: PreSendResult['delivery'] =
+    inbox.mode === 'mailbox'
+      ? { mode: 'company', address: inbox.inbox.address, ready: inbox.inbox.ready }
+      : inbox.mode === 'own'
+        ? { mode: 'own', from: await fromOptions(ctx).catch(() => []) }
+        : { mode: 'signwell' };
   if (!found) throw new AgreementError('That record no longer exists.');
   const { src, dealName } = found;
 
@@ -202,12 +221,13 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
   const vars = {
     merchant: name,
     agreement: kind.emailLabel,
-    signer_name: picked.signers[0]?.first ?? 'there',
+    // Sent by the CRM, each signer gets their own email, so their own name goes in at sending.
+    signer_name: delivery.mode === 'signwell' ? (picked.signers[0]?.first ?? 'there') : '{{signer_name}}',
     expires: expires.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
     sender_name: (me.data?.full_name as string | undefined) || (me.data?.email as string | undefined) || settings.requesterName,
   };
   return {
-    ok: visibleProblems.length === 0 && templateReady && agreementsConfigured,
+    ok: visibleProblems.length === 0 && templateReady && agreementsConfigured && !(delivery.mode === 'company' && !delivery.ready) && !(delivery.mode === 'own' && delivery.from.length === 0),
     kind: { key: kind.key, label: kind.label },
     groups: groupProblems(config, visibleProblems),
     signers: picked.signers.map((s) => ({ slot: s.slot, name: s.name, title: s.title, email: s.email, percentage: s.percentage })),
@@ -219,12 +239,13 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     configured: agreementsConfigured,
     templateReady,
     achAuthorization: ach.include ? { amount: ach.amount, signer: ach.signer?.name ?? '' } : null,
+    delivery,
   };
 }
 
 // ── sending ───────────────────────────────────────────────────────────────────
 
-export type SendInput = { recordId: string; kind: string; subject: string; message: string };
+export type SendInput = { recordId: string; kind: string; subject: string; message: string; mailboxId?: string | null };
 
 export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise<{ id: string; label: string }> {
   await requireSend(ctx, input.recordId);
@@ -243,6 +264,14 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
   const problems = sendProblems(kind, src, picked);
   if (problems.length) throw new AgreementError(`Can't send yet: ${problems.length} item${problems.length === 1 ? '' : 's'} need fixing. Open the check to see them.`);
   if (await openAgreementFor(input.recordId, kind.key)) throw new AgreementError(`This ${kind.label.toLowerCase()} is already out. Void it first.`);
+
+  let plan;
+  try {
+    plan = await deliveryFor(ctx, input.mailboxId ?? null);
+  } catch (e) {
+    if (e instanceof DeliveryError) throw new AgreementError(e.message);
+    throw e;
+  }
 
   const settings = await agreementSettings();
   const { pdf: template, fields } = await loadTemplate(kind);
@@ -280,6 +309,11 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     snapshot_iv: toPostgresBytea(sealed.iv),
     used_field_keys: rendered.usedFieldKeys,
     signer_count: picked.signers.length,
+    merchant_name: name,
+    delivery: plan ? 'outlook' : 'signwell',
+    delivery_mailbox_id: plan?.mailboxId ?? null,
+    delivery_address: plan?.address ?? null,
+    delivery_company: plan?.company ?? false,
   }).select('number').single();
   if (insert.error) {
     if (insert.error.code === '23505') throw new AgreementError(`This ${kind.label.toLowerCase()} is already out. Void it first.`);
@@ -300,10 +334,11 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
       subject: input.subject,
       message: input.message,
       requesterName: settings.requesterName,
-      requesterEmail: settings.requesterEmail,
+      requesterEmail: plan?.address ?? settings.requesterEmail,
       expiresDays: settings.expiresDays,
       reminders: settings.reminders,
       testMode: signwellTestMode,
+      embedded: plan ? signingRedirects() : null,
     });
   } catch (e) {
     // No half-sent record (spec §9).
@@ -312,7 +347,16 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     throw e;
   }
 
+  const links = new Map<number, { id: string; token: string; columns: ReturnType<typeof newSignerLink>['columns'] }>();
+  if (plan) {
+    for (const s of picked.signers) {
+      const signerId = newId();
+      const l = newSignerLink(signerId);
+      links.set(s.slot, { id: signerId, token: l.token, columns: l.columns });
+    }
+  }
   const signerRows = picked.signers.map((s) => ({
+    ...(links.get(s.slot) ? { id: links.get(s.slot)!.id, ...links.get(s.slot)!.columns } : {}),
     agreement_id: id,
     record_id: input.recordId,
     slot: s.slot,
@@ -331,6 +375,37 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     throw new AgreementError('The agreement could not be recorded, so it was cancelled at the signing service. Try again.');
   }
 
+  // Sent through Outlook: each signer's own email, from the chosen inbox. Nothing half-sent if it can't queue.
+  if (plan) {
+    try {
+      const a = await agreementById(id);
+      const rows = await signersFor(id);
+      if (!a) throw new Error('gone');
+      await emailSigningLinks(
+        a,
+        rows.map((row) => ({ row, token: [...links.values()].find((l) => l.id === row.id)!.token })),
+        input.message,
+        ctx.userId,
+        plan,
+      );
+    } catch (e) {
+      await vendor().cancel(sent.documentId).catch(() => undefined);
+      await supabaseAdmin().from('agreements').delete().eq('id', id);
+      throw new AgreementError(e instanceof Error && e.name === 'SendingInboxError' ? `${e.message} Nothing was sent.` : 'Outlook did not accept the emails, so nothing was sent. Try again.');
+    }
+    await supabaseAdmin().from('messages').insert({
+      record_id: input.recordId,
+      channel: 'email',
+      direction: 'out',
+      from_identity: plan.address,
+      to_identity: picked.signers.map((s) => s.email).join(', '),
+      subject: input.subject,
+      body: `${input.message.replace(/\{\{\s*signer_name\s*\}\}/g, '(each signer’s name)')}\n\n[Review and sign — a personal link for each signer]`,
+      external_id: `agreement:${id}`,
+      sent_at: new Date().toISOString(),
+    });
+  }
+
   // The flattened copy that went out, sealed, so the record keeps what the signers saw.
   await storeAgreementFile(id, input.recordId, 'sent_copy', fileName, flat).catch(() => undefined);
 
@@ -339,7 +414,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     p_agreement: id,
     p_actor: ctx.userId,
     p_summary: `${label} sent for signature to ${names}`,
-    p_update_body: `Agreement ${label} (${kind.label}) sent for e-signature to ${names}. Expires ${new Date(sentAt.getTime() + settings.expiresDays * 86400_000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
+    p_update_body: `Agreement ${label} (${kind.label}) sent for e-signature to ${names}${plan ? ` from ${plan.address}` : ''}. Expires ${new Date(sentAt.getTime() + settings.expiresDays * 86400_000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`,
   });
   return { id, label };
 }
@@ -401,6 +476,8 @@ export async function voidAgreement(ctx: AuthContext, agreementId: string): Prom
     p_source: 'user',
   });
   await supabaseAdmin().from('agreements').update({ voided_by: ctx.userId }).eq('id', a.id);
+  // Sent through Outlook: SignWell tells nobody, so the CRM does.
+  if (a.delivery === 'outlook') await emailWithdrawn(a, await signersFor(a.id), ctx.userId).catch(() => undefined);
 }
 
 /** Void & resend (spec §8): cancel, then a fresh agreement from the record as it is now. */
@@ -416,10 +493,20 @@ export async function sendReminder(ctx: AuthContext, agreementId: string): Promi
   if (!isOpen(a.status) || !a.vendor_document_id) throw new AgreementError('That agreement is not open.');
   const limit = await rateLimit(userKey('agreement_remind', ctx.userId), { limit: 10, windowSeconds: 3600 });
   if (!limit.allowed) throw new AgreementError('Reminders are limited to ten an hour.');
-  try {
-    await vendor().remind(a.vendor_document_id);
-  } catch {
-    throw new AgreementError(OUTAGE);
+  if (a.delivery === 'outlook') {
+    let n = 0;
+    try {
+      n = await remindSigners(a, await signersFor(a.id), ctx.userId);
+    } catch (e) {
+      throw new AgreementError(e instanceof Error && e.name === 'SendingInboxError' ? e.message : 'Outlook did not accept the reminder. Try again.');
+    }
+    if (n === 0) throw new AgreementError('Everyone still on this agreement has signed, declined or bounced; there is no one to remind.');
+  } else {
+    try {
+      await vendor().remind(a.vendor_document_id);
+    } catch {
+      throw new AgreementError(OUTAGE);
+    }
   }
   await supabaseAdmin().rpc('agreement_log', { p_agreement: a.id, p_actor: ctx.userId, p_summary: `Reminder sent for ${agrLabel(a.number)}`, p_update_body: null });
 }
@@ -448,9 +535,19 @@ export async function resendToSigner(ctx: AuthContext, agreementId: string, sign
     await vendor().updateRecipient(a.vendor_document_id, signer.vendor_recipient_id, name, email);
   } catch (e) {
     if (e instanceof VendorError && e.kind === 'rejected') throw new AgreementError('The signing service would not change this signer — they may have started signing.');
+    // SignWell answers 409 for the few seconds it is still preparing a new document.
+    if (e instanceof VendorError && e.kind === 'conflict') throw new AgreementError('The signing service is still preparing this document. Try again in a minute.');
     throw new AgreementError(OUTAGE);
   }
   await supabaseAdmin().from('agreement_signers').update({ email, name, status: 'sent', bounced_at: null, resent_at: new Date().toISOString() }).eq('id', signer.id);
+  // Sent through Outlook: the corrected address gets its own fresh link (the old one stops working).
+  if (a.delivery === 'outlook') {
+    try {
+      await emailNewLink(a, { ...signer, email, name, status: 'sent' }, ctx.userId);
+    } catch (e) {
+      throw new AgreementError(e instanceof Error && e.name === 'SendingInboxError' ? e.message : 'The address was corrected, but Outlook did not accept the email. Press Resend again.');
+    }
+  }
   await supabaseAdmin().rpc('agreement_log', {
     p_agreement: a.id,
     p_actor: ctx.userId,
@@ -480,6 +577,8 @@ export type AgreementView = {
   testMode: boolean;
   sentBy: string | null;
   sentAt: string;
+  /** Sent through Outlook from this inbox; null when SignWell emailed the signers. */
+  sentFrom: string | null;
   expiresAt: string;
   completedAt: string | null;
   declinedAt: string | null;
@@ -513,7 +612,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
   await requireView(ctx, recordId);
   const supabase = await createSupabaseServerClient();
   const [rows, signerRows, fileRows, kinds, canSend, config] = await Promise.all([
-    supabase.from('agreements').select('id, number, kind, status, test_mode, sent_by, sent_at, expires_at, completed_at, declined_at, decline_reason, expired_at, voided_at, used_field_keys, download_status').eq('record_id', recordId).order('sent_at', { ascending: false }),
+    supabase.from('agreements').select('id, number, kind, status, test_mode, sent_by, sent_at, delivery, delivery_address, expires_at, completed_at, declined_at, decline_reason, expired_at, voided_at, used_field_keys, download_status').eq('record_id', recordId).order('sent_at', { ascending: false }),
     supabase.from('agreement_signers').select('id, agreement_id, slot, name, email, ownership_pct, status, viewed_at, signed_at, declined_at, decline_reason, bounced_at, resent_at').eq('record_id', recordId).order('slot'),
     supabase.from('agreement_files').select('id, agreement_id, kind, name, size_bytes').eq('record_id', recordId),
     activeKinds(),
@@ -537,6 +636,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
       testMode: Boolean(r.test_mode),
       sentBy: (r.sent_by as string | null) ?? null,
       sentAt: r.sent_at as string,
+      sentFrom: r.delivery === 'outlook' ? ((r.delivery_address as string | null) ?? null) : null,
       expiresAt: r.expires_at as string,
       completedAt: (r.completed_at as string | null) ?? null,
       declinedAt: (r.declined_at as string | null) ?? null,

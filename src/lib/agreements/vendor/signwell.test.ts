@@ -60,6 +60,43 @@ describe('SignWell client', () => {
     expect(body.fields[0][2]).toMatchObject({ recipient_id: 'principal-2' });
   });
 
+  it('sent through Outlook: embedded, SignWell emails nobody and sends no reminders', async () => {
+    let body: Record<string, unknown> = {};
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(init!.body as string);
+      return json(201, { id: 'doc-1', status: 'Sent', recipients: [{ id: 'principal-1', email: 'jane@zz.test', name: 'Jane Doe' }, { id: 'principal-2', email: 'john@zz.test', name: 'John Roe' }] });
+    });
+    const sw = new SignWell('key', 'wh-1', fetchImpl as unknown as typeof fetch);
+    await sw.send({ ...req, requesterEmail: 'office@zz.test', embedded: { redirectUrl: 'https://crm.test/sign/complete', declineRedirectUrl: 'https://crm.test/sign/declined' } });
+    expect(body.embedded_signing).toBe(true);
+    expect(body.send_email).toBeUndefined(); // SignWell's default for embedded: no email to the signer
+    expect(body.reminders).toBe(false);
+    expect(body.redirect_url).toBe('https://crm.test/sign/complete');
+    expect(body.decline_redirect_url).toBe('https://crm.test/sign/declined');
+    expect(body.custom_requester_email).toBe('office@zz.test');
+  });
+
+  it('an ordinary send stays with SignWell’s own email', async () => {
+    let body: Record<string, unknown> = {};
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(init!.body as string);
+      return json(201, { id: 'doc-1', status: 'Sent', recipients: [{ id: 'principal-1', email: 'jane@zz.test', name: 'Jane Doe' }, { id: 'principal-2', email: 'john@zz.test', name: 'John Roe' }] });
+    });
+    await new SignWell('key', 'wh-1', fetchImpl as unknown as typeof fetch).send(req);
+    expect(body.embedded_signing).toBeUndefined();
+    expect(body.redirect_url).toBeUndefined();
+    expect(body.reminders).toBe(true);
+  });
+
+  it('only ever follows a signing address on SignWell itself', async () => {
+    const doc = (url: string) => ({ id: 'd', status: 'Sent', recipients: [{ id: 'r', email: 'j@zz.test', name: 'J', embedded_signing_url: url }] });
+    const urlOf = async (url: string) => (await new SignWell('k', 'w', (async () => json(200, doc(url))) as unknown as typeof fetch).get('d')).recipients[0]!.signingUrl;
+    expect(await urlOf('https://www.signwell.com/docs/abc/')).toBe('https://www.signwell.com/docs/abc/');
+    expect(await urlOf('https://evil.example/docs/abc/')).toBeNull();
+    expect(await urlOf('https://www.signwell.com.evil.example/x')).toBeNull();
+    expect(await urlOf('http://www.signwell.com/docs/abc/')).toBeNull();
+  });
+
   it('turns HTTP failures into VendorError kinds, never into vendor text', async () => {
     const sw = (status: number) => new SignWell('key', 'wh', (async () => json(status, { error: 'SSN 123-45-6789 is invalid' })) as unknown as typeof fetch);
     await expect(sw(422).get('d')).rejects.toMatchObject({ kind: 'rejected' });
@@ -74,8 +111,8 @@ describe('SignWell client', () => {
   });
 
   it('reads a document: status lower-cased, recipients with bounced flags', async () => {
-    const sw = new SignWell('key', 'wh', (async () => json(200, { id: 'd', status: 'Bounced', decline_message: null, metadata: { agreement_id: 'agr-1' }, recipients: [{ id: 'r1', email: 'a@b.c', name: 'A', status: 'sent', bounced: true }] })) as unknown as typeof fetch);
-    expect(await sw.get('d')).toEqual({ documentId: 'd', status: 'bounced', declineMessage: null, metadata: { agreement_id: 'agr-1' }, recipients: [{ vendorId: 'r1', email: 'a@b.c', name: 'A', status: 'sent', bounced: true }] });
+    const sw = new SignWell('key', 'wh', (async () => json(200, { id: 'd', status: 'Bounced', decline_message: null, metadata: { agreement_id: 'agr-1' }, recipients: [{ id: 'r1', email: 'a@b.c', name: 'A', status: 'sent', bounced: true, signingUrl: null }] })) as unknown as typeof fetch);
+    expect(await sw.get('d')).toEqual({ documentId: 'd', status: 'bounced', declineMessage: null, metadata: { agreement_id: 'agr-1' }, recipients: [{ vendorId: 'r1', email: 'a@b.c', name: 'A', status: 'sent', bounced: true, signingUrl: null }] });
   });
 
   it('verifies a webhook by its hash and rejects a forged one', () => {

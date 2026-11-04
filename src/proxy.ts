@@ -210,13 +210,26 @@ export function isMerchantProposalPath(pathname: string): boolean {
   return MERCHANT_PROPOSAL.test(pathname);
 }
 
+/**
+ * An agreement signer's link (agreements sent through Outlook): the token page
+ * and its signed-copy download, plus the three fixed pages SignWell and the
+ * action send a signer to. Nothing looser under /sign is public.
+ */
+const MERCHANT_SIGN = /^\/sign\/[A-Za-z0-9_-]{43}(\/copy)?$/;
+const SIGN_PAGES = new Set(['/sign/complete', '/sign/declined', '/sign/invalid']);
+
+export function isMerchantSignPath(pathname: string): boolean {
+  return MERCHANT_SIGN.test(pathname) || SIGN_PAGES.has(pathname);
+}
+
 function isPublic(pathname: string): boolean {
   return (
     PUBLIC_PATHS.has(pathname) ||
     PUBLIC_API_PATHS.has(pathname) ||
     isPrototypePath(pathname) ||
     isMerchantApplicationPath(pathname) ||
-    isMerchantProposalPath(pathname)
+    isMerchantProposalPath(pathname) ||
+    isMerchantSignPath(pathname)
   );
 }
 

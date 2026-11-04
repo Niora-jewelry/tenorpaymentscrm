@@ -170,7 +170,15 @@ export function SendProposalDialog({
               </ul>
             ) : null}
 
-            {defaults.from.length === 0 ? (
+            {defaults.company && !defaults.company.ready ? (
+              <p className="flex items-start gap-2 rounded-lg border border-[#f7e0af] bg-[#fdf1d8] px-3 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09]">
+                <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
+                <span>
+                  Proposals go out from {defaults.company.address}, which has no working connection right now. Ask an admin to reconnect it in Email.
+                </span>
+              </p>
+            ) : null}
+            {defaults.from.length === 0 && !defaults.company ? (
               <p className="flex items-start gap-2 rounded-lg border border-line bg-canvas px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-600">
                 <Icon name="mail" size={14} className="mt-[2px] shrink-0 text-ink-400" />
                 <span>
@@ -188,13 +196,20 @@ export function SendProposalDialog({
                 <label htmlFor={ids.from} className={label}>
                   From
                 </label>
-                <select id={ids.from} value={from} onChange={(e) => setFrom(e.target.value)} disabled={!defaults.from.length} className={field}>
-                  {defaults.from.map((f) => (
-                    <option key={f.mailboxId} value={f.mailboxId}>
-                      {f.displayName ? `${f.displayName} <${f.address}>` : f.address}
-                    </option>
-                  ))}
-                </select>
+                {defaults.company ? (
+                  <>
+                    <input id={ids.from} value={defaults.company.address} readOnly className={`${field} cursor-default bg-canvas text-ink-700`} />
+                    <p className="mt-1 text-[11.5px] text-ink-500">Company inbox, set by your admin</p>
+                  </>
+                ) : (
+                  <select id={ids.from} value={from} onChange={(e) => setFrom(e.target.value)} disabled={!defaults.from.length} className={field}>
+                    {defaults.from.map((f) => (
+                      <option key={f.mailboxId} value={f.mailboxId}>
+                        {f.displayName ? `${f.displayName} <${f.address}>` : f.address}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div>
                 <label htmlFor={ids.to} className={label}>

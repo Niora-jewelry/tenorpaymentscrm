@@ -14,6 +14,7 @@
 import 'server-only';
 import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { companyBody, companyFromOption, queueCrmMail, sendingInboxFor, SendingInboxError, type SendingInbox } from '@/lib/mail/sendingInbox';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
 import { loadConfig, type Config } from '@/lib/records/config';
@@ -222,6 +223,8 @@ export type ProposalSendDefaults = {
   notes: ProposalNote[];
   monthlySavings: number;
   merchant: string;
+  /** Set when an admin chose one company inbox for proposals (Presets › Sending inbox). */
+  company: { address: string; ready: boolean } | null;
 };
 
 export const DEFAULT_SUBJECT = 'Your proposal from Tenor Payments — {{merchant}}';
@@ -237,7 +240,11 @@ const fill = (text: string, vars: Record<string, string>) => text.replace(/\{\{\
 
 export async function proposalSendDefaults(ctx: AuthContext, recordId: string, moduleSlug: string | null): Promise<ProposalSendDefaults> {
   await requireProposalsEdit(ctx, recordId);
-  const [d, from] = await Promise.all([draftFor(ctx, recordId, moduleSlug), fromOptions(ctx)]);
+  const inbox = await sendingInboxFor('proposals');
+  const [d, from] = await Promise.all([
+    draftFor(ctx, recordId, moduleSlug),
+    inbox.mode === 'mailbox' ? (inbox.inbox.ready ? companyFromOption(inbox.inbox).then((o) => [o]) : Promise.resolve([])) : fromOptions(ctx),
+  ]);
   const vars = { merchant: d.merchant, contact_name: d.contactName || 'there' };
   return {
     to: d.contactEmail,
@@ -249,6 +256,7 @@ export async function proposalSendDefaults(ctx: AuthContext, recordId: string, m
     notes: d.notes,
     monthlySavings: d.content.savings.monthly,
     merchant: d.merchant,
+    company: inbox.mode === 'mailbox' ? { address: inbox.inbox.address, ready: inbox.inbox.ready } : null,
   };
 }
 
@@ -256,13 +264,18 @@ export async function proposalSendDefaults(ctx: AuthContext, recordId: string, m
 
 export type ProposalSendInput = { recordId: string; mailboxId: string; to: string; cc: string[]; subject: string; body: string };
 
-async function mailGate(ctx: AuthContext): Promise<void> {
+/** Your own mailbox needs Email access; the company inbox an admin chose does not. */
+async function mailGate(ctx: AuthContext, inbox: SendingInbox): Promise<void> {
   if (await currentImpersonation()) throw new ProposalError('You are signed in as someone else. Stop impersonating to send.');
-  try {
-    await requireEmailAccess(ctx, 'edit');
-  } catch (e) {
-    if (e instanceof EmailAccessError) throw new ProposalError(e.message);
-    throw e;
+  if (inbox.mode === 'mailbox') {
+    if (!inbox.inbox.ready) throw new ProposalError(`Proposals go out from ${inbox.inbox.address}, which has no working connection. Ask an admin to reconnect it in Email.`);
+  } else {
+    try {
+      await requireEmailAccess(ctx, 'edit');
+    } catch (e) {
+      if (e instanceof EmailAccessError) throw new ProposalError(e.message);
+      throw e;
+    }
   }
   for (const [i, rule] of [RATE_LIMITS.mailSendPerUserMinute, RATE_LIMITS.mailSendPerUserDay].entries()) {
     const limit = await rateLimit(userKey(`mail_send${i}`, ctx.userId), rule);
@@ -287,7 +300,8 @@ const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
 
 export async function sendProposal(ctx: AuthContext, input: ProposalSendInput): Promise<{ id: string; label: string }> {
   await requireProposalsEdit(ctx, input.recordId);
-  await mailGate(ctx);
+  const inbox = await sendingInboxFor('proposals');
+  await mailGate(ctx, inbox);
   if (!isEmail(input.to)) throw new ProposalError('Enter a valid recipient email address.');
   const bad = input.cc.find((c) => !isEmail(c));
   if (bad) throw new ProposalError(`${bad} is not a valid email address.`);
@@ -318,8 +332,31 @@ export async function sendProposal(ctx: AuthContext, input: ProposalSendInput): 
 
   try {
     const link = proposalLinkFor(token);
-    const html = await withSignature(proposalEmailHtml(input.body, link), input.mailboxId, true);
     const supabase = await createSupabaseServerClient();
+    let outboxId: string | undefined;
+    let fromAddress = '';
+    if (inbox.mode === 'mailbox') {
+      // The company inbox an admin chose; whoever clicked Send is kept as the one who asked.
+      try {
+        outboxId = (
+          await queueCrmMail({
+            mailboxId: inbox.inbox.mailboxId,
+            preferUser: ctx.userId,
+            requestedBy: ctx.userId,
+            crmRef: `proposal:${id}`,
+            recordId: input.recordId,
+            subject: input.subject,
+            html: await companyBody(proposalEmailHtml(input.body, link), inbox.inbox),
+            to: [{ name: '', address: input.to }],
+            cc: input.cc.map((address) => ({ name: '', address })),
+          })
+        ).outboxId;
+      } catch (e) {
+        throw new ProposalError(e instanceof SendingInboxError ? e.message : 'Outlook did not accept the message. Try again.');
+      }
+      fromAddress = inbox.inbox.address;
+    } else {
+    const html = await withSignature(proposalEmailHtml(input.body, link), input.mailboxId, true);
     const { data, error: mailError } = await supabase.rpc('mail_outbox_submit', {
       p_request_id: newId(),
       p_mailbox_id: input.mailboxId,
@@ -335,11 +372,13 @@ export async function sendProposal(ctx: AuthContext, input: ProposalSendInput): 
       p_send_at: null,
     });
     if (mailError) throw new ProposalError(mailError.code === '42501' || mailError.code === '22023' ? mailError.message : 'Outlook did not accept the message. Try again.');
-    const outboxId = (data as { id: string }[])[0]?.id;
+    const ownId = (data as { id: string }[])[0]?.id;
+    outboxId = ownId;
     // No undo window for a proposal: it goes now.
-    if (outboxId) after(() => sendDue({ only: outboxId, budgetMs: 50_000 }).then(() => undefined));
+    if (ownId) after(() => sendDue({ only: ownId, budgetMs: 50_000 }).then(() => undefined));
 
-    const fromAddress = (await supabase.from('mail_mailboxes').select('address').eq('id', input.mailboxId).maybeSingle()).data?.address ?? '';
+    fromAddress = (await supabase.from('mail_mailboxes').select('address').eq('id', input.mailboxId).maybeSingle()).data?.address ?? '';
+    }
     // The merchant's email history on the record (the drawer's Email tab).
     await supabaseAdmin()
       .from('messages')

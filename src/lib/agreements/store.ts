@@ -43,6 +43,14 @@ export type AgreementRow = {
   download_attempts: number;
   next_attempt_at: string | null;
   download_note: string | null;
+  /** 'outlook': the CRM emails the signers from `delivery_address`; SignWell only hosts the signing page. */
+  delivery: 'signwell' | 'outlook';
+  delivery_mailbox_id: string | null;
+  delivery_address: string | null;
+  /** True when it went from the company inbox an admin chose (its signature, not the sender's). */
+  delivery_company: boolean;
+  completion_emailed_at: string | null;
+  merchant_name: string | null;
 };
 
 export type SignerRow = {
@@ -62,6 +70,12 @@ export type SignerRow = {
   decline_reason: string | null;
   bounced_at: string | null;
   resent_at: string | null;
+  link_hash: unknown;
+  link_sealed: unknown;
+  link_iv: unknown;
+  link_sent_at: string | null;
+  reminders_sent: number;
+  last_reminded_at: string | null;
 };
 
 export type Settings = { expiresDays: number; reminders: boolean; requesterName: string; requesterEmail: string | null; emailSubject: string; emailMessage: string };

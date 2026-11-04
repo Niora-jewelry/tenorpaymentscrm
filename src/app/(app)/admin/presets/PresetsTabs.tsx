@@ -69,7 +69,7 @@ export function PresetsTabs({ sections }: { sections: PresetSection[] }) {
     <div>
       <nav
         aria-label="Preset sections"
-        className="-mb-px flex gap-0.5 overflow-x-auto border-b border-line"
+        className="-mb-px flex flex-wrap gap-0.5 border-b border-line"
       >
         {sections.map((s) => {
           const isActive = s.key === active.key;

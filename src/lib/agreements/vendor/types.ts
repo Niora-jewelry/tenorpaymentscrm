@@ -23,6 +23,12 @@ export type SendRequest = {
   expiresDays: number;
   reminders: boolean;
   testMode: boolean;
+  /**
+   * The CRM emails each signer itself, from the inbox Presets chose (client,
+   * 3 Nov 2026): the vendor sends nothing and only hosts the signing page.
+   * `redirectUrl` / `declineRedirectUrl` are where the signer lands after.
+   */
+  embedded?: { redirectUrl: string; declineRedirectUrl: string } | null;
 };
 
 export type SentDocument = {
@@ -36,7 +42,7 @@ export type VendorDocument = {
   /** The vendor's own status word, lower-cased: sent, viewed, pending, completed, declined, canceled, expired, bounced… */
   status: string;
   declineMessage: string | null;
-  recipients: { vendorId: string; email: string; name: string; status: string | null; bounced: boolean }[];
+  recipients: { vendorId: string; email: string; name: string; status: string | null; bounced: boolean; signingUrl: string | null }[];
   metadata: Record<string, string>;
 };
 

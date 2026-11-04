@@ -14,6 +14,7 @@
 import 'server-only';
 import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { companyBody, companyFromOption, queueCrmMail, sendingInboxFor, SendingInboxError, type SendingInbox } from '@/lib/mail/sendingInbox';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
 import { loadConfig } from '@/lib/records/config';
@@ -175,15 +176,25 @@ export type SendDefaults = {
   expiryDays: number;
   fileName: string;
   templateReady: boolean;
+  /** Set when an admin chose one company inbox for applications (Presets › Sending inbox). */
+  company: { address: string; ready: boolean } | null;
 };
 
-async function mailGate(ctx: AuthContext): Promise<void> {
+/**
+ * Sending from your own mailbox needs Email access; sending from the company
+ * inbox an admin chose does not (the sender never reads that inbox).
+ */
+async function mailGate(ctx: AuthContext, inbox: SendingInbox): Promise<void> {
   if (await currentImpersonation()) throw new ApplicationError('You are signed in as someone else. Stop impersonating to send.');
-  try {
-    await requireEmailAccess(ctx, 'edit');
-  } catch (e) {
-    if (e instanceof EmailAccessError) throw new ApplicationError(e.message);
-    throw e;
+  if (inbox.mode === 'mailbox') {
+    if (!inbox.inbox.ready) throw new ApplicationError(`Applications go out from ${inbox.inbox.address}, which has no working connection. Ask an admin to reconnect it in Email.`);
+  } else {
+    try {
+      await requireEmailAccess(ctx, 'edit');
+    } catch (e) {
+      if (e instanceof EmailAccessError) throw new ApplicationError(e.message);
+      throw e;
+    }
   }
   for (const [i, rule] of [RATE_LIMITS.mailSendPerUserMinute, RATE_LIMITS.mailSendPerUserDay].entries()) {
     const limit = await rateLimit(userKey(`mail_send${i}`, ctx.userId), rule);
@@ -232,10 +243,11 @@ function fillTemplate(text: string, vars: Record<string, string>): string {
 /** What the Send Application modal opens with. */
 export async function sendDefaults(ctx: AuthContext, recordId: string): Promise<SendDefaults> {
   await requireApplicationsEdit(ctx, recordId);
+  const inbox = await sendingInboxFor('applications');
   const [rec, settings, from, templateReady, me] = await Promise.all([
     recordForApplication(recordId),
     applicationSettings(),
-    fromOptions(ctx),
+    inbox.mode === 'mailbox' ? (inbox.inbox.ready ? companyFromOption(inbox.inbox).then((o) => [o]) : Promise.resolve([])) : fromOptions(ctx),
     templateInstalled(),
     supabaseAdmin().from('profiles').select('full_name, email').eq('id', ctx.userId).maybeSingle(),
   ]);
@@ -260,6 +272,7 @@ export async function sendDefaults(ctx: AuthContext, recordId: string): Promise<
     expiryDays: settings.linkExpiryDays,
     fileName: applicationFileName(name),
     templateReady,
+    company: inbox.mode === 'mailbox' ? { address: inbox.inbox.address, ready: inbox.inbox.ready } : null,
   };
 }
 
@@ -296,6 +309,7 @@ async function deliver(
   app: { id: string; number: number; recordId: string },
   token: string,
   input: Omit<SendInput, 'recordId'>,
+  inbox: SendingInbox,
 ): Promise<void> {
   const rec = await recordForApplication(app.recordId);
   if (!rec) throw new ApplicationError('That record no longer exists.');
@@ -311,8 +325,32 @@ async function deliver(
   if (up.error) throw new ApplicationError('Could not attach the PDF. Try again.');
 
   const link = linkFor(token);
-  const html = await withSignature(emailHtml(input.body, link), input.mailboxId, true);
   const supabase = await createSupabaseServerClient();
+  let outboxId: string | undefined;
+  let fromAddress = '';
+  if (inbox.mode === 'mailbox') {
+    // The company inbox an admin chose; whoever clicked Send is kept as the one who asked.
+    try {
+      const queued = await queueCrmMail({
+        mailboxId: inbox.inbox.mailboxId,
+        preferUser: ctx.userId,
+        requestedBy: ctx.userId,
+        crmRef: `application:${app.id}`,
+        recordId: app.recordId,
+        subject: input.subject,
+        html: await companyBody(emailHtml(input.body, link), inbox.inbox),
+        to: [{ name: '', address: input.to }],
+        cc: input.cc.map((address) => ({ name: '', address })),
+        attachments: [{ path, name: fileName, size: pdf.byteLength, contentType: 'application/pdf' }],
+      });
+      outboxId = queued.outboxId;
+    } catch (e) {
+      await supabaseAdmin().storage.from(OUTBOX_BUCKET).remove([path]);
+      throw new ApplicationError(e instanceof SendingInboxError ? e.message : 'Outlook did not accept the message. Try again.');
+    }
+    fromAddress = inbox.inbox.address;
+  } else {
+  const html = await withSignature(emailHtml(input.body, link), input.mailboxId, true);
   const { data, error } = await supabase.rpc('mail_outbox_submit', {
     p_request_id: newId(),
     p_mailbox_id: input.mailboxId,
@@ -331,12 +369,14 @@ async function deliver(
     await supabaseAdmin().storage.from(OUTBOX_BUCKET).remove([path]);
     throw new ApplicationError(error.code === '42501' || error.code === '22023' ? error.message : 'Outlook did not accept the message. Try again.');
   }
-  const outboxId = (data as { id: string }[])[0]?.id;
+  const ownId = (data as { id: string }[])[0]?.id;
+  outboxId = ownId;
   // No undo window for an application: it goes now.
-  if (outboxId) after(() => sendDue({ only: outboxId, budgetMs: 50_000 }).then(() => undefined));
+  if (ownId) after(() => sendDue({ only: ownId, budgetMs: 50_000 }).then(() => undefined));
 
-  const fromAddress =
+  fromAddress =
     (await supabase.from('mail_mailboxes').select('address').eq('id', input.mailboxId).maybeSingle()).data?.address ?? '';
+  }
   // The merchant's email history on the record (the drawer's Email tab).
   await supabaseAdmin()
     .from('messages')
@@ -362,7 +402,8 @@ function checkRecipients(to: string, cc: string[]) {
 
 export async function sendApplication(ctx: AuthContext, input: SendInput): Promise<{ id: string; label: string }> {
   await requireApplicationsEdit(ctx, input.recordId);
-  await mailGate(ctx);
+  const inbox = await sendingInboxFor('applications');
+  await mailGate(ctx, inbox);
   checkRecipients(input.to, input.cc);
   await loadTemplate().catch((e) => {
     if (e instanceof TemplateMissingError) throw new ApplicationError(e.message);
@@ -389,7 +430,7 @@ export async function sendApplication(ctx: AuthContext, input: SendInput): Promi
     .single();
   if (error) throw error;
   try {
-    await deliver(ctx, { id, number: row.number as number, recordId: input.recordId }, token, input);
+    await deliver(ctx, { id, number: row.number as number, recordId: input.recordId }, token, input, inbox);
   } catch (e) {
     // Never leave an application on the record that was never sent.
     await supabaseAdmin().from('applications').delete().eq('id', id);
@@ -411,12 +452,13 @@ export async function resendApplication(ctx: AuthContext, applicationId: string,
   await requireApplicationsEdit(ctx, app.record_id);
   if (app.status === 'voided') throw new ApplicationError('This application was voided. Send a new one instead.');
   if (!['sent', 'opened'].includes(app.status)) throw new ApplicationError('This application has already come back, so there is nothing to resend.');
-  await mailGate(ctx);
+  const inbox = await sendingInboxFor('applications');
+  await mailGate(ctx, inbox);
   checkRecipients(input.to, input.cc);
   const { data: sealed, error } = await supabaseAdmin().from('applications').select('id, token_sealed, token_iv').eq('id', app.id).single();
   if (error) throw error;
   const token = openToken(sealed);
-  await deliver(ctx, { id: app.id, number: app.number, recordId: app.record_id }, token, input);
+  await deliver(ctx, { id: app.id, number: app.number, recordId: app.record_id }, token, input, inbox);
   const settings = await applicationSettings();
   await supabaseAdmin()
     .from('applications')

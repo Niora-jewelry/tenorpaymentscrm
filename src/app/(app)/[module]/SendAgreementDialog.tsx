@@ -35,8 +35,9 @@ export function SendAgreementDialog({
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [from, setFrom] = useState('');
   const [pending, start] = useTransition();
-  const ids = { subject: useId(), message: useId() };
+  const ids = { subject: useId(), message: useId(), from: useId() };
 
   useEffect(() => {
     let live = true;
@@ -46,6 +47,7 @@ export function SendAgreementDialog({
       setCheck(r.data);
       setSubject(r.data.subject);
       setMessage(r.data.message);
+      if (r.data.delivery.mode === 'own') setFrom(r.data.delivery.from[0]?.mailboxId ?? '');
     });
     return () => {
       live = false;
@@ -61,7 +63,9 @@ export function SendAgreementDialog({
   const problems = check?.groups.reduce((n, g) => n + g.items.length, 0) ?? 0;
   // "Already out" is the one problem Void & resend removes itself.
   const blocking = check ? check.groups.flatMap((g) => g.items).filter((i) => !(resendOf && /already out/.test(i.message))).length : 0;
-  const canSend = !!check && blocking === 0 && check.configured && check.templateReady && subject.trim() && message.trim();
+  const delivery = check?.delivery;
+  const inboxReady = !delivery || delivery.mode === 'signwell' || (delivery.mode === 'company' ? delivery.ready : !!from);
+  const canSend = !!check && blocking === 0 && check.configured && check.templateReady && inboxReady && subject.trim() && message.trim();
 
   const send = () =>
     start(async () => {
@@ -69,7 +73,13 @@ export function SendAgreementDialog({
       const res = await fetch('/api/agreements/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(resendOf ? { resendOf, kind, subject: subject.trim(), message } : { recordId, kind, subject: subject.trim(), message }),
+        body: JSON.stringify({
+          ...(resendOf ? { resendOf } : { recordId }),
+          kind,
+          subject: subject.trim(),
+          message,
+          ...(delivery?.mode === 'own' && from ? { mailboxId: from } : {}),
+        }),
       });
       const r = (await res.json().catch(() => ({ ok: false, message: 'The agreement was not sent. Try again.' }))) as { ok: boolean; message?: string; data?: { label: string } };
       if (!r.ok) return setError(r.message ?? 'The agreement was not sent. Try again.');
@@ -202,6 +212,48 @@ export function SendAgreementDialog({
               Expires after {check.expiresDays} days. Reminders go out automatically to anyone who has not signed.
             </p>
 
+            {delivery && delivery.mode !== 'signwell' ? (
+              <div>
+                <label htmlFor={ids.from} className={label}>
+                  From
+                </label>
+                {delivery.mode === 'company' ? (
+                  <>
+                    <input id={ids.from} value={delivery.address} readOnly className={`${field} cursor-default bg-canvas text-ink-700`} />
+                    {delivery.ready ? (
+                      <p className="mt-1 text-[11.5px] text-ink-400">Company inbox, set by your admin. Each signer gets their own email and link from it; replies come back there.</p>
+                    ) : (
+                      <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[#8a5a09]">
+                        <Icon name="alert-triangle" size={12} /> This inbox has no working connection. Ask an admin to reconnect it in Email.
+                      </p>
+                    )}
+                  </>
+                ) : delivery.from.length ? (
+                  <>
+                    <select id={ids.from} value={from} onChange={(e) => setFrom(e.target.value)} className={field}>
+                      {delivery.from.map((f) => (
+                        <option key={f.mailboxId} value={f.mailboxId}>
+                          {f.displayName ? `${f.displayName} <${f.address}>` : f.address}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11.5px] text-ink-400">Each signer gets their own email and link from this mailbox; replies come back to it.</p>
+                  </>
+                ) : (
+                  <p className="flex items-start gap-2 rounded-lg border border-line bg-canvas px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-600">
+                    <Icon name="mail" size={14} className="mt-[2px] shrink-0 text-ink-400" />
+                    <span>
+                      Agreements go out from your own Outlook mailbox. Connect it in{' '}
+                      <Link href="/email" className="font-semibold text-brand-700 hover:underline">
+                        Email
+                      </Link>{' '}
+                      first.
+                    </span>
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             <div>
               <label htmlFor={ids.subject} className={label}>
                 Email subject
@@ -213,7 +265,11 @@ export function SendAgreementDialog({
                 Email message
               </label>
               <textarea id={ids.message} value={message} onChange={(e) => setMessage(e.target.value)} rows={6} maxLength={5000} className={`${field} resize-y leading-relaxed`} />
-              <p className="mt-1 text-[11.5px] text-ink-400">The signing service sends it under the name set in Presets, with the link to sign.</p>
+              <p className="mt-1 text-[11.5px] text-ink-400">
+                {delivery && delivery.mode !== 'signwell'
+                  ? '{{signer_name}} becomes each signer’s first name. A “Review and sign” button with their personal link is added below your message.'
+                  : 'The signing service sends it under the name set in Presets, with the link to sign.'}
+              </p>
             </div>
             {error ? (
               <p className="flex items-center gap-2 rounded-lg bg-bad-bg px-3 py-2.5 text-[13px] text-bad">

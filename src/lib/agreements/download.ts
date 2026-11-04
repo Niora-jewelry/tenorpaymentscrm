@@ -29,6 +29,11 @@ export async function storeCompletedPdf(agreementId: string): Promise<'stored' |
     await storeAgreementFile(a.id, a.record_id, 'completed', name, bytes);
     await supabaseAdmin().from('agreements').update({ download_status: 'stored', next_attempt_at: null, download_note: null }).eq('id', a.id);
     await supabaseAdmin().rpc('agreement_log', { p_agreement: a.id, p_actor: null, p_summary: `Signed PDF saved for ${agrLabel(a.number)}`, p_update_body: null });
+    // Sent through Outlook: the signers hear from the CRM that it is done, and where their copy is.
+    if (a.delivery === 'outlook') {
+      const { emailCompleted } = await import('./outlook');
+      await emailCompleted(a.id).catch((e) => console.error('[agreements] completion email', e instanceof Error ? e.message.slice(0, 160) : e));
+    }
     return 'stored';
   } catch (e) {
     const attempts = a.download_attempts + 1;

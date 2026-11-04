@@ -17,6 +17,7 @@ import { getClientIp } from '@/lib/security/request';
 import { ipKey, rateLimit, RATE_LIMITS } from '@/lib/security/rate-limit';
 import { pruneStagedUploads } from '@/lib/applications/housekeeping';
 import { expireStaleAgreements, reconcileOpenAgreements } from '@/lib/agreements/housekeeping';
+import { remindDueSigners } from '@/lib/agreements/outlook';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,9 @@ async function handle(req: NextRequest) {
       if (expired > 0) console.log('[housekeeping] agreements expired', expired);
       const reconciled = await reconcileOpenAgreements();
       if (reconciled.changed > 0) console.log('[housekeeping] agreements reconciled', reconciled);
+      // Agreements sent through Outlook: day 3, 6 and 10 reminders (SignWell sends its own otherwise).
+      const reminded = await remindDueSigners();
+      if (reminded > 0) console.log('[housekeeping] agreement reminders queued', reminded);
       const pruned = await supabaseAdmin().rpc('automation_prune');
       if (pruned.error) console.error('[housekeeping] automation_prune failed', pruned.error.code);
     } catch (e) {

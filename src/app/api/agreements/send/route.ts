@@ -21,6 +21,8 @@ const Body = z.object({
   kind: z.string().trim().min(1).max(60),
   subject: z.string().trim().min(1, 'Add a subject.').max(200),
   message: z.string().trim().min(1, 'Add a message.').max(5000),
+  /** The sender's own mailbox, when Presets send agreements from each person's own (ignored otherwise). */
+  mailboxId: z.uuid().nullish(),
 });
 
 export async function POST(req: NextRequest) {
@@ -34,9 +36,11 @@ export async function POST(req: NextRequest) {
   if (!parsed.success || (!parsed.data.recordId && !parsed.data.resendOf)) {
     return NextResponse.json({ ok: false, message: parsed.success ? 'Nothing to send.' : (parsed.error.issues[0]?.message ?? 'Something in the message is not valid.') }, { status: 400 });
   }
-  const { recordId, resendOf, kind, subject, message } = parsed.data;
+  const { recordId, resendOf, kind, subject, message, mailboxId } = parsed.data;
   try {
-    const r = resendOf ? await voidAndResend(ctx, resendOf, { kind, subject, message }) : await sendAgreement(ctx, { recordId: recordId!, kind, subject, message });
+    const r = resendOf
+      ? await voidAndResend(ctx, resendOf, { kind, subject, message, mailboxId })
+      : await sendAgreement(ctx, { recordId: recordId!, kind, subject, message, mailboxId });
     return NextResponse.json({ ok: true, data: r }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     if (e instanceof AgreementError || e instanceof TemplateMissingError) return NextResponse.json({ ok: false, message: e.message }, { status: 409 });

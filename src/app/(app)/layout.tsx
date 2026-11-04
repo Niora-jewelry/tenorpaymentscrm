@@ -22,6 +22,7 @@ import { CallEndedToast } from './phone/CallEndedToast';
 import { canSeeEmail } from '@/lib/mail/access';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { storedCounts } from '@/lib/msteams/counts';
+import { processorPerms } from '@/lib/processors/access';
 
 /** Unread across the person's own Inboxes, or null when Email is not theirs to see. */
 async function emailUnreadFor(ctx: Awaited<ReturnType<typeof authorize>>): Promise<number | null> {
@@ -77,7 +78,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const ADMIN_PAGES = ['users', 'permissions', 'presets', 'numbers', 'residuals', 'integrations', 'automations', 'recycle_bin'] as const;
   const adminPages = (
     await Promise.all(ADMIN_PAGES.map(async (p) => [p, await canOpenAdminPage(ctx, p)] as const))
-  ).filter(([, ok]) => ok).map(([p]) => p);
+  ).filter(([, ok]) => ok).map(([p]) => p) as string[];
+  // Maverick's connection page: its own two permissions, not an admin.* page setting.
+  const mav = await processorPerms(ctx).catch(() => null);
+  if (mav && (mav.connection || mav.resolveUnmatched)) adminPages.push('maverick');
   const [counts, binCount] = await Promise.all([
     moduleRecordCounts([...storageModules, ...displayModules]),
     adminPages.includes('recycle_bin') ? deletedRecordCount(ctx) : Promise.resolve(0),

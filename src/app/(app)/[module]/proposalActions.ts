@@ -7,7 +7,8 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
-import { ProposalError, proposalSendDefaults, sendProposal, voidProposal, type ProposalSendDefaults } from '@/lib/proposals/service';
+import { ProposalError, proposalPreCheck, proposalSendDefaults, sendProposal, voidProposal, type OptionalPage, type ProposalSendDefaults } from '@/lib/proposals/service';
+import type { ProblemGroup } from '@/lib/records/fieldProblems';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -41,6 +42,14 @@ export async function proposalDefaultsAction(recordId: string, moduleSlug: strin
   if (!id.success || !mod.success) return { ok: false, message: 'That record is not valid.' };
   const ctx = await authorize();
   return run(() => proposalSendDefaults(ctx, id.data, mod.data), 'Could not prepare the proposal.');
+}
+
+export async function proposalPreCheckAction(recordId: string, moduleSlug: string | null): Promise<Result<{ groups: ProblemGroup[]; optional: OptionalPage[] }>> {
+  const id = uuid.safeParse(recordId);
+  const mod = slug.safeParse(moduleSlug);
+  if (!id.success || !mod.success) return { ok: false, message: 'That record is not valid.' };
+  const ctx = await authorize();
+  return run(() => proposalPreCheck(ctx, id.data, mod.data), 'Could not check the proposal.');
 }
 
 export async function sendProposalAction(input: z.input<typeof Compose>): Promise<Result<{ label: string }>> {

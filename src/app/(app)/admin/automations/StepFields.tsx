@@ -143,6 +143,18 @@ export function TriggerFields({ step, catalog, onChange }: { step: TriggerStep; 
         </Row>
       );
     }
+    case 'processor_status':
+      return (
+        <div className="space-y-2">
+          <div className="max-w-[420px]">
+            <Text label="Changes to (optional)" value={step.value} placeholder="Any status" onChange={(value) => onChange({ ...step, value })} />
+          </div>
+          <Note>
+            Runs when the daily Maverick sync finds a new status on a record&rsquo;s application. Leave it blank for any change, or type the
+            status exactly as Maverick shows it.
+          </Note>
+        </div>
+      );
     case 'ticket_email':
       return (
         <div className="space-y-2">

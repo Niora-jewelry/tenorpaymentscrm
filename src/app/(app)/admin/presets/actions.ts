@@ -40,6 +40,7 @@ import {
   createPipelineSchema,
   renamePipelineSchema,
   setPipelineStepsSchema,
+  removePipelineStepSchema,
   setPipelineOrderSchema,
   addStatementYearSchema,
   firstIssueMessage,
@@ -61,6 +62,8 @@ import {
   createPipeline,
   renamePipeline,
   setPipelineSteps,
+  removePipelineStep,
+  type RemoveStepResult,
   setPipelineOrder,
   type SetStepsResult,
 } from '@/lib/records/adminPipelines';
@@ -491,6 +494,15 @@ export async function setPipelineStepsAction(
   if (!result.ok) return result;
 
   revalidateConfig();
+  return result;
+}
+
+export async function removePipelineStepAction(pipelineId: string, stepId: string, moveTo: string | null): Promise<RemoveStepResult> {
+  const ctx = await authorize();
+  const parsed = removePipelineStepSchema.safeParse({ pipelineId, stepId, moveTo });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+  const result = await removePipelineStep(ctx, parsed.data);
+  if (result.ok) revalidateConfig();
   return result;
 }
 

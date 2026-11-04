@@ -12,10 +12,10 @@ import { sendAlertTest, verifySmtpLogin } from '@/lib/email/send';
 import { env } from '@/lib/env';
 import { canOpenAdminPage, permissionsFor, type AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { cleanValue, hintFor, settingDef, SETTINGS, settingsIn, type IntegrationGroup, type SettingKind } from './catalog';
+import { cleanValue, hintFor, isSwitchable, settingDef, SETTINGS, settingsIn, type IntegrationGroup, type SettingKind } from './catalog';
 import { sealSetting } from './crypto';
 import { connectSignwellHook, probeGroup, type ProbeResult } from './probe';
-import { agreementsReadyFrom, forgetIntegrationValues, integrationSnapshot, mailReadyFrom, phoneReadyFrom, type IntegrationValues } from './resolve';
+import { agreementsReadyFrom, forgetIntegrationValues, integrationSnapshot, mailReadyFrom, maverickReadyFrom, phoneReadyFrom, type IntegrationValues } from './resolve';
 
 export class IntegrationError extends Error {}
 
@@ -26,6 +26,7 @@ export const GROUPS: { group: IntegrationGroup; title: string; powers: string }[
   { group: 'microsoft', title: 'Microsoft 365', powers: 'Connecting Outlook mailboxes to the Email module.' },
   { group: 'signwell', title: 'SignWell', powers: 'Sending agreements for e-signature.' },
   { group: 'alerts', title: 'Alert email', powers: 'Sign-in codes, voicemail alerts and other messages from the CRM.' },
+  { group: 'maverick', title: 'Maverick Payments', powers: 'Sending applications to Maverick, their status, reporting, statements and support tickets.' },
 ];
 
 export type SettingView = {
@@ -48,6 +49,11 @@ export type GroupView = {
   title: string;
   powers: string;
   ready: boolean;
+  /** Has an on/off switch (alert email does not: sign-in codes depend on it). */
+  switchable: boolean;
+  /** Off: the keys are kept but nothing uses them. */
+  enabled: boolean;
+  switchedBy: { by: string | null; at: string } | null;
   /** Labels of what is still needed. */
   missing: string[];
   lastTest: { ok: boolean; note: string; at: string; by: string | null } | null;
@@ -55,7 +61,7 @@ export type GroupView = {
   settings: SettingView[];
 };
 
-export type ChangeView = { id: string; label: string; group: string; action: 'set' | 'removed'; hint: string | null; by: string; at: string };
+export type ChangeView = { id: string; label: string; group: string; action: 'set' | 'removed' | 'turned_on' | 'turned_off'; hint: string | null; by: string; at: string };
 
 export type IntegrationsScreen = { canEdit: boolean; origin: string; groups: GroupView[]; changes: ChangeView[] };
 
@@ -67,6 +73,8 @@ const readyFor = (group: IntegrationGroup, v: IntegrationValues): boolean => {
       return mailReadyFrom(v);
     case 'signwell':
       return agreementsReadyFrom(v);
+    case 'maverick':
+      return maverickReadyFrom(v);
     case 'alerts':
       return Boolean(v.SMTP_HOST || (v.ALERT_MAIL_TENANT_ID && (v.ALERT_MAIL_CLIENT_ID ?? v.MAIL_CLIENT_ID) && (v.ALERT_MAIL_CLIENT_SECRET ?? v.MAIL_CLIENT_SECRET)));
   }
@@ -85,17 +93,19 @@ export async function integrationsScreen(ctx: AuthContext): Promise<Integrations
   const perms = await permissionsFor(ctx);
   const canEdit = perms.superAdmin;
   const db = supabaseAdmin();
-  const [snap, { data: tests }, { data: rows }, { data: changes }] = await Promise.all([
+  const [snap, { data: tests }, { data: rows }, { data: changes }, { data: switches }] = await Promise.all([
     integrationSnapshot(),
     db.from('integration_tests').select('grp, ok, note, tested_at, tested_by'),
     db.from('integration_settings').select('key, hint, updated_by, updated_at'),
     canEdit ? db.from('integration_changes').select('id, key, grp, action, hint, actor_name, changed_at').order('changed_at', { ascending: false }).limit(25) : Promise.resolve({ data: [] }),
+    db.from('integration_switches').select('grp, enabled, updated_by, updated_at'),
   ]);
 
   const saved = new Map((rows ?? []).map((r) => [r.key as string, r]));
   const people = new Set<string>();
   for (const r of rows ?? []) if (r.updated_by) people.add(r.updated_by as string);
   for (const t of tests ?? []) if (t.tested_by) people.add(t.tested_by as string);
+  for (const w of switches ?? []) if (w.updated_by) people.add(w.updated_by as string);
   const { data: names } = people.size ? await db.from('profiles').select('id, full_name, email').in('id', [...people]) : { data: [] };
   const nameOf = (id: unknown): string | null => {
     const p = (names ?? []).find((n) => n.id === id);
@@ -105,14 +115,20 @@ export async function integrationsScreen(ctx: AuthContext): Promise<Integrations
   const groups: GroupView[] = GROUPS.map((g) => {
     const defs = settingsIn(g.group);
     const test = (tests ?? []).find((t) => t.grp === g.group);
+    const sw = (switches ?? []).find((w) => w.grp === g.group);
+    const enabled = !snap.off.has(g.group);
     return {
       ...g,
-      ready: readyFor(g.group, snap.values),
-      missing: defs.filter((d) => d.required && !valueOf(snap.values, d.key)).map((d) => d.label),
+      // The screen reads every value, a switched-off service's included, so its keys still show.
+      ready: enabled && readyFor(g.group, snap.all),
+      switchable: isSwitchable(g.group),
+      enabled,
+      switchedBy: sw ? { by: nameOf(sw.updated_by), at: sw.updated_at as string } : null,
+      missing: defs.filter((d) => d.required && !valueOf(snap.all, d.key)).map((d) => d.label),
       lastTest: canEdit && test ? { ok: test.ok as boolean, note: test.note as string, at: test.tested_at as string, by: nameOf(test.tested_by) } : null,
       settings: canEdit
         ? defs.map((d) => {
-            const value = valueOf(snap.values, d.key);
+            const value = valueOf(snap.all, d.key);
             const row = saved.get(d.key);
             const fromCrm = snap.fromCrm.has(d.key);
             return {
@@ -139,9 +155,9 @@ export async function integrationsScreen(ctx: AuthContext): Promise<Integrations
     groups,
     changes: (changes ?? []).map((c) => ({
       id: c.id as string,
-      label: settingDef(c.key as string)?.label ?? (c.key as string),
+      label: c.key === '(service)' ? '' : (settingDef(c.key as string)?.label ?? (c.key as string)),
       group: GROUPS.find((g) => g.group === c.grp)?.title ?? (c.grp as string),
-      action: c.action as 'set' | 'removed',
+      action: c.action as ChangeView['action'],
       hint: c.hint as string | null,
       by: c.actor_name as string,
       at: c.changed_at as string,
@@ -180,7 +196,7 @@ export type SaveResult = { saved: boolean; result: ProbeResult };
  */
 export async function saveIntegrationGroup(ctx: AuthContext, group: IntegrationGroup, input: Record<string, string>): Promise<SaveResult> {
   await requireEditor(ctx);
-  const { values: current } = await integrationSnapshot();
+  const { all: current } = await integrationSnapshot();
   const set: { key: string; value: string }[] = [];
   const next: IntegrationValues = { ...current };
   for (const [key, raw] of Object.entries(input)) {
@@ -210,7 +226,7 @@ export async function removeIntegrationSetting(ctx: AuthContext, key: string): P
 
 export async function testIntegrationGroup(ctx: AuthContext, group: IntegrationGroup): Promise<ProbeResult> {
   await requireEditor(ctx);
-  const { values } = await integrationSnapshot();
+  const { all: values } = await integrationSnapshot();
   const result = await probe(group, values);
   await apply(ctx, group, [], [], result);
   return result;
@@ -219,7 +235,7 @@ export async function testIntegrationGroup(ctx: AuthContext, group: IntegrationG
 /** Points SignWell's signing events at this site and keeps any webhook IDs already saved. */
 export async function connectSignwell(ctx: AuthContext): Promise<ProbeResult> {
   await requireEditor(ctx);
-  const { values } = await integrationSnapshot();
+  const { all: values } = await integrationSnapshot();
   if (!values.SIGNWELL_API_KEY) throw new IntegrationError('Save the SignWell API key first.');
   const hook = await connectSignwellHook(values.SIGNWELL_API_KEY, siteOrigin());
   if (!hook.ok) throw new IntegrationError(hook.message);
@@ -229,6 +245,21 @@ export async function connectSignwell(ctx: AuthContext): Promise<ProbeResult> {
   const result = await probe('signwell', next);
   await apply(ctx, 'signwell', [{ key: 'SIGNWELL_WEBHOOK_ID', value: next.SIGNWELL_WEBHOOK_ID! }], [], result);
   return result;
+}
+
+/**
+ * Switches a service on or off. Its keys stay saved either way; Off makes the
+ * CRM treat it as not connected, within a minute everywhere.
+ */
+export async function setIntegrationEnabled(ctx: AuthContext, group: IntegrationGroup, enabled: boolean): Promise<void> {
+  await requireEditor(ctx);
+  if (!isSwitchable(group)) throw new IntegrationError('Alert email can’t be switched off: sign-in codes are sent through it.');
+  const { error } = await supabaseAdmin().rpc('integration_set_enabled', { p_actor: ctx.userId, p_group: group, p_enabled: enabled });
+  if (error) {
+    console.error('[integrations] could not switch', { group, code: error.code });
+    throw new IntegrationError('The change was not saved. Try again.');
+  }
+  forgetIntegrationValues();
 }
 
 /** Sends one real alert to the person pressing the button, the only proof of Mail.Send. */

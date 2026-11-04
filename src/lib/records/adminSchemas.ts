@@ -591,6 +591,10 @@ export type RenamePipelineInput = z.infer<typeof renamePipelineSchema>;
 export type SetPipelineStepsInput = z.infer<typeof setPipelineStepsSchema>;
 export type SetPipelineOrderInput = z.infer<typeof setPipelineOrderSchema>;
 
+/** Removing a step: where its records go, when it has any (the database checks). */
+export const removePipelineStepSchema = z.object({ pipelineId: uuid, stepId: uuid, moveTo: uuid.nullable() });
+export type RemovePipelineStepInput = z.infer<typeof removePipelineStepSchema>;
+
 /* -------------------------------------------------------------------------- */
 /* Permission templates — Phase 6a                                            */
 /* -------------------------------------------------------------------------- */

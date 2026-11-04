@@ -618,6 +618,13 @@ export function FieldRenderer({
     );
   }
 
+  /* Yes/No: always live, one click (client, 4 Nov 2026: "a simple Yes/No"). A
+     card that reads "No" and has to be opened before it offers a tick box is two
+     steps for a two-way answer. */
+  if (field.type === 'checkbox') {
+    return <YesNoControl label={field.label} value={Boolean(value)} readOnly={readOnly} onChange={(v) => onChange(v)} />;
+  }
+
   /* One Dropdown style, empty or filled (UI spec §4). Always the live select,
      controlled, so a refused save that rolls the value back also rolls the
      control back — a `defaultValue` select would keep showing the pick the
@@ -836,18 +843,6 @@ export function FieldRenderer({
         </select>
       );
 
-    case 'checkbox':
-      return (
-        <label className="flex items-center gap-2 px-2 py-1.5 text-[14px]">
-          <input
-            type="checkbox"
-            defaultChecked={Boolean(value)}
-            className="size-4 accent-[#1e4080]"
-            onChange={(e) => commit(e.currentTarget.checked)}
-          />
-          {value ? 'Yes' : 'No'}
-        </label>
-      );
 
     case 'multi_select':
     case 'months': {
@@ -1067,6 +1062,34 @@ export function FieldRenderer({
 /* -------------------------------------------------------------------------- */
 /* Dropdown — the one style (UI spec §4)                                       */
 /* -------------------------------------------------------------------------- */
+
+function YesNoControl({ label, value, readOnly, onChange }: { label: string; value: boolean; readOnly: boolean; onChange: (v: boolean) => void }) {
+  const opt = (on: boolean) => {
+    const active = value === on;
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={active}
+        disabled={readOnly}
+        onClick={() => {
+          if (!active) onChange(on);
+        }}
+        className={`min-w-[52px] rounded-md px-3 py-1 text-[13px] font-semibold transition-colors disabled:cursor-default ${
+          active ? (on ? 'bg-[#0b7466] text-white shadow-sm' : 'bg-white text-ink-900 shadow-sm ring-1 ring-line') : 'text-ink-500 hover:text-ink-900 disabled:hover:text-ink-500'
+        }`}
+      >
+        {on ? 'Yes' : 'No'}
+      </button>
+    );
+  };
+  return (
+    <div role="radiogroup" aria-label={label} className="inline-flex items-center gap-0.5 rounded-lg bg-canvas p-0.5">
+      {opt(true)}
+      {opt(false)}
+    </div>
+  );
+}
 
 function DropdownSelect({
   label,
@@ -2232,11 +2255,12 @@ function GridControl({
 
 /** Grid column widths by type, and the least each needs before the grid scrolls. */
 const GRID_WIDTH: Partial<Record<FieldType, string>> = {
-  checkbox: 'minmax(76px,.55fr)',
+  // Wide enough for its heading in full: "In proposal" was cut to "IN PRO…".
+  checkbox: 'minmax(116px,.6fr)',
   long_text: 'minmax(160px,1.7fr)',
   dropdown: 'minmax(112px,1fr)',
 };
-const GRID_MIN: Partial<Record<FieldType, number>> = { checkbox: 76, long_text: 160, dropdown: 112 };
+const GRID_MIN: Partial<Record<FieldType, number>> = { checkbox: 116, long_text: 160, dropdown: 112 };
 /** Numbers read from the right. */
 const GRID_RIGHT = new Set<FieldType>(['currency', 'percentage', 'number']);
 

@@ -8,7 +8,14 @@
  * Pure data and checks, so the browser form and the server share one definition.
  */
 
-export type IntegrationGroup = 'twilio' | 'microsoft' | 'signwell' | 'alerts';
+export type IntegrationGroup = 'twilio' | 'microsoft' | 'signwell' | 'alerts' | 'maverick';
+
+/**
+ * Services that can be switched off without removing their keys. Alert email
+ * cannot: sign-in codes go out through it, so Off would lock everyone out.
+ */
+export const SWITCHABLE: readonly IntegrationGroup[] = ['twilio', 'microsoft', 'signwell', 'maverick'];
+export const isSwitchable = (g: IntegrationGroup): boolean => SWITCHABLE.includes(g);
 
 export type SettingKind = 'text' | 'secret' | 'date' | 'switch' | 'number';
 
@@ -71,6 +78,19 @@ export const SETTINGS: readonly SettingDef[] = [
   { key: 'SMTP_PORT', group: 'alerts', label: 'SMTP port', kind: 'number', required: false, placeholder: '587', check: (v) => (/^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535 ? null : 'Enter a port, usually 587.') },
   { key: 'SMTP_USER', group: 'alerts', label: 'SMTP username', kind: 'text', required: false },
   { key: 'SMTP_PASSWORD', group: 'alerts', label: 'SMTP password', kind: 'secret', required: false },
+
+  { key: 'MAVERICK_API_KEY', group: 'maverick', label: 'API key', kind: 'secret', required: true, help: 'From Maverick Payments. See Help for where to find it.', check: noSpaces('The API key') },
+  { key: 'MAVERICK_API_SECRET', group: 'maverick', label: 'API secret', kind: 'secret', required: false, help: 'Only if Maverick gave you a secret with the key.', check: noSpaces('The API secret') },
+  {
+    key: 'MAVERICK_API_URL',
+    group: 'maverick',
+    label: 'API address',
+    kind: 'text',
+    required: false,
+    placeholder: 'https://…',
+    help: 'Only if Maverick gave you a specific address, for example a sandbox one.',
+    check: (v) => (/^https:\/\/[a-zA-Z0-9.-]+(:\d+)?(\/[\w./-]*)?$/.test(v) ? null : 'Enter an https:// address.'),
+  },
 ] as const;
 
 export const SETTING_KEYS: readonly string[] = SETTINGS.map((s) => s.key);

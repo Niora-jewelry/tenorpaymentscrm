@@ -44,6 +44,8 @@ function whereOf(n: NotificationView): { icon: IconName; label: string; detail?:
       return { icon: 'route', label: 'Automation' };
     case 'automation_alert':
       return { icon: 'alert-triangle', label: 'Automation stopped' };
+    case 'processor':
+      return { icon: 'alert-triangle', label: 'Maverick' };
     default:
       return { icon: PHONE_ICON[n.sourceKind] ?? 'bell', label: n.sourceKind === 'sms' ? 'Text message' : n.sourceKind === 'call' ? 'Call' : n.sourceKind === 'voicemail' ? 'Voicemail' : 'Recording' };
   }

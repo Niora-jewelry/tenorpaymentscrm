@@ -27,7 +27,12 @@ export type SendPurpose = 'applications' | 'proposals' | 'agreements';
 export type SendMode = 'own' | 'mailbox' | 'signwell';
 
 export const PURPOSES: SendPurpose[] = ['applications', 'proposals', 'agreements'];
-export const DEFAULT_MODE: Record<SendPurpose, SendMode> = { applications: 'own', proposals: 'own', agreements: 'signwell' };
+/**
+ * Agreements default to the sender's own mailbox, not SignWell's email: in SignWell's
+ * own mode SignWell emails the signers and sends them the signed copy, which the
+ * client does not want (4 Nov 2026).
+ */
+export const DEFAULT_MODE: Record<SendPurpose, SendMode> = { applications: 'own', proposals: 'own', agreements: 'own' };
 
 export type CompanyInbox = { mailboxId: string; address: string; displayName: string; ready: boolean };
 

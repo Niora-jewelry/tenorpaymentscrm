@@ -23,7 +23,8 @@
 import 'server-only';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { PDFCheckBox, PDFDocument, PDFDropdown, PDFName, PDFRadioGroup, PDFTextField, StandardFonts } from 'pdf-lib';
+import { PDFCheckBox, PDFDocument, PDFDropdown, PDFName, PDFRadioGroup, PDFTextField, StandardFonts, rgb } from 'pdf-lib';
+import { TENOR } from '@/lib/brand/tenor';
 import { APP_ID_FIELD, QUESTIONS, answerKeys, type Answers } from './catalog';
 
 export const TEMPLATE_FILE = 'TapDash_Application_v2.pdf';
@@ -111,7 +112,42 @@ export async function fillApplicationPdf(template: Uint8Array, answers: Record<s
     if (field instanceof PDFTextField || field instanceof PDFDropdown) field.updateAppearances(helv);
   }
   form.acroForm.dict.delete(PDFName.of('NeedAppearances'));
+  await brandTenor(doc);
   return doc.save({ updateFieldAppearances: false });
+}
+
+const LOGO_PATH = path.join(process.cwd(), 'src', 'lib', 'agreements', 'template', 'tenor-logo.png');
+/** The template's page background, sampled where the old logo sits. */
+const PAGE_BG = rgb(230 / 255, 237 / 255, 243 / 255);
+
+/**
+ * The client's template still carries TapDash's logo in the top-right corner of
+ * each page (x 915–1116, y 64–108 from the top, on its 1200 × 1552 pages). It is
+ * painted over with the page's own background and replaced by Tenor's logo, with
+ * Tenor's address under it (client, 4 Nov 2026: the address on every document).
+ * Nothing else on the page moves; the form fields are untouched.
+ */
+async function brandTenor(doc: PDFDocument): Promise<void> {
+  let logo;
+  try {
+    logo = await doc.embedPng(await readFile(LOGO_PATH));
+  } catch {
+    return;
+  }
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const right = 1116;
+  const size = 11.5;
+  const width = font.widthOfTextAtSize(TENOR.address, size);
+  for (const page of doc.getPages()) {
+    const { width: W, height: H } = page.getSize();
+    if (Math.round(W) !== 1200 || Math.round(H) !== 1552) continue;
+    page.drawRectangle({ x: 900, y: H - 124, width: 230, height: 70, color: PAGE_BG });
+    page.drawRectangle({ x: right - width - 4, y: H - 124, width: width + 8, height: 70, color: PAGE_BG });
+    const logoH = 40;
+    const logoW = (logo.width / logo.height) * logoH;
+    page.drawImage(logo, { x: right - logoW, y: H - 58 - logoH, width: logoW, height: logoH });
+    page.drawText(TENOR.address, { x: right - width, y: H - 117, size, font, color: rgb(0.32, 0.38, 0.46) });
+  }
 }
 
 export type ReadResult = {

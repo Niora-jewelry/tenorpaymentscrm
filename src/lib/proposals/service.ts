@@ -12,6 +12,7 @@
  * merchant opens is what was previewed, whatever happens to the record later.
  */
 import 'server-only';
+import { groupFieldProblems, isFilled, requiredFlagProblems, type FieldProblem, type ProblemGroup } from '@/lib/records/fieldProblems';
 import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { companyBody, companyFromOption, queueCrmMail, sendingInboxFor, SendingInboxError, type SendingInbox } from '@/lib/mail/sendingInbox';
@@ -209,6 +210,47 @@ export async function previewProposal(ctx: AuthContext, recordId: string, module
   await requireProposalsEdit(ctx, recordId);
   const d = await draftFor(ctx, recordId, moduleSlug);
   return { content: d.content, notes: d.notes };
+}
+
+// ── the pre-send check ──────────────────────────────────────────────────────
+
+export type OptionalPage = { page: string; reason: string; href?: string };
+
+/**
+ * Before the send dialog (client, 4 Nov 2026):
+ *  - required: the cover's merchant name and the Savings Analysis figures (the
+ *    cover, savings and closing pages are always in a proposal), plus any field
+ *    an admin marks Required in Presets that the proposal uses. Listed with links.
+ *  - optional: POS Architecture and Detailed POS. Not ticked, or ticked with
+ *    nothing to show, and the user is asked to confirm before sending without them.
+ */
+export async function proposalPreCheck(ctx: AuthContext, recordId: string, moduleSlug: string | null): Promise<{ groups: ProblemGroup[]; optional: OptionalPage[] }> {
+  await requireProposalsEdit(ctx, recordId);
+  const rec = await recordForApplication(recordId);
+  if (!rec) throw new ProposalError('That record no longer exists.');
+  const config = await loadConfig();
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
+  const visible = Object.fromEntries(Object.entries(rec.values).filter(([k]) => !hidden.has(k)));
+  const problems: FieldProblem[] = [];
+  const unseen = 'needed, in a section you can’t see. Ask someone who can to fill it in.';
+  if (hidden.has('legal_business_name')) problems.push({ fieldKey: 'legal_business_name', message: unseen });
+  else if (!isFilled(visible.legal_business_name)) problems.push({ fieldKey: 'legal_business_name', message: 'the merchant name on the cover page. Fill it in first.' });
+  if (!hasSavingsFigures(visible)) problems.push({ fieldKey: 'prior_monthly_volume', message: 'the Savings Analysis has no figures yet. Fill in the current and proposed figures.' });
+  const already = new Set(problems.map((p) => p.fieldKey));
+  problems.push(...requiredFlagProblems(config, rec.values, PROPOSAL_FIELD_KEYS.filter((k) => !already.has(k)), hidden));
+
+  const ticked = (v: unknown) => v === true || v === 'Yes' || v === 'yes' || v === 'true';
+  const content = buildProposal(visible, { dealName: rec.dealName, relationshipManagerEmail: null, preparedOn: new Date() });
+  const link = (key: string) => {
+    const p = placeOf(config, key);
+    return moduleSlug && p.tab ? `/${moduleSlug}?record=${recordId}&tab=${encodeURIComponent(p.tab)}${p.subtab ? `&subtab=${encodeURIComponent(p.subtab)}` : ''}&field=${key}` : undefined;
+  };
+  const optional: OptionalPage[] = [];
+  if (!ticked(visible.pos_in_proposal)) optional.push({ page: 'POS Architecture', reason: 'not ticked to include', href: link('pos_in_proposal') });
+  else if (!content.pos) optional.push({ page: 'POS Architecture', reason: 'ticked, but it has no description or requirements, so it is left out', href: link('pos_description') });
+  if (!ticked(visible.pos_detail_in_proposal)) optional.push({ page: 'Detailed POS', reason: 'not ticked to include', href: link('pos_detail_in_proposal') });
+  else if (!content.detailedPos) optional.push({ page: 'Detailed POS', reason: 'ticked, but no Merchant Direct Relationships row is ticked “In proposal”, so it is left out', href: link('merchant_direct_relationships') });
+  return { groups: groupFieldProblems(config, problems), optional };
 }
 
 // ── composing ───────────────────────────────────────────────────────────────

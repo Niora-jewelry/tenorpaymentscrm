@@ -30,9 +30,11 @@ import { fromOptions, withSignature } from '@/lib/mail/compose/sender';
 import type { FromOption } from '@/lib/mail/viewTypes';
 import { toPostgresBytea } from '@/lib/security/otp';
 import { openBytes, sealBytes } from './crypto';
-import { answersForPdf, buildWrite, parseTargetKey, prefillAnswers, ssnOnFile as ssnOnFileFor, type CrmValues } from './mapping';
+import { APPLICATION_FIELD_KEYS, answersForPdf, buildWrite, parseTargetKey, prefillAnswers, ssnOnFile as ssnOnFileFor, type CrmValues } from './mapping';
 import { applicationFileName, fillApplicationPdf, loadTemplate, readApplicationPdf, templateInstalled, TemplateMissingError } from './pdf';
 import { sanitizeAnswers } from './validate';
+import { stampPreview } from '@/lib/pdf/previewStamp';
+import { groupFieldProblems, isFilled, requiredFlagProblems, type FieldProblem, type ProblemGroup } from '@/lib/records/fieldProblems';
 import type { Answers } from './catalog';
 import {
   appLabel,
@@ -274,6 +276,56 @@ export async function sendDefaults(ctx: AuthContext, recordId: string): Promise<
     templateReady,
     company: inbox.mode === 'mailbox' ? { address: inbox.inbox.address, ready: inbox.inbox.ready } : null,
   };
+}
+
+// ── preview ─────────────────────────────────────────────────────────────────
+
+/** The PDF as Send would build it now, from what the viewer may see, stamped as a preview. */
+export async function previewApplicationPdf(ctx: AuthContext, recordId: string): Promise<{ name: string; bytes: Uint8Array }> {
+  await requireApplicationsEdit(ctx, recordId);
+  const rec = await recordForApplication(recordId);
+  if (!rec) throw new ApplicationError('That record no longer exists.');
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, (await loadConfig()).fields);
+  const visible = Object.fromEntries(Object.entries(rec.values).filter(([k]) => !hidden.has(k)));
+  const labels = await choiceLabels();
+  const filled = await fillApplicationPdf(await loadTemplate(), answersForPdf(prefillAnswers(visible, labels)), 'PREVIEW');
+  return { name: `Preview - ${applicationFileName(merchantName(rec.values, rec.dealName))}`, bytes: await stampPreview(filled) };
+}
+
+// ── the pre-send check ──────────────────────────────────────────────────────
+
+/**
+ * What must be on the record before an application goes out (client, 4 Nov
+ * 2026: a list of the missing fields, each one a link). The application's spec
+ * names no required fields, so the list is the least a merchant application can
+ * be sent without: the business's legal name and address, and the first owner's
+ * name and email. A field an admin marks Required in Presets joins the list when
+ * the application uses it.
+ */
+export async function applicationPreCheck(ctx: AuthContext, recordId: string): Promise<{ groups: ProblemGroup[] }> {
+  await requireApplicationsEdit(ctx, recordId);
+  const rec = await recordForApplication(recordId);
+  if (!rec) throw new ApplicationError('That record no longer exists.');
+  const config = await loadConfig();
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
+  const v = rec.values;
+  const problems: FieldProblem[] = [];
+  const need = (key: string, message: string, ok: boolean) => {
+    if (hidden.has(key)) problems.push({ fieldKey: key, message: 'needed, in a section you can’t see. Ask someone who can to fill it in.' });
+    else if (!ok) problems.push({ fieldKey: key, message });
+  };
+  need('legal_business_name', 'the application’s business name. Fill it in first.', isFilled(v.legal_business_name));
+  const addr = (v.merchant_address ?? {}) as Record<string, unknown>;
+  need('merchant_address', 'the business address. Add at least the street and city.', isFilled(addr.street) && isFilled(addr.city));
+  const owner = (Array.isArray(v.owner_ownership) ? v.owner_ownership[0] : null) as Record<string, unknown> | null;
+  if (hidden.has('owner_ownership')) need('owner_ownership', '', false);
+  else {
+    if (!owner || !isFilled(owner.first) || !isFilled(owner.last)) problems.push({ fieldKey: 'owner_ownership', index: 0, message: 'Owner 1 needs a first and last name.' });
+    if (!owner || !isEmail(String(owner.email ?? ''))) problems.push({ fieldKey: 'owner_ownership', index: 0, member: 'email', message: 'Owner 1 needs a valid email address.' });
+  }
+  const already = new Set(problems.map((p) => p.fieldKey));
+  problems.push(...requiredFlagProblems(config, v, APPLICATION_FIELD_KEYS.filter((k) => !already.has(k)), hidden));
+  return { groups: groupFieldProblems(config, problems) };
 }
 
 // ── sending ─────────────────────────────────────────────────────────────────

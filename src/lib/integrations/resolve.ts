@@ -13,7 +13,7 @@
 import 'server-only';
 import { integrationEnv, mailBaseConfigured, mailProvider, serverEnv, type IntegrationEnvKey } from '@/lib/env.server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { SETTING_KEYS } from './catalog';
+import { SETTING_KEYS, settingsIn, SWITCHABLE, type IntegrationGroup } from './catalog';
 import { openSetting } from './crypto';
 
 const TTL_MS = 30_000;
@@ -27,9 +27,14 @@ export type IntegrationSnapshot = {
   fromCrm: ReadonlySet<string>;
   /** Saved keys that would not open: LOGIN_ENC_KEY changed since they were saved. */
   unreadable: readonly string[];
+  /** Services switched off in CRM Settings. Their keys are kept but not used. */
+  off: ReadonlySet<IntegrationGroup>;
+  /** Every value, including those of a service that is off: for the settings screen only. */
+  all: IntegrationValues;
 };
 
 type Row = { key: string; sealed: string; iv: string };
+type SwitchRow = { grp: string; enabled: boolean };
 
 export function envValues(): IntegrationValues {
   const out: IntegrationValues = {};
@@ -55,7 +60,22 @@ export function merge(rows: Row[], env: IntegrationValues, open: (key: string, r
       console.error('[integrations] a saved value would not open', { key: row.key });
     }
   }
-  return { values, fromCrm, unreadable };
+  return { values, fromCrm, unreadable, off: new Set(), all: { ...values } };
+}
+
+/**
+ * A service that is off is not connected anywhere: its keys drop out of what
+ * the rest of the CRM reads. Microsoft's stay, because alert email may borrow
+ * its app to send sign-in codes; the Email module and Teams are kept off by
+ * `mailReady` instead.
+ */
+export function applySwitches(snap: IntegrationSnapshot, off: ReadonlySet<IntegrationGroup>): IntegrationSnapshot {
+  const values: IntegrationValues = { ...snap.all };
+  for (const g of off) {
+    if (g === 'microsoft') continue;
+    for (const d of settingsIn(g)) delete values[d.key as IntegrationEnvKey];
+  }
+  return { ...snap, values, off };
 }
 
 let held: { snap: IntegrationSnapshot; at: number } | null = null;
@@ -63,12 +83,15 @@ let loading: Promise<IntegrationSnapshot> | null = null;
 
 async function load(): Promise<IntegrationSnapshot> {
   try {
-    const { data, error } = await supabaseAdmin()
-      .from('integration_settings')
-      .select('key, sealed, iv')
-      .abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS));
+    const db = supabaseAdmin();
+    const [{ data, error }, { data: switches, error: switchError }] = await Promise.all([
+      db.from('integration_settings').select('key, sealed, iv').abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS)),
+      db.from('integration_switches').select('grp, enabled').abortSignal(AbortSignal.timeout(READ_TIMEOUT_MS)),
+    ]);
     if (error) throw error;
-    const snap = merge((data ?? []) as Row[], envValues(), openSetting);
+    if (switchError) throw switchError;
+    const off = new Set(((switches ?? []) as SwitchRow[]).filter((r) => !r.enabled && SWITCHABLE.includes(r.grp as IntegrationGroup)).map((r) => r.grp as IntegrationGroup));
+    const snap = applySwitches(merge((data ?? []) as Row[], envValues(), openSetting), off);
     held = { snap, at: Date.now() };
     return snap;
   } catch (cause) {
@@ -78,7 +101,8 @@ async function load(): Promise<IntegrationSnapshot> {
       held = { snap: held.snap, at: Date.now() - TTL_MS + 5_000 };
       return held.snap;
     }
-    return { values: envValues(), fromCrm: new Set(), unreadable: [] };
+    const env = envValues();
+    return { values: env, fromCrm: new Set(), unreadable: [], off: new Set(), all: { ...env } };
   }
 }
 
@@ -113,7 +137,13 @@ export function mailReadyFrom(v: IntegrationValues): boolean {
 
 export const phoneReady = async (): Promise<boolean> => phoneReadyFrom(await integrationValues());
 export const agreementsReady = async (): Promise<boolean> => agreementsReadyFrom(await integrationValues());
-export const mailReady = async (): Promise<boolean> => mailReadyFrom(await integrationValues());
+export const mailReady = async (): Promise<boolean> => {
+  const snap = await integrationSnapshot();
+  return !snap.off.has('microsoft') && mailReadyFrom(snap.values);
+};
+
+export const maverickReadyFrom = (v: IntegrationValues): boolean => Boolean(v.MAVERICK_API_KEY);
+export const maverickReady = async (): Promise<boolean> => maverickReadyFrom(await integrationValues());
 
 /** Test mode unless production says otherwise with SIGNWELL_TEST_MODE=false. */
 export const signwellTestModeFrom = (v: IntegrationValues): boolean => serverEnv.NODE_ENV !== 'production' || v.SIGNWELL_TEST_MODE !== 'false';

@@ -160,8 +160,10 @@ const nextConfig: NextConfig = {
    */
   outputFileTracingIncludes: {
     '/[module]': ['./src/lib/applications/template/*.pdf', './src/lib/agreements/template/*'],
-    '/apply/[token]': ['./src/lib/applications/template/*.pdf'],
+    '/apply/[token]': ['./src/lib/applications/template/*.pdf', './src/lib/agreements/template/tenor-logo.png'],
     '/api/agreements/send': ['./src/lib/agreements/template/*'],
+    '/api/agreements/preview/[recordId]': ['./src/lib/agreements/template/*'],
+    '/api/applications/preview/[recordId]': ['./src/lib/applications/template/*.pdf', './src/lib/agreements/template/tenor-logo.png'],
   },
 
   experimental: {

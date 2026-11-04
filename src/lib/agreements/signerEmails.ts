@@ -55,10 +55,10 @@ export function withdrawnHtml(a: EmailAbout, signer: { name: string }): string {
   );
 }
 
-export function completedHtml(a: EmailAbout, signer: { name: string }, link: string, copyDays: number): string {
-  return (
-    paragraphs(`Hi ${firstName(signer.name)},\n\nEveryone has signed the ${a.what} for ${a.merchant}. Thank you.\n\nYou can download your signed copy from your link for the next ${copyDays} days.`) +
-    button(link, 'Download your signed copy') +
-    fine(personal(null))
-  );
+/**
+ * No link and no attachment: signers do not receive the signed document (client,
+ * 4 Nov 2026). It is filed on the merchant record only.
+ */
+export function completedHtml(a: EmailAbout, signer: { name: string }): string {
+  return paragraphs(`Hi ${firstName(signer.name)},\n\nEveryone has signed the ${a.what} for ${a.merchant}. Thank you.\n\nWe’ll be in touch about the next steps.`);
 }

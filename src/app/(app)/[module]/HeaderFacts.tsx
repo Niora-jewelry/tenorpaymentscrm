@@ -130,7 +130,10 @@ export function HeaderFacts({
   onMentionRead = () => undefined,
   filesRequired = [],
   ticketChoices = [],
+  processor = null,
 }: {
+  /** The processor's slot: the application status (permitted users only) and the unmatched flag. */
+  processor?: { status: string | null; showStatus: boolean; unmatched: boolean } | null;
   /** Emails waiting for this viewer to choose their ticket (Tickets module only). */
   ticketChoices?: TicketChoice[];
   moduleSlug: string;
@@ -269,7 +272,8 @@ export function HeaderFacts({
     }
   };
 
-  if (facts.length === 0 && !filesRequired.length) return null;
+  const extra = processor?.showStatus ? 1 : 0;
+  if (facts.length === 0 && !filesRequired.length && !extra && !processor?.unmatched) return null;
 
   /*
    * ── ONE ROW UNTIL ASKED (UI spec 7.5, approved) ─────────────────────────
@@ -285,7 +289,7 @@ export function HeaderFacts({
   /* The toggle exists only when something is actually folded away at this
      width — same three thresholds. */
   const toggleClass =
-    facts.length > 4 ? '' : facts.length > 2 ? '@[50rem]:hidden' : facts.length === 2 ? '@[30rem]:hidden' : 'hidden';
+    facts.length + extra > 4 ? '' : facts.length + extra > 2 ? '@[50rem]:hidden' : facts.length + extra === 2 ? '@[30rem]:hidden' : 'hidden';
 
   return (
     <section aria-labelledby={`vital-${recordId}`} className={`mt-4 ${FIELD_GRID_CONTAINER}`}>
@@ -297,7 +301,7 @@ export function HeaderFacts({
           onClick={() => setExpanded(!expanded)}
           className={`inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-semibold text-brand-700 transition-colors hover:bg-brand-50 ${toggleClass}`}
         >
-          {expanded ? 'Show less' : `Show all ${facts.length}`}
+          {expanded ? 'Show less' : `Show all ${facts.length + extra}`}
           <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
         </button>
       </SectionHeading>
@@ -305,6 +309,12 @@ export function HeaderFacts({
       {error ? (
         <p role="alert" className="mb-2 text-[11.5px] text-danger">
           {error}
+        </p>
+      ) : null}
+      {processor?.unmatched ? (
+        <p className="mb-2.5 flex items-center gap-2 rounded-lg border border-[#f7e0af] bg-[#fdf1d8] px-3 py-1.5 text-[12px] font-medium text-[#8a5a09]">
+          <Icon name="flag" size={13} className="shrink-0" />
+          Not matched to Maverick: the MID is missing or Maverick doesn’t recognise it.
         </p>
       ) : null}
       {ticketChoices.length ? <TicketChoiceNote moduleSlug={moduleSlug} choices={ticketChoices} /> : null}
@@ -366,6 +376,17 @@ export function HeaderFacts({
             </div>
           );
         })}
+        {processor?.showStatus ? (
+          // The eighth slot: read-only, filled by the daily sync (spec, Maverick application status).
+          <div className={`${fieldCardClass({})} ${hiddenWhenCollapsed(facts.length)}`}>
+            <p className="flex items-center gap-1.5 text-[11.5px] font-semibold text-ink-500">
+              Maverick status <Icon name="lock" size={10} className="text-ink-300" />
+            </p>
+            <div className={FIELD_VALUE_SLOT}>
+              <span className={processor.status ? 'text-[13.5px] font-semibold text-ink-900' : 'text-[13px] text-ink-300'}>{processor.status ?? 'Not sent yet'}</span>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

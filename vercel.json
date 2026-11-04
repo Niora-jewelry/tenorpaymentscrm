@@ -1,7 +1,9 @@
 {
   "crons": [
-    { "path": "/api/mail/tick", "schedule": "* * * * *" },
-    { "path": "/api/automations/tick", "schedule": "* * * * *" },
-    { "path": "/api/housekeeping/tick", "schedule": "17 3 * * *" }
+    {"path": "/api/mail/tick", "schedule": "* * * * *"},
+    {"path": "/api/automations/tick", "schedule": "* * * * *"},
+    {"path": "/api/housekeeping/tick", "schedule": "17 3 * * *"},
+    {"path": "/api/processors/sync", "schedule": "0 11 * * *"},
+    {"path": "/api/processors/sync", "schedule": "0 12 * * *"}
   ]
 }

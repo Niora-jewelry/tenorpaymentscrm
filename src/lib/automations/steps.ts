@@ -37,6 +37,7 @@ export const TRIGGERS = {
   file_uploaded: { label: 'File uploaded', inModule: false },
   awaiting_client: { label: 'Button clicked: Awaiting client', inModule: false },
   ticket_email: { label: 'Email received', inModule: false },
+  processor_status: { label: 'Maverick application status changes', inModule: false },
 } as const;
 export type TriggerType = keyof typeof TRIGGERS;
 
@@ -90,7 +91,7 @@ export type ActionType = keyof typeof ACTIONS;
 export const OFFERED: Record<AutomationKind, { triggers: TriggerType[]; conditions: ConditionType[]; actions: ActionType[] }> = {
   record: {
     triggers: ['status', 'stage', 'email_received', 'email_sent', 'team_assigned', 'team_removed', 'application_sent', 'application_received',
-      'contract_sent', 'contract_received', 'field', 'module_assigned', 'module_removed', 'file_uploaded'],
+      'contract_sent', 'contract_received', 'field', 'module_assigned', 'module_removed', 'file_uploaded', 'processor_status'],
     conditions: ['field_filled', 'all_filled', 'status_is', 'pipeline_is', 'in_module', 'date_is', 'days_from', 'files_required_empty', 'files_required_filled'],
     actions: ['change_stage', 'change_status', 'send_email', 'assign_team', 'assign_user', 'round_robin', 'remove_team', 'add_module',
       'remove_module', 'create_ticket', 'send_notification', 'mark_file_required', 'lock', 'hide', 'unlock', 'unhide'],
@@ -147,6 +148,8 @@ export const triggerSchema = z.discriminatedUnion('type', [
   }),
   z.object({ id, type: tag('awaiting_client') }),
   z.object({ id, type: tag('ticket_email'), mailboxId: pick }),
+  // Blank = any change. The status is Maverick's own wording, as the daily sync stores it.
+  z.object({ id, type: tag('processor_status'), value: z.string().trim().max(200).default('') }),
 ]);
 export type TriggerStep = z.infer<typeof triggerSchema>;
 

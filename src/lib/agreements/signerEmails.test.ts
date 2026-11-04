@@ -61,11 +61,12 @@ describe('emails to signers', () => {
     expect(w).not.toContain('<a ');
   });
 
-  it('the completion note offers the signed copy for the stated days', () => {
-    const c = completedHtml(about, { name: 'Jane Doe' }, link, 30);
-    expect(c).toContain('Download your signed copy');
-    expect(c).toContain('next 30 days');
-    expect(c).toContain(`href="${link}"`);
+  it('the completion note carries no copy: no link, no download', () => {
+    const c = completedHtml(about, { name: 'Jane Doe' });
+    expect(c).toContain('Everyone has signed');
+    expect(c).not.toContain('<a ');
+    expect(c.toLowerCase()).not.toContain('download');
+    expect(c.toLowerCase()).not.toContain('copy');
   });
 
   it('a signer with no usable name is still greeted', () => {

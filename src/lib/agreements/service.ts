@@ -13,6 +13,8 @@
  * hangs off `tabs.shows_agreements`, the mapping is the kind's own file.
  */
 import 'server-only';
+import { groupFieldProblems, type ProblemGroup } from '@/lib/records/fieldProblems';
+import { stampPreview } from '@/lib/pdf/previewStamp';
 import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -113,28 +115,10 @@ function ownerInputs(values: Record<string, unknown>) {
 
 // ── the pre-send check ────────────────────────────────────────────────────────
 
-export type ProblemItem = { fieldKey: string; index?: number; member?: string; label: string; message: string; tabKey: string | null; subtabKey: string | null };
-export type ProblemGroup = { tabKey: string | null; tabLabel: string; subtabKey: string | null; subtabLabel: string | null; items: ProblemItem[] };
+export type { ProblemItem, ProblemGroup } from '@/lib/records/fieldProblems';
 
 function groupProblems(config: Config, problems: AgreementProblem[]): ProblemGroup[] {
-  const groups = new Map<string, ProblemGroup>();
-  const ordered = [...problems].sort((a, b) => {
-    const fa = config.fields.find((f) => f.key === a.fieldKey);
-    const fb = config.fields.find((f) => f.key === b.fieldKey);
-    const ta = config.tabs.find((t) => t.id === fa?.tabId)?.position ?? 1e9;
-    const tb = config.tabs.find((t) => t.id === fb?.tabId)?.position ?? 1e9;
-    return ta - tb || (fa?.position ?? 0) - (fb?.position ?? 0);
-  });
-  for (const p of ordered) {
-    const f = config.fields.find((x) => x.key === p.fieldKey);
-    const tab = f ? config.tabs.find((t) => t.id === f.tabId) : undefined;
-    const sub = f?.subtabId ? config.subtabs.find((s) => s.id === f.subtabId) : undefined;
-    const key = `${tab?.key ?? ''}/${sub?.key ?? ''}`;
-    const g = groups.get(key) ?? { tabKey: tab?.key ?? null, tabLabel: tab?.label ?? 'Record', subtabKey: sub?.key ?? null, subtabLabel: sub?.label ?? null, items: [] };
-    g.items.push({ fieldKey: p.fieldKey, index: p.index, member: p.member, label: f?.label ?? p.fieldKey, message: p.message, tabKey: tab?.key ?? null, subtabKey: sub?.key ?? null });
-    groups.set(key, g);
-  }
-  return [...groups.values()];
+  return groupFieldProblems(config, problems);
 }
 
 function signerProblems(problems: SignerProblem[], src: AgreementSource): AgreementProblem[] {
@@ -241,6 +225,35 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     achAuthorization: ach.include ? { amount: ach.amount, signer: ach.signer?.name ?? '' } : null,
     delivery,
   };
+}
+
+// ── preview ───────────────────────────────────────────────────────────────────
+
+/**
+ * The agreement as Send would build it now: filled, flattened, the ACH page when
+ * it applies, stamped as a preview. It is filled from every value on the record
+ * (as the send is), so it is shown only to someone who can see every field it
+ * uses: a hidden field never reaches the browser.
+ */
+export async function previewAgreementPdf(ctx: AuthContext, recordId: string, kindKey: string): Promise<{ name: string; bytes: Uint8Array }> {
+  await requireSend(ctx, recordId);
+  const kind = await kindOrThrow(kindKey);
+  const found = await sourceFor(recordId);
+  if (!found) throw new AgreementError('That record no longer exists.');
+  const { src, dealName } = found;
+  const picked = selectSigners(ownerInputs(src.values));
+  const { pdf: template } = await loadTemplate(kind);
+  const rendered = renderAgreement(kind, src, picked.signers);
+  const ach = achAuthorization(src, picked.signers);
+  const used = new Set([...rendered.usedFieldKeys, ...(ach.include ? ach.used.map((u) => u.fieldKey) : [])]);
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, (await loadConfig()).fields);
+  if ([...used].some((k) => hidden.has(k))) {
+    throw new AgreementError('This agreement uses fields in a section you can’t see, so it can’t be previewed here. Sending it still works.');
+  }
+  const filled = await fillAndFlatten(kind, template, rendered.byPdfField);
+  const withAch = ach.include ? await appendAchAuthorization(filled, ach) : null;
+  const name = merchantName(src.values, dealName);
+  return { name: `Preview - ${agreementFileName(name, kind.fileLabel)}`, bytes: await stampPreview(withAch?.bytes ?? filled) };
 }
 
 // ── sending ───────────────────────────────────────────────────────────────────

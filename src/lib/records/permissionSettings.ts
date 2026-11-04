@@ -28,6 +28,7 @@ export type SettingGroup = { id: string; title: string; blurb: string; rows: Set
 const YES_NO: SettingOption[] = [{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }];
 const HIDDEN_FULL: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { value: 'full', label: 'Full access' }];
 const HIDDEN_VIEW_FULL: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { value: 'view', label: 'View only' }, { value: 'full', label: 'Full edit' }];
+const HIDDEN_VIEW: SettingOption[] = [{ value: 'hidden', label: 'Hidden' }, { value: 'view', label: 'View' }];
 const OWN_ALL: SettingOption[] = [{ value: 'own', label: 'Own only' }, { value: 'all', label: 'All users' }];
 const MINE_ALL: SettingOption[] = [{ value: 'mine', label: 'Only mine' }, { value: 'all', label: 'See all + grant' }];
 
@@ -166,6 +167,34 @@ export async function settingGroups(): Promise<SettingGroup[]> {
       title: 'Agreements',
       blurb: 'Sending a merchant agreement for e-signature, voiding it, resending and reminding. Anyone who can open the record sees the agreements and their status; the signed PDF opens only for people who can see every field printed on it.',
       rows: [{ key: 'agreements.send', label: 'Send agreements for e-signature', options: YES_NO }],
+    },
+    {
+      id: 'reporting',
+      title: 'Reporting',
+      blurb: 'The Reporting tab: transactions, batches, payouts and ACH activity. Read-only for everyone; Hidden means the tab and its data never reach this user.',
+      rows: [
+        { key: 'reporting.tab', label: 'Reporting tab', options: HIDDEN_VIEW },
+        { key: 'reporting.acquiring', label: 'Acquiring (transactions, batch reports, payout reports)', options: HIDDEN_VIEW },
+        { key: 'reporting.ach', label: 'ACH (transactions)', options: HIDDEN_VIEW },
+      ],
+    },
+    {
+      // Spec: "Any future Maverick-related feature is added to the Maverick group by default."
+      id: 'maverick',
+      title: 'Maverick',
+      blurb: 'Everything that comes from or goes to Maverick: the application status, sending and updating the application, Other cases and the unmatched-merchant flag.',
+      rows: [
+        { key: 'maverick.status', label: 'See Maverick application status', options: YES_NO },
+        { key: 'maverick.send', label: 'Send to Maverick', options: YES_NO },
+        { key: 'maverick.update', label: 'Update Maverick', options: YES_NO },
+        { key: 'maverick.check', label: 'Use the pre-send check tab', options: YES_NO },
+        { key: 'maverick.other_cases', label: 'See Other cases', options: YES_NO },
+        { key: 'maverick.sync_case', label: 'Sync an Other case with a regular case', options: YES_NO },
+        { key: 'maverick.unmatched_flag', label: 'See the unmatched-merchant flag', options: YES_NO },
+        { key: 'maverick.resolve_unmatched', label: 'Resolve unmatched merchants (set the MID match)', options: YES_NO },
+        { key: 'maverick.alerts', label: 'Receive Maverick sync-failure alerts', options: YES_NO },
+        { key: 'maverick.connection', label: 'Manage the Maverick connection', hint: 'The connection page: sync status and errors. The API key itself is entered by a super admin in Integrations.', options: YES_NO },
+      ],
     },
   ];
 }

@@ -22,6 +22,7 @@ import 'server-only';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { TENOR as BRAND } from '@/lib/brand/tenor';
 import { str } from './format';
 import type { AgreementSource, Used } from './kinds/types';
 import type { SignatureSpot } from './pdf';
@@ -30,11 +31,7 @@ import type { Signer } from './signers';
 /** The field whose amount decides the page and fills its debit sentence. */
 export const DASHBOARD_FEE_KEY = 'td_monthly_fee_tapdash';
 
-export const TENOR = {
-  legalName: 'Tenor Payments LLC',
-  address: '1815 Lakewood Road, STE 165, Toms River, NJ 08755',
-  revocationEmail: 'support@tenorpayments.com',
-};
+export const TENOR = { legalName: BRAND.legalName, address: BRAND.address, revocationEmail: BRAND.supportEmail };
 
 const NAVY = rgb(0x10 / 255, 0x23 / 255, 0x47 / 255);
 const INK = rgb(0.13, 0.15, 0.2);

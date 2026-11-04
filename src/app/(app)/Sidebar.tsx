@@ -90,6 +90,7 @@ const CONFIGURE_ITEMS: { page: string; href: string; icon: IconName; label: stri
   { page: 'numbers', href: '/admin/numbers', icon: 'phone', label: 'Phone numbers', exact: true },
   { page: 'residuals', href: '/admin/residuals', icon: 'percent', label: 'Residuals admin' },
   { page: 'integrations', href: '/admin/integrations', icon: 'link', label: 'Integrations', exact: true },
+  { page: 'maverick', href: '/admin/maverick', icon: 'briefcase', label: 'Maverick', exact: true },
   { page: 'automations', href: '/admin/automations', icon: 'route', label: 'Automations', exact: true },
   { page: 'recycle_bin', href: '/admin/recycle-bin', icon: 'trash', label: 'Recycle bin', exact: true },
 ];

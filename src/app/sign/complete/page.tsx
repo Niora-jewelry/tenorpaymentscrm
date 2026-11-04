@@ -9,7 +9,7 @@ export default function SignedPage() {
     <SignCard>
       <Notice
         title="Thank you — you’ve signed"
-        body="We’ve received your signature. Once everyone on the agreement has signed, we’ll email you a link to your signed copy. You can close this page."
+        body="We’ve received your signature. We’ll let you know once everyone on the agreement has signed. You can close this page."
       />
     </SignCard>
   );

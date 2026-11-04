@@ -18,14 +18,12 @@ import { fromBytea } from '@/lib/mail/crypto';
 import { openBytes } from './crypto';
 import { kindFor } from './kinds';
 import { agrLabel, type AgreementStatus, type SignerStatus } from './store';
-import { COPY_DAYS } from './outlook';
 import { vendor } from './vendor';
 
 const LIMITS = {
   missPerIp: { limit: 20, windowSeconds: 900 },
   openPerIp: { limit: 300, windowSeconds: 600 },
   signPerLink: { limit: 30, windowSeconds: 3600 },
-  copyPerLink: { limit: 10, windowSeconds: 3600 },
 };
 
 type Row = {
@@ -58,8 +56,6 @@ export type SignerPage =
       signer: string;
       expiresAt: string;
       contact: string | null;
-      /** The signed copy can be downloaded from this link (completed, stored, within COPY_DAYS). */
-      copy: boolean;
     }
   | { state: 'not_found' | 'busy' };
 
@@ -87,12 +83,6 @@ async function resolve(token: string, scope: string, rule: { limit: number; wind
   return (await rateLimit(`sign-miss:${addr}`, LIMITS.missPerIp)).allowed ? 'not_found' : 'busy';
 }
 
-const copyOpen = (r: Row) =>
-  r.agreement.status === 'completed' &&
-  r.agreement.download_status === 'stored' &&
-  !!r.agreement.completed_at &&
-  Date.now() < new Date(r.agreement.completed_at).getTime() + COPY_DAYS * 86400_000;
-
 function pageOf(r: Row): SignerPage {
   const a = r.agreement;
   const expired = a.status === 'expired' || (['sent', 'viewed', 'partially_signed'].includes(a.status) && new Date(a.expires_at).getTime() < Date.now());
@@ -116,7 +106,6 @@ function pageOf(r: Row): SignerPage {
     signer: r.name,
     expiresAt: a.expires_at,
     contact: a.delivery_address,
-    copy: copyOpen(r),
   };
 }
 
@@ -138,21 +127,4 @@ export async function startSigning(token: string): Promise<{ url: string } | { p
   // No open signing page for them: the document closed meanwhile. The page re-reads and says why.
   if (!me?.signingUrl) return { page };
   return { url: me.signingUrl };
-}
-
-/** The signed copy, for COPY_DAYS after completion — what SignWell's own completion email would have given them. */
-export async function signedCopy(token: string): Promise<{ name: string; bytes: Buffer } | null> {
-  const r = await resolve(token, 'copy', LIMITS.copyPerLink);
-  if (typeof r === 'string' || !copyOpen(r)) return null;
-  const { data: f } = await supabaseAdmin()
-    .from('agreement_files')
-    .select('id, name, storage_path, iv')
-    .eq('agreement_id', r.agreement.id)
-    .eq('kind', 'completed')
-    .maybeSingle();
-  if (!f) return null;
-  const { data: blob, error } = await supabaseAdmin().storage.from('agreement-pdfs').download(f.storage_path as string);
-  if (error || !blob) return null;
-  const bytes = openBytes({ data: Buffer.from(await blob.arrayBuffer()), iv: fromBytea(f.iv) }, `agreement-file:${f.id as string}`);
-  return { name: f.name as string, bytes };
 }

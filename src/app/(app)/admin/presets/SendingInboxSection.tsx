@@ -74,6 +74,11 @@ function KindRow({ kind, row, inboxes }: { kind: (typeof KINDS)[number]; row: Ro
           ) : null}
           {missing ? <option value={`mailbox:${row.mailboxId}`}>An inbox that is no longer connected</option> : null}
         </select>
+        {choice === 'signwell' ? (
+          <p className="mt-1 flex items-start gap-1.5 text-[12px] leading-snug text-[#8a5a09]">
+            <Icon name="alert-triangle" size={12} className="mt-0.5 shrink-0" /> SignWell emails the signers itself and sends each of them the signed agreement. Pick a mailbox so signers get no copy.
+          </p>
+        ) : null}
         {missing && choice === saved ? (
           <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[#8a5a09]">
             <Icon name="alert-triangle" size={12} /> This inbox has no working connection, so nothing can be sent. Reconnect it in Email or pick another.

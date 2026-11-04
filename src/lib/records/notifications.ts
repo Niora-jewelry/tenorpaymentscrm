@@ -107,6 +107,8 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   const kind = r.source_kind as string;
   const recordId = r.record_id as string | null;
   if (kind === 'automation_alert') return '/admin/automations/runs';
+  // A processor (Maverick) sync problem: the connection page shows what failed.
+  if (kind === 'processor') return '/admin/maverick';
   if (!recordId || !mod) return kind in TAB_FOR_PHONE ? '/phone' : null;
   const base = `/${mod.slug}?record=${recordId}`;
   if (kind.startsWith('mention_') || kind === 'agreement' || kind === 'proposal') {

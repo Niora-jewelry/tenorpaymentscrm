@@ -9,12 +9,13 @@ import {
   removeIntegrationSetting,
   saveIntegrationGroup,
   sendTestAlert,
+  setIntegrationEnabled,
   testIntegrationGroup,
 } from '@/lib/integrations/service';
 import type { ProbeResult } from '@/lib/integrations/probe';
 import { authorize } from '@/lib/records/permissions';
 
-const Group = z.enum(['twilio', 'microsoft', 'signwell', 'alerts']);
+const Group = z.enum(['twilio', 'microsoft', 'signwell', 'alerts', 'maverick']);
 const Key = z.string().refine((k) => SETTING_KEYS.includes(k));
 const Save = z.object({ group: Group, values: z.record(Key, z.string().max(2000)) });
 
@@ -58,6 +59,17 @@ export async function testIntegrationAction(group: string): Promise<IntegrationO
   const parsed = Group.safeParse(group);
   if (!parsed.success) return { ok: false, message: 'That service is not valid.' };
   return run(async () => outcome(await testIntegrationGroup(await authorize(), parsed.data)));
+}
+
+const Switch = z.object({ group: Group, enabled: z.boolean() });
+
+export async function setIntegrationEnabledAction(input: z.input<typeof Switch>): Promise<IntegrationOutcome> {
+  const parsed = Switch.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That service is not valid.' };
+  return run(async () => {
+    await setIntegrationEnabled(await authorize(), parsed.data.group, parsed.data.enabled);
+    return { ok: true, note: parsed.data.enabled ? 'Switched on. The CRM uses these keys again within a minute.' : 'Switched off. The keys are kept; nothing uses them until you switch it back on.' };
+  });
 }
 
 export async function connectSignwellAction(): Promise<IntegrationOutcome> {

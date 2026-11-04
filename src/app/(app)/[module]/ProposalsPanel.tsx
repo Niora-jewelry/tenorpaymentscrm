@@ -11,19 +11,18 @@ import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
-import { Button, Dialog, StatusPill } from '@/proto/ui/kit';
+import { Dialog, StatusPill } from '@/proto/ui/kit';
 import { MenuSurface } from '@/proto/ui/MenuSurface';
 import type { ProposalsPanelData, ProposalView } from '@/lib/proposals/service';
 import { money } from '@/lib/proposals/content';
 import { PROPOSAL_STATUS } from '../proposals/status';
 import { voidProposalAction } from './proposalActions';
-import { SendProposalDialog } from './SendProposalDialog';
 
 const date = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-export function ProposalsPanel({ moduleSlug, recordId, data }: { moduleSlug: string; recordId: string; data: ProposalsPanelData }) {
+/** Sending lives in the Files tab's send bar (client, 4 Nov 2026); this lists what went out. */
+export function ProposalsPanel({ data }: { moduleSlug: string; recordId: string; data: ProposalsPanelData }) {
   const router = useRouter();
-  const [sending, setSending] = useState(false);
   const [voiding, setVoiding] = useState<ProposalView | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [busy, start] = useTransition();
@@ -47,24 +46,9 @@ export function ProposalsPanel({ moduleSlug, recordId, data }: { moduleSlug: str
           <p className="text-[12px] text-ink-500">
             {data.items.length
               ? 'The merchant sees the proposal as it was when sent. A newer one can be sent at any time.'
-              : 'Send the merchant an online proposal: their savings, the recommended POS and a one-click approval.'}
+              : 'Send the merchant an online proposal from the Send proposal button above: their savings, the recommended POS and a one-click approval.'}
           </p>
         </div>
-        {data.canEdit ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <Link
-              href={`/proposals/preview/${recordId}?module=${encodeURIComponent(moduleSlug)}`}
-              target="_blank"
-              rel="noopener"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] font-semibold text-ink-700 transition-colors hover:border-ink-400 hover:bg-canvas"
-            >
-              <Icon name="eye" size={13} /> Preview
-            </Link>
-            <Button size="sm" variant="primary" icon="send" onClick={() => setSending(true)}>
-              Send proposal
-            </Button>
-          </div>
-        ) : null}
       </header>
 
       {notice ? (
@@ -88,19 +72,6 @@ export function ProposalsPanel({ moduleSlug, recordId, data }: { moduleSlug: str
             <ProposalRow key={p.id} p={p} canEdit={data.canEdit} busy={busy} onVoid={() => setVoiding(p)} />
           ))}
         </ul>
-      ) : null}
-
-      {sending ? (
-        <SendProposalDialog
-          recordId={recordId}
-          moduleSlug={moduleSlug}
-          onClose={() => setSending(false)}
-          onSent={(text) => {
-            setSending(false);
-            setNotice({ tone: 'ok', text });
-            router.refresh();
-          }}
-        />
       ) : null}
 
       {voiding ? (

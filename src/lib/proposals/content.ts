@@ -19,13 +19,9 @@
  *                    time fee, Monthly cost = Amount × Monthly fee.
  *   Closing          the relationship manager's email, else sales@tenorpayments.com.
  */
+import { TENOR } from '@/lib/brand/tenor';
 
-export const TENOR_CONTACT = {
-  company: 'Tenor Payments',
-  salesEmail: 'sales@tenorpayments.com',
-  phone: '(732) 479-3050',
-  address: '1815 Lakewood Road, STE 165, Toms River, NJ 08755',
-};
+export const TENOR_CONTACT = { company: TENOR.company, salesEmail: TENOR.salesEmail, phone: TENOR.phone, address: TENOR.address };
 
 /** Every field a proposal reads: a sender who can't see one can't send it. */
 export const PROPOSAL_FIELD_KEYS = [

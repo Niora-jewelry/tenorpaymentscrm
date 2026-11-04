@@ -45,6 +45,11 @@ import { AgreementsPanel } from './AgreementsPanel';
 import type { ProposalsPanelData } from '@/lib/proposals/service';
 import { ProposalsPanel } from './ProposalsPanel';
 import { ApplicationsPanel } from './ApplicationsPanel';
+import { FilesSendBar } from './FilesSendBar';
+import { ReportingPanel } from './ReportingPanel';
+import { ProcessorApplicationCard } from './ProcessorApplicationCard';
+import { CasesWithOther } from './OtherCasesPanel';
+import type { OtherCasesData, ProcessorApplicationView, ReportingPanel as ReportingPanelData } from '@/lib/processors/service';
 import type { RecordResiduals } from '@/lib/records/recordResiduals';
 
 type Grant = 'hidden' | 'view' | 'edit';
@@ -106,6 +111,8 @@ export type TabPayload = {
   showsAgreements?: boolean;
   /** Carries the Proposals panel (`tabs.shows_proposals`). */
   showsProposals?: boolean;
+  /** Carries Reporting (`tabs.shows_reporting`). */
+  showsReporting?: boolean;
 };
 
 export function DrawerTabs({
@@ -137,6 +144,9 @@ export function DrawerTabs({
   applications = null,
   agreements = null,
   proposals = null,
+  reporting = null,
+  processorApp = null,
+  otherCases = null,
   messages,
   phoneCalls,
   smsMessages,
@@ -211,6 +221,12 @@ export function DrawerTabs({
   agreements?: AgreementsPanelData | null;
   /** The record's proposals, when a visible tab carries them. */
   proposals?: ProposalsPanelData | null;
+  /** Reporting, when a visible tab carries it and the viewer may see it. */
+  reporting?: ReportingPanelData | null;
+  /** The application at the processor, on the Applications tab. */
+  processorApp?: ProcessorApplicationView | null;
+  /** Cases › Other cases, when the viewer may see them. */
+  otherCases?: OtherCasesData | null;
   messages: Message[];
   phoneCalls: PhoneCall[];
   smsMessages: PhoneMessage[];
@@ -421,6 +437,11 @@ export function DrawerTabs({
                 />
               ) : null}
               {t.count != null ? <CountPill n={t.count} active={active} /> : null}
+              {t.kind === 'cases' && otherCases?.unsynced ? (
+                <span title={`${otherCases.unsynced} Other case${otherCases.unsynced === 1 ? '' : 's'} not synced yet`} className="ml-1.5 rounded-full bg-[#fdf1d8] px-1.5 text-[10.5px] font-bold text-[#8a5a09] ring-1 ring-[#f7e0af]">
+                  {otherCases.unsynced} to sync
+                </span>
+              ) : null}
               {mentionsByTab.byTab[t.key] ? <MentionPill n={mentionsByTab.byTab[t.key]} /> : null}
               {t.fieldCompleteness ? (
                 <span className="ml-1.5">
@@ -527,6 +548,8 @@ export function DrawerTabs({
             return (
               <div className="space-y-4">
                 {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
+                {activeTab.showsApplications && processorApp ? <ProcessorApplicationCard moduleSlug={moduleSlug} recordId={recordId} data={processorApp} /> : null}
+                {activeTab.showsReporting && reporting ? <ReportingPanel recordId={recordId} data={reporting} /> : null}
                 {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
                 {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
                 <RealFieldGrid
@@ -564,25 +587,49 @@ export function DrawerTabs({
             );
           })()
         ) : activeTab.kind === 'cases' ? (
-          <CasesPanel
-            moduleSlug={moduleSlug}
-            recordId={recordId}
-            handlingNote={caseHandlingNote}
-            cases={cases}
-            repliesByCase={repliesByCase}
-            managersByCase={managersByCase}
-            attachmentsByCase={attachmentsByCase}
-            logByCase={logByCase}
-            canUseAwaitingClient={canUseAwaitingClient}
-            authorNames={authorNames}
-            viewerId={viewerId}
-            canDelete={canDeleteCases}
-            isAdmin={isAdmin}
-            editable={activeTab.editable}
-            caseRoster={caseRoster}
-            mentionsByCase={mentionsByTab.byCase}
-            openMention={openMention?.caseId ? openMention : null}
-          />
+          otherCases ? (
+            <CasesWithOther data={otherCases} recordId={recordId}>
+              <CasesPanel
+                moduleSlug={moduleSlug}
+                recordId={recordId}
+                handlingNote={caseHandlingNote}
+                cases={cases}
+                repliesByCase={repliesByCase}
+                managersByCase={managersByCase}
+                attachmentsByCase={attachmentsByCase}
+                logByCase={logByCase}
+                canUseAwaitingClient={canUseAwaitingClient}
+                authorNames={authorNames}
+                viewerId={viewerId}
+                canDelete={canDeleteCases}
+                isAdmin={isAdmin}
+                editable={activeTab.editable}
+                caseRoster={caseRoster}
+                mentionsByCase={mentionsByTab.byCase}
+                openMention={openMention?.caseId ? openMention : null}
+              />
+            </CasesWithOther>
+          ) : (
+            <CasesPanel
+              moduleSlug={moduleSlug}
+              recordId={recordId}
+              handlingNote={caseHandlingNote}
+              cases={cases}
+              repliesByCase={repliesByCase}
+              managersByCase={managersByCase}
+              attachmentsByCase={attachmentsByCase}
+              logByCase={logByCase}
+              canUseAwaitingClient={canUseAwaitingClient}
+              authorNames={authorNames}
+              viewerId={viewerId}
+              canDelete={canDeleteCases}
+              isAdmin={isAdmin}
+              editable={activeTab.editable}
+              caseRoster={caseRoster}
+              mentionsByCase={mentionsByTab.byCase}
+              openMention={openMention?.caseId ? openMention : null}
+            />
+          )
         ) : activeTab.kind === 'updates' ? (
           <UpdatesPanel
             moduleSlug={moduleSlug}
@@ -601,6 +648,9 @@ export function DrawerTabs({
           <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} focusRowId={focusFieldKey} />
         ) : activeTab.kind === 'files' ? (
           <div className="space-y-4">
+          {/* Send application / proposal / agreement, side by side under the tabs
+              (client, 4 Nov 2026). Each button shows only to someone allowed to send. */}
+          <FilesSendBar moduleSlug={moduleSlug} recordId={recordId} applications={applications} proposals={activeTab.showsProposals ? proposals : null} agreements={activeTab.showsAgreements ? agreements : null} />
           {/* The Send agreement panel lives on Files since the Field-Tab Review:
               which tab carries it is the `shows_agreements` flag, not this code. */}
           {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}

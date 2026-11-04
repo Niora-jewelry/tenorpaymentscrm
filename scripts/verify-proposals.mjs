@@ -96,7 +96,7 @@ const content = {
   },
   pos: { description: 'Clover Station Duo at the counter.', requirements: [{ text: 'Kiosk ordering', check: true }, { text: 'Gift cards', check: false }], features: [{ text: 'Phone-number customer lookup', check: true }] },
   detailedPos: { rows: [{ product: 'Station Duo', amount: 2, hardwareCost: 10, setupFee: 99, monthlyCost: 64.32 }] },
-  closing: { email: ADMIN, phone: '(732) 479-3050', address: '1815 Lakewood Road, STE 165, Toms River, NJ 08755', company: 'Tenor Payments' },
+  closing: { email: ADMIN, phone: '(732) 479-3050', address: '902 East County Line Road, STE 101, Lakewood, NJ 08701', company: 'Tenor Payments' },
 };
 const pepper = Buffer.from(process.env.OTP_PEPPER, 'base64');
 const sent = async () => {

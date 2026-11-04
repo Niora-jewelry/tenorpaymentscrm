@@ -25,8 +25,6 @@ import { kindFor } from './kinds';
 import { agreementSettings, agrLabel, type AgreementRow, type SignerRow } from './store';
 import { completedHtml, inviteHtml, reminderDue, reminderHtml, withdrawnHtml, type EmailAbout } from './signerEmails';
 
-/** How long after completion the signer's link still hands out their signed copy. */
-export const COPY_DAYS = 30;
 
 export class DeliveryError extends Error {
   constructor(message: string) {
@@ -165,7 +163,7 @@ export async function emailWithdrawn(a: AgreementRow, signers: SignerRow[], acto
   }
 }
 
-/** Completed and the signed PDF stored: each signer is told, once, where their copy is. */
+/** Completed and the signed PDF stored: each signer is told, once, that everyone has signed. No copy goes with it. */
 export async function emailCompleted(agreementId: string): Promise<void> {
   // Claim it: two webhooks for the same completion must not send twice.
   const { data } = await supabaseAdmin()
@@ -181,10 +179,8 @@ export async function emailCompleted(agreementId: string): Promise<void> {
   if (!a) return;
   const { data: rows } = await supabaseAdmin().from('agreement_signers').select('*').eq('agreement_id', a.id).order('slot');
   for (const s of (rows ?? []) as SignerRow[]) {
-    const token = openSignerLink(s);
-    if (!token) continue;
     // Queued only: this runs in background work, and the per-minute mail tick sends it.
-    await emailSigner(a, s, { subject: `Signed: ${a.subject}`, html: completedHtml(about(a), s, signerLinkUrl(token), COPY_DAYS), crmRef: `agreement_notice:${s.id}` }, null, false).catch(() => undefined);
+    await emailSigner(a, s, { subject: `Signed: ${a.subject}`, html: completedHtml(about(a), s), crmRef: `agreement_notice:${s.id}` }, null, false).catch(() => undefined);
   }
 }
 

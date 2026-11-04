@@ -144,7 +144,9 @@ export class SignWell implements ESignVendor {
       expires_in: req.expiresDays,
       // Embedded: SignWell emails nobody (send_email stays false) and the CRM sends the reminders.
       reminders: req.embedded ? false : req.reminders,
-      ...(req.embedded ? { embedded_signing: true, redirect_url: req.embedded.redirectUrl, decline_redirect_url: req.embedded.declineRedirectUrl } : {}),
+      // embedded_signing_notifications false: SignWell sends no completed-document email (client, 4 Nov 2026:
+      // the signed copy is not emailed); recipients carry no send_email, so SignWell emails no one.
+      ...(req.embedded ? { embedded_signing: true, embedded_signing_notifications: false, redirect_url: req.embedded.redirectUrl, decline_redirect_url: req.embedded.declineRedirectUrl } : {}),
       allow_decline: true,
       allow_reassign: false,
       apply_signing_order: false,

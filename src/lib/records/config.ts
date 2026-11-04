@@ -69,6 +69,8 @@ export type Tab = {
   showsAgreements?: boolean;
   /** Carries the Proposals panel (`tabs.shows_proposals`). */
   showsProposals?: boolean;
+  /** Carries Reporting, the processor's data in full screen (`tabs.shows_reporting`). */
+  showsReporting?: boolean;
   /** Offers the Add only level (migration 9856). */
   allowsAddOnly?: boolean;
 };
@@ -208,6 +210,7 @@ const loadConfigCached = unstable_cache(
         showsApplications: t.shows_applications ?? false,
         showsAgreements: t.shows_agreements ?? false,
         showsProposals: t.shows_proposals ?? false,
+        showsReporting: (t as { shows_reporting?: boolean }).shows_reporting ?? false,
         allowsAddOnly: t.allows_add_only ?? false,
       })),
       subtabs: subtabs.data!.map((s) => ({

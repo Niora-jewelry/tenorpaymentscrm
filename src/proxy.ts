@@ -86,6 +86,8 @@ const PUBLIC_API_PATHS = new Set([
   /* Nightly retention (notifications older than 90 days). Same bearer check. */
   '/api/housekeeping/tick',
   '/api/automations/tick',
+  /* The processor's daily sync (Maverick). Same bearer check. */
+  '/api/processors/sync',
 
   /*
    * ── Microsoft Graph webhooks ──────────────────────────────────────────

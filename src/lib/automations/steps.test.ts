@@ -25,9 +25,16 @@ describe('the spec\'s own example', () => {
 });
 
 describe('triggers and modules', () => {
-  it('marks exactly the email, application, contract, File uploaded and ticket triggers as outside a module', () => {
+  it('marks exactly the email, application, contract, File uploaded, ticket and Maverick status triggers as outside a module', () => {
     const outside = Object.entries(TRIGGERS).filter(([, t]) => !t.inModule).map(([k]) => k).sort();
-    expect(outside).toEqual(['application_received', 'application_sent', 'awaiting_client', 'contract_received', 'contract_sent', 'email_received', 'email_sent', 'file_uploaded', 'ticket_email'].sort());
+    expect(outside).toEqual(['application_received', 'application_sent', 'awaiting_client', 'contract_received', 'contract_sent', 'email_received', 'email_sent', 'file_uploaded', 'processor_status', 'ticket_email'].sort());
+  });
+
+  it('parses Maverick status changes with a blank value as any change, and needs nothing chosen', () => {
+    // As a Draft saves it: the value left out entirely.
+    const s = steps({ triggers: [{ id: 't', type: 'processor_status' } as never] });
+    expect(s.triggers[0]).toMatchObject({ type: 'processor_status', value: '' });
+    expect(problemsIn(s).join()).not.toMatch(/Maverick/);
   });
 
   it('refuses Only in module with a trigger outside a module', () => {

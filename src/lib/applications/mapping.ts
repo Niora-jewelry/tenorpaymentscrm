@@ -254,6 +254,16 @@ function crmOwners(crm: CrmValues): Record<string, unknown>[] {
  * an SSN or a Private value (the online form shows "On file" for an SSN
  * separately — see `ssnOnFile`).
  */
+/** Every CRM field the application reads (prefill), for the pre-send check. */
+export const APPLICATION_FIELD_KEYS = [
+  'legal_business_name', 'dba', 'merchant_address', 'retail_address', 'building_ownership', 'area_zoned', 'square_footage',
+  'contact', 'business_founded_date', 'merchant_website', 'entity_type', 'bankruptcy', 'cc_termination', 'owner_ownership',
+  'prior_processor', 'prior_pos', 'monthly_acq_volume', 'monthly_ach_volume', 'avg_transaction', 'ach_avg_transaction',
+  'max_transaction', 'ach_max_transaction', 'seasonal', 'sales_method', 'customer_type', 'customer_profile', 'payment_codes',
+  'advertising_method', 'refund_policy', 'inventory', 'charge_to_service', 'order_to_service', 'service_model',
+  'ach_monthly_transactions', 'ach_monthly_returns', 'ach_refunds', 'td_ach_return',
+] as const;
+
 export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   const a: Answers = {};
   const set = (k: string, v: string) => {

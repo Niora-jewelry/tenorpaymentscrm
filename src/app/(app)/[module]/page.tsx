@@ -57,6 +57,7 @@ import { allNotesFor } from '@/lib/records/notes';
 import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
 import { agreementsFor } from '@/lib/agreements/service';
 import { proposalsFor } from '@/lib/proposals/service';
+import { otherCasesFor, processorApplicationFor, processorVitals, reportingPanelFor, unmatchedFlags, unsyncedOtherCases } from '@/lib/processors/service';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
 import { columnOrderFor, columnVisibilityFor, filtersFor, fieldOrderFor } from '@/lib/records/preferences';
@@ -242,7 +243,10 @@ export default async function ModulePage({
   });
   // Asked only for a viewer the column is shown to: absent, never blank.
   const showsTeams = columns.some((c) => c.id === VISIBILITY_FIELD_KEY);
-  const [membershipsByRecord, mentionCounts, teamsByRecord, assignable, ticketFlags] = await Promise.all([
+  const rowIds = dbRows.map((r) => r.id);
+  // Processor flags: each returns {} unless the viewer may see it; a processor problem never blanks the list.
+  const quietFlags = <T,>(p: Promise<Record<string, T>>): Promise<Record<string, T>> => p.catch((e) => { console.error('[processors] list', e instanceof Error ? e.message.slice(0, 200) : e); return {}; });
+  const [membershipsByRecord, mentionCounts, teamsByRecord, assignable, ticketFlags, unmatchedByRecord, unsyncedByRecord] = await Promise.all([
     membershipsForMany(ctx, dbRows.map((r) => r.id)),
     // The viewer's own unread @mentions per row — the "@ 3" badge.
     unreadMentionCounts(ctx, dbRows.map((r) => r.id)),
@@ -250,6 +254,9 @@ export default async function ModulePage({
     showsTeams || canCreate ? assignableTeams(ctx) : ([] as AssignableTeam[]),
     // Ticket flows (spec): the Awaiting client tag, and the "choose a ticket" badge, on the module of open tickets only.
     mod.showsOpenCases ? ticketFlagsFor(ctx, dbRows.map((r) => r.id)) : null,
+    quietFlags(unmatchedFlags(ctx, rowIds)),
+    // Tickets module (the one showing open cases): Other cases not synced yet.
+    mod.showsOpenCases ? quietFlags(unsyncedOtherCases(ctx, rowIds)) : Promise.resolve({} as Record<string, number>),
   ]);
   const moduleSlugById = new Map(config.modules.map((m) => [m.id, m.slug]));
   const rows = dbRows.map((r) => ({
@@ -260,6 +267,8 @@ export default async function ModulePage({
     mentions: mentionCounts[r.id] ?? 0,
     awaitingClient: ticketFlags?.awaiting.has(r.id) ?? false,
     ticketChoice: ticketFlags?.choosing.has(r.id) ?? false,
+    processorUnmatched: unmatchedByRecord[r.id] ?? false,
+    otherCasesUnsynced: unsyncedByRecord[r.id] ?? 0,
   }));
 
   return (
@@ -819,6 +828,18 @@ async function RecordDrawer({
     dbTabs.some((t) => t.showsProposals) ? proposalsFor(ctx, record.id) : Promise.resolve(null),
   ]);
 
+  /* The processor (Maverick): Reporting, the application there, Other cases and
+     the Vital Info slot. Each asks its own permission and returns null when the
+     viewer may not see it, so nothing hidden reaches the page. A processor
+     problem never stops the drawer opening. */
+  const quiet = <T,>(p: Promise<T>): Promise<T | null> => p.catch((e) => { console.error('[processors] drawer', e instanceof Error ? e.message.slice(0, 200) : e); return null; });
+  const [reporting, processorApp, otherCases, processorVital] = await Promise.all([
+    dbTabs.some((t) => t.showsReporting) ? quiet(reportingPanelFor(ctx, record.id)) : Promise.resolve(null),
+    dbTabs.some((t) => t.showsApplications) ? quiet(processorApplicationFor(ctx, record.id)) : Promise.resolve(null),
+    dbTabs.some((t) => t.kind === 'cases') ? quiet(otherCasesFor(ctx, record.id)) : Promise.resolve(null),
+    quiet(processorVitals(ctx, record.id)),
+  ]);
+
   /* Both kinds still read: "Other files" was folded into Application by
      migration 750 and its rows migrated, so `otherRows` is empty on a current
      database — it is still unioned here so `filesByRow` covers any straggler
@@ -1162,7 +1183,7 @@ async function RecordDrawer({
 
     const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
 
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false, showsReporting: t.showsReporting ?? false };
   }));
 
   /* What reaches the browser: the locks, and the hides on the two tabs that stay
@@ -1282,6 +1303,7 @@ async function RecordDrawer({
         openMention={openMention?.fieldKey ? openMention : null}
         filesRequired={record.filesRequired}
         ticketChoices={ticketChoices}
+        processor={processorVital}
       />
 
       <DrawerTabs
@@ -1327,6 +1349,9 @@ async function RecordDrawer({
         applications={applications}
         agreements={agreements}
         proposals={proposals}
+        reporting={reporting}
+        processorApp={processorApp}
+        otherCases={otherCases}
         messages={messages}
         phoneCalls={phoneCalls}
         smsMessages={smsMessages}

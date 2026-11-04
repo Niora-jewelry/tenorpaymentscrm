@@ -13,7 +13,7 @@ vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({}) }));
 
 const { sealSetting, openSetting } = await import('./crypto');
 const { cleanValue, hintFor, settingDef, SETTINGS, SETTING_KEYS, validFrom } = await import('./catalog');
-const { agreementsReadyFrom, envValues, mailReadyFrom, merge, phoneReadyFrom, signwellTestModeFrom } = await import('./resolve');
+const { agreementsReadyFrom, applySwitches, envValues, mailReadyFrom, merge, phoneReadyFrom, signwellTestModeFrom } = await import('./resolve');
 const { connectSignwellHook, probeAlerts, probeMicrosoft, probeSignwell, probeTwilio } = await import('./probe');
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -85,6 +85,39 @@ describe('which value wins', () => {
     for (const k of ['SUPABASE_SERVICE_ROLE_KEY', 'OTP_PEPPER', 'LOGIN_ENC_KEY', 'MAIL_TOKEN_ENC_KEY', 'MAIL_STATE_SIGNING_SECRET', 'CRON_SECRET']) {
       expect(SETTING_KEYS).not.toContain(k);
     }
+  });
+});
+
+describe('a service switched off', () => {
+  const open = (_k: string, r: { sealed: string }) => r.sealed;
+  const base = () =>
+    merge(
+      [
+        { key: 'SIGNWELL_API_KEY', sealed: 'sw-key', iv: '' },
+        { key: 'MAIL_CLIENT_ID', sealed: '11111111-2222-3333-4444-555555555555', iv: '' },
+      ],
+      envValues(),
+      open,
+    );
+
+  it('drops out of what the CRM reads, but the screen still sees its keys', () => {
+    const snap = applySwitches(base(), new Set(['twilio', 'signwell'] as const));
+    expect(snap.values.TWILIO_AUTH_TOKEN).toBeUndefined();
+    expect(snap.values.SIGNWELL_API_KEY).toBeUndefined();
+    expect(snap.all.TWILIO_AUTH_TOKEN).toBe('env-token');
+    expect(snap.all.SIGNWELL_API_KEY).toBe('sw-key');
+    expect(snap.off.has('signwell')).toBe(true);
+  });
+
+  it('Microsoft keeps its keys: alert email may borrow its app for sign-in codes', () => {
+    const snap = applySwitches(base(), new Set(['microsoft'] as const));
+    expect(snap.values.MAIL_CLIENT_ID).toBe('11111111-2222-3333-4444-555555555555');
+    expect(snap.off.has('microsoft')).toBe(true);
+  });
+
+  it('switching back on restores everything', () => {
+    const snap = applySwitches(applySwitches(base(), new Set(['twilio'] as const)), new Set());
+    expect(snap.values.TWILIO_AUTH_TOKEN).toBe('env-token');
   });
 });
 

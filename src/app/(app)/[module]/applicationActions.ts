@@ -10,6 +10,7 @@ import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
 import {
   ApplicationError,
+  applicationPreCheck,
   decide,
   enterAnswersByHand,
   prepareCrmUpload,
@@ -24,6 +25,7 @@ import {
   type UploadOutcome,
 } from '@/lib/applications/service';
 import { TemplateMissingError } from '@/lib/applications/pdf';
+import type { ProblemGroup } from '@/lib/records/fieldProblems';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -54,6 +56,13 @@ export async function sendDefaultsAction(recordId: string): Promise<Result<SendD
   if (!id.success) return { ok: false, message: 'That record is not valid.' };
   const ctx = await authorize();
   return run(() => sendDefaults(ctx, id.data), 'Could not prepare the application.');
+}
+
+export async function applicationPreCheckAction(recordId: string): Promise<Result<{ groups: ProblemGroup[] }>> {
+  const id = uuid.safeParse(recordId);
+  if (!id.success) return { ok: false, message: 'That record is not valid.' };
+  const ctx = await authorize();
+  return run(() => applicationPreCheck(ctx, id.data), 'Could not check the application.');
 }
 
 export async function sendApplicationAction(input: z.input<typeof Compose> & { recordId: string }): Promise<Result<{ label: string }>> {

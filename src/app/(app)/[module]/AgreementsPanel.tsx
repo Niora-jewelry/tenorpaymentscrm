@@ -47,16 +47,10 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad' | 'warn'; text: string } | null>(null);
   const [voiding, setVoiding] = useState<AgreementView | null>(null);
   const [busy, start] = useTransition();
-  const kindMenu = useRef<HTMLSpanElement>(null);
-  const [kindOpen, setKindOpen] = useState(false);
 
   // One agreement may be out per kind (the card and the ACH agreement can be out together).
   const openByKind = new Map(data.items.filter((a) => OPEN.has(a.status)).map((a) => [a.kind, a] as const));
-  const single = data.kinds.length === 1 ? data.kinds[0]! : null;
-  const singleOpen = single ? (openByKind.get(single.key) ?? null) : null;
-  const allOut = data.kinds.length > 0 && data.kinds.every((k) => openByKind.has(k.key));
   const startSend = (kind: string, resendOf: string | null = null) => {
-    setKindOpen(false);
     setSending({ kind, resendOf });
   };
   const act = (fn: () => Promise<{ ok: boolean; message?: string }>, okText: string) =>
@@ -77,52 +71,9 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
           <p className="text-[12px] text-ink-500">
             {data.items.length
               ? 'Filled from this record, signed online by each principal. The signed PDF lands here.'
-              : 'Send an agreement, filled from this record, to every principal for e-signature.'}
+              : 'Send an agreement from the Send agreement button above. It is filled from this record and goes to every principal for e-signature.'}
           </p>
         </div>
-        {data.canSend ? (
-          <div className="flex shrink-0 items-center gap-2">
-            {data.kinds.length > 1 ? (
-              <>
-                <span ref={kindMenu} className="inline-flex">
-                  <Button size="sm" variant="primary" icon="send" disabled={allOut} title={allOut ? 'Every agreement is already out. Void one first.' : undefined} onClick={() => setKindOpen((o) => !o)}>
-                    Send agreement
-                  </Button>
-                </span>
-                <MenuSurface open={kindOpen} onClose={() => setKindOpen(false)} anchorRef={kindMenu} align="right" width={260} label="Which agreement">
-                  {data.kinds.map((k) => {
-                    const out = openByKind.get(k.key);
-                    return (
-                      <button
-                        key={k.key}
-                        type="button"
-                        disabled={Boolean(out)}
-                        title={out ? `${out.label} is already out. Void it first.` : undefined}
-                        onClick={() => startSend(k.key)}
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Icon name="file-pen" size={13} className="text-ink-400" />
-                        <span className="min-w-0 flex-1">{k.label}</span>
-                        {out ? <span className="text-[11px] text-ink-400">{out.label} out</span> : null}
-                      </button>
-                    );
-                  })}
-                </MenuSurface>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                icon="send"
-                disabled={Boolean(singleOpen) || !single}
-                title={singleOpen ? `${singleOpen.label} is already out. Void it first.` : !data.configured ? 'The signing service is not set up yet' : undefined}
-                onClick={() => single && startSend(single.key)}
-              >
-                Send agreement
-              </Button>
-            )}
-          </div>
-        ) : null}
       </header>
 
       {!data.configured && data.canSend ? (

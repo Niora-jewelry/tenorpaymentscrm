@@ -157,6 +157,15 @@ const serverSchema = z.object({
   SIGNWELL_WEBHOOK_ID: optionalString,
   SIGNWELL_TEST_MODE: optionalString,
 
+  /**
+   * Maverick Payments (merchant boarding, reporting, statements and support
+   * tickets). Entered in CRM Settings › Integrations like the others. The
+   * endpoints are wired once Maverick's API documentation is in.
+   */
+  MAVERICK_API_KEY: optionalString,
+  MAVERICK_API_SECRET: optionalString,
+  MAVERICK_API_URL: optionalString,
+
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -193,6 +202,9 @@ const parsed = serverSchema.safeParse({
   SIGNWELL_API_KEY: process.env.SIGNWELL_API_KEY,
   SIGNWELL_WEBHOOK_ID: process.env.SIGNWELL_WEBHOOK_ID,
   SIGNWELL_TEST_MODE: process.env.SIGNWELL_TEST_MODE,
+  MAVERICK_API_KEY: process.env.MAVERICK_API_KEY,
+  MAVERICK_API_SECRET: process.env.MAVERICK_API_SECRET,
+  MAVERICK_API_URL: process.env.MAVERICK_API_URL,
   NODE_ENV: process.env.NODE_ENV,
 });
 
@@ -214,7 +226,8 @@ export type IntegrationEnvKey =
   | 'MAIL_CLIENT_ID' | 'MAIL_CLIENT_SECRET' | 'MAIL_CLIENT_SECRET_EXPIRES_AT' | 'MAIL_ALLOWED_TENANT_IDS'
   | 'SIGNWELL_API_KEY' | 'SIGNWELL_WEBHOOK_ID' | 'SIGNWELL_TEST_MODE'
   | 'EMAIL_FROM' | 'ALERT_MAIL_TENANT_ID' | 'ALERT_MAIL_CLIENT_ID' | 'ALERT_MAIL_CLIENT_SECRET'
-  | 'SMTP_HOST' | 'SMTP_PORT' | 'SMTP_USER' | 'SMTP_PASSWORD';
+  | 'SMTP_HOST' | 'SMTP_PORT' | 'SMTP_USER' | 'SMTP_PASSWORD'
+  | 'MAVERICK_API_KEY' | 'MAVERICK_API_SECRET' | 'MAVERICK_API_URL';
 
 export const integrationEnv: Pick<ParsedEnv, IntegrationEnvKey> = parsed.data;
 

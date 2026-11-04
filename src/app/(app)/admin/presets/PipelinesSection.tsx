@@ -10,9 +10,10 @@
  *      chosen once, at creation, and shown as a fact afterwards — there is no
  *      control to move one, because records already assigned are filed under
  *      that module and would be stranded by the move.
- *   2. **Nothing can be removed** — not a step, not a pipeline. Records stand
- *      on a step by id and a deleted pipeline cascades its assignments away.
- *      There is no delete control, and the writer has no DELETE either.
+ *   2. **A step is removed with its records moved first** (client, 4 Nov
+ *      2026). Records stand on a step by id, so Remove asks where they go and
+ *      the database moves and logs each one before the step goes. A pipeline
+ *      itself still cannot be deleted: that would cascade its assignments away.
  *   3. **A step's id never moves, so renaming is free.** Unlike a choice, a
  *      step has no key to derive from its label; records point at the id. That
  *      is worth saying on screen, because "will renaming break the records
@@ -44,6 +45,7 @@ import {
   renamePipelineAction,
   setPipelineStepsAction,
   setPipelineOrderAction,
+  removePipelineStepAction,
   type PresetFormState,
 } from './actions';
 import type { AdminPipelineRow, AdminStepRow } from '@/lib/records/adminPipelines';
@@ -169,8 +171,10 @@ function PipelineCard({
   const [rows, setRows] = useState<Row[]>(pipeline.steps.map(toRow));
   const [savedRows, setSavedRows] = useState<Row[]>(pipeline.steps.map(toRow));
   const [error, setError] = useState<string | null>(null);
-  const [justSaved, setJustSaved] = useState(false);
+  const [justSaved, setJustSaved] = useState<string | false>(false);
   const [pending, startTransition] = useTransition();
+  const [counts, setCounts] = useState<Record<string, number>>(() => Object.fromEntries(pipeline.steps.map((s) => [s.id, s.records ?? 0])));
+  const [removing, setRemoving] = useState<Row | null>(null);
 
   const labelDirty = label.trim() !== savedLabel;
   const stepsDirty = !sameRows(rows, savedRows);
@@ -215,7 +219,7 @@ function PipelineCard({
         const adopted = result.steps.map(toRow);
         setRows(adopted);
         setSavedRows(adopted);
-        setJustSaved(true);
+        setJustSaved('Saved — every module route picks this up on its next render.');
       } else {
         setError(result.message);
       }
@@ -230,11 +234,39 @@ function PipelineCard({
       if (result.ok) {
         setSavedLabel(label.trim());
         setLabel(label.trim());
-        setJustSaved(true);
+        setJustSaved('Saved — every module route picks this up on its next render.');
       } else {
         setError(result.message ?? 'Could not rename this pipeline.');
       }
     });
+  };
+
+  /** A step never saved is only in the draft: it just leaves the list. */
+  const askRemove = (r: Row, i: number) => {
+    setError(null);
+    if (!r.id) {
+      setRows(rows.filter((_, n) => n !== i));
+      return;
+    }
+    if (stepsDirty) {
+      setError('Save or discard your other step changes first, then remove the step.');
+      return;
+    }
+    setRemoving(r);
+  };
+
+  const removed = (steps: AdminStepRow[], moved: number, label: string) => {
+    const adopted = steps.map(toRow);
+    setRows(adopted);
+    setSavedRows(adopted);
+    setCounts((c) => {
+      const next = { ...c };
+      const gone = removing?.id;
+      if (gone) delete next[gone];
+      return next;
+    });
+    setRemoving(null);
+    setJustSaved(moved ? `“${label}” removed. ${moved} record${moved === 1 ? '' : 's'} moved, each noted in its history.` : `“${label}” removed.`);
   };
 
   const reorder = (to: number) => {
@@ -287,7 +319,7 @@ function PipelineCard({
       {justSaved && !stepsDirty && !labelDirty ? (
         <p className="flex items-center gap-1.5 border-b border-line-faint px-3 py-2 text-[12.5px] text-ok">
           <Icon name="check" size={13} strokeWidth={2.5} />
-          Saved — every module route picks this up on its next render.
+          {justSaved}
         </p>
       ) : null}
 
@@ -336,6 +368,10 @@ function PipelineCard({
                         <StatusPill label={r.label || '—'} swatch={r.swatch as Swatch} />
                       </span>
 
+                      <span className="hidden w-[78px] shrink-0 text-right text-[11.5px] tabular text-ink-400 md:block" title="Records on this step now">
+                        {r.id ? `${counts[r.id] ?? 0} record${(counts[r.id] ?? 0) === 1 ? '' : 's'}` : 'New'}
+                      </span>
+
                       <span className="flex shrink-0 items-center">
                         <MiniButton icon="chevron-up" label={`Move ${r.label || 'step'} earlier`} disabled={i === 0} onClick={() => move(i, i - 1)} />
                         <MiniButton
@@ -343,6 +379,12 @@ function PipelineCard({
                           label={`Move ${r.label || 'step'} later`}
                           disabled={i === rows.length - 1}
                           onClick={() => move(i, i + 1)}
+                        />
+                        <MiniButton
+                          icon="trash"
+                          label={`Remove ${r.label || 'step'}`}
+                          disabled={pending || rows.length <= 1}
+                          onClick={() => askRemove(r, i)}
                         />
                       </span>
                     </>
@@ -362,7 +404,7 @@ function PipelineCard({
           >
             Add step
           </Button>
-          <OutlineChip icon="info">Steps cannot be removed — records stand on them</OutlineChip>
+          <OutlineChip icon="info">Removing a step moves its records to a step you choose</OutlineChip>
           <span className="ml-auto flex items-center gap-2">
             {stepsDirty ? (
               <Button size="sm" variant="ghost" disabled={pending} onClick={() => setRows(savedRows)}>
@@ -378,6 +420,109 @@ function PipelineCard({
         <p className="mt-2 text-[11.5px] text-ink-400">
           Renaming or reordering a step is safe — records point at the step itself, not at its name or position.
         </p>
+      </div>
+
+      {removing ? (
+        <RemoveStepDialog
+          pipelineId={pipeline.id}
+          step={removing}
+          records={counts[removing.id] ?? 0}
+          others={savedRows.filter((r) => r.id !== removing.id)}
+          onClose={() => setRemoving(null)}
+          onRemoved={removed}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function RemoveStepDialog({
+  pipelineId,
+  step,
+  records,
+  others,
+  onClose,
+  onRemoved,
+}: {
+  pipelineId: string;
+  step: Row;
+  records: number;
+  others: Row[];
+  onClose: () => void;
+  onRemoved: (steps: AdminStepRow[], moved: number, label: string) => void;
+}) {
+  const [moveTo, setMoveTo] = useState(others[0]?.id ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  const confirm = () => {
+    setError(null);
+    start(async () => {
+      const r = await removePipelineStepAction(pipelineId, step.id, records ? moveTo || null : null);
+      if (r.ok) onRemoved(r.steps, r.moved, step.label);
+      else setError(r.message);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={() => (pending ? null : onClose())} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`remove-step-${step.id}`}
+        className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
+      >
+        <div className="flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-bad-bg text-bad">
+            <Icon name="trash" size={16} />
+          </span>
+          <div className="min-w-0">
+            <h2 id={`remove-step-${step.id}`} className="text-[15.5px] font-semibold text-ink-900">
+              Remove “{step.label}”?
+            </h2>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-500">
+              {records
+                ? `${records} record${records === 1 ? ' is' : 's are'} on this step. ${records === 1 ? 'It moves' : 'They move'} to the step you pick, and each record's history notes the move.`
+                : 'No record is on this step, so nothing moves.'}{' '}
+              The step&apos;s option leaves the pipeline&apos;s Status field too.
+            </p>
+          </div>
+        </div>
+
+        {records ? (
+          <label className="mt-4 block">
+            <span className="text-[11.5px] font-semibold uppercase tracking-[.05em] text-ink-500">Move its records to</span>
+            <select
+              value={moveTo}
+              onChange={(e) => setMoveTo(e.target.value)}
+              disabled={pending}
+              className="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-[13.5px] text-ink-900 outline-none focus-field"
+            >
+              {others.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {error ? (
+          <p role="alert" className="mt-3 flex items-start gap-1.5 rounded-lg bg-bad-bg px-3 py-2 text-[12.5px] text-bad">
+            <Icon name="alert-triangle" size={13} className="mt-0.5 shrink-0" />
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button size="sm" variant="ghost" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="danger" icon="trash" disabled={pending || (records > 0 && !moveTo)} onClick={confirm}>
+            {pending ? 'Removing…' : records ? 'Move records and remove' : 'Remove step'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -568,7 +713,7 @@ function MiniButton({
   disabled,
   onClick,
 }: {
-  icon: 'chevron-up' | 'chevron-down';
+  icon: 'chevron-up' | 'chevron-down' | 'trash';
   label: string;
   disabled?: boolean;
   onClick: () => void;

@@ -32,7 +32,7 @@
 import { redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
-import { mailReady, phoneReady } from '@/lib/integrations/resolve';
+import { mailReady, maverickReady, phoneReady } from '@/lib/integrations/resolve';
 import { integrationsScreen } from '@/lib/integrations/service';
 import { adminHealth, SECRET_WARNING_DAYS, type AdminHealth } from '@/lib/mail/health';
 import { IntegrationsPanel } from './IntegrationsPanel';
@@ -76,7 +76,7 @@ function mailNote(h: AdminHealth | null): string {
   return parts.join(' ');
 }
 
-function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
+function providers(twilioReady: boolean, mail: AdminHealth | null, maverick: boolean): Provider[] {
   /*
    * Read from configuration rather than written down. The previous version of
    * this screen was a hand-maintained list, which is exactly how it came to
@@ -134,6 +134,15 @@ function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
       state: 'coming-soon',
     },
     {
+      name: 'Maverick Payments',
+      what: 'Send and update applications, their status, Reporting, statements and support tickets',
+      where: 'Applications · Reporting · Statements · Cases → Other cases',
+      state: 'needs-config',
+      note: maverick
+        ? 'The API key is saved. The connection is switched on once Maverick’s API documentation is in.'
+        : 'Enter the Maverick API key above. The connection is switched on once Maverick’s API documentation is in.',
+    },
+    {
       name: 'DocuSign',
       what: 'Gets its own tab once the client specifies one',
       where: 'No home yet',
@@ -146,8 +155,8 @@ export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'integrations'))) redirect('/dashboard');
 
-  const [twilioLive, mailLive, screen] = await Promise.all([phoneReady(), mailReady(), integrationsScreen(ctx)]);
-  const list = providers(twilioLive, mailLive ? await adminHealth() : null);
+  const [twilioLive, mailLive, maverickKey, screen] = await Promise.all([phoneReady(), mailReady(), maverickReady(), integrationsScreen(ctx)]);
+  const list = providers(twilioLive, mailLive ? await adminHealth() : null, maverickKey);
 
   return (
     <div className="space-y-6 p-6">

@@ -183,6 +183,18 @@ export async function probeAlerts(v: IntegrationValues, deps: ProbeDeps): Promis
   };
 }
 
+/* ── Maverick Payments ───────────────────────────────────────────────────── */
+
+/**
+ * Maverick's API documentation is not in yet, so there is no call to make that
+ * proves a key. The key's shape is checked and it is saved; Test connection
+ * says plainly that it could not be verified.
+ */
+export async function probeMaverick(v: IntegrationValues): Promise<ProbeResult> {
+  if (!v.MAVERICK_API_KEY) return { ok: false, note: 'Enter the Maverick API key first.' };
+  return { ok: true, note: 'The key is stored.', warning: 'It could not be checked with Maverick yet: the connection is switched on once their API documentation is in.' };
+}
+
 export function probeGroup(group: IntegrationGroup, v: IntegrationValues, deps: ProbeDeps): Promise<ProbeResult> {
   switch (group) {
     case 'twilio':
@@ -193,5 +205,7 @@ export function probeGroup(group: IntegrationGroup, v: IntegrationValues, deps: 
       return probeSignwell(v, deps);
     case 'alerts':
       return probeAlerts(v, deps);
+    case 'maverick':
+      return probeMaverick(v);
   }
 }

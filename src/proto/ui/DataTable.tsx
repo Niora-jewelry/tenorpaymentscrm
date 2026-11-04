@@ -1564,6 +1564,24 @@ export function DataTable({
                           Choose
                         </button>
                       ) : null}
+                      {r.processorUnmatched ? (
+                        <span
+                          title="Not matched to Maverick: the MID is missing or Maverick doesn’t recognise it"
+                          aria-label="Not matched to Maverick"
+                          className="inline-flex shrink-0 items-center rounded-full border border-[#f2d49b] bg-[#fdf3dd] p-[3px] text-[#8a5a09]"
+                        >
+                          <Icon name="flag" size={10} strokeWidth={2.5} />
+                        </span>
+                      ) : null}
+                      {r.otherCasesUnsynced ? (
+                        <span
+                          title={`${r.otherCasesUnsynced} Other case${r.otherCasesUnsynced === 1 ? '' : 's'} from Maverick not synced with a case yet`}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#f2d49b] bg-[#fdf3dd] px-1.5 py-px text-[10.5px] font-semibold text-[#8a5a09]"
+                        >
+                          <Icon name="link" size={9} strokeWidth={2.5} />
+                          {r.otherCasesUnsynced} to sync
+                        </span>
+                      ) : null}
                       {r.awaitingClient ? (
                         <span
                           title="An open ticket here is marked Awaiting client"

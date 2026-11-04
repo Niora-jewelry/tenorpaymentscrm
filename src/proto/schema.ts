@@ -417,6 +417,10 @@ export type RecordRow = {
   awaitingClient?: boolean;
   /** In that module: an email is waiting for the VIEWER to choose its ticket. */
   ticketChoice?: boolean;
+  /** Not matched to the processor (MID missing or unknown there). Set only for viewers allowed the flag. */
+  processorUnmatched?: boolean;
+  /** Processor tickets (Other cases) on this record not synced with a case yet. */
+  otherCasesUnsynced?: number;
   createdAt: string;
 };
 

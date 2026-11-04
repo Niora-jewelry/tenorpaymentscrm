@@ -25,14 +25,15 @@ vi.mock('@/lib/records/permissions', () => ({ permissionsFor: async () => ({ sup
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc: state.rpc }) }));
 vi.mock('./probe', () => ({ probeGroup: async () => state.probe, connectSignwellHook: async () => ({ ok: true, id: 'hook' }) }));
 vi.mock('./resolve', () => ({
-  integrationSnapshot: async () => ({ values: state.values, fromCrm: state.fromCrm, unreadable: [] }),
+  integrationSnapshot: async () => ({ values: state.values, all: state.values, fromCrm: state.fromCrm, unreadable: [], off: new Set() }),
   forgetIntegrationValues: state.forget,
   phoneReadyFrom: () => true,
   mailReadyFrom: () => true,
   agreementsReadyFrom: () => true,
+  maverickReadyFrom: () => true,
 }));
 
-const { IntegrationError, removeIntegrationSetting, saveIntegrationGroup, testIntegrationGroup, sendTestAlert, connectSignwell } = await import('./service');
+const { IntegrationError, removeIntegrationSetting, saveIntegrationGroup, testIntegrationGroup, sendTestAlert, connectSignwell, setIntegrationEnabled } = await import('./service');
 const { openSetting } = await import('./crypto');
 
 const ctx = { userId: 'user-1' } as never;
@@ -154,5 +155,24 @@ describe('connecting SignWell', () => {
   it('needs the API key first', async () => {
     state.values = {};
     await expect(connectSignwell(ctx)).rejects.toThrow('API key first');
+  });
+});
+
+describe('switching a service on or off', () => {
+  it('writes the switch through the one function, and forgets the cached values', async () => {
+    await setIntegrationEnabled(ctx, 'twilio', false);
+    expect(state.rpc).toHaveBeenCalledWith('integration_set_enabled', { p_actor: 'user-1', p_group: 'twilio', p_enabled: false });
+    expect(state.forget).toHaveBeenCalledOnce();
+  });
+
+  it('alert email has no switch: sign-in codes depend on it', async () => {
+    await expect(setIntegrationEnabled(ctx, 'alerts', false)).rejects.toThrow('sign-in codes');
+    expect(state.rpc).not.toHaveBeenCalled();
+  });
+
+  it('only a super admin may switch', async () => {
+    state.superAdmin = false;
+    await expect(setIntegrationEnabled(ctx, 'signwell', false)).rejects.toBeInstanceOf(IntegrationError);
+    expect(state.rpc).not.toHaveBeenCalled();
   });
 });

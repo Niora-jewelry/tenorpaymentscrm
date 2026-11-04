@@ -7,16 +7,15 @@
  * position in another's; that is the "independent per module" line the drawer
  * prints, and it is a fact about the primary key rather than a UI convention.
  *
+ * ── REMOVING A STEP (client, 4 Nov 2026) ─────────────────────────────────
+ *   A step is removed by `remove_pipeline_step` (migration 9904), never by
+ *   `set_pipeline_steps`, which still has no DELETE. The records standing on
+ *   it are moved to a step the admin picks first, each with its activity row,
+ *   in the same transaction; a step an automation uses is refused.
+ *
  * ── WHAT CANNOT BE DONE HERE, DELIBERATELY ───────────────────────────────
- *   - **No delete, of a step or of a pipeline.** Records reference a step by
- *     id (`record_pipelines.step_id`, a NO ACTION foreign key — checked
- *     against the live database, not assumed), so removing a step records sit
- *     on already fails as a 23503; and deleting a *pipeline* cascades, wiping
- *     every assignment in that module silently. `remaining-plan.md` § Phase 4
- *     asks for the same posture Phase 3 took, and migration 37 makes it
- *     structural: the writer has no DELETE in it. Removing a step belongs with
- *     the other deferred deletion work, and needs the same question answered
- *     first — what happens to the records standing on it.
+ *   - **No delete of a pipeline.** Deleting a pipeline cascades, wiping every
+ *     assignment in that module silently.
  *   - **No moving a pipeline to another module, or a step to another
  *     pipeline.** Both strand `record_pipelines` rows that name the old
  *     module/pipeline, and neither errors. Triggers (migration 37) refuse both
@@ -45,10 +44,11 @@ import type {
   CreatePipelineInput,
   RenamePipelineInput,
   SetPipelineStepsInput,
+  RemovePipelineStepInput,
   SetPipelineOrderInput,
 } from './adminSchemas';
 
-export type AdminStepRow = { id: string; label: string; swatch: string; position: number };
+export type AdminStepRow = { id: string; label: string; swatch: string; position: number; records?: number };
 
 export type AdminPipelineRow = {
   id: string;
@@ -91,6 +91,16 @@ export async function listPipelinesForAdmin(ctx: AuthContext): Promise<AdminPipe
     else stepsByPipeline.set(s.pipelineId, [row]);
   }
   for (const list of stepsByPipeline.values()) list.sort((a, b) => a.position - b.position);
+
+  // How many records stand on each step: the editor says so before a remove.
+  const counts = new Map<string, number>();
+  await Promise.all(
+    config.pipelines.map(async (p) => {
+      const { data } = await supabaseAdmin().rpc('pipeline_step_counts', { p_pipeline_id: p.id });
+      for (const r of (data ?? []) as { step_id: string; records: number }[]) counts.set(r.step_id, Number(r.records) || 0);
+    }),
+  );
+  for (const list of stepsByPipeline.values()) for (const s of list) s.records = counts.get(s.id) ?? 0;
 
   return config.pipelines
     .map((p) => ({
@@ -183,6 +193,24 @@ export async function setPipelineSteps(ctx: AuthContext, input: SetPipelineSteps
   if (error) return failed(error);
 
   return { ok: true, pipelineId: input.pipelineId, steps: (data ?? []) as AdminStepRow[] };
+}
+
+export type RemoveStepResult = { ok: true; moved: number; steps: AdminStepRow[] } | { ok: false; message: string };
+
+/**
+ * Removes one step. Its records move to `moveTo` first (required when it has
+ * any), each move logged on the record; all in one transaction in the database.
+ */
+export async function removePipelineStep(ctx: AuthContext, input: RemovePipelineStepInput): Promise<RemoveStepResult> {
+  await assertAdminPage(ctx, 'presets');
+  const config = await loadConfig();
+  if (!config.pipelineSteps.some((s) => s.id === input.stepId && s.pipelineId === input.pipelineId)) {
+    return { ok: false, message: 'That step is no longer part of this pipeline.' };
+  }
+  const { data, error } = await supabaseAdmin().rpc('remove_pipeline_step', { p_step_id: input.stepId, p_move_to: input.moveTo, p_actor: ctx.userId });
+  if (error) return failed(error);
+  const out = data as { moved: number; steps: AdminStepRow[] };
+  return { ok: true, moved: Number(out.moved) || 0, steps: out.steps ?? [] };
 }
 
 /**

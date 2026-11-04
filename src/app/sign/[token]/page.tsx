@@ -89,21 +89,13 @@ export default async function SignPage({ params, searchParams }: { params: Promi
   if (p.state === 'completed') {
     return (
       <SignCard contact={p.contact}>
-        <Notice title="Everyone has signed" sub={sub} body={p.copy ? 'Thank you. Your signed copy is ready to download.' : 'Thank you. The agreement is complete.'} />
-        {p.copy ? (
-          <a
-            href={`/sign/${token}/copy`}
-            className="mt-6 block w-full rounded-xl bg-[#102347] px-5 py-3.5 text-center text-[15px] font-bold text-white hover:bg-[#1a3566]"
-          >
-            Download your signed copy
-          </a>
-        ) : null}
+        <Notice title="Everyone has signed" sub={sub} body="Thank you. The agreement is complete." />
       </SignCard>
     );
   }
 
   const words: Record<'signed' | 'declined' | 'expired' | 'voided', [string, string]> = {
-    signed: ['You’ve signed — thank you', 'We’re waiting for the other signers. Once everyone has signed, we’ll email you a link to your copy.'],
+    signed: ['You’ve signed — thank you', 'We’re waiting for the other signers. We’ll let you know once everyone has signed.'],
     declined: ['This agreement was declined', 'It can no longer be signed. Please get in touch if you have any questions.'],
     expired: ['This agreement has expired', 'Agreements can be signed for a limited time. Please get in touch and we will send you a new one.'],
     voided: ['This agreement was withdrawn', 'A newer version may be on its way to you. Please get in touch if you have any questions.'],

@@ -19,7 +19,7 @@
  */
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { sendVoicemailEmail } from '@/lib/email/send';
+import { alertAttachmentLimit, sendVoicemailEmail } from '@/lib/email/send';
 import { formatPhoneDisplay } from './normalize';
 
 const BUCKET = 'phone-recordings';
@@ -73,7 +73,7 @@ export async function deliverVoicemail(
       console.error('[voicemail] could not download for attachment', dlErr);
     } else if (file) {
       const bytes = Buffer.from(await file.arrayBuffer());
-      if (bytes.byteLength <= MAX_ATTACHMENT_BYTES) {
+      if (bytes.byteLength <= alertAttachmentLimit(MAX_ATTACHMENT_BYTES)) {
         attachment = { filename: voicemailFilename(opts.callerE164), content: bytes };
       } else {
         // The link still works, so this is a downgrade rather than a failure.

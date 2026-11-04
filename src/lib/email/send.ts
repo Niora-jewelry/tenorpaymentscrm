@@ -31,6 +31,7 @@ import 'server-only';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { serverEnv, isProduction } from '@/lib/env.server';
 import { OTP_TTL_SECONDS } from '@/lib/security/otp';
+import { GRAPH_ATTACHMENT_BYTES, sendViaGraph, type GraphSender } from './graphAlert';
 
 let transport: Transporter | null = null;
 
@@ -78,6 +79,19 @@ function client(): Transporter | null {
   return transport;
 }
 
+/** Null when alerts are not set up for Graph: SMTP alone, as before. Never in tests (see `client`). */
+function graphSender(): GraphSender | null {
+  if (serverEnv.NODE_ENV === 'test') return null;
+  const tenantId = serverEnv.ALERT_MAIL_TENANT_ID;
+  const clientId = serverEnv.ALERT_MAIL_CLIENT_ID ?? serverEnv.MAIL_CLIENT_ID;
+  const clientSecret = serverEnv.ALERT_MAIL_CLIENT_SECRET ?? serverEnv.MAIL_CLIENT_SECRET;
+  if (!tenantId || !clientId || !clientSecret) return null;
+  return { tenantId, clientId, clientSecret, from: serverEnv.EMAIL_FROM };
+}
+
+/** What an alert can carry: Graph takes far less in one request than SMTP does. */
+export const alertAttachmentLimit = (smtpLimit: number): number => (graphSender() ? Math.min(GRAPH_ATTACHMENT_BYTES, smtpLimit) : smtpLimit);
+
 export type SendResult = { ok: true } | { ok: false; error: string };
 
 async function send(
@@ -88,6 +102,14 @@ async function send(
   headers?: Record<string, string>,
   attachments?: { filename: string; content: Buffer }[],
 ): Promise<SendResult> {
+  // Graph first, with SMTP behind it: a Graph failure must not lock anyone out of a sign-in code.
+  const graph = graphSender();
+  if (graph) {
+    const sent = await sendViaGraph(graph, { to, subject, html, headers, attachments });
+    if (sent.ok) return { ok: true };
+    console.error('[email] Graph send failed, trying SMTP', { to, subject, code: sent.code });
+  }
+
   const api = client();
 
   if (!api) {

@@ -67,6 +67,15 @@ const serverSchema = z.object({
     }),
   SMTP_USER: optionalString,
   SMTP_PASSWORD: optionalString,
+  /**
+   * Alerts through Microsoft Graph as the app itself (`lib/email/graphAlert.ts`).
+   * The tenant is the switch: unset, alerts go by SMTP alone. Client id and secret
+   * fall back to MAIL_CLIENT_ID / MAIL_CLIENT_SECRET. The mailbox is the address in
+   * EMAIL_FROM. Needs application permission Mail.Send with admin consent.
+   */
+  ALERT_MAIL_TENANT_ID: optionalString,
+  ALERT_MAIL_CLIENT_ID: optionalString,
+  ALERT_MAIL_CLIENT_SECRET: optionalString,
   EMAIL_FROM: z
     .string()
     .optional()
@@ -159,6 +168,9 @@ const parsed = serverSchema.safeParse({
   SMTP_PORT: process.env.SMTP_PORT,
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+  ALERT_MAIL_TENANT_ID: process.env.ALERT_MAIL_TENANT_ID,
+  ALERT_MAIL_CLIENT_ID: process.env.ALERT_MAIL_CLIENT_ID,
+  ALERT_MAIL_CLIENT_SECRET: process.env.ALERT_MAIL_CLIENT_SECRET,
   EMAIL_FROM: process.env.EMAIL_FROM,
   TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
   TWILIO_API_KEY_SID: process.env.TWILIO_API_KEY_SID,

@@ -15,6 +15,7 @@
  * thread proves nothing about whether sending will work. Do not read one as
  * evidence of the other; Donny flagged this specifically.
  */
+import { integrationValues } from '@/lib/integrations/resolve';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   isValidTwilioSignature,
@@ -34,7 +35,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   const params = await readTwilioForm(request);
   const url = reconstructPublicUrl(request);
-  if (!isValidTwilioSignature(request, url, params)) {
+  if (!isValidTwilioSignature(request, url, params, (await integrationValues()).TWILIO_AUTH_TOKEN)) {
     return new NextResponse('Invalid signature', { status: 403 });
   }
 

@@ -7,7 +7,7 @@
  */
 import 'server-only';
 import { NextResponse, after, type NextRequest } from 'next/server';
-import { mailConfigured } from '@/lib/env.server';
+import { mailReady } from '@/lib/integrations/resolve';
 import { mailLog } from '../log';
 import { MAX_NOTIFICATION_BYTES, drainSoon, parseNotifications, type Notification } from './notify';
 
@@ -24,7 +24,7 @@ export function graphWebhook(accept: (items: Notification[]) => Promise<string[]
         headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' },
       });
     }
-    if (!mailConfigured) return accepted();
+    if (!(await mailReady())) return accepted();
 
     const declared = Number(req.headers.get('content-length') ?? 0);
     if (declared > MAX_NOTIFICATION_BYTES) return accepted();

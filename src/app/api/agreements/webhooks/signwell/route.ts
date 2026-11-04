@@ -13,7 +13,7 @@
  *     anything else, and a replay is a no-op in the database anyway.
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
-import { agreementsConfigured } from '@/lib/env.server';
+import { agreementsReady } from '@/lib/integrations/resolve';
 import { vendor } from '@/lib/agreements/vendor';
 import { handleVerifiedEvent } from '@/lib/agreements/webhook';
 import { getClientIp } from '@/lib/security/request';
@@ -27,7 +27,7 @@ const MAX_BYTES = 1_000_000;
 const accepted = (note: string) => NextResponse.json({ accepted: true, note }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
 
 export async function POST(req: NextRequest) {
-  if (!agreementsConfigured) return accepted('not_configured');
+  if (!(await agreementsReady())) return accepted('not_configured');
   const ip = getClientIp(req.headers) ?? 'unknown';
   const flood = await rateLimit(ipKey('agreement_webhook', ip), { limit: 600, windowSeconds: 60 });
   if (!flood.allowed) return NextResponse.json({ error: 'too_many' }, { status: 429 });
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const raw = await req.text();
   if (raw.length > MAX_BYTES) return accepted('too_large');
 
-  const ev = vendor().verifyWebhook(raw);
+  const ev = (await vendor()).verifyWebhook(raw);
   if (!ev) {
     // Only failures spend this budget; the real sender never does.
     const bad = await rateLimit(ipKey('agreement_webhook_bad', ip), { limit: 20, windowSeconds: 900 });

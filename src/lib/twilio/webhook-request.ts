@@ -24,7 +24,6 @@
 import 'server-only';
 import twilio from 'twilio';
 import type { NextRequest } from 'next/server';
-import { serverEnv } from '@/lib/env.server';
 
 /**
  * The exact public URL Twilio signed — INCLUDING the query string, because our
@@ -93,8 +92,9 @@ export function isValidTwilioSignature(
   request: NextRequest,
   url: string,
   params: Record<string, string>,
+  /* Required, and a string: a caller that forgets it does not compile. */
+  authToken: string | undefined,
 ): boolean {
-  const authToken = serverEnv.TWILIO_AUTH_TOKEN;
   if (!authToken) {
     console.error('[twilio] TWILIO_AUTH_TOKEN not set — rejecting webhook');
     return false;

@@ -15,12 +15,14 @@
  * it was writing them.
  *
  * So the statuses are no longer prose anyone has to remember to update. The
- * Twilio rows read `phoneConfigured` from the environment, so an unconfigured
+ * Twilio rows read `phoneReady` from the live settings, so an unconfigured
  * deployment says so by itself, and a configured one cannot keep claiming to be
  * "coming soon".
  *
- * The Email module (Outlook / Microsoft 365, two-way) reads `mailConfigured`
- * the same way, and shows its health from the engine's own tables.
+ * The Email module (Outlook / Microsoft 365, two-way) reads `mailReady` the same
+ * way, and shows its health from the engine's own tables.
+ *
+ * Above that sits the place to enter the keys themselves (IntegrationsPanel).
  *
  * ── WHAT IS STILL HONESTLY NOT BUILT ─────────────────────────────────────
  * Mail deposited onto RECORDS (the drawer's Email tab) remains a real READ
@@ -31,9 +33,10 @@
 import { redirect } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
-import { mailConfigured, phoneConfigured } from '@/lib/env.server';
+import { mailReady, phoneReady } from '@/lib/integrations/resolve';
+import { integrationsScreen } from '@/lib/integrations/service';
 import { adminHealth, SECRET_WARNING_DAYS, type AdminHealth } from '@/lib/mail/health';
-import { PlaceholderNotice } from '../PlaceholderNotice';
+import { IntegrationsPanel } from './IntegrationsPanel';
 
 type State = 'live' | 'needs-config' | 'read-only' | 'coming-soon' | 'unspecified';
 
@@ -59,10 +62,10 @@ const STATE_CLASS: Record<State, string> = {
 type Provider = { name: string; what: string; where: string; state: State; note?: string };
 
 function mailNote(h: AdminHealth | null): string {
-  if (!h) return 'The MAIL_* environment variables are not set on this deployment, so Email stays hidden. See docs/mail-azure-setup.md.';
+  if (!h) return 'Email stays hidden until the Microsoft 365 keys above are entered.';
   const parts = [
     h.provider === 'config_error'
-      ? 'Microsoft is refusing the app secret — rotate it in Azure and update MAIL_CLIENT_SECRET.'
+      ? 'Microsoft is refusing the app secret. Create a new one in Azure and replace it above.'
       : h.provider === 'down'
         ? 'Outlook could not be reached on the last attempts.'
         : 'Outlook is answering.',
@@ -90,7 +93,7 @@ function providers(twilioReady: boolean, mail: AdminHealth | null): Provider[] {
       state: twilio,
       note: twilioReady
         ? 'Calls attach to a merchant by matching the other number against sync-enabled phone fields. A number the CRM has never seen is still logged, just unattached.'
-        : 'The Twilio environment variables are not set on this deployment, so the dialler stays unavailable.',
+        : 'The dialler stays unavailable until the Twilio keys above are entered.',
     },
     {
       name: 'Call recordings (Twilio)',
@@ -138,39 +141,22 @@ export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'integrations'))) redirect('/dashboard');
 
-  const list = providers(phoneConfigured, mailConfigured ? await adminHealth() : null);
-  const twilioLive = phoneConfigured;
+  const [twilioLive, mailLive, screen] = await Promise.all([phoneReady(), mailReady(), integrationsScreen(ctx)]);
+  const list = providers(twilioLive, mailLive ? await adminHealth() : null);
 
   return (
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-semibold text-ink-900">Integrations</h1>
         <p className="text-[13px] text-ink-500">
-          What each channel does today, and where it appears in a record.
+          Connect the services the CRM uses, and see what each channel does today.
         </p>
       </div>
 
-      {twilioLive ? (
-        <p className="flex gap-2 rounded-lg border border-[#bfe6dd] bg-[#e6f6f2] px-3 py-2.5 text-[12.5px] leading-relaxed text-[#0b6b5d]">
-          <Icon name="phone" size={14} className="mt-0.5 shrink-0 opacity-70" />
-          <span>
-            <strong>Twilio is connected on this deployment.</strong> Calls, recordings, voicemail
-            and SMS are wired end to end. Numbers are assigned to people under{' '}
-            <strong>Phone numbers</strong>, and who may use the phone at all is the{' '}
-            <strong>Communication → Phone</strong> permission — not a role.
-          </span>
-        </p>
-      ) : (
-        <PlaceholderNotice title="Twilio is built into this app but not configured on this deployment.">
-          <p>
-            The routes, screens and database tables all exist. What is missing are the five Twilio
-            environment variables, without which the dialler reports itself unavailable rather than
-            failing at the moment someone tries to call.
-          </p>
-        </PlaceholderNotice>
-      )}
+      <IntegrationsPanel screen={screen} />
 
       <section className="space-y-3">
+        <h2 className="pt-2 text-[15px] font-semibold text-ink-900">What each channel does</h2>
         <div className="grid gap-3 md:grid-cols-2">
           {list.map((p) => (
             <div key={p.name} className="rounded-panel border border-line bg-white p-4">

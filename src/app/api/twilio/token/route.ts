@@ -22,7 +22,7 @@ import twilio from 'twilio';
 import { authorize, NotAuthenticatedError } from '@/lib/records/permissions';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { resolveUserActiveNumber } from '@/lib/phone/numbers';
-import { serverEnv } from '@/lib/env.server';
+import { integrationValues } from '@/lib/integrations/resolve';
 import { canUsePhone } from '@/lib/phone/access';
 
 export const runtime = 'nodejs';
@@ -53,7 +53,7 @@ export async function GET() {
   }
 
   const { TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_TWIML_APP_SID } =
-    serverEnv;
+    await integrationValues();
   if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY_SID || !TWILIO_API_KEY_SECRET || !TWILIO_TWIML_APP_SID) {
     console.error('[twilio/token] Twilio is not configured');
     return NextResponse.json({ error: 'twilio_not_configured' }, { status: 500 });

@@ -30,12 +30,13 @@
 import 'server-only';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { serverEnv, isProduction } from '@/lib/env.server';
+import { integrationValues, type IntegrationValues } from '@/lib/integrations/resolve';
 import { OTP_TTL_SECONDS } from '@/lib/security/otp';
 import { GRAPH_ATTACHMENT_BYTES, sendViaGraph, type GraphSender } from './graphAlert';
 
-let transport: Transporter | null = null;
+let held: { key: string; transport: Transporter } | null = null;
 
-function client(): Transporter | null {
+async function client(): Promise<Transporter | null> {
   /*
    * THE TEST SUITE NEVER SENDS REAL MAIL.
    *
@@ -51,11 +52,17 @@ function client(): Transporter | null {
 
   // The host is the switch. Without it there is no mail provider at all, and
   // the caller falls back to printing the code locally.
-  if (!serverEnv.SMTP_HOST) return null;
+  const v = await integrationValues();
+  if (!v.SMTP_HOST) return null;
 
-  transport ??= nodemailer.createTransport({
-    host: serverEnv.SMTP_HOST,
-    port: serverEnv.SMTP_PORT,
+  // Created once per set of details: replaced details in CRM Settings get a new one.
+  const key = [v.SMTP_HOST, v.SMTP_PORT, v.SMTP_USER, v.SMTP_PASSWORD].join('|');
+  if (held?.key === key) return held.transport;
+  held?.transport.close();
+  const port = smtpPort(v);
+  const transport = nodemailer.createTransport({
+    host: v.SMTP_HOST,
+    port,
     /*
      * `secure: false` with port 587 means STARTTLS, not plaintext - the
      * connection opens unencrypted and is upgraded before AUTH. Microsoft 365
@@ -64,9 +71,9 @@ function client(): Transporter | null {
      * opportunistic, so a server that declines it fails instead of sending
      * the password in the clear.
      */
-    secure: serverEnv.SMTP_PORT === 465,
-    requireTLS: serverEnv.SMTP_PORT !== 465,
-    auth: { user: serverEnv.SMTP_USER, pass: serverEnv.SMTP_PASSWORD },
+    secure: port === 465,
+    requireTLS: port !== 465,
+    auth: { user: v.SMTP_USER, pass: v.SMTP_PASSWORD },
     pool: true,
     maxConnections: 2,
     // An auth path must not hang on a slow mail server. Failing in seconds
@@ -76,21 +83,51 @@ function client(): Transporter | null {
     socketTimeout: 20_000,
   });
 
+  held = { key, transport };
   return transport;
 }
 
+function smtpPort(v: IntegrationValues): number {
+  const port = Number(v.SMTP_PORT);
+  return Number.isInteger(port) && port > 0 ? port : 587;
+}
+
+/** Signs in to the SMTP server without sending anything, for the Integrations test. */
+export async function verifySmtpLogin(v: IntegrationValues): Promise<boolean> {
+  const port = smtpPort(v);
+  const probe = nodemailer.createTransport({
+    host: v.SMTP_HOST,
+    port,
+    secure: port === 465,
+    requireTLS: port !== 465,
+    auth: { user: v.SMTP_USER, pass: v.SMTP_PASSWORD },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 10_000,
+  });
+  try {
+    await probe.verify();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    probe.close();
+  }
+}
+
 /** Null when alerts are not set up for Graph: SMTP alone, as before. Never in tests (see `client`). */
-function graphSender(): GraphSender | null {
+async function graphSender(): Promise<GraphSender | null> {
   if (serverEnv.NODE_ENV === 'test') return null;
-  const tenantId = serverEnv.ALERT_MAIL_TENANT_ID;
-  const clientId = serverEnv.ALERT_MAIL_CLIENT_ID ?? serverEnv.MAIL_CLIENT_ID;
-  const clientSecret = serverEnv.ALERT_MAIL_CLIENT_SECRET ?? serverEnv.MAIL_CLIENT_SECRET;
-  if (!tenantId || !clientId || !clientSecret) return null;
-  return { tenantId, clientId, clientSecret, from: serverEnv.EMAIL_FROM };
+  const v = await integrationValues();
+  const tenantId = v.ALERT_MAIL_TENANT_ID;
+  const clientId = v.ALERT_MAIL_CLIENT_ID ?? v.MAIL_CLIENT_ID;
+  const clientSecret = v.ALERT_MAIL_CLIENT_SECRET ?? v.MAIL_CLIENT_SECRET;
+  if (!tenantId || !clientId || !clientSecret || !v.EMAIL_FROM) return null;
+  return { tenantId, clientId, clientSecret, from: v.EMAIL_FROM };
 }
 
 /** What an alert can carry: Graph takes far less in one request than SMTP does. */
-export const alertAttachmentLimit = (smtpLimit: number): number => (graphSender() ? Math.min(GRAPH_ATTACHMENT_BYTES, smtpLimit) : smtpLimit);
+export const alertAttachmentLimit = async (smtpLimit: number): Promise<number> => ((await graphSender()) ? Math.min(GRAPH_ATTACHMENT_BYTES, smtpLimit) : smtpLimit);
 
 export type SendResult = { ok: true } | { ok: false; error: string };
 
@@ -103,14 +140,15 @@ async function send(
   attachments?: { filename: string; content: Buffer }[],
 ): Promise<SendResult> {
   // Graph first, with SMTP behind it: a Graph failure must not lock anyone out of a sign-in code.
-  const graph = graphSender();
+  const graph = await graphSender();
   if (graph) {
     const sent = await sendViaGraph(graph, { to, subject, html, headers, attachments });
     if (sent.ok) return { ok: true };
     console.error('[email] Graph send failed, trying SMTP', { to, subject, code: sent.code });
   }
 
-  const api = client();
+  const api = await client();
+  const v = await integrationValues();
 
   if (!api) {
     if (isProduction) {
@@ -131,9 +169,9 @@ async function send(
        */
       const missing = (
         [
-          ['SMTP_HOST', serverEnv.SMTP_HOST],
-          ['SMTP_USER', serverEnv.SMTP_USER],
-          ['SMTP_PASSWORD', serverEnv.SMTP_PASSWORD],
+          ['SMTP_HOST', v.SMTP_HOST],
+          ['SMTP_USER', v.SMTP_USER],
+          ['SMTP_PASSWORD', v.SMTP_PASSWORD],
         ] as const
       )
         .filter(([, v]) => !v)
@@ -176,7 +214,7 @@ async function send(
   }
 
   try {
-    await api.sendMail({ from: serverEnv.EMAIL_FROM, to, subject, html, text, headers, attachments });
+    await api.sendMail({ from: v.EMAIL_FROM, to, subject, html, text, headers, attachments });
     return { ok: true };
   } catch (cause) {
     /*
@@ -431,6 +469,23 @@ function codeEmailText(code: string, purpose: 'signup' | 'reset', stamp: string)
     '',
     `Automated message, sent ${stamp}. Replies are not monitored.`,
   ].join('\n');
+}
+
+/** From CRM Settings › Integrations: proves alerts really leave, the one thing a sign-in check cannot. */
+export function sendAlertTest(to: string): Promise<SendResult> {
+  const stamp = sendStamp();
+  const heading = 'Your alert email works';
+  const line = 'This is the test you asked for in Integrations. Sign-in codes and alerts will come from this address.';
+  return send(
+    to,
+    'Tenor Payments: test alert',
+    emailShell({ title: heading, preheader: line, bodyHtml: `<p style="margin:0;font-family:${FONT};font-size:14px;line-height:1.6;color:${BRAND.ink};">${esc(line)}</p>`, stamp }),
+    `${heading}
+
+${line}
+
+Automated message, sent ${stamp}.`,
+  );
 }
 
 export function sendOtpEmail(

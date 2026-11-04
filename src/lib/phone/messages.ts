@@ -16,7 +16,7 @@ import twilio from 'twilio';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { seesAll, type AuthContext } from '@/lib/records/permissions';
-import { serverEnv } from '@/lib/env.server';
+import { integrationValues } from '@/lib/integrations/resolve';
 import { getPublicBaseUrl } from '@/lib/twilio/webhook-request';
 import { canSeePhone, canUsePhone } from './access';
 import { resolveUserActiveNumber } from './numbers';
@@ -139,7 +139,7 @@ export async function sendMessage(
   const normalized = normalizePhone(toRaw);
   if (!normalized.ok) return { ok: false, error: 'bad_number' };
 
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = serverEnv;
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = await integrationValues();
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return { ok: false, error: 'not_configured' };
 
   /*

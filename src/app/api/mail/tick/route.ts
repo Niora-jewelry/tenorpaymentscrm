@@ -13,7 +13,8 @@
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { agreementsConfigured, mailConfigured, serverEnv } from '@/lib/env.server';
+import { serverEnv } from '@/lib/env.server';
+import { agreementsReady, mailReady } from '@/lib/integrations/resolve';
 import { retryPendingDownloads } from '@/lib/agreements/download';
 import { safeEqual } from '@/lib/mail/oauthState';
 import { runTick } from '@/lib/mail/sync/tick';
@@ -43,7 +44,7 @@ async function handle(req: NextRequest) {
 
   // Signed agreement PDFs that are due a fetch ride the same minute, mail or
   // no mail — hence this sits ahead of the mail check below.
-  if (agreementsConfigured) {
+  if (await agreementsReady()) {
     after(async () => {
       try {
         const r = await retryPendingDownloads();
@@ -53,7 +54,7 @@ async function handle(req: NextRequest) {
       }
     });
   }
-  if (!mailConfigured) return NextResponse.json({ skipped: 'not_configured' }, { status: 202 });
+  if (!(await mailReady())) return NextResponse.json({ skipped: 'not_configured' }, { status: 202 });
 
   after(async () => {
     try {

@@ -3,16 +3,19 @@
  * else sees the `ESignVendor` interface.
  */
 import 'server-only';
-import { agreementsConfigured, serverEnv, signwellTestMode } from '@/lib/env.server';
+import { agreementsReady, agreementsReadyFrom, integrationValues, signwellTestMode } from '@/lib/integrations/resolve';
 import { SignWell } from './signwell';
 import type { ESignVendor } from './types';
 
-export { agreementsConfigured, signwellTestMode };
+export { agreementsReady, signwellTestMode };
 
-let instance: ESignVendor | null = null;
+let held: { key: string; vendor: ESignVendor } | null = null;
 
-export function vendor(): ESignVendor {
-  if (!agreementsConfigured) throw new Error('The signing service is not configured (SIGNWELL_API_KEY, SIGNWELL_WEBHOOK_ID).');
-  if (!instance) instance = new SignWell(serverEnv.SIGNWELL_API_KEY!, serverEnv.SIGNWELL_WEBHOOK_ID!);
-  return instance;
+/** The keys can be replaced in CRM Settings, so a new one gets a new client. */
+export async function vendor(): Promise<ESignVendor> {
+  const v = await integrationValues();
+  if (!agreementsReadyFrom(v)) throw new Error('The signing service is not configured (SignWell API key and webhook ID).');
+  const key = `${v.SIGNWELL_API_KEY}|${v.SIGNWELL_WEBHOOK_ID}`;
+  if (held?.key !== key) held = { key, vendor: new SignWell(v.SIGNWELL_API_KEY!, v.SIGNWELL_WEBHOOK_ID!) };
+  return held.vendor;
 }

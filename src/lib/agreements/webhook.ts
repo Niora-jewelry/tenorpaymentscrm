@@ -97,7 +97,7 @@ export async function handleVerifiedEvent(ev: VerifiedEvent, now = new Date()): 
     // The API's word, not the body's.
     let doc: VendorDocument;
     try {
-      doc = await vendor().get(ev.documentId);
+      doc = await (await vendor()).get(ev.documentId);
     } catch {
       return 'ignored';
     }

@@ -73,7 +73,7 @@ export async function deliverVoicemail(
       console.error('[voicemail] could not download for attachment', dlErr);
     } else if (file) {
       const bytes = Buffer.from(await file.arrayBuffer());
-      if (bytes.byteLength <= alertAttachmentLimit(MAX_ATTACHMENT_BYTES)) {
+      if (bytes.byteLength <= (await alertAttachmentLimit(MAX_ATTACHMENT_BYTES))) {
         attachment = { filename: voicemailFilename(opts.callerE164), content: bytes };
       } else {
         // The link still works, so this is a downgrade rather than a failure.

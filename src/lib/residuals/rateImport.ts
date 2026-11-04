@@ -175,6 +175,8 @@ const ALIASES: Record<string, string> = {
   'amex volume': 'amex_volume',
   'pin debit volume': 'pin_debit_volume',
   'amex template volume fee': 'amex_template_volume_fee',
+  'monthly fee tenor': 'monthly_fee_tapdash',
+  'tenor monthly fee': 'monthly_fee_tapdash',
   'monthly fee tapdash': 'monthly_fee_tapdash',
   'td monthly fee': 'monthly_fee_tapdash',
   'tapdash monthly fee': 'monthly_fee_tapdash',

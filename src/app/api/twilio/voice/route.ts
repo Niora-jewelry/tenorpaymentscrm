@@ -23,6 +23,7 @@
  *
  * PUBLIC — the `X-Twilio-Signature` check is the only gate, and it fails closed.
  */
+import { integrationValues } from '@/lib/integrations/resolve';
 import { NextResponse, type NextRequest } from 'next/server';
 import twilio from 'twilio';
 import {
@@ -49,7 +50,7 @@ const VOICEMAIL_MAX_LENGTH_SECONDS = 120;
 export async function POST(request: NextRequest) {
   const params = await readTwilioForm(request);
   const url = reconstructPublicUrl(request);
-  if (!isValidTwilioSignature(request, url, params)) {
+  if (!isValidTwilioSignature(request, url, params, (await integrationValues()).TWILIO_AUTH_TOKEN)) {
     return new NextResponse('Invalid signature', { status: 403 });
   }
 

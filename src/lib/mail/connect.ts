@@ -18,7 +18,7 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { mailConfig, tokenAad } from './config';
+import { mailConfig, tokenAad, mailApp } from './config';
 import { seal, toBytea } from './crypto';
 import { exchangeCode, readIdClaims, OAuthError, type TokenSet } from './oauthClient';
 import { missingScopes } from './scopes';
@@ -93,7 +93,7 @@ export async function completeConnect(args: {
   // 1. Code → tokens.
   let set: TokenSet;
   try {
-    set = await exchangeCode(cfg.endpoints, cfg.creds, { code: args.code, verifier: args.verifier, redirectUri: cfg.redirectUri });
+    set = await exchangeCode(cfg.endpoints, (await mailApp()).creds, { code: args.code, verifier: args.verifier, redirectUri: cfg.redirectUri });
   } catch (e) {
     if (e instanceof OAuthError) {
       mailLog('warn', 'connect', 'code_exchange_failed', { status: e.status, code: e.classified.code, detail: e.classified.detail });
@@ -112,7 +112,8 @@ export async function completeConnect(args: {
   if (!claims) return { ok: false, reason: 'failed' };
   const tenant = claims.tid.toLowerCase();
   if (tenant === CONSUMER_TENANT_ID) return { ok: false, reason: 'personal_account' };
-  if (cfg.allowedTenants.size > 0 && !cfg.allowedTenants.has(tenant)) {
+  const { allowedTenants } = await mailApp();
+  if (allowedTenants.size > 0 && !allowedTenants.has(tenant)) {
     mailLog('warn', 'connect', 'tenant_refused', { tenant });
     return { ok: false, reason: 'wrong_tenant' };
   }

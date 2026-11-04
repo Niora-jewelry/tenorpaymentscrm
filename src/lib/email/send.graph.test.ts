@@ -9,13 +9,13 @@ const sendMail = vi.fn(async () => ({}));
 vi.mock('nodemailer', () => ({ default: { createTransport: () => ({ sendMail }) } }));
 
 const graphEnv = { ALERT_MAIL_TENANT_ID: '11111111-2222-3333-4444-555555555555', MAIL_CLIENT_ID: 'c', MAIL_CLIENT_SECRET: 's' };
-const smtpEnv = { SMTP_HOST: 'smtp.test', SMTP_PORT: 587, SMTP_USER: 'u', SMTP_PASSWORD: 'p' };
+const smtpEnv = { SMTP_HOST: 'smtp.test', SMTP_PORT: '587', SMTP_USER: 'u', SMTP_PASSWORD: 'p' };
 
 async function load(env: Record<string, unknown>, isProduction = false) {
   vi.resetModules();
-  vi.doMock('@/lib/env.server', () => ({
-    serverEnv: { NODE_ENV: isProduction ? 'production' : 'development', EMAIL_FROM: 'Tenor Payments <No-Reply@tenorpayments.com>', ...env },
-    isProduction,
+  vi.doMock('@/lib/env.server', () => ({ serverEnv: { NODE_ENV: isProduction ? 'production' : 'development' }, isProduction }));
+  vi.doMock('@/lib/integrations/resolve', () => ({
+    integrationValues: async () => ({ EMAIL_FROM: 'Tenor Payments <No-Reply@tenorpayments.com>', ...env }),
   }));
   return import('./send');
 }
@@ -87,8 +87,8 @@ describe('the road an alert takes', () => {
 
   it('a voicemail attaches up to what the road can carry', async () => {
     const graphOn = await load({ ...graphEnv, ...smtpEnv });
-    expect(graphOn.alertAttachmentLimit(15 * 1024 * 1024)).toBeLessThan(3 * 1024 * 1024);
+    expect(await graphOn.alertAttachmentLimit(15 * 1024 * 1024)).toBeLessThan(3 * 1024 * 1024);
     const smtpOnly = await load(smtpEnv);
-    expect(smtpOnly.alertAttachmentLimit(15 * 1024 * 1024)).toBe(15 * 1024 * 1024);
+    expect(await smtpOnly.alertAttachmentLimit(15 * 1024 * 1024)).toBe(15 * 1024 * 1024);
   });
 });

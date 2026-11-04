@@ -16,7 +16,7 @@
  */
 import 'server-only';
 import type { AuthContext } from '@/lib/records/permissions';
-import { mailConfigured } from '@/lib/env.server';
+import { mailReady } from '@/lib/integrations/resolve';
 
 /** Looked up by key, never by id. */
 
@@ -31,7 +31,7 @@ export type EmailAccess = 'hidden' | 'view' | 'edit';
  */
 export async function emailAccess(ctx: AuthContext): Promise<EmailAccess> {
   void ctx;
-  if (!mailConfigured) return 'hidden';
+  if (!(await mailReady())) return 'hidden';
   return 'edit';
 }
 

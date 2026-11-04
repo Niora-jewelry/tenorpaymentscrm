@@ -5,7 +5,7 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { agreementsConfigured, vendor } from './vendor';
+import { agreementsReady, vendor } from './vendor';
 import { applyVendorEvent, dedupeKey, eventTypeForStatus } from './webhook';
 import { OPEN_STATUSES } from './store';
 
@@ -17,7 +17,7 @@ export async function expireStaleAgreements(): Promise<number> {
 
 /** Each open agreement re-read from the vendor; a status we missed is applied. */
 export async function reconcileOpenAgreements(budgetMs = 30_000): Promise<{ checked: number; changed: number }> {
-  if (!agreementsConfigured) return { checked: 0, changed: 0 };
+  if (!(await agreementsReady())) return { checked: 0, changed: 0 };
   const started = Date.now();
   const { data } = await supabaseAdmin().from('agreements').select('id, vendor_document_id, status').in('status', OPEN_STATUSES).not('vendor_document_id', 'is', null).order('sent_at').limit(50);
   let checked = 0;
@@ -27,7 +27,7 @@ export async function reconcileOpenAgreements(budgetMs = 30_000): Promise<{ chec
     checked++;
     let doc;
     try {
-      doc = await vendor().get(a.vendor_document_id);
+      doc = await (await vendor()).get(a.vendor_document_id);
     } catch {
       continue;
     }

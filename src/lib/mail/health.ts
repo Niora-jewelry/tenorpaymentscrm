@@ -6,7 +6,7 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { serverEnv } from '@/lib/env.server';
+import { integrationValues } from '@/lib/integrations/resolve';
 import { MAIL_MESSAGES } from './messages';
 
 export const SECRET_WARNING_DAYS = 30;
@@ -33,14 +33,15 @@ export async function moduleNotice(isAdmin: boolean): Promise<{ tone: 'warn' | '
   if (state === 'config_error') return { tone: 'error', text: isAdmin ? MAIL_MESSAGES.appSecretAdmin : MAIL_MESSAGES.providerDown };
   if (state === 'down') return { tone: 'warn', text: MAIL_MESSAGES.providerDown };
   if (!isAdmin) return null;
-  const days = secretDaysLeft(serverEnv.MAIL_CLIENT_SECRET_EXPIRES_AT);
+  const expiresAt = (await integrationValues()).MAIL_CLIENT_SECRET_EXPIRES_AT;
+  const days = secretDaysLeft(expiresAt);
   if (days !== null && days <= SECRET_WARNING_DAYS) {
-    const on = new Date(Date.parse(serverEnv.MAIL_CLIENT_SECRET_EXPIRES_AT!)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    const on = new Date(Date.parse(expiresAt!)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     return {
       tone: days <= 7 ? 'error' : 'warn',
       text:
         days < 0
-          ? `The Microsoft app secret expired on ${on}. Create a new one in Azure and update MAIL_CLIENT_SECRET.`
+          ? `The Microsoft app secret expired on ${on}. Create a new one in Azure and replace it in Integrations.`
           : `The Microsoft app secret expires on ${on} (${days === 0 ? 'today' : `in ${days} day${days === 1 ? '' : 's'}`}). Create a new one in Azure and update MAIL_CLIENT_SECRET before then, or mail stops syncing.`,
     };
   }
@@ -68,6 +69,6 @@ export async function adminHealth(): Promise<AdminHealth> {
     mailboxes: list.length,
     attention: list.filter((b) => ['broken', 'stalled', 'degraded'].includes(b.sync_status)).length,
     connections: connections ?? 0,
-    secretDaysLeft: secretDaysLeft(serverEnv.MAIL_CLIENT_SECRET_EXPIRES_AT),
+    secretDaysLeft: secretDaysLeft((await integrationValues()).MAIL_CLIENT_SECRET_EXPIRES_AT),
   };
 }

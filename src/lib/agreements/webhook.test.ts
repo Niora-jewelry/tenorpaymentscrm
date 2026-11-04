@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({ rpc: vi.fn() }) }));
-vi.mock('./vendor', () => ({ vendor: () => ({}), agreementsConfigured: false, signwellTestMode: true }));
+vi.mock('./vendor', () => ({ vendor: async () => ({}), agreementsReady: async () => false, signwellTestMode: async () => true }));
 vi.mock('./download', () => ({ storeCompletedPdf: vi.fn() }));
 
 describe('webhook helpers', () => {

@@ -10,7 +10,7 @@ import 'server-only';
 import { addressLine, usDate } from '@/lib/agreements/format';
 import { merchantName } from '@/lib/applications/store';
 import { sendAutomationAlertEmail } from '@/lib/email/send';
-import { mailConfigured } from '@/lib/env.server';
+import { mailReady } from '@/lib/integrations/resolve';
 import { OUTBOX_BUCKET, sendDue } from '@/lib/mail/compose/send';
 import { loadConfig, type Config } from '@/lib/records/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
@@ -110,7 +110,7 @@ async function deliver(job: Job): Promise<void> {
   const step = job.step!;
   const admin = supabaseAdmin();
   let queued: string;
-  if (!mailConfigured) {
+  if (!(await mailReady())) {
     await stop(run, 'failed', 'Email is not set up on this server.');
     return;
   }

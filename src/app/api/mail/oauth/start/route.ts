@@ -13,8 +13,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { authorize, NotAuthenticatedError } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
-import { mailConfigured } from '@/lib/env.server';
-import { mailConfig } from '@/lib/mail/config';
+import { mailReady } from '@/lib/integrations/resolve';
+import { mailConfig, mailApp } from '@/lib/mail/config';
 import { requireEmailAccess, EmailAccessError } from '@/lib/mail/access';
 import { authorizeUrl } from '@/lib/mail/oauthClient';
 import {
@@ -53,7 +53,7 @@ function back(req: NextRequest, path: string, code: ConnectErrorCode): NextRespo
 }
 
 export async function GET(req: NextRequest) {
-  if (!mailConfigured) return new NextResponse(null, { status: 404 });
+  if (!(await mailReady())) return new NextResponse(null, { status: 404 });
 
   let ctx;
   try {
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(
     authorizeUrl(cfg.endpoints, {
-      clientId: cfg.creds.clientId,
+      clientId: (await mailApp()).creds.clientId,
       redirectUri: cfg.redirectUri,
       state: nonce,
       challenge: challengeFor(verifier),

@@ -131,7 +131,7 @@ export async function startSigning(token: string): Promise<{ url: string } | { p
   if (typeof r === 'string') return { page: { state: r } };
   const page = pageOf(r);
   if (page.state !== 'open' || !r.agreement.vendor_document_id || !r.vendor_recipient_id) return { page };
-  const doc = await vendor().get(r.agreement.vendor_document_id);
+  const doc = await (await vendor()).get(r.agreement.vendor_document_id);
   const me = doc.recipients.find((x) => x.vendorId === r.vendor_recipient_id);
   // Signed already, though our webhook has not landed yet: say so rather than reopen the page.
   if (me?.status === 'completed' || me?.status === 'signed') return { page: { ...page, state: 'signed' } };

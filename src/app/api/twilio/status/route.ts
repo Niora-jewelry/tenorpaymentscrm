@@ -16,6 +16,7 @@
  * retried, so a row can be left un-finalised. A reconciliation sweep would fix
  * that and is deferred, exactly as Donny deferred it.
  */
+import { integrationValues } from '@/lib/integrations/resolve';
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   isValidTwilioSignature,
@@ -38,7 +39,7 @@ function formatDuration(total: number): string {
 export async function POST(request: NextRequest) {
   const params = await readTwilioForm(request);
   const url = reconstructPublicUrl(request);
-  if (!isValidTwilioSignature(request, url, params)) {
+  if (!isValidTwilioSignature(request, url, params, (await integrationValues()).TWILIO_AUTH_TOKEN)) {
     return new NextResponse('Invalid signature', { status: 403 });
   }
 

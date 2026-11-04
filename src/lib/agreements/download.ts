@@ -22,7 +22,7 @@ export async function storeCompletedPdf(agreementId: string): Promise<'stored' |
   if (!a || a.status !== 'completed' || !a.vendor_document_id || a.download_status === 'stored') return 'skipped';
   const { storeAgreementFile } = await import('./service');
   try {
-    const bytes = await vendor().downloadCompleted(a.vendor_document_id);
+    const bytes = await (await vendor()).downloadCompleted(a.vendor_document_id);
     const rec = await recordForApplication(a.record_id);
     const kind = kindFor(a.kind);
     const name = agreementFileName(rec ? merchantName(rec.values, rec.dealName) : 'Merchant', kind?.fileLabel ?? 'Agreement', new Date(a.completed_at ?? Date.now()));

@@ -8,7 +8,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { authorize, NotAuthenticatedError, type AuthContext } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
-import { mailConfigured } from '@/lib/env.server';
+import { mailReady } from '@/lib/integrations/resolve';
 import { requireEmailAccess, EmailAccessError } from './access';
 import { rateLimit, userKey, type RateLimitRule } from '@/lib/security/rate-limit';
 
@@ -17,7 +17,7 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 export const notFound = () => new NextResponse('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 
 export async function routeGate(scope: string, rule: RateLimitRule): Promise<{ ctx: AuthContext } | { response: Response }> {
-  if (!mailConfigured) return { response: notFound() };
+  if (!(await mailReady())) return { response: notFound() };
   let ctx: AuthContext;
   try {
     ctx = await authorize();

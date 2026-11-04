@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { authorize, NotAuthenticatedError } from '@/lib/records/permissions';
 import { currentImpersonation } from '@/lib/auth/impersonation';
-import { mailConfigured } from '@/lib/env.server';
+import { mailReady } from '@/lib/integrations/resolve';
 import { mailConfig } from '@/lib/mail/config';
 import { requireEmailAccess, EmailAccessError } from '@/lib/mail/access';
 import { MAIL_OAUTH_COOKIE, MAIL_OAUTH_COOKIE_PATH, verifyState } from '@/lib/mail/oauthState';
@@ -44,7 +44,7 @@ const fail = (req: NextRequest, path: string, code: ConnectErrorCode, extra: Rec
   finish(req, path, { mail_error: code, ...extra });
 
 export async function GET(req: NextRequest) {
-  if (!mailConfigured) return new NextResponse(null, { status: 404 });
+  if (!(await mailReady())) return new NextResponse(null, { status: 404 });
 
   let ctx;
   try {

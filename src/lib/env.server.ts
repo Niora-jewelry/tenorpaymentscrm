@@ -89,7 +89,7 @@ const serverSchema = z.object({
    * its configuration, exactly like RESEND_API_KEY above; a missing key must
    * not stop someone signing in.
    *
-   * `phoneConfigured` below is the single place that decides whether the
+   * `phoneReady` below is the single place that decides whether the
    * feature is on, so no call site has to re-derive it from five separate
    * checks and get it subtly wrong.
    */
@@ -111,7 +111,7 @@ const serverSchema = z.object({
    * The Email module — Outlook / Microsoft 365 over Microsoft Graph.
    *
    * Optional for the same reason Twilio's are: the CRM must boot without
-   * them, and `mailConfigured` below is the single switch. Delegated
+   * them, and `mailReady` below is the single switch. Delegated
    * permissions only — the app can never reach a mailbox nobody connected.
    *
    *   MAIL_CLIENT_ID / MAIL_CLIENT_SECRET   the Azure app registration
@@ -202,7 +202,23 @@ if (!parsed.success) {
   );
 }
 
-export const serverEnv = parsed.data;
+type ParsedEnv = z.infer<typeof serverSchema>;
+
+/**
+ * Provider keys that can also be entered in CRM Settings › Integrations. They are
+ * kept out of `serverEnv` so reading one directly is a compile error: everything
+ * asks lib/integrations/resolve.ts, where a saved value wins over this one.
+ */
+export type IntegrationEnvKey =
+  | 'TWILIO_ACCOUNT_SID' | 'TWILIO_AUTH_TOKEN' | 'TWILIO_API_KEY_SID' | 'TWILIO_API_KEY_SECRET' | 'TWILIO_TWIML_APP_SID'
+  | 'MAIL_CLIENT_ID' | 'MAIL_CLIENT_SECRET' | 'MAIL_CLIENT_SECRET_EXPIRES_AT' | 'MAIL_ALLOWED_TENANT_IDS'
+  | 'SIGNWELL_API_KEY' | 'SIGNWELL_WEBHOOK_ID' | 'SIGNWELL_TEST_MODE'
+  | 'EMAIL_FROM' | 'ALERT_MAIL_TENANT_ID' | 'ALERT_MAIL_CLIENT_ID' | 'ALERT_MAIL_CLIENT_SECRET'
+  | 'SMTP_HOST' | 'SMTP_PORT' | 'SMTP_USER' | 'SMTP_PASSWORD';
+
+export const integrationEnv: Pick<ParsedEnv, IntegrationEnvKey> = parsed.data;
+
+export const serverEnv: Omit<ParsedEnv, IntegrationEnvKey> = parsed.data;
 
 export const isProduction = serverEnv.NODE_ENV === 'production';
 
@@ -219,39 +235,10 @@ if (isProduction && serverEnv.MAIL_PROVIDER === 'mock') {
 export const mailProvider: 'graph' | 'mock' = serverEnv.MAIL_PROVIDER ?? 'graph';
 
 /**
- * Is the Email module configured?
- *
- * One definition, like `phoneConfigured`. The module needs the Azure app
- * (id + secret), the state-signing key and the token-encryption key; without
- * any one of them connecting a mailbox cannot work, so the module is off
- * rather than half on. The mock provider replaces the Azure app outside
- * production, but still needs the two keys — they protect real data paths.
+ * The Email module's own keys are present. Whether it is on also needs the Azure
+ * app, which can be entered in CRM Settings: see `mailReady` in
+ * lib/integrations/resolve.ts. The mock provider replaces the Azure app outside
+ * production but still needs these two: they protect real data paths.
  */
-export const mailConfigured =
-  serverEnv.MAIL_MODULE_ENABLED !== 'false' &&
-  Boolean(serverEnv.MAIL_STATE_SIGNING_SECRET && serverEnv.MAIL_TOKEN_ENC_KEY) &&
-  (mailProvider === 'mock'
-    ? Boolean(serverEnv.MAIL_MOCK_BASE_URL)
-    : Boolean(serverEnv.MAIL_CLIENT_ID && serverEnv.MAIL_CLIENT_SECRET));
-
-/**
- * Is the phone module configured?
- *
- * One definition, so a half-configured deployment fails the same way
- * everywhere instead of half-working. The browser Device needs the three token
- * variables; the webhooks need the auth token; the TwiML app ties the Device
- * to the voice route. Missing any one of them means telephony is off, not
- * degraded.
- */
-export const phoneConfigured = Boolean(
-  serverEnv.TWILIO_ACCOUNT_SID &&
-    serverEnv.TWILIO_API_KEY_SID &&
-    serverEnv.TWILIO_API_KEY_SECRET &&
-    serverEnv.TWILIO_TWIML_APP_SID &&
-    serverEnv.TWILIO_AUTH_TOKEN,
-);
-
-/** Agreements can be sent: SignWell's key and webhook id are both set. */
-export const agreementsConfigured = Boolean(serverEnv.SIGNWELL_API_KEY && serverEnv.SIGNWELL_WEBHOOK_ID);
-/** Test mode unless production says otherwise with SIGNWELL_TEST_MODE=false. */
-export const signwellTestMode = serverEnv.NODE_ENV !== 'production' || serverEnv.SIGNWELL_TEST_MODE !== 'false';
+export const mailBaseConfigured =
+  serverEnv.MAIL_MODULE_ENABLED !== 'false' && Boolean(serverEnv.MAIL_STATE_SIGNING_SECRET && serverEnv.MAIL_TOKEN_ENC_KEY);

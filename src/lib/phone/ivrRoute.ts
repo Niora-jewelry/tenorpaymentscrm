@@ -8,6 +8,7 @@
  * reachable by anyone who knows the URL. Eight copies of a security check is
  * seven chances to write it slightly differently.
  */
+import { integrationValues } from '@/lib/integrations/resolve';
 import 'server-only';
 import { NextResponse, type NextRequest } from 'next/server';
 import twilio from 'twilio';
@@ -37,7 +38,7 @@ export async function withIvr(
   const url = reconstructPublicUrl(request);
 
   // Fails closed, always. An unsigned request is not from Twilio.
-  if (!isValidTwilioSignature(request, url, params)) {
+  if (!isValidTwilioSignature(request, url, params, (await integrationValues()).TWILIO_AUTH_TOKEN)) {
     return new NextResponse('Invalid signature', { status: 403 });
   }
 
@@ -80,8 +81,7 @@ export async function ringTargets(
 ): Promise<number> {
   if (targets.length === 0) return 0;
 
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token } = await integrationValues();
   if (!sid || !token) {
     console.error('[ivr] cannot ring: Twilio credentials are not configured');
     return 0;
@@ -115,8 +115,7 @@ export async function ringTargets(
 
 /** Callers still waiting, so a late answer is not bridged to silence. */
 export async function queueDepth(): Promise<number> {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token } = await integrationValues();
   if (!sid || !token) return 0;
 
   try {

@@ -31,7 +31,7 @@ import { ownerName, ownersOf, renderAgreement, requiredProblems, signerDetailPro
 import { agreementFileName, fillAndFlatten, loadTemplate, signatureSpots, templateInstalled, TemplateMissingError } from './pdf';
 import { achAuthorization, appendAchAuthorization } from './achAuthorization';
 import { buildSnapshot, diffSnapshot, showValue, type Snapshot } from './snapshot';
-import { agreementsConfigured, signwellTestMode, vendor } from './vendor';
+import { agreementsReady, signwellTestMode, vendor } from './vendor';
 import { VendorError } from './vendor/types';
 import type { AgreementKindDef, AgreementProblem, AgreementSource } from './kinds/types';
 import { activeKinds, agreementById, agreementSettings, agrLabel, isOpen, newId, openAgreementFor, signersFor, type AgreementRow, type AgreementStatus, type Settings, type SignerRow, type SignerStatus } from './store';
@@ -227,7 +227,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     sender_name: (me.data?.full_name as string | undefined) || (me.data?.email as string | undefined) || settings.requesterName,
   };
   return {
-    ok: visibleProblems.length === 0 && templateReady && agreementsConfigured && !(delivery.mode === 'company' && !delivery.ready) && !(delivery.mode === 'own' && delivery.from.length === 0),
+    ok: visibleProblems.length === 0 && templateReady && (await agreementsReady()) && !(delivery.mode === 'company' && !delivery.ready) && !(delivery.mode === 'own' && delivery.from.length === 0),
     kind: { key: kind.key, label: kind.label },
     groups: groupProblems(config, visibleProblems),
     signers: picked.signers.map((s) => ({ slot: s.slot, name: s.name, title: s.title, email: s.email, percentage: s.percentage })),
@@ -235,8 +235,8 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
     subject: fillTemplate(settings.emailSubject, vars),
     message: fillTemplate(settings.emailMessage, vars),
     fileName: agreementFileName(name, kind.fileLabel),
-    testMode: signwellTestMode,
-    configured: agreementsConfigured,
+    testMode: await signwellTestMode(),
+    configured: await agreementsReady(),
     templateReady,
     achAuthorization: ach.include ? { amount: ach.amount, signer: ach.signer?.name ?? '' } : null,
     delivery,
@@ -249,7 +249,7 @@ export type SendInput = { recordId: string; kind: string; subject: string; messa
 
 export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise<{ id: string; label: string }> {
   await requireSend(ctx, input.recordId);
-  if (!agreementsConfigured) throw new AgreementError('The signing service is not set up yet (SignWell key and webhook).');
+  if (!(await agreementsReady())) throw new AgreementError('The signing service is not set up yet (SignWell key and webhook).');
   const limit = await rateLimit(userKey('agreement_send', ctx.userId), { limit: 20, windowSeconds: 3600 });
   if (!limit.allowed) throw new AgreementError(`Too many agreements sent in the last hour. Try again in ${limit.retryAfterSeconds} seconds.`);
 
@@ -298,7 +298,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
     kind: kind.key,
     status: 'sending',
     vendor: 'signwell',
-    test_mode: signwellTestMode,
+    test_mode: await signwellTestMode(),
     sent_by: ctx.userId,
     sent_at: sentAt.toISOString(),
     expires_at: new Date(sentAt.getTime() + settings.expiresDays * 86400_000).toISOString(),
@@ -323,7 +323,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
 
   let sent;
   try {
-    sent = await vendor().send({
+    sent = await (await vendor()).send({
       agreementId: id,
       recordId: input.recordId,
       name: `${kind.label} — ${name}`,
@@ -337,7 +337,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
       requesterEmail: plan?.address ?? settings.requesterEmail,
       expiresDays: settings.expiresDays,
       reminders: settings.reminders,
-      testMode: signwellTestMode,
+      testMode: await signwellTestMode(),
       embedded: plan ? signingRedirects() : null,
     });
   } catch (e) {
@@ -370,7 +370,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
   const wrote = await supabaseAdmin().from('agreements').update({ vendor_document_id: sent.documentId, status: 'sent', last_event_at: new Date().toISOString() }).eq('id', id);
   const signersWrote = wrote.error ? wrote : await supabaseAdmin().from('agreement_signers').insert(signerRows);
   if (wrote.error || signersWrote.error) {
-    await vendor().cancel(sent.documentId).catch(() => undefined);
+    await (await vendor()).cancel(sent.documentId).catch(() => undefined);
     await supabaseAdmin().from('agreements').delete().eq('id', id);
     throw new AgreementError('The agreement could not be recorded, so it was cancelled at the signing service. Try again.');
   }
@@ -389,7 +389,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
         plan,
       );
     } catch (e) {
-      await vendor().cancel(sent.documentId).catch(() => undefined);
+      await (await vendor()).cancel(sent.documentId).catch(() => undefined);
       await supabaseAdmin().from('agreements').delete().eq('id', id);
       throw new AgreementError(e instanceof Error && e.name === 'SendingInboxError' ? `${e.message} Nothing was sent.` : 'Outlook did not accept the emails, so nothing was sent. Try again.');
     }
@@ -457,7 +457,7 @@ export async function voidAgreement(ctx: AuthContext, agreementId: string): Prom
   if (!isOpen(a.status)) throw new AgreementError('That agreement is already closed.');
   if (a.vendor_document_id) {
     try {
-      await vendor().cancel(a.vendor_document_id);
+      await (await vendor()).cancel(a.vendor_document_id);
     } catch (e) {
       // Already closed at the vendor: reconcile rather than refuse.
       if (!(e instanceof VendorError && (e.kind === 'not_found' || e.kind === 'conflict'))) throw new AgreementError(OUTAGE);
@@ -503,7 +503,7 @@ export async function sendReminder(ctx: AuthContext, agreementId: string): Promi
     if (n === 0) throw new AgreementError('Everyone still on this agreement has signed, declined or bounced; there is no one to remind.');
   } else {
     try {
-      await vendor().remind(a.vendor_document_id);
+      await (await vendor()).remind(a.vendor_document_id);
     } catch {
       throw new AgreementError(OUTAGE);
     }
@@ -532,7 +532,7 @@ export async function resendToSigner(ctx: AuthContext, agreementId: string, sign
   if (email.toLowerCase() === signer.email.toLowerCase() && signer.status === 'bounced') throw new AgreementError(`${signer.name}'s email is unchanged (${email}). Fix it on the Ownership sub-tab first.`);
   const name = [first, last].filter(Boolean).join(' ') || signer.name;
   try {
-    await vendor().updateRecipient(a.vendor_document_id, signer.vendor_recipient_id, name, email);
+    await (await vendor()).updateRecipient(a.vendor_document_id, signer.vendor_recipient_id, name, email);
   } catch (e) {
     if (e instanceof VendorError && e.kind === 'rejected') throw new AgreementError('The signing service would not change this signer — they may have started signing.');
     // SignWell answers 409 for the few seconds it is still preparing a new document.
@@ -682,7 +682,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
     }
   }
 
-  return { items, kinds: kinds.map((k) => ({ key: k.key, label: k.label })), canSend, configured: agreementsConfigured, changesById };
+  return { items, kinds: kinds.map((k) => ({ key: k.key, label: k.label })), canSend, configured: await agreementsReady(), changesById };
 }
 
 /** The sealed PDF, for a viewer who may see every field printed on it. */
@@ -708,7 +708,7 @@ export async function openAgreementPdf(ctx: AuthContext, fileId: string): Promis
 
 export async function readAgreementSettings(ctx: AuthContext): Promise<Settings & { configured: boolean; testMode: boolean }> {
   await assertAdminPage(ctx, 'presets');
-  return { ...(await agreementSettings()), configured: agreementsConfigured, testMode: signwellTestMode };
+  return { ...(await agreementSettings()), configured: await agreementsReady(), testMode: await signwellTestMode() };
 }
 
 export async function saveAgreementSettings(ctx: AuthContext, input: Settings): Promise<void> {

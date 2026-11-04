@@ -25,7 +25,7 @@
  */
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { mailConfig, tokenAad } from './config';
+import { mailConfig, tokenAad, mailApp } from './config';
 import { seal, open, toBytea, fromBytea } from './crypto';
 import { refreshTokens, OAuthError, type TokenSet } from './oauthClient';
 import { createGraphTransport, GraphError, type GraphTransport } from './graph/transport';
@@ -153,7 +153,7 @@ async function mint(identityId: string, forceRefresh: boolean): Promise<string> 
 
   let set: TokenSet;
   try {
-    set = await refreshTokens(cfg.endpoints, cfg.creds, refreshToken);
+    set = await refreshTokens(cfg.endpoints, (await mailApp()).creds, refreshToken);
   } catch (e) {
     if (!(e instanceof OAuthError)) throw e;
     const c = e.classified;

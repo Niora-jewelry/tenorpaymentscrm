@@ -22,6 +22,7 @@
  * carries no kind and defaults to 'call'. Same storage path scheme for both, so
  * the bucket policy has one shape to gate on.
  */
+import { integrationValues } from '@/lib/integrations/resolve';
 import { NextResponse, type NextRequest } from 'next/server';
 import twilio from 'twilio';
 import {
@@ -34,7 +35,6 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { notifyAboutCall } from '@/lib/phone/notify';
 import { loadIvrState } from '@/lib/phone/ivrConfig';
 import { deliverVoicemail } from '@/lib/phone/voicemailEmail';
-import { serverEnv } from '@/lib/env.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,12 +44,11 @@ const BUCKET = 'phone-recordings';
 export async function POST(request: NextRequest) {
   const params = await readTwilioForm(request);
   const url = reconstructPublicUrl(request);
-  if (!isValidTwilioSignature(request, url, params)) {
+  if (!isValidTwilioSignature(request, url, params, (await integrationValues()).TWILIO_AUTH_TOKEN)) {
     return new NextResponse('Invalid signature', { status: 403 });
   }
 
-  const accountSid = serverEnv.TWILIO_ACCOUNT_SID;
-  const authToken = serverEnv.TWILIO_AUTH_TOKEN;
+  const { TWILIO_ACCOUNT_SID: accountSid, TWILIO_AUTH_TOKEN: authToken } = await integrationValues();
   if (!accountSid || !authToken) {
     console.error('[twilio/recording] Twilio is not configured');
     return new NextResponse('OK', { status: 200 });

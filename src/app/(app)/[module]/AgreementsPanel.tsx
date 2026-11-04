@@ -67,7 +67,7 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
     });
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Icon name="file-pen" size={15} />

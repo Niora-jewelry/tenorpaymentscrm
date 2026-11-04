@@ -213,7 +213,7 @@ export function NotificationsList({
               aria-selected={filter === f.id}
               onClick={() => pick(f.id)}
               className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                filter === f.id ? 'bg-ink-900 text-white shadow-[0_1px_2px_rgba(8,32,47,.15)]' : 'text-ink-500 hover:text-ink-900'
+                filter === f.id ? 'bg-ink-900 text-white shadow-[0_1px_2px_rgba(14,28,52,.15)]' : 'text-ink-500 hover:text-ink-900'
               }`}
             >
               {f.label}
@@ -281,7 +281,7 @@ function Row({
   const unread = !n.readAt;
   const where = whereOf(n);
   const isMention = n.sourceKind.startsWith('mention_');
-  const actor = n.actorName ?? (isMention ? 'Someone' : 'TapDash');
+  const actor = n.actorName ?? (isMention ? 'Someone' : 'Tenor');
   const preview = isMention
     ? n.sourceKind === 'mention_field'
       ? n.note || (n.currentValue != null ? `Value: ${n.currentValue || '—'}` : '')

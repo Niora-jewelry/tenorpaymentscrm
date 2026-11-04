@@ -62,7 +62,7 @@ const SINGLE_CHOICE = new Set(QUESTIONS.filter((q) => q.kind === 'single_checkbo
 /** "TapDash Application - <DBA or Legal Name>.pdf", safe for a file system and Outlook. */
 export function applicationFileName(name: string): string {
   const clean = name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
-  return `TapDash Application - ${clean || 'Merchant'}.pdf`;
+  return `Tenor Application - ${clean || 'Merchant'}.pdf`;
 }
 
 /**

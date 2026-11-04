@@ -127,7 +127,7 @@ export function FieldsSection({
   }, [visible, tabById, subtabById]);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">
         <h2 className="text-[14px] font-semibold text-ink-900">
           Fields <span className="ml-1 font-normal text-ink-400">({live.length})</span>
@@ -288,7 +288,7 @@ function Dialog({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative my-8 w-full ${wide ? 'max-w-[960px]' : 'max-w-[520px]'} animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]`}
+        className={`relative my-8 w-full ${wide ? 'max-w-[960px]' : 'max-w-[520px]'} animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]`}
       >
         <h2 className="text-[16px] font-semibold text-ink-900">{title}</h2>
         {blurb ? <p className="mt-0.5 text-[12.5px] text-ink-400">{blurb}</p> : null}

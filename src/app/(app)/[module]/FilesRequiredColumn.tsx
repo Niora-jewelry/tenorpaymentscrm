@@ -172,7 +172,7 @@ export function FilesRequiredHeader({
             <div className="max-h-48 overflow-y-auto">
               {[...new Set([...rowNames, ...names])].map((name) => (
                 <label key={name} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-[13px] text-ink-700 hover:bg-canvas">
-                  <input type="checkbox" checked={names.includes(name)} onChange={() => toggle(name)} className="size-3.5 accent-[#1d4ed8]" />
+                  <input type="checkbox" checked={names.includes(name)} onChange={() => toggle(name)} className="size-3.5 accent-[#1e4080]" />
                   <span className="truncate">{name}</span>
                 </label>
               ))}

@@ -377,7 +377,7 @@ function Wizard({ onAnother }: { onAnother: () => void }) {
               {!mapsMonthlyFee && missingRequired.length === 0 ? (
                 <p className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-[#8a5a09]">
                   <Icon name="alert-triangle" size={13} className="mt-[2px] shrink-0" />
-                  Monthly fee (TapDash) is not mapped. It is blank for every merchant today and one
+                  Monthly fee (Tenor) is not mapped. It is blank for every merchant today and one
                   rule cannot compute without it &mdash; importing without that column leaves the
                   month as uncomputable as it is now.
                 </p>

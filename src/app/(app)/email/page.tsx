@@ -67,11 +67,11 @@ export default async function EmailPage({ searchParams }: { searchParams: Search
 function FirstRun() {
   return (
     <div className="grid h-full place-items-center bg-canvas px-6">
-      <div className="w-full max-w-[460px] rounded-2xl border border-line bg-white p-8 shadow-[0_1px_3px_rgba(8,32,47,.05)]">
+      <div className="w-full max-w-[460px] rounded-2xl border border-line bg-white p-8 shadow-[0_1px_3px_rgba(14,28,52,.05)]">
         <span className="grid size-11 place-items-center rounded-xl bg-brand-50 text-brand-700">
           <Icon name="mail" size={20} />
         </span>
-        <h1 className="mt-5 text-[19px] font-semibold tracking-[-.01em] text-ink-900">Bring your Outlook mail into TapDash</h1>
+        <h1 className="mt-5 text-[19px] font-semibold tracking-[-.01em] text-ink-900">Bring your Outlook mail into Tenor</h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-ink-500">
           Connect your Microsoft 365 mailbox and it stays in sync both ways: read, file and answer mail here, and Outlook
           shows the same thing.
@@ -90,7 +90,7 @@ function FirstRun() {
         </ul>
         <Link
           href="/email/settings"
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim"
         >
           Connect a mailbox
           <Icon name="arrow-right" size={15} />

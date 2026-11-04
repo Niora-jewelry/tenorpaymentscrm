@@ -79,7 +79,7 @@ export function CallBar() {
     <div
       role="status"
       aria-live="assertive"
-      className="rail-glass fixed bottom-6 left-1/2 z-[90] w-[min(92vw,420px)] -translate-x-1/2 overflow-hidden rounded-2xl shadow-[0_18px_44px_-12px_rgba(1,39,64,.55)] ring-1 ring-white/10"
+      className="rail-glass fixed bottom-6 left-1/2 z-[90] w-[min(92vw,420px)] -translate-x-1/2 overflow-hidden rounded-2xl shadow-[0_18px_44px_-12px_rgba(16,35,71,.55)] ring-1 ring-white/10"
     >
       <div className="flex items-center gap-3 px-4 py-3.5">
         {/* Pulses only while ringing. A connected call is calm — motion that

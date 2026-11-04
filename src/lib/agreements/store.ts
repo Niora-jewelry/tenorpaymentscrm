@@ -113,7 +113,7 @@ export async function agreementSettings(): Promise<Settings> {
   return {
     expiresDays: (data?.expires_days as number | undefined) ?? 30,
     reminders: (data?.reminders as boolean | undefined) ?? true,
-    requesterName: (data?.requester_name as string | undefined) ?? 'TapDash',
+    requesterName: (data?.requester_name as string | undefined) ?? 'Tenor Payments',
     requesterEmail: (data?.requester_email as string | null | undefined) ?? null,
     emailSubject: (data?.email_subject as string | undefined) ?? 'Your {{agreement}} — {{merchant}}',
     emailMessage: (data?.email_message as string | undefined) ?? '',

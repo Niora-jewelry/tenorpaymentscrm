@@ -111,7 +111,7 @@ export function RecordDrawer({
         />
 
         <aside
-          className={`relative flex h-full w-full max-w-[1120px] flex-col bg-canvas shadow-[-24px_0_64px_-24px_rgba(8,32,47,.45)] md:w-[68%] ${anim(
+          className={`relative flex h-full w-full max-w-[1120px] flex-col bg-canvas shadow-[-24px_0_64px_-24px_rgba(14,28,52,.45)] md:w-[68%] ${anim(
             state, 'animate-sheet-in', 'animate-sheet-out',
           )}`}
         >
@@ -518,7 +518,7 @@ function ModuleControl({
                 <input
                   type="checkbox"
                   checked={on}
-                  className="size-3.5 accent-[#1d4ed8]"
+                  className="size-3.5 accent-[#1e4080]"
                   onChange={() =>
                     setDraft((prev) => (on ? prev.filter((s) => s !== m.slug) : [...prev, m.slug]))
                   }

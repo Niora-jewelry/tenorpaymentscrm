@@ -159,7 +159,7 @@ export function SettingsPanel({
     });
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="flex flex-wrap items-center gap-3 border-b border-line-soft px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-[14px] font-semibold text-ink-900">Settings</h2>
@@ -256,7 +256,7 @@ export function SettingsPanel({
                                 onClick={() => !on && set(row.key, o.value)}
                                 className={`rounded-md px-2.5 py-1 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed ${
                                   on
-                                    ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(8,32,47,.12)] ring-1 ring-line'
+                                    ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(14,28,52,.12)] ring-1 ring-line'
                                     : 'text-ink-500 hover:text-ink-900 disabled:text-ink-300 disabled:hover:text-ink-300'
                                 }`}
                               >

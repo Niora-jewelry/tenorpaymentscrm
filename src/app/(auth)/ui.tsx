@@ -26,14 +26,8 @@ export function Wordmark({ onDark = false }: { onDark?: boolean }) {
         onDark ? 'text-white' : 'text-ink-900'
       }`}
     >
-      <span
-        aria-hidden
-        className="grid h-8 w-8 place-items-center rounded-[9px] bg-accent text-[15px]
-                   font-bold text-accent-ink"
-      >
-        T
-      </span>
-      <span className="text-[17px]">TapDash</span>
+      {/* eslint-disable-next-line @next/next/no-img-element -- a static brand file */}
+      <img src={onDark ? '/brand/tenor-logo-white.png' : '/brand/tenor-logo-navy.png'} alt="Tenor Payments" className="h-9 w-auto" />
     </span>
   );
 }
@@ -60,11 +54,11 @@ export function AuthLayout({
       {/* Brand panel — hidden below lg, where it would only push the form off
           the fold on a phone. */}
       <aside className="brand-gradient relative hidden overflow-hidden px-14 py-12 lg:flex lg:flex-col">
-        {/* Lime bloom, low opacity: presence without competing with the form. */}
+        {/* A soft blue bloom: lime on navy goes muddy. */}
         <div
           aria-hidden
           className="pointer-events-none absolute -right-32 top-[22%] h-[520px] w-[520px] rounded-full opacity-20 blur-3xl"
-          style={{ background: 'radial-gradient(circle, #d5ff4a 0%, transparent 70%)' }}
+          style={{ background: 'radial-gradient(circle, #6b8fd0 0%, transparent 70%)' }}
         />
         {/* Grid, echoing the dashboard this signs you into. */}
         <div
@@ -79,7 +73,7 @@ export function AuthLayout({
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 h-56"
-          style={{ background: 'linear-gradient(to top, rgba(1,39,64,0.45), transparent)' }}
+          style={{ background: 'linear-gradient(to top, rgba(16,35,71,0.45), transparent)' }}
         />
 
         <div className="relative">
@@ -132,7 +126,7 @@ export function AuthLayout({
             className="rounded-[18px] border border-line bg-surface px-7 py-8 sm:px-9 sm:py-10"
             style={{
               boxShadow:
-                '0 1px 2px rgba(8,32,47,0.04), 0 8px 28px -12px rgba(8,32,47,0.14)',
+                '0 1px 2px rgba(14,28,52,0.04), 0 8px 28px -12px rgba(14,28,52,0.14)',
             }}
           >
             <header>

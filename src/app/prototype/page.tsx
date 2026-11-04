@@ -27,7 +27,7 @@ export default function PrototypeHome() {
       <div className="mx-auto max-w-[1080px] px-6 py-10">
         {/* ---------------- hero ---------------- */}
         <p className="text-[12px] font-semibold uppercase tracking-[.14em] text-brand-600">
-          TapDash CRM
+          Tenor Payments CRM
         </p>
         <h1 className="mt-2 max-w-[22ch] text-[34px] font-semibold leading-[1.12] tracking-[-.02em] text-ink-900">
           One store of records. Six windows onto it.
@@ -132,7 +132,7 @@ export default function PrototypeHome() {
               <Link
                 key={m.slug}
                 href={`/prototype/${m.slug}`}
-                className="group flex flex-wrap items-start gap-x-4 gap-y-2 rounded-xl border border-line bg-white p-4 transition-all duration-150 hover:border-brand-600 hover:shadow-[0_2px_10px_-4px_rgba(8,32,47,.2)]"
+                className="group flex flex-wrap items-start gap-x-4 gap-y-2 rounded-xl border border-line bg-white p-4 transition-all duration-150 hover:border-brand-600 hover:shadow-[0_2px_10px_-4px_rgba(14,28,52,.2)]"
               >
                 <span className="flex min-w-[150px] items-start gap-2.5">
                   <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700 transition-colors group-hover:bg-brand-100">
@@ -300,9 +300,9 @@ function HubDiagram() {
         aria-label="Records List at the centre, with five display modules projecting from it">
         <defs>
           <linearGradient id="hub" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#1e3a8a" />
-            <stop offset="55%" stopColor="#1d4ed8" />
-            <stop offset="100%" stopColor="#2563eb" />
+            <stop offset="0%" stopColor="#102347" />
+            <stop offset="55%" stopColor="#1e4080" />
+            <stop offset="100%" stopColor="#2752a3" />
           </linearGradient>
         </defs>
 
@@ -348,13 +348,13 @@ function HubDiagram() {
               height="56"
               rx="12"
               fill="#ffffff"
-              stroke="#d9e3ec"
+              stroke="#dbe2ed"
             />
             <text
               x={x as number}
               y="200"
               textAnchor="middle"
-              fill="#08202f"
+              fill="#0e1c34"
               fontSize="13.5"
               fontWeight="600"
             >

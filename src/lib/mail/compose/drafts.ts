@@ -274,7 +274,7 @@ export async function adoptDraft(
   if (existing && existing.user_id !== ctx.userId) {
     // A co-connector of a shared mailbox is writing it in TapDash right now.
     const fresh = existing.saved_at && Date.now() - Date.parse(existing.saved_at as string) < 3_600_000;
-    if (fresh) throw new ComposeError('Someone else is writing this draft in TapDash. Open it in Outlook, or ask them to finish it.');
+    if (fresh) throw new ComposeError('Someone else is writing this draft in Tenor. Open it in Outlook, or ask them to finish it.');
     // Abandoned: take it over, from Outlook's copy — never from their saved words.
     await admin.from('mail_drafts').update({ user_id: ctx.userId, identity_id: s.identityId }).eq('id', existing.id);
     await forgetKept(existing.id as string);

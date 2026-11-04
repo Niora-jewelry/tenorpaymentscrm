@@ -42,7 +42,7 @@ export function SettingsNav({ sections }: { sections: SettingsSection[] }) {
                 setActive(s.id);
               }}
               className={`flex items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
-                active === s.id ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(8,32,47,.08)] ring-1 ring-line' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'
+                active === s.id ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(14,28,52,.08)] ring-1 ring-line' : 'text-ink-500 hover:bg-white/70 hover:text-ink-900'
               }`}
             >
               <Icon name={s.icon} size={14} className={active === s.id ? 'text-brand-700' : 'text-ink-400'} />

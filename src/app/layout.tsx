@@ -26,7 +26,7 @@ const plexMono = IBM_Plex_Mono({
 
 
 export const metadata: Metadata = {
-  title: 'TapDash CRM',
+  title: 'Tenor Payments CRM',
   description: 'Merchant services CRM',
   robots: { index: false, follow: false },
 };

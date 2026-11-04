@@ -36,8 +36,8 @@ export const FIELD_GRID = 'grid grid-cols-[minmax(0,1.3fr)_136px_minmax(0,1.2fr)
  *
  * Swap it for any of these, lightest first:
  *
- *   bg-canvas       #f6f9fb  barely there
- *   bg-line-faint   #eef3f7  a shade stronger, still neutral
+ *   bg-canvas       #f6f8fb  barely there
+ *   bg-line-faint   #eff3f8  a shade stronger, still neutral
  *   bg-line-soft    #e8eef4  strongest of the palette's own neutrals
  *   bg-gray-100     #f3f4f6  Tailwind's flat grey — current. The only tint here
  *                            with no blue in it, so it sits slightly cooler

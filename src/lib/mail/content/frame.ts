@@ -32,16 +32,16 @@ const FRAME_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-i
 /** House typography for mail that brings none of its own; mail that does keeps it. */
 const BASE_CSS = [
   'html,body{margin:0;padding:0;background:#fff}',
-  "body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#08202f;overflow-wrap:anywhere;word-break:break-word}",
+  "body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#0e1c34;overflow-wrap:anywhere;word-break:break-word}",
   'img{max-width:100%;height:auto}',
   // A blocked image keeps the size the sender declared, as a quiet tile;
   // a blocked 1×1 tracking pixel is not worth a tile at all.
-  'img[data-mail-img]:not([src]){background:#eef3f7;border-radius:3px}',
+  'img[data-mail-img]:not([src]){background:#eff3f8;border-radius:3px}',
   'img[data-mail-img]:not([src])[width="1"],img[data-mail-img]:not([src])[height="1"],img[data-mail-img]:not([src])[width="0"],img[data-mail-img]:not([src])[height="0"]{display:none}',
   'table{max-width:100%}',
   'pre{white-space:pre-wrap}',
-  'a{color:#1d4ed8}',
-  'blockquote{margin:0 0 0 .6em;padding-left:.8em;border-left:2px solid #d9e3ec;color:#4a6a80}',
+  'a{color:#1e4080}',
+  'blockquote{margin:0 0 0 .6em;padding-left:.8em;border-left:2px solid #dbe2ed;color:#4a6a80}',
   'p{margin:0 0 .75em}',
 ].join('');
 

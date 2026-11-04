@@ -30,7 +30,7 @@ export function ProposalsPanel({ moduleSlug, recordId, data }: { moduleSlug: str
   const approved = data.items.find((p) => p.status === 'approved');
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[#102347] text-[#c8f169]">
           <Icon name="file-text" size={15} />

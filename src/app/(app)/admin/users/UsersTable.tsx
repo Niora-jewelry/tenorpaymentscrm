@@ -154,7 +154,7 @@ export function UsersTable({
      * it is a count, not an action. Nothing was removed -- every link and
      * control from the old row is still reachable.
      */
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <table className="w-full border-separate border-spacing-0 text-[13.5px]">
         <thead>
           <tr>

@@ -156,7 +156,7 @@ function LiftPopup({ ctx, kind, marks, icon }: { ctx: Ctx; kind: 'lock' | 'hide'
               role="dialog"
               aria-label={kind === 'lock' ? 'Unlock' : 'Unhide'}
               style={{ position: 'fixed', zIndex: 200, width: POPUP_WIDTH, left: at.left, top: at.top, bottom: at.bottom, maxHeight: at.maxHeight }}
-              className="overflow-y-auto rounded-xl border border-line bg-white shadow-[0_8px_28px_rgba(8,32,47,.18)]"
+              className="overflow-y-auto rounded-xl border border-line bg-white shadow-[0_8px_28px_rgba(14,28,52,.18)]"
             >
               <LiftPanel ctx={ctx} kind={kind} marks={marks} close={close} />
             </div>,
@@ -205,7 +205,7 @@ function LiftPanel({ ctx, kind, marks, close }: { ctx: Ctx; kind: 'lock' | 'hide
         {[...choices].map(([item, label]) => (
           <li key={item}>
             <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 font-medium text-ink-900 hover:bg-canvas">
-              <input type="checkbox" className="size-3.5 accent-[#1d4ed8]" checked={chosen.has(item)} onChange={(e) => toggle(item, e.target.checked)} />
+              <input type="checkbox" className="size-3.5 accent-[#1e4080]" checked={chosen.has(item)} onChange={(e) => toggle(item, e.target.checked)} />
               <span className="min-w-0 truncate">{label}</span>
             </label>
           </li>

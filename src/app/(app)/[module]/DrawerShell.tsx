@@ -39,7 +39,7 @@ export function DrawerShell({ moduleSlug, children }: { moduleSlug: string; chil
       <div
         role="dialog"
         aria-modal="true"
-        className="absolute inset-y-0 right-0 flex w-full animate-sheet-in flex-col overflow-y-auto border-l border-line bg-canvas shadow-[-24px_0_64px_-12px_rgba(8,32,47,.35)] sm:w-[92%] lg:w-[76%] lg:max-w-[1280px]"
+        className="absolute inset-y-0 right-0 flex w-full animate-sheet-in flex-col overflow-y-auto border-l border-line bg-canvas shadow-[-24px_0_64px_-12px_rgba(14,28,52,.35)] sm:w-[92%] lg:w-[76%] lg:max-w-[1280px]"
       >
         {children}
       </div>

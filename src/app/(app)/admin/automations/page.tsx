@@ -64,7 +64,7 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
           {access === 'full' ? (
             <Link
               href={`/admin/automations/new?kind=${kind}`}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim"
             >
               <Icon name="plus" size={15} /> {kind === 'ticket' ? 'New ticket automation' : 'New automation'}
             </Link>

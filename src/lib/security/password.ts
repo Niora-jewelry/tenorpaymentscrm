@@ -70,7 +70,7 @@ async function isBreached(password: string): Promise<boolean | null> {
     const suffix = sha1.slice(5);
 
     const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-      headers: { 'Add-Padding': 'true', 'User-Agent': 'TapDash-CRM' },
+      headers: { 'Add-Padding': 'true', 'User-Agent': 'Tenor-CRM' },
       signal: AbortSignal.timeout(2500),
       cache: 'no-store',
     });

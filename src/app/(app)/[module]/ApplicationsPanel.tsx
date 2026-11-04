@@ -104,7 +104,7 @@ export function ApplicationsPanel({ recordId, data }: { recordId: string; data: 
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">
           <Icon name="file-pen" size={15} />
@@ -268,7 +268,7 @@ export function ApplicationsPanel({ recordId, data }: { recordId: string; data: 
               <legend className="mb-1 text-[12px] font-semibold text-ink-700">Import it into</legend>
               {choose.options.map((o) => (
                 <label key={o.id} className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-[13px] hover:bg-canvas has-[:checked]:border-brand-600 has-[:checked]:bg-brand-50">
-                  <input type="radio" name="app-choice" value={o.id} checked={chosen === o.id} onChange={() => setChosen(o.id)} className="accent-[#1d4ed8]" />
+                  <input type="radio" name="app-choice" value={o.id} checked={chosen === o.id} onChange={() => setChosen(o.id)} className="accent-[#1e4080]" />
                   <span className="font-semibold text-ink-900">{o.label}</span>
                   <StatusPill label={STATUS[o.status].label} swatch={STATUS[o.status].swatch} />
                 </label>

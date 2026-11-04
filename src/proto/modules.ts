@@ -63,13 +63,13 @@ export const CUSTOM_TABS: Tab[] = [
         id: 'td_merchant',
         label: 'Processor-TD Merchant Pricing',
         description:
-          'This tab lists the fees the merchant pays the processor/TapDash. TapDash participates in these fees.',
+          'This tab lists the fees the merchant pays the processor/Tenor. Tenor participates in these fees.',
       },
       {
         id: 'vendor_to_td',
         label: 'Processor-Vendor Pricing to TD',
         description:
-          'This tab lists the costs incurred by TapDash to pay for the merchants operations. The Merchant does not participate in these costs.',
+          'This tab lists the costs incurred by Tenor to pay for the merchants operations. The Merchant does not participate in these costs.',
       },
       {
         // No field rows in the sheet — described by the client in chat as a
@@ -83,7 +83,7 @@ export const CUSTOM_TABS: Tab[] = [
         id: 'other_vendor',
         label: 'Other Vendor Merchant Payments',
         description:
-          'This tab lists all payments the merchant is in contract directly with vendors other than TapDash. TapDash does not participate in these costs/revenues.',
+          'This tab lists all payments the merchant is in contract directly with vendors other than Tenor. Tenor does not participate in these costs/revenues.',
       },
     ],
   },

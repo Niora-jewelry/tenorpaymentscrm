@@ -40,7 +40,7 @@ export function PdfViewer({ fileId, name }: { fileId: string; name: string }) {
           canvas.width = vp.width;
           canvas.height = vp.height;
           canvas.style.width = `${(vp.width / (window.devicePixelRatio || 1)).toFixed(0)}px`;
-          canvas.className = 'mx-auto mb-3 block rounded-md bg-white shadow-[0_1px_3px_rgba(8,32,47,.18)]';
+          canvas.className = 'mx-auto mb-3 block rounded-md bg-white shadow-[0_1px_3px_rgba(14,28,52,.18)]';
           canvas.setAttribute('aria-label', `Page ${i} of ${pdf.numPages}`);
           host.current?.appendChild(canvas);
           await page.render({ canvasContext: canvas.getContext('2d')!, viewport: vp }).promise;

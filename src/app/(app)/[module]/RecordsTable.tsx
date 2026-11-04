@@ -947,7 +947,7 @@ function RestoreDialog({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
-      <div className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
+      <div className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink-900">
           <Icon name="rotate-ccw" size={16} className="text-ink-400" />
           Restore {count} record{count === 1 ? '' : 's'}
@@ -1049,7 +1049,7 @@ function BulkEditDialog({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={onClose} />
-      <div className="relative w-full max-w-[480px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
+      <div className="relative w-full max-w-[480px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink-900">
           <Icon name="pencil" size={16} className="text-ink-400" />
           Bulk edit {count} records
@@ -1103,7 +1103,7 @@ function BulkEditDialog({
                         onChange={() =>
                           setMembers((prev) => (on ? prev.filter((x) => x !== p.id) : [...prev, p.id]))
                         }
-                        className="size-3.5 accent-[#1d4ed8]"
+                        className="size-3.5 accent-[#1e4080]"
                       />
                       <PersonAvatar person={resolvePerson(p.id, byId)} size={20} />
                       <span className="truncate font-medium text-ink-900">{p.name}</span>

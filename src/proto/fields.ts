@@ -571,8 +571,8 @@ export const FIELDS: Field[] = [
     section: 'TD-Mav other buy rate',
     width: 190,
   }),
-  f('td_monthly_fee_tapdash', 'Monthly Fee - TapDash', 'currency', 'pricing/td_merchant', { section: 'Acquirer/ACH merchant pricing', width: 190 }),
-  f('td_lease_payments_tapdash', 'Lease Payments - TapDash', 'currency', 'pricing/td_merchant', { section: 'Acquirer/ACH merchant pricing',
+  f('td_monthly_fee_tapdash', 'Monthly Fee - Tenor', 'currency', 'pricing/td_merchant', { section: 'Acquirer/ACH merchant pricing', width: 190 }),
+  f('td_lease_payments_tapdash', 'Lease Payments - Tenor', 'currency', 'pricing/td_merchant', { section: 'Acquirer/ACH merchant pricing',
     width: 200,
   }),
   f('td_ach_transaction_fee', 'ACH transaction fee', 'currency', 'pricing/td_merchant', { width: 180, section: 'Acquirer/ACH merchant pricing' }),
@@ -611,7 +611,7 @@ export const FIELDS: Field[] = [
   f('vtd_pos_plus_monthly', 'POS+ monthly', 'currency', 'pricing/vendor_to_td', { width: 160 }),
   f('vtd_pos_volume', 'POS volume', 'percentage', 'pricing/vendor_to_td', { width: 160 }),
   f('vtd_support_agent', 'Support agent', 'currency', 'pricing/vendor_to_td', { width: 160 }),
-  f('vtd_tapdash_direct', 'TapDash direct', 'currency', 'pricing/vendor_to_td', { width: 160 }),
+  f('vtd_tapdash_direct', 'Tenor direct', 'currency', 'pricing/vendor_to_td', { width: 160 }),
 
   /* ====================================================================== */
   /* Pricing → One Time Charges                                              */

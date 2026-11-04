@@ -231,7 +231,7 @@ export function MenuSurface({
        * so the first frame the browser draws is already positioned.
        */
       style={{ position: 'fixed', width }}
-      className={`z-[200] max-h-[min(70vh,520px)] overflow-y-auto rounded-xl border border-line bg-white shadow-[0_16px_40px_-12px_rgba(8,32,47,.32)] ${padded ? 'p-1.5' : ''}`}
+      className={`z-[200] max-h-[min(70vh,520px)] overflow-y-auto rounded-xl border border-line bg-white shadow-[0_16px_40px_-12px_rgba(14,28,52,.32)] ${padded ? 'p-1.5' : ''}`}
     >
       {children}
     </div>,

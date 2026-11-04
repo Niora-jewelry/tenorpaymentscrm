@@ -291,7 +291,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 
 /** The message as Outlook sends it: the person's words, the link as a button-like line, their signature. */
 function emailHtml(body: string, link: string): string {
-  const anchor = `<a href="${esc(link)}" style="color:#1d4ed8;font-weight:600;">Complete the application online</a>`;
+  const anchor = `<a href="${esc(link)}" style="color:#1e4080;font-weight:600;">Complete the application online</a>`;
   const withLink = body.includes('{{link}}') ? body : `${body.trimEnd()}\n\n{{link}}`;
   return withLink
     .split(/\n{2,}/)

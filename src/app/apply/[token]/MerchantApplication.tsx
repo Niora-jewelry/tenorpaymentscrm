@@ -293,7 +293,7 @@ export function MerchantApplication({
               type="button"
               onClick={submit}
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
             >
               {submitting ? <Spinner /> : <Icon name="check" size={15} />}
               {submitting ? 'Submitting…' : 'Submit application'}
@@ -303,7 +303,7 @@ export function MerchantApplication({
               type="button"
               onClick={next}
               disabled={submitting}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-[14px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
             >
               Next page <Icon name="chevron-right" size={14} />
             </button>

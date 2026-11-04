@@ -88,7 +88,7 @@ function Ended({
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-50 w-[min(94vw,480px)] rounded-2xl border border-line bg-white p-4 shadow-[0_10px_36px_rgba(8,32,47,.16)]"
+      className="fixed bottom-4 right-4 z-50 w-[min(94vw,480px)] rounded-2xl border border-line bg-white p-4 shadow-[0_10px_36px_rgba(14,28,52,.16)]"
     >
       <div className="flex items-start gap-2.5">
         <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-700">

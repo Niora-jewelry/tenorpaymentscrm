@@ -65,7 +65,7 @@ export function InviteUserDialog({
           <div
             role="dialog"
             aria-modal="true"
-            className={`relative w-full animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)] ${
+            className={`relative w-full animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)] ${
               step === 'permissions' ? 'max-w-[1040px]' : 'max-w-[440px]'
             }`}
           >

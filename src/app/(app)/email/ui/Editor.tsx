@@ -30,7 +30,7 @@ export type EditorHandle = {
   focus: () => void;
 };
 
-const COLOURS = ['#08202f', '#b02a30', '#c07714', '#1a7a3c', '#1d4ed8', '#6b28ac', '#6b8699'];
+const COLOURS = ['#0e1c34', '#b02a30', '#c07714', '#1a7a3c', '#1e4080', '#6b28ac', '#6b8699'];
 
 export default function Editor({
   initialHTML,

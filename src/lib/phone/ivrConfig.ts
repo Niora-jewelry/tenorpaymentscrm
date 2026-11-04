@@ -14,8 +14,8 @@ import type { IvrConfig, IvrPromptSlug, IvrTarget } from './ivr';
 
 /** Used when a row is missing, so a half-configured menu still speaks. */
 const FALLBACK_PROMPTS: Record<IvrPromptSlug, string> = {
-  greeting_open: 'Thank you for calling TapDash Payments.',
-  greeting_closed: 'Thank you for calling TapDash Payments. Our office is currently closed.',
+  greeting_open: 'Thank you for calling Tenor Payments.',
+  greeting_closed: 'Thank you for calling Tenor Payments. Our office is currently closed.',
   transfer_open: 'Please hold while we transfer your call.',
   transfer_closed: 'Please hold while we check for a representative.',
   high_volume:

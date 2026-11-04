@@ -154,7 +154,7 @@ export function RecipientField({
       {trailing ? <div className="shrink-0 pt-[5px]">{trailing}</div> : null}
 
       {open ? (
-        <ul id={`rcpt-${label}-list`} role="listbox" aria-label="Suggestions" className="absolute left-14 top-full z-30 mt-1 w-[min(380px,calc(100%-4rem))] rounded-xl border border-line bg-white p-1 shadow-[0_12px_32px_-8px_rgba(8,32,47,.22)]">
+        <ul id={`rcpt-${label}-list`} role="listbox" aria-label="Suggestions" className="absolute left-14 top-full z-30 mt-1 w-[min(380px,calc(100%-4rem))] rounded-xl border border-line bg-white p-1 shadow-[0_12px_32px_-8px_rgba(14,28,52,.22)]">
           {suggestions.map((s, i) => (
             <li key={s.address} role="option" aria-selected={i === active}>
               <button

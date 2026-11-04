@@ -79,7 +79,7 @@ const serverSchema = z.object({
   EMAIL_FROM: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim().length > 0 ? v.trim() : 'TapDash <no-reply@example.com>')),
+    .transform((v) => (v && v.trim().length > 0 ? v.trim() : 'Tenor Payments <no-reply@example.com>')),
 
   /**
    * Twilio — the phone module.

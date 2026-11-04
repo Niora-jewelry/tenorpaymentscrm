@@ -675,7 +675,7 @@ export function RealFieldGrid({
         }`}
       >
         {saving > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(8,32,47,.10)] backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(14,28,52,.10)] backdrop-blur">
             <span className="size-1.5 animate-pulse rounded-full bg-brand-600" />
             Saving{saving > 1 ? ` ${saving} changes` : ''}…
           </span>
@@ -683,12 +683,12 @@ export function RealFieldGrid({
           /* An unsaved field is the one state that must never be quiet. This
              is what makes auto-save honest: it is only safe to have no Save
              button if the screen always says whether the work is safe. */
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f7cfd1] bg-[#fce9ea] px-2.5 py-1 text-[11.5px] font-semibold text-[#b02a30] shadow-[0_1px_3px_rgba(8,32,47,.10)]">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f7cfd1] bg-[#fce9ea] px-2.5 py-1 text-[11.5px] font-semibold text-[#b02a30] shadow-[0_1px_3px_rgba(14,28,52,.10)]">
             <Icon name="alert-triangle" size={11} />
             {failedCount === 1 ? '1 change not saved' : `${failedCount} changes not saved`}
           </span>
         ) : savedCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(8,32,47,.10)] backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(14,28,52,.10)] backdrop-blur">
             <Icon name="check" size={11} className="text-ok" />
             All changes saved
           </span>

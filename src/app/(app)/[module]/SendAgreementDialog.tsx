@@ -98,7 +98,7 @@ export function SendAgreementDialog({
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
       <div className="absolute inset-0 animate-fade-in bg-brand-950/35" onClick={() => !pending && onClose()} />
-      <div role="dialog" aria-modal="true" aria-labelledby={`${ids.subject}-title`} className="relative my-8 w-full max-w-[640px] animate-dialog-in overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
+      <div role="dialog" aria-modal="true" aria-labelledby={`${ids.subject}-title`} className="relative my-8 w-full max-w-[640px] animate-dialog-in overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]">
         <header className="flex items-start gap-3 border-b border-line-soft px-5 py-4">
           <span className={`grid size-9 shrink-0 place-items-center rounded-lg ${check && blocking ? 'bg-bad-bg text-bad' : 'bg-brand-50 text-brand-700'}`}>
             <Icon name={check && blocking ? 'alert-triangle' : 'send'} size={16} />
@@ -288,7 +288,7 @@ export function SendAgreementDialog({
               type="button"
               onClick={send}
               disabled={!canSend || pending}
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
             >
               {pending ? <Spinner /> : <Icon name="send" size={14} />}
               {pending ? 'Sending…' : resendOf ? 'Void & send the new one' : 'Send for signature'}

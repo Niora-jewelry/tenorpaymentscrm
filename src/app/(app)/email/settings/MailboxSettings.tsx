@@ -24,10 +24,10 @@ export type JustConnected = { mailboxId: string; reconnected: boolean; degraded:
 const HEALTH: Record<ConnectionHealth, { label: string; swatch: Swatch; hint: string }> = {
   ok: { label: 'Syncing', swatch: 'green', hint: 'Changes in Outlook show here within a minute, and the other way round.' },
   setting_up: { label: 'Setting up', swatch: 'blue', hint: 'Fetching the last two weeks of mail from Outlook…' },
-  needs_reconnect: { label: 'Needs reconnect', swatch: 'amber', hint: 'Microsoft signed TapDash out of this mailbox. Reconnect to resume syncing.' },
+  needs_reconnect: { label: 'Needs reconnect', swatch: 'amber', hint: 'Microsoft signed Tenor out of this mailbox. Reconnect to resume syncing.' },
   needs_permission: { label: 'Needs permission', swatch: 'amber', hint: 'Some permissions were not granted. Reconnect and approve them all.' },
   stalled: { label: 'Stopped syncing', swatch: 'red', hint: 'Nobody’s sign-in can reach this mailbox any more. Reconnect it.' },
-  throttled: { label: 'Outlook busy', swatch: 'amber', hint: 'Microsoft asked TapDash to slow down. Syncing resumes by itself.' },
+  throttled: { label: 'Outlook busy', swatch: 'amber', hint: 'Microsoft asked Tenor to slow down. Syncing resumes by itself.' },
 };
 
 const BANNER_STYLE: Record<Banner['tone'], string> = {
@@ -155,7 +155,7 @@ export function MailboxSettings({
             </span>
             <p className="text-[14px] font-semibold text-ink-900">No mailboxes yet</p>
             <p className="mx-auto mt-1 max-w-[44ch] text-[12.5px] leading-relaxed text-ink-500">
-              Connect your Outlook mailbox below to read, file and send email from TapDash. It stays in sync with Outlook both ways.
+              Connect your Outlook mailbox below to read, file and send email from Tenor. It stays in sync with Outlook both ways.
             </p>
           </div>
         ) : (
@@ -234,7 +234,7 @@ export function MailboxSettings({
           onClose={() => setConfirming(null)}
         >
           <p>
-            TapDash stops syncing this mailbox for you. Your mail stays in Outlook, untouched.
+            Tenor stops syncing this mailbox for you. Your mail stays in Outlook, untouched.
             {confirming.kind === 'shared' ? ' Other people who connected it keep their access.' : ''}
           </p>
         </Dialog>
@@ -278,7 +278,7 @@ function MailboxCard({ mb, now, readOnly, busy, onDisconnect }: { mb: MyMailbox;
             {needsAction ? (
               <a
                 href={reconnectHref(mb)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] hover:bg-accent-dim"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] hover:bg-accent-dim"
               >
                 <Icon name="refresh-cw" size={13} /> Reconnect
               </a>
@@ -341,7 +341,7 @@ function ConnectedDialog({ info, mb, onClose }: { info: JustConnected; mb: MyMai
   const foldersFound = (mb?.folders ?? 0) > 0;
   const mailIn = mb?.health === 'ok' || (foldersFound && (mb?.foldersReady ?? 0) >= (mb?.folders ?? 1));
   const steps: Array<{ label: string; done: boolean; detail?: string }> = [
-    { label: info.reconnected ? 'Sign-in renewed' : 'Mailbox linked to TapDash', done: linked },
+    { label: info.reconnected ? 'Sign-in renewed' : 'Mailbox linked to Tenor', done: linked },
     { label: 'Folders found in Outlook', done: foldersFound, detail: foldersFound ? `${mb!.folders} folders` : undefined },
     { label: 'Recent mail arriving', done: mailIn, detail: mailIn ? 'Last two weeks — older mail on request' : undefined },
   ];
@@ -350,7 +350,7 @@ function ConnectedDialog({ info, mb, onClose }: { info: JustConnected; mb: MyMai
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
       <div className="animate-fade-in absolute inset-0 bg-brand-950/35" onClick={() => setOpen(false)} />
-      <div role="dialog" aria-modal="true" aria-labelledby="connected-title" className="animate-dialog-in relative w-full max-w-[440px] overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
+      <div role="dialog" aria-modal="true" aria-labelledby="connected-title" className="animate-dialog-in relative w-full max-w-[440px] overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]">
         <div className="px-6 pb-5 pt-6 text-center">
           <span className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-[#e3f6e8] text-[#1a7a3c]">
             <Icon name="check" size={22} strokeWidth={2.4} />
@@ -388,7 +388,7 @@ function ConnectedDialog({ info, mb, onClose }: { info: JustConnected; mb: MyMai
             </Button>
             <Link
               href={mb ? inboxHref(mb) : '/email'}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] hover:bg-accent-dim"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] hover:bg-accent-dim"
             >
               Open inbox <Icon name="arrow-right" size={14} />
             </Link>

@@ -252,8 +252,8 @@ export function ResidualsPanel({ data }: { data: RecordResiduals }) {
       ) : null}
 
       <p className="max-w-[80ch] text-[11.5px] leading-relaxed text-ink-400">
-        These figures are what TapDash earned after the processor&rsquo;s split, plus anything
-        TapDash billed the merchant directly. They are computed from the statement and the
+        These figures are what Tenor earned after the processor&rsquo;s split, plus anything
+        Tenor billed the merchant directly. They are computed from the statement and the
         merchant&rsquo;s own rates &mdash; not read off the statement &mdash; which is what makes
         the comparison on the reconciliation screen possible.
       </p>

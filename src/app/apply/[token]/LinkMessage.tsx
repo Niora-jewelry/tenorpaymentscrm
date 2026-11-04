@@ -49,7 +49,7 @@ export function LinkMessage({ state, label, merchant }: { state: string; label?:
   const ring = c.tone === 'ok' ? 'bg-[#e6f6f2] text-[#0b6b5d]' : c.tone === 'warn' ? 'bg-[#fdf1d8] text-[#8a5a09]' : 'bg-canvas text-ink-500';
   return (
     <main className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-12">
-      <div className="w-full max-w-[460px] rounded-2xl border border-line bg-white p-8 text-center shadow-[0_12px_40px_-16px_rgba(8,32,47,.25)]">
+      <div className="w-full max-w-[460px] rounded-2xl border border-line bg-white p-8 text-center shadow-[0_12px_40px_-16px_rgba(14,28,52,.25)]">
         <span className={`mx-auto grid size-12 place-items-center rounded-full ${ring}`}>
           <Icon name={c.icon} size={22} />
         </span>

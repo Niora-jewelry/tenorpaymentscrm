@@ -281,7 +281,7 @@ export function Button({
   const sizes = { sm: 'px-2.5 py-1.5 text-[12.5px]', md: 'px-3.5 py-2 text-[13.5px]' };
   const variants = {
     // The single lime action per screen. Lime is a FILL with dark text.
-    primary: 'bg-accent text-accent-ink hover:bg-accent-dim shadow-[0_1px_2px_rgba(8,32,47,.08)]',
+    primary: 'bg-accent text-accent-ink hover:bg-accent-dim shadow-[0_1px_2px_rgba(14,28,52,.08)]',
     secondary: 'border border-line bg-white text-ink-700 hover:bg-canvas hover:border-ink-400',
     ghost: 'text-ink-500 hover:bg-canvas hover:text-ink-900',
     danger: 'border border-[#f7cfd1] bg-[#fce9ea] text-[#b02a30] hover:bg-[#f9dcde]',
@@ -508,7 +508,7 @@ export function Popover({
       {mounted ? (
         <div
           style={{ width }}
-          className={`absolute z-50 rounded-xl border border-line bg-white p-2 shadow-[0_12px_32px_-8px_rgba(8,32,47,.22)] ${
+          className={`absolute z-50 rounded-xl border border-line bg-white p-2 shadow-[0_12px_32px_-8px_rgba(14,28,52,.22)] ${
             side === 'right'
               ? 'bottom-0 left-[calc(100%+10px)] origin-bottom-left'
               : side === 'top'
@@ -582,7 +582,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         style={{ maxWidth: width }}
-        className={`relative w-full rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)] ${anim(state, 'animate-dialog-in', 'animate-dialog-out')}`}
+        className={`relative w-full rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)] ${anim(state, 'animate-dialog-in', 'animate-dialog-out')}`}
       >
         <div className="flex items-start gap-3">
           {tone === 'danger' ? (
@@ -653,7 +653,7 @@ export function FloatingBar({
       }`}
     >
       <div
-        className={`pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-1 rounded-2xl border border-line/80 bg-white/95 py-1.5 pl-3 pr-1.5 shadow-[0_2px_6px_rgba(8,32,47,.06),0_18px_44px_-12px_rgba(8,32,47,.38)] backdrop-blur-md ${anim(
+        className={`pointer-events-auto flex max-w-[calc(100vw-2rem)] items-center gap-1 rounded-2xl border border-line/80 bg-white/95 py-1.5 pl-3 pr-1.5 shadow-[0_2px_6px_rgba(14,28,52,.06),0_18px_44px_-12px_rgba(14,28,52,.38)] backdrop-blur-md ${anim(
           state,
           'animate-rise-in',
           'animate-rise-out',
@@ -759,7 +759,7 @@ export function ComingSoon({ what, icon }: { what: string; icon?: IconName }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-canvas px-6 py-14 text-center">
       {icon ? (
-        <span className="mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-400 shadow-[0_1px_2px_rgba(8,32,47,.06)]">
+        <span className="mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-400 shadow-[0_1px_2px_rgba(14,28,52,.06)]">
           <Icon name={icon} size={20} />
         </span>
       ) : null}

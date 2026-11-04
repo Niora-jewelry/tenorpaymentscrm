@@ -31,7 +31,7 @@ export default async function NotificationLink({ params }: { params: Promise<{ i
 
   return (
     <main className="grid min-h-screen place-items-center bg-canvas px-6">
-      <div className="w-full max-w-[420px] rounded-2xl border border-line bg-white p-8 text-center shadow-[0_1px_3px_rgba(8,32,47,.05)]">
+      <div className="w-full max-w-[420px] rounded-2xl border border-line bg-white p-8 text-center shadow-[0_1px_3px_rgba(14,28,52,.05)]">
         <span className="mx-auto mb-4 grid size-11 place-items-center rounded-full bg-canvas text-ink-400">
           <Icon name="bell" size={20} />
         </span>
@@ -41,7 +41,7 @@ export default async function NotificationLink({ params }: { params: Promise<{ i
         </p>
         <Link
           href="/notifications"
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] hover:bg-accent-dim"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] hover:bg-accent-dim"
         >
           Open Notifications <Icon name="arrow-right" size={14} />
         </Link>

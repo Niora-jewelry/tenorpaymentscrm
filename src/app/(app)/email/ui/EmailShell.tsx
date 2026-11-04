@@ -869,7 +869,7 @@ export function EmailShell({
         {!online || failures >= 2 ? (
           <p role="status" className="flex items-center gap-2 border-b border-line bg-canvas px-4 py-2 text-[12px] text-ink-500">
             <Icon name="alert-triangle" size={13} className="shrink-0 text-ink-400" />
-            {!online ? 'You’re offline. Showing what was last loaded.' : 'Can’t reach TapDash right now — retrying.'}
+            {!online ? 'You’re offline. Showing what was last loaded.' : 'Can’t reach Tenor right now — retrying.'}
           </p>
         ) : null}
         {moduleNotice ? (
@@ -990,7 +990,7 @@ export function EmailShell({
       ) : sel.kind === 'scheduled' ? (
         <div className="grid h-full place-items-center bg-canvas px-8">
           <div className="max-w-[36ch] text-center">
-            <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-300 shadow-[0_1px_2px_rgba(8,32,47,.06)]">
+            <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-300 shadow-[0_1px_2px_rgba(14,28,52,.06)]">
               <Icon name="clock" size={20} />
             </span>
             <p className="text-[14px] font-semibold text-ink-700">Scheduled mail waits here</p>

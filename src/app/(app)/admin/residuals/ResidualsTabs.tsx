@@ -112,7 +112,7 @@ export function ResidualsTabs({
       icon: 'percent',
       count: reference.ratedMids,
       description:
-        'What each merchant pays TapDash. Import the rates sheet for all of them at once, or enter one by hand from the reconciliation screen. The engine cannot price a merchant without these.',
+        'What each merchant pays Tenor. Import the rates sheet for all of them at once, or enter one by hand from the reconciliation screen. The engine cannot price a merchant without these.',
       content: <RateImportSection />,
     },
     {
@@ -121,7 +121,7 @@ export function ResidualsTabs({
       icon: 'calendar',
       count: periods.length,
       description:
-        'One per statement month. A period holds the processor’s fee lines; computing it works out what TapDash earned and compares that against what the processor says.',
+        'One per statement month. A period holds the processor’s fee lines; computing it works out what Tenor earned and compares that against what the processor says.',
       content: <PeriodsSection periods={periods} processors={processors} />,
     },
     {
@@ -139,7 +139,7 @@ export function ResidualsTabs({
       icon: 'database',
       count: rates.length,
       description:
-        'What the processor charges TapDash, per fee item and risk tier. The sell side — what the merchant pays — lives on each merchant’s Pricing tab.',
+        'What the processor charges Tenor, per fee item and risk tier. The sell side — what the merchant pays — lives on each merchant’s Pricing tab.',
       content: <BuyRatesSection rates={rates} processors={processors} />,
     },
     {
@@ -248,7 +248,7 @@ export function ResidualsTabs({
 
 export function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       {children}
     </div>
   );

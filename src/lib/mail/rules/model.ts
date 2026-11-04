@@ -302,7 +302,7 @@ export function summary(form: RuleForm, folderName: (id: string) => string): str
     }
   };
   const when = form.conditions.length ? form.conditions.map((r) => describe(r, 'conditions')).join(' and ') : 'Every message';
-  const then = form.actions.map((r) => describe(r, 'actions')).join(', ') || 'No action TapDash can show';
+  const then = form.actions.map((r) => describe(r, 'actions')).join(', ') || 'No action Tenor can show';
   return `${when} → ${then}`;
 }
 

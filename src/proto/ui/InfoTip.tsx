@@ -88,7 +88,7 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
             <div
               ref={tip}
               role="tooltip"
-              className="pointer-events-none fixed z-[200] rounded-lg bg-ink-900 px-2.5 py-2 text-[12px] font-normal normal-case leading-snug tracking-normal text-white shadow-[0_8px_24px_-6px_rgba(8,32,47,.35)] animate-pop-in"
+              className="pointer-events-none fixed z-[200] rounded-lg bg-ink-900 px-2.5 py-2 text-[12px] font-normal normal-case leading-snug tracking-normal text-white shadow-[0_8px_24px_-6px_rgba(14,28,52,.35)] animate-pop-in"
             >
               {text}
             </div>,

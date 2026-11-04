@@ -22,7 +22,7 @@ import {
 } from '@/lib/security/prototype-gate';
 
 export const metadata = {
-  title: 'TapDash CRM — prototype',
+  title: 'Tenor Payments CRM — prototype',
   // Never let this reach a search index, code or no code.
   robots: { index: false, follow: false, nocache: true },
 };

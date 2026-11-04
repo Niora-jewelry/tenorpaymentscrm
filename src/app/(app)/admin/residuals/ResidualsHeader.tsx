@@ -93,7 +93,7 @@ export function ResidualsHeader({
         <div>
           <h1 className="text-xl font-semibold text-ink-900">Residuals admin</h1>
           <p className="mt-0.5 text-[13px] text-ink-500">
-            What the processor paid, against what TapDash should have earned.
+            What the processor paid, against what Tenor should have earned.
           </p>
         </div>
       </div>
@@ -115,7 +115,7 @@ export function ResidualsHeader({
           </p>
         </div>
       ) : (
-        <div className="mt-3 overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+        <div className="mt-3 overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
           {/*
             Dividers rather than wide gaps. Spread across a full-width card the
             facts read as five unrelated things floating in space; separated,

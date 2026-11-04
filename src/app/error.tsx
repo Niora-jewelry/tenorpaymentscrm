@@ -38,7 +38,7 @@ export default function RootError({
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas p-6">
       <div className="w-full max-w-md rounded-xl border border-line bg-white p-6 text-center">
-        <h1 className="text-[15px] font-semibold text-ink-900">TapDash couldn&rsquo;t load</h1>
+        <h1 className="text-[15px] font-semibold text-ink-900">Tenor couldn&rsquo;t load</h1>
         <p className="mt-1.5 text-[13px] leading-relaxed text-ink-500">
           Something went wrong while loading the application. Your data has not been changed.
         </p>

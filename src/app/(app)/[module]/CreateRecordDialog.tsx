@@ -139,7 +139,7 @@ export function CreateRecordDialog({
           <div
             role="dialog"
             aria-modal="true"
-            className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+            className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
           >
             <div className="flex items-start gap-3">
               <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-700">
@@ -228,7 +228,7 @@ export function CreateRecordDialog({
                           checked={pick === WHOLE_TEAM}
                           disabled={isPending}
                           onChange={() => choose(t.id, WHOLE_TEAM)}
-                          className="size-3.5 accent-[#1d4ed8]"
+                          className="size-3.5 accent-[#1e4080]"
                         />
                         <Icon name="users" size={14} className="text-ink-400" />
                         <span className="truncate font-medium text-ink-900">{t.label}</span>
@@ -248,7 +248,7 @@ export function CreateRecordDialog({
                               checked={pick === id}
                               disabled={isPending}
                               onChange={() => choose(t.id, id)}
-                              className="size-3.5 accent-[#1d4ed8]"
+                              className="size-3.5 accent-[#1e4080]"
                             />
                             <PersonAvatar person={p} size={20} />
                             <span className="truncate text-ink-800">{p.name}</span>

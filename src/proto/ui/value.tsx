@@ -842,7 +842,7 @@ export function FieldRenderer({
           <input
             type="checkbox"
             defaultChecked={Boolean(value)}
-            className="size-4 accent-[#1d4ed8]"
+            className="size-4 accent-[#1e4080]"
             onChange={(e) => commit(e.currentTarget.checked)}
           />
           {value ? 'Yes' : 'No'}
@@ -1961,7 +1961,7 @@ function PercentSplitControl({
 
 /** Segment colours for a must-total-100% bar: the brand blue stepping out,
  *  then teal and amber — distinct side by side, calm on a white card. */
-const SPLIT_TONES = ['#1d4ed8', '#60a5fa', '#0b7466', '#5ec8b8', '#b7791f', '#94a3b8'];
+const SPLIT_TONES = ['#1e4080', '#60a5fa', '#0b7466', '#5ec8b8', '#b7791f', '#94a3b8'];
 
 /* -------------------------------------------------------------------------- */
 /* Address control — structured street/city/state/zip/country                 */

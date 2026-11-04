@@ -90,7 +90,7 @@ export function FieldSearch({ hits: all }: { hits: FieldHit[] }) {
           id={listId}
           role="listbox"
           aria-label="Fields on this record"
-          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[340px] min-w-[300px] overflow-y-auto rounded-lg border border-line bg-white py-1 shadow-[0_12px_32px_-12px_rgba(8,32,47,.35)]"
+          className="absolute left-0 right-0 top-full z-40 mt-1 max-h-[340px] min-w-[300px] overflow-y-auto rounded-lg border border-line bg-white py-1 shadow-[0_12px_32px_-12px_rgba(14,28,52,.35)]"
         >
           {hits.length === 0 ? (
             <li className="px-3 py-2.5 text-[12.5px] text-ink-400">No field like “{q.trim()}” on this record.</li>

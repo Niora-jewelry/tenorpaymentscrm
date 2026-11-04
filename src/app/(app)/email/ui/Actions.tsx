@@ -49,7 +49,7 @@ function ToolButton({
       onClick={onClick}
       aria-pressed={pressed}
       className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[12.5px] font-semibold transition-colors ${
-        danger ? 'text-ink-600 hover:bg-[#fce9ea] hover:text-[#b02a30]' : 'text-ink-600 hover:bg-white hover:text-ink-900 hover:shadow-[0_1px_2px_rgba(8,32,47,.06)]'
+        danger ? 'text-ink-600 hover:bg-[#fce9ea] hover:text-[#b02a30]' : 'text-ink-600 hover:bg-white hover:text-ink-900 hover:shadow-[0_1px_2px_rgba(14,28,52,.06)]'
       }`}
     >
       <Icon name={icon} size={14} />

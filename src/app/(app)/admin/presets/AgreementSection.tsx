@@ -88,7 +88,7 @@ export function AgreementSection({ initial }: { initial: Initial }) {
             <div>
               <p className={label}>Reminders</p>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-line px-3 py-2 text-[13px] text-ink-800">
-                <input type="checkbox" checked={reminders} onChange={(e) => setReminders(e.target.checked)} className="size-4 accent-[#1d4ed8]" />
+                <input type="checkbox" checked={reminders} onChange={(e) => setReminders(e.target.checked)} className="size-4 accent-[#1e4080]" />
                 Remind signers who have not signed
               </label>
               <p className="mt-1 text-[12px] text-ink-400">The signing service sends them on days 3, 6 and 10. “Send reminder now” on the record works either way.</p>
@@ -171,7 +171,7 @@ export function AgreementSection({ initial }: { initial: Initial }) {
         <div className="space-y-3 px-4 py-4 text-[13px]">
           <p>
             <span className="text-ink-400">From </span>
-            <span className="font-semibold text-ink-900">{name.trim() || 'TapDash'}</span>
+            <span className="font-semibold text-ink-900">{name.trim() || 'Tenor Payments'}</span>
             {email.trim() ? <span className="text-ink-500"> &lt;{email.trim()}&gt;</span> : null}
           </p>
           <p>

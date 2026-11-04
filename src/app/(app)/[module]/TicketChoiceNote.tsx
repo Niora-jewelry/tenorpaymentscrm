@@ -64,7 +64,7 @@ export function TicketChoiceNote({ moduleSlug, choices }: { moduleSlug: string; 
                     type="button"
                     disabled={pending}
                     onClick={() => choose(ch.id, t.id)}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-left text-[12.5px] text-ink-800 shadow-[0_1px_1px_rgba(8,32,47,.04)] transition-colors hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-left text-[12.5px] text-ink-800 shadow-[0_1px_1px_rgba(14,28,52,.04)] transition-colors hover:border-brand-400 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span className="font-mono text-[11.5px] font-semibold text-ink-500">#{t.number}</span>
                     <span className="truncate font-medium">{t.title}</span>

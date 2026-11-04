@@ -369,7 +369,7 @@ function ScopeLine({
               onSelect(row, e.shiftKey);
             }}
             onChange={() => {}}
-            className="size-3.5 shrink-0 accent-[#1d4ed8]"
+            className="size-3.5 shrink-0 accent-[#1e4080]"
           />
         ) : null}
         <span className="min-w-0 flex-1">
@@ -984,7 +984,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
          * amber as the other rule that changes how the whole grid reads. One
          * fact, visible wherever you are in the list.
          */
-        <p className="sticky top-0 z-20 flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09] shadow-[0_2px_8px_-4px_rgba(8,32,47,.25)]">
+        <p className="sticky top-0 z-20 flex items-start gap-2 rounded-xl border border-[#f7e0af] bg-[#fdf1d8] px-3.5 py-2.5 text-[12.5px] leading-relaxed text-[#8a5a09] shadow-[0_2px_8px_-4px_rgba(14,28,52,.25)]">
           <Icon name="alert-triangle" size={14} className="mt-[2px] shrink-0" />
           <span>
             <strong className="font-semibold">
@@ -1007,7 +1007,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
       ) : null}
 
       {/* ---- toolbar ---- */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 shadow-[0_1px_2px_rgba(14,28,52,.05)]">
         <span className="relative">
           <Icon name="search" size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-ink-300" />
           <input
@@ -1023,7 +1023,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
         </label>
         {selectable ? (
           <label className="flex items-center gap-1.5 text-[12.5px] text-ink-600" title="Tick every row currently shown. Shift-click a row's box to select a range.">
-            <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} className="accent-[#1d4ed8]" />
+            <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown} className="accent-[#1e4080]" />
             Select all shown
           </label>
         ) : null}
@@ -1045,7 +1045,7 @@ export function GrantMatrix({ matrix, writer }: { matrix: Matrix; writer?: Grant
           (Permissions spec), edited in the Settings panel above this matrix —
           a module or membership grant row has no effect anywhere. */}
       {/* ---- tabs and their fields ---- */}
-      <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+      <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
         <div className="flex flex-wrap items-center gap-2 border-b border-line-soft px-4 py-3">
           <h2 className="text-[14px] font-semibold text-ink-900">Tabs &amp; fields</h2>
           <EnforcementChip kind="tab" />

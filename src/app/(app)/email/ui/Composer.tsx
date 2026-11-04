@@ -313,7 +313,7 @@ export function Composer({
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div
           // No overflow-hidden: it would clip the editor's menus (templates, colour, link, emoji).
-          className="rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(8,32,47,.05)]"
+          className="rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(14,28,52,.05)]"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             if (!e.dataTransfer.files.length) return;
@@ -511,7 +511,7 @@ export function Composer({
           ) : null}
 
           <footer className="flex items-center gap-2 border-t border-line-faint px-5 py-3">
-            <div className="inline-flex rounded-lg shadow-[0_1px_2px_rgba(8,32,47,.08)]">
+            <div className="inline-flex rounded-lg shadow-[0_1px_2px_rgba(14,28,52,.08)]">
               <button
                 type="button"
                 onClick={() => void send(null)}

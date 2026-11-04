@@ -15,7 +15,7 @@ const when = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', 
 
 export function PermissionHistory({ entries }: { entries: AuditEntry[] }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="border-b border-line-soft px-4 py-3">
         <h2 className="text-[14px] font-semibold text-ink-900">History</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-500">Every change, newest first. This log cannot be edited.</p>

@@ -1,25 +1,25 @@
 @import "tailwindcss";
 
 /* =============================================================================
-   TapDash CRM — design tokens
+   Tenor Payments CRM — design tokens
    ============================================================================= */
 
 @theme {
   /* --- Brand ------------------------------------------------------------- */
-  --color-brand-950: #012740;
-  --color-brand-900: #0a2f5c;
-  --color-brand-800: #1e3a8a;
-  --color-brand-700: #1d4ed8;
-  --color-brand-600: #2563eb;
-  --color-brand-500: #3b82f6;
+  --color-brand-950: #0b1a36;
+  --color-brand-900: #102347; /* Tenor navy, the logo's own colour */
+  --color-brand-800: #17315f;
+  --color-brand-700: #1e4080;
+  --color-brand-600: #2752a3;
+  --color-brand-500: #3f6bbd;
   /* Same story as ink-800/600 above: both were already in use. They are the
      stock blue-400/200, which is where brand-500 and brand-600 come from, so
      the ramp stays one family. */
-  --color-brand-400: #60a5fa;
-  --color-brand-300: #93c5fd;
-  --color-brand-200: #bfdbfe;
-  --color-brand-100: #dbe8fb;
-  --color-brand-50:  #eff5fd;
+  --color-brand-400: #6b8fd0;
+  --color-brand-300: #9cb5e0;
+  --color-brand-200: #c6d5ee;
+  --color-brand-100: #e1e9f6;
+  --color-brand-50:  #f2f5fb;
 
   /* Accent — lime.
      HARD RULE: #d5ff4a on white is 1.4:1 and unreadable. It is ONLY ever used
@@ -27,10 +27,10 @@
      One accent per screen: the primary action. Spending it elsewhere kills it. */
   --color-accent: #d5ff4a;
   --color-accent-dim: #b8e02f;
-  --color-accent-ink: #012740;
+  --color-accent-ink: #102347;
 
   /* --- Neutrals — biased toward the brand's blue-teal, never flat grey ---- */
-  --color-ink-900: #08202f;
+  --color-ink-900: #0e1c34;
   /* ⚠️ 800 and 600 exist because the CODE ALREADY USED THEM. A Tailwind colour
      class whose token is undefined emits NOTHING — the class lands in the
      markup, matches no rule, and the element silently inherits its parent's
@@ -38,17 +38,17 @@
      navigation rail, whose root sets `text-white`, `text-ink-600` rendered
      white text on a white panel and the notification list looked empty.
      `tokens.test.ts` now fails the build if a class outruns this list again. */
-  --color-ink-800: #132f42;
-  --color-ink-700: #1e3f54;
-  --color-ink-600: #34556a;
-  --color-ink-500: #4a6a80;
-  --color-ink-400: #6b8699;
-  --color-ink-300: #9db2c0;
-  --color-line:    #d9e3ec;
-  --color-line-soft: #e8eef4;
-  --color-line-faint: #eef3f7;
+  --color-ink-800: #17294a;
+  --color-ink-700: #24395c;
+  --color-ink-600: #3b5275;
+  --color-ink-500: #51688a;
+  --color-ink-400: #6f84a2;
+  --color-ink-300: #a1b1c7;
+  --color-line:    #dbe2ed;
+  --color-line-soft: #e9eef5;
+  --color-line-faint: #eff3f8;
   --color-surface: #ffffff;
-  --color-canvas:  #f6f9fb;
+  --color-canvas:  #f6f8fb;
 
   /* --- Semantic — deliberately never the brand blue or the lime ---------- */
   --color-ok:   #0f9c8b;
@@ -271,17 +271,14 @@
 /*
  * The navigation rail.
  *
- * ── THE PALETTE IS TAPSYNC'S, AND THAT IS THE POINT ──────────────────────
- * `linear-gradient(180deg, #06314d, #024774 55%, #02537f)` — taken from the
- * sibling product so the two read as one company. It is also closer to this
- * app's own `--color-brand-950` (#012740) than the blue-violet ramp that was
- * here before: TapDash's darkest brand value has always been petrol, and the
- * rail had drifted toward electric blue without anything justifying it.
+ * ── TENOR NAVY ──────────────────────────────────────────────────────────
+ * `linear-gradient(180deg, #0b1a36, #102347 55%, #17315f)`. #102347 is the navy
+ * in the Tenor logo, so the white logo in the header sits on its own colour.
  *
  * ── IT GETS LIGHTER DOWNWARD, WHICH EARLIER I ARGUED AGAINST ─────────────
  * That objection was about SATURATION, not direction. #2563eb rising up a tall
  * panel is loud because it is a fully-saturated blue; these three stops are
- * desaturated petrol within a tight range, so the same direction reads as depth
+ * desaturated navy within a tight range, so the same direction reads as depth
  * rather than as glare. Direction was never the problem — chroma was.
  *
  * ── THE LAYERS ───────────────────────────────────────────────────────────
@@ -303,10 +300,10 @@
  */
 @utility rail-glass {
   background-image:
-    radial-gradient(120% 34% at 50% 0%, rgba(148, 200, 255, 0.13) 0%, rgba(148, 200, 255, 0) 64%),
+    radial-gradient(120% 34% at 50% 0%, rgba(160, 190, 255, 0.11) 0%, rgba(160, 190, 255, 0) 64%),
     radial-gradient(55% 16% at 0% 18%, rgba(213, 255, 74, 0.05) 0%, rgba(213, 255, 74, 0) 74%),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
-    linear-gradient(180deg, #06314d, #024774 55%, #02537f);
+    linear-gradient(180deg, #0b1a36, #102347 55%, #17315f);
   box-shadow:
     inset -1px 0 0 rgba(255, 255, 255, 0.07),
     inset 1px 0 0 rgba(255, 255, 255, 0.05);
@@ -326,7 +323,7 @@
  * ── A FULL LIME FILL, ON PURPOSE ─────────────────────────────────────────
  * The accent's own rule in this file allows exactly one use: a FILL carrying
  * dark text, or text on a dark ground. This is the first, and against the
- * petrol rail it lands at 14.8:1 — the most legible thing in the panel by a
+ * navy rail it lands at 14.8:1 — the most legible thing in the panel by a
  * wide margin, which is what "you are here" should be.
  *
  * An earlier pass tried a lifted panel with a 3px lime edge instead, on the
@@ -355,7 +352,7 @@
 
 /* The signature gradient, one definition. */
 @utility brand-gradient {
-  background-image: linear-gradient(155deg, #1e3a8a, #1d4ed8 55%, #2563eb);
+  background-image: linear-gradient(155deg, #0b1a36, #102347 55%, #17315f);
 }
 
 html { height: 100%; }

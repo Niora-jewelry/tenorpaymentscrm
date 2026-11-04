@@ -37,7 +37,7 @@ export default function SignupPage() {
   const email = codeState.email ?? emailState.email ?? typedEmail;
 
   const titles = {
-    1: { title: 'Create your account', subtitle: 'TapDash is invite-only. Use the email your administrator invited.' },
+    1: { title: 'Create your account', subtitle: 'Tenor is invite-only. Use the email your administrator invited.' },
     2: { title: 'Check your email', subtitle: `We sent a 6-digit code to ${email}. It expires in 10 minutes.` },
     3: { title: 'Choose a password', subtitle: 'Last step — pick something you do not use anywhere else.' },
   }[step];

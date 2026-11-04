@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
         redirect: 'manual',
         headers: {
           Accept: 'image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8',
-          'User-Agent': 'TapDash-Mail-Image-Proxy/1.0',
+          'User-Agent': 'Tenor-Mail-Image-Proxy/1.0',
         },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

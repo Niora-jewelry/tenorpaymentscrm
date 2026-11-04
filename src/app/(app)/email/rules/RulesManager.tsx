@@ -245,7 +245,7 @@ function Switch({ on, label, disabled, onChange }: { on: boolean; label: string;
       onClick={() => onChange(!on)}
       className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-60 ${on ? 'bg-brand-600' : 'bg-line'}`}
     >
-      <span className={`absolute top-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(8,32,47,.25)] transition-[left] ${on ? 'left-[16px]' : 'left-[2px]'}`} />
+      <span className={`absolute top-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgba(14,28,52,.25)] transition-[left] ${on ? 'left-[16px]' : 'left-[2px]'}`} />
     </button>
   );
 }
@@ -292,7 +292,7 @@ function RuleEditor({
   };
 
   return (
-    <section aria-label={isNew ? 'New rule' : 'Edit rule'} className="rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(8,32,47,.05)]">
+    <section aria-label={isNew ? 'New rule' : 'Edit rule'} className="rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(14,28,52,.05)]">
       <header className="flex items-center gap-3 border-b border-line-faint px-5 py-3">
         <h2 className="text-[15px] font-semibold text-ink-900">{isNew ? 'New rule' : 'Edit rule'}</h2>
         <label className="ml-auto flex items-center gap-2 text-[12.5px] font-medium text-ink-600">
@@ -333,7 +333,7 @@ function RuleEditor({
         {extras ? (
           <p className="flex items-start gap-2 rounded-lg bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-500">
             <Icon name="info" size={13} className="mt-px shrink-0" />
-            This rule also has {extras} setting{extras === 1 ? '' : 's'} from Outlook that TapDash can’t show. They are kept exactly as they are.
+            This rule also has {extras} setting{extras === 1 ? '' : 's'} from Outlook that Tenor can’t show. They are kept exactly as they are.
           </p>
         ) : null}
 

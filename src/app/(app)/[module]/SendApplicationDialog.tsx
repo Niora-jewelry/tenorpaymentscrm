@@ -100,7 +100,7 @@ export function SendApplicationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`${ids.subject}-title`}
-        className="relative my-8 w-full max-w-[620px] animate-dialog-in overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+        className="relative my-8 w-full max-w-[620px] animate-dialog-in overflow-hidden rounded-panel border border-line bg-white shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
       >
         <header className="flex items-start gap-3 border-b border-line-soft px-5 py-4">
           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-50 text-brand-700">

@@ -805,7 +805,7 @@ function LastMessageReceived({ record }: { record: RecordRow }) {
   const stale = now.getTime() - new Date(last.at).getTime() > 14 * 86_400_000;
 
   return (
-    <div className="rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_rgba(8,32,47,.04)]">
+    <div className="rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_rgba(14,28,52,.04)]">
       <div className="flex flex-wrap items-center gap-2">
         <Icon name="reply" size={15} className="text-brand-600" />
         <span className="text-[12.5px] font-semibold uppercase tracking-[.06em] text-ink-400">
@@ -1095,7 +1095,7 @@ function CaseCard({ c, now }: { c: CaseThread; now: Date }) {
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full flex-wrap items-center gap-2 border-b border-line-soft bg-canvas px-4 py-2.5 text-left transition-colors hover:bg-[#eef3f7]"
+        className="flex w-full flex-wrap items-center gap-2 border-b border-line-soft bg-canvas px-4 py-2.5 text-left transition-colors hover:bg-[#eff3f8]"
       >
         <Icon
           name="chevron-down"

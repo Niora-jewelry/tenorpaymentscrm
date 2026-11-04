@@ -91,7 +91,7 @@ export function InvitesTable({ invites }: { invites: AdminInviteRow[] }) {
   const shown = showSettled ? [...open, ...settled] : open;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
         <div>
           <h2 className="text-[14px] font-semibold text-ink-900">Invites</h2>

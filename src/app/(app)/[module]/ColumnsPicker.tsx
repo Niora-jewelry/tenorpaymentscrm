@@ -51,7 +51,7 @@ export function ColumnsPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12.5px] font-semibold text-ink-600 shadow-[0_1px_1px_rgba(8,32,47,.04)] transition-colors hover:border-ink-300 hover:text-ink-900"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1.5 text-[12.5px] font-semibold text-ink-600 shadow-[0_1px_1px_rgba(14,28,52,.04)] transition-colors hover:border-ink-300 hover:text-ink-900"
       >
         <Icon name="sliders" size={12} />
         Columns
@@ -69,7 +69,7 @@ export function ColumnsPicker({
                   type="checkbox"
                   checked={c.shown}
                   onChange={() => toggle(c)}
-                  className="size-3.5 accent-[#1d4ed8]"
+                  className="size-3.5 accent-[#1e4080]"
                 />
                 <span className="min-w-0 flex-1 truncate">{c.label}</span>
               </label>

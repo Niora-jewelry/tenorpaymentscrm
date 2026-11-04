@@ -159,7 +159,7 @@ export function InvitePermissionsStep({
           </p>
           <p className="mt-2 text-[13px] leading-relaxed text-ink-700">
             <strong className="font-semibold text-ink-900">{sentTo}</strong> has been emailed an
-            invitation to TapDash with a link to create their account. The permissions you set
+            invitation to Tenor with a link to create their account. The permissions you set
             apply the moment they finish signing up.
           </p>
           <p className="mt-2 text-[12px] leading-relaxed text-ink-500">
@@ -237,7 +237,7 @@ export function InvitePermissionsStep({
             <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-10">
               <span
                 role="status"
-                className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-700 shadow-[0_4px_16px_-6px_rgba(8,32,47,.3)]"
+                className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-[12.5px] font-medium text-ink-700 shadow-[0_4px_16px_-6px_rgba(14,28,52,.3)]"
               >
                 <span aria-hidden className="inline-block text-[12px] leading-none">
                   <Spinner />

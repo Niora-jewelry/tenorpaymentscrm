@@ -351,7 +351,7 @@ function ColumnHeader({
                       <input
                         type="checkbox"
                         checked={chosen}
-                        className="size-3.5 accent-[#1d4ed8]"
+                        className="size-3.5 accent-[#1e4080]"
                         onChange={() => {
                           const cur = filter?.kind === 'values' ? filter.values : [];
                           const next = chosen ? cur.filter((x) => x !== v) : [...cur, v];
@@ -1255,7 +1255,7 @@ export function DataTable({
   const activeFilters = Object.values(filters);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05),0_8px_24px_-16px_rgba(8,32,47,.18)]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05),0_8px_24px_-16px_rgba(14,28,52,.18)]">
       {/* Personalized column order — 19 Aug amendment: order only, per user,
           reset re-adopts the admin's order (live). */}
       {hasCustomColumnOrder ? (
@@ -1356,14 +1356,14 @@ export function DataTable({
                   aria-label="Select all rows on this page"
                   checked={allOnPageSelected}
                   onChange={toggleAll}
-                  className="size-3.5 accent-[#1d4ed8]"
+                  className="size-3.5 accent-[#1e4080]"
                 />
               </th>
 
               {/* Deal Name — frozen, and the only hardcoded column */}
               <th
                 className={`sticky top-0 z-30 border-b border-line bg-canvas text-left ${
-                  scrolled ? 'shadow-[4px_0_8px_-4px_rgba(8,32,47,.16)]' : ''
+                  scrolled ? 'shadow-[4px_0_8px_-4px_rgba(14,28,52,.16)]' : ''
                 }`}
                 style={{
                   left: CHECKBOX_WIDTH,
@@ -1526,7 +1526,7 @@ export function DataTable({
                         aria-label={`Select ${r.dealName}`}
                         checked={isSelected}
                         onChange={() => toggleOne(r.id)}
-                        className="size-3.5 accent-[#1d4ed8]"
+                        className="size-3.5 accent-[#1e4080]"
                       />
                     </div>
                   </td>
@@ -1534,7 +1534,7 @@ export function DataTable({
                   {/* Frozen primary column. Opaque background so rows scrolling
                       beneath it never bleed through. */}
                   <td
-                    className={`sticky z-10 border-b border-line-faint p-0 ${cellTone} ${scrolled ? 'shadow-[4px_0_8px_-4px_rgba(8,32,47,.16)]' : ''}`}
+                    className={`sticky z-10 border-b border-line-faint p-0 ${cellTone} ${scrolled ? 'shadow-[4px_0_8px_-4px_rgba(14,28,52,.16)]' : ''}`}
                     style={{ left: CHECKBOX_WIDTH, width: DEAL_NAME_WIDTH }}
                   >
                     <div className="relative flex h-10 items-center gap-2 px-3">
@@ -1979,7 +1979,7 @@ export function SkipReportPanel({ report, onClose }: { report: SkipReport; onClo
           ) : null}
 
           {expanded && report?.skipped.length ? (
-            <span className="absolute bottom-[calc(100%+8px)] left-0 right-0 animate-pop-in rounded-xl border border-line bg-white p-3 shadow-[0_16px_40px_-12px_rgba(8,32,47,.35)]">
+            <span className="absolute bottom-[calc(100%+8px)] left-0 right-0 animate-pop-in rounded-xl border border-line bg-white p-3 shadow-[0_16px_40px_-12px_rgba(14,28,52,.35)]">
               <span className="mb-1.5 block text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">
                 Skipped, and why
               </span>

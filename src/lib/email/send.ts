@@ -276,22 +276,21 @@ function appOrigin(): string {
  */
 const BRAND = {
   accent: '#d5ff4a',
-  accentInk: '#012740',
-  ink: '#08202f',
-  muted: '#5e7a8d',
-  line: '#d9e3ec',
-  canvas: '#f6f9fb',
-  panel: '#eef3f8',
+  accentInk: '#102347',
+  ink: '#0e1c34',
+  muted: '#5b6f8c',
+  line: '#dbe2ed',
+  canvas: '#f6f8fb',
+  panel: '#eef2f8',
 } as const;
 
 const FONT = 'Segoe UI,Helvetica,Arial,sans-serif';
 
 /**
- * The official TapDash logo, as supplied by the client.
+ * The Tenor Payments logo, from the client's logo pack, served by this app.
  *
- * Its natural size is 1457x1251. Rendered at 132px wide it is a shade over
- * 11x down, so it stays sharp on a 2x display without shipping a second
- * asset. `width` and `height` are set as ATTRIBUTES as well as in the style:
+ * Its natural size is 1042x321. Rendered at 156px wide it is well over 2x down,
+ * so it stays sharp on a 2x display without shipping a second asset. `width` and `height` are set as ATTRIBUTES as well as in the style:
  * Outlook ignores CSS sizing on an image, and an unsized 1457px-wide logo
  * would blow the 600px layout apart.
  *
@@ -302,9 +301,9 @@ const FONT = 'Segoe UI,Helvetica,Arial,sans-serif';
  * "TapDash" in the brand colour at a sensible size, rather than showing a
  * broken-image icon above a login code - which is what phishing looks like.
  */
-const LOGO_URL = 'https://tapdash.co/wp-content/uploads/2024/08/cropped-TapDash-Logo-PNG.png';
-const LOGO_W = 132;
-const LOGO_H = 113;
+const logoUrl = () => `${appOrigin()}/brand/tenor-logo-navy.png`;
+const LOGO_W = 156;
+const LOGO_H = 48;
 
 /** Minimal escaping for the few values that come from a database row rather
  *  than from this file - an inviter's display name, a role label. None of it
@@ -358,7 +357,7 @@ function emailShell(opts: {
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
 
   <tr><td align="center" style="padding:0 4px 22px;">
-    <img src="${LOGO_URL}" width="${LOGO_W}" height="${LOGO_H}" alt="TapDash"
+    <img src="${logoUrl()}" width="${LOGO_W}" height="${LOGO_H}" alt="Tenor Payments"
          style="display:block;width:${LOGO_W}px;height:${LOGO_H}px;border:0;outline:none;text-decoration:none;font-family:${FONT};font-size:19px;font-weight:700;color:${BRAND.ink};">
   </td></tr>
 
@@ -367,7 +366,7 @@ ${opts.bodyHtml}
   </td></tr>
 
   <tr><td align="center" style="padding:18px 8px 0;font-family:${FONT};font-size:12px;line-height:1.6;color:${BRAND.muted};">
-    TapDash &mdash; merchant services CRM<br>
+    Tenor Payments &mdash; merchant services<br>
     <span style="color:#8aa3b5;">Automated message, sent ${esc(opts.stamp)}. Replies to this address are not monitored.</span>
   </td></tr>
 
@@ -383,8 +382,8 @@ function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string)
   const heading = purpose === 'signup' ? 'Finish setting up your account' : 'Reset your password';
   const lede =
     purpose === 'signup'
-      ? 'Enter this code to finish creating your TapDash account.'
-      : 'Enter this code to choose a new password for your TapDash account.';
+      ? 'Enter this code to finish creating your Tenor account.'
+      : 'Enter this code to choose a new password for your Tenor account.';
 
   const body = `
     <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">${heading}</h1>
@@ -403,7 +402,7 @@ function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string)
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px;">
       <tr><td style="border-top:1px solid ${BRAND.line};padding-top:18px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BRAND.muted};">
-        <strong style="color:${BRAND.ink};">TapDash will never ask you for this code.</strong>
+        <strong style="color:${BRAND.ink};">Tenor will never ask you for this code.</strong>
         Not by phone, not by email, not over chat. If you did not request it you can ignore
         this message &mdash; nothing changes until the code is entered.
       </td></tr>
@@ -420,13 +419,13 @@ function codeEmailHtml(code: string, purpose: 'signup' | 'reset', stamp: string)
 function codeEmailText(code: string, purpose: 'signup' | 'reset', stamp: string): string {
   const heading = purpose === 'signup' ? 'Finish setting up your account' : 'Reset your password';
   return [
-    `TapDash - ${heading}`,
+    `Tenor - ${heading}`,
     '',
     `Your code: ${code}`,
     '',
     `It expires in ${MINUTES} minutes and can only be used once.`,
     '',
-    'TapDash will never ask you for this code - not by phone, not by email,',
+    'Tenor will never ask you for this code - not by phone, not by email,',
     'not over chat. If you did not request it, ignore this message; nothing',
     'changes until the code is entered.',
     '',
@@ -442,7 +441,7 @@ export function sendOtpEmail(
   const stamp = sendStamp();
 
   const subject =
-    purpose === 'signup' ? 'Your TapDash signup code' : 'Your TapDash password reset code';
+    purpose === 'signup' ? 'Your Tenor signup code' : 'Your Tenor password reset code';
 
   return send(
     to,
@@ -513,11 +512,11 @@ export function sendInviteEmail(
     : null;
 
   const introHtml = inviter
-    ? `<strong style="color:${BRAND.ink};">${esc(inviter)}</strong> has invited you to TapDash, the merchant services CRM.`
-    : 'You have been invited to TapDash, the merchant services CRM.';
+    ? `<strong style="color:${BRAND.ink};">${esc(inviter)}</strong> has invited you to Tenor, the merchant services CRM.`
+    : 'You have been invited to Tenor, the merchant services CRM.';
 
   const body = `
-    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:22px;line-height:1.3;font-weight:600;color:${BRAND.ink};">You&rsquo;re invited to TapDash</h1>
+    <h1 style="margin:0 0 10px;font-family:${FONT};font-size:22px;line-height:1.3;font-weight:600;color:${BRAND.ink};">You&rsquo;re invited to Tenor</h1>
 
     <p style="margin:0 0 22px;font-family:${FONT};font-size:15px;line-height:1.65;color:${BRAND.muted};">
       ${introHtml}${role ? ` You&rsquo;ll join as <strong style="color:${BRAND.ink};">${esc(role)}</strong>.` : ''}
@@ -533,7 +532,7 @@ export function sendInviteEmail(
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td bgcolor="${BRAND.panel}" style="background:${BRAND.panel};border:1px solid ${BRAND.line};border-radius:10px;padding:16px 18px;font-family:${FONT};font-size:13.5px;line-height:1.7;color:${BRAND.muted};">
         Sign up with this address: <strong style="color:${BRAND.ink};">${esc(to)}</strong><br>
-        TapDash is invite-only, so another address will not be recognised.
+        Tenor is invite-only, so another address will not be recognised.
       </td></tr>
     </table>
 
@@ -554,17 +553,17 @@ export function sendInviteEmail(
     </table>`;
 
   const text = [
-    "You're invited to TapDash",
+    "You're invited to Tenor",
     '',
     inviter
-      ? `${inviter} has invited you to TapDash, the merchant services CRM.`
-      : 'You have been invited to TapDash, the merchant services CRM.',
+      ? `${inviter} has invited you to Tenor, the merchant services CRM.`
+      : 'You have been invited to Tenor, the merchant services CRM.',
     role ? `You'll join as ${role}.` : null,
     '',
     `Create your account: ${signupUrl}`,
     '',
     `Sign up with this address: ${to}`,
-    'TapDash is invite-only, so another address will not be recognised.',
+    'Tenor is invite-only, so another address will not be recognised.',
     expires ? `This invitation expires on ${expires}.` : null,
     '',
     'Not expecting this? Ignore this email - no account exists until you create one.',
@@ -578,9 +577,9 @@ export function sendInviteEmail(
 
   return send(
     to,
-    'You have been invited to TapDash',
+    'You have been invited to Tenor',
     emailShell({
-      title: "You're invited to TapDash",
+      title: "You're invited to Tenor",
       preheader: 'Create your account to get started.',
       bodyHtml: body,
       stamp,
@@ -631,7 +630,7 @@ export function sendVoicemailEmail(
     <h1 style="margin:0 0 10px;font-family:${FONT};font-size:21px;line-height:1.3;font-weight:600;color:${BRAND.ink};">New voicemail</h1>
 
     <p style="margin:0 0 22px;font-family:${FONT};font-size:15px;line-height:1.6;color:${BRAND.muted};">
-      Someone left a message for TapDash.
+      Someone left a message for Tenor.
     </p>
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;">
@@ -661,13 +660,13 @@ export function sendVoicemailEmail(
              </td></tr>
            </table>`
         : `<p style="margin:0 0 18px;font-family:${FONT};font-size:13.5px;line-height:1.6;color:${BRAND.muted};">
-             The recording could not be linked automatically. It is stored in TapDash under this call.
+             The recording could not be linked automatically. It is stored in Tenor under this call.
            </p>`
     }
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr><td style="border-top:1px solid ${BRAND.line};padding-top:18px;font-family:${FONT};font-size:13px;line-height:1.65;color:${BRAND.muted};">
-        This message is also stored in TapDash, where it stays available after this link expires.
+        This message is also stored in Tenor, where it stays available after this link expires.
       </td></tr>
     </table>`;
 
@@ -679,7 +678,7 @@ export function sendVoicemailEmail(
     opts.attachment ? 'The recording is attached to this email.' : '',
     opts.link ? `Listen: ${opts.link}` : '',
     '',
-    'This message is also stored in TapDash.',
+    'This message is also stored in Tenor.',
   ]
     .filter((l) => l !== '' || true)
     .join('\n');
@@ -761,7 +760,7 @@ export function sendMentionEmail(
     </table>
 
     <p style="margin:16px 0 0;font-family:${FONT};font-size:12.5px;line-height:1.6;color:${BRAND.muted};">
-      This is for your information only — nothing needs approving. Mute the record in TapDash to stop these for it.
+      This is for your information only — nothing needs approving. Mute the record in Tenor to stop these for it.
     </p>`;
 
   const plain = [
@@ -773,7 +772,7 @@ export function sendMentionEmail(
     ...(values.length ? [''] : []),
     `View in CRM: ${opts.href}`,
     '',
-    'For your information only. Mute the record in TapDash to stop these for it.',
+    'For your information only. Mute the record in Tenor to stop these for it.',
     `Automated message, sent ${stamp}. Replies are not monitored.`,
   ].join('\n');
 

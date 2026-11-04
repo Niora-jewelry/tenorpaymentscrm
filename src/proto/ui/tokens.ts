@@ -11,7 +11,7 @@ export type SwatchStyle = { bg: string; text: string; border: string; dot: strin
 
 export const SWATCHES: Record<Swatch, SwatchStyle> = {
   slate: { bg: '#eef2f6', text: '#46596b', border: '#d5dfe8', dot: '#7b8fa1' },
-  blue: { bg: '#e3edfd', text: '#1d4ed8', border: '#c7dcfb', dot: '#2563eb' },
+  blue: { bg: '#e3edfd', text: '#1e4080', border: '#c7dcfb', dot: '#2752a3' },
   indigo: { bg: '#e8e7fd', text: '#4338ca', border: '#d3d1fa', dot: '#4f46e5' },
   teal: { bg: '#e0f5f1', text: '#0b7466', border: '#c2e9e1', dot: '#0f9c8b' },
   green: { bg: '#e3f6e8', text: '#1a7a3c', border: '#c5ecd0', dot: '#22a04f' },

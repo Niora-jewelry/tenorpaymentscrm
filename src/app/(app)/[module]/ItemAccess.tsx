@@ -206,7 +206,7 @@ export function HideReply({ kind, replyId, authorId }: { kind: ReplyKind; replyI
                     type="checkbox"
                     checked={on}
                     onChange={() => setPicked((p) => (on ? p.filter((x) => x !== id) : [...p, id]))}
-                    className="size-3.5 accent-[#1d4ed8]"
+                    className="size-3.5 accent-[#1e4080]"
                   />
                   {person ? <PersonAvatar person={{ ...person, unknown: false }} size={18} /> : null}
                   <span className="min-w-0 flex-1 truncate">{person?.name ?? 'Someone'}</span>

@@ -87,7 +87,7 @@ export function ComposeSettings({
         <SectionHead title="Signatures" />
         <p className="text-[12.5px] leading-relaxed text-ink-500">
           Outlook keeps signatures on each computer, where Microsoft lets no app read them — so set yours here once, per mailbox. It is added
-          below everything you write from that mailbox in TapDash.
+          below everything you write from that mailbox in Tenor.
         </p>
         {signatures.length === 0 ? (
           <p className="rounded-xl border border-dashed border-line bg-white px-4 py-6 text-center text-[13px] text-ink-400">Connect a mailbox first.</p>

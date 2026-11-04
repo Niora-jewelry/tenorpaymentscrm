@@ -332,7 +332,7 @@ function Header({
   const signedOff = header.storedStatus === 'reconciled';
 
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <div className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line-soft px-4 py-3.5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

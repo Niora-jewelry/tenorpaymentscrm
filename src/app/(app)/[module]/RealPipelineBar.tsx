@@ -283,7 +283,7 @@ export function RealPipelineBar({
                   onClick={() => setStep(pipeline.id, step.id)}
                   className={`relative flex shrink-0 items-center gap-1.5 rounded-full border transition-all duration-200 active:scale-95 disabled:cursor-wait ${
                     current
-                      ? 'px-3 py-[5px] text-[12px] font-semibold shadow-[0_2px_6px_-1px_rgba(8,32,47,.22)]'
+                      ? 'px-3 py-[5px] text-[12px] font-semibold shadow-[0_2px_6px_-1px_rgba(14,28,52,.22)]'
                       : done
                         ? 'border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink-400 hover:-translate-y-px hover:border-ink-300 hover:text-ink-700'
                         : 'border-dashed border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink-300 hover:-translate-y-px hover:border-solid hover:border-ink-300 hover:text-ink-700'
@@ -363,7 +363,7 @@ function ChangePipelineDialog({
                 setPipelineId(p.id);
                 setStepId(p.steps[0]?.id ?? '');
               }}
-              className="accent-[#1d4ed8]"
+              className="accent-[#1e4080]"
             />
             <span className="font-semibold text-ink-900">{p.label}</span>
             <span className="text-[12px] text-ink-400">

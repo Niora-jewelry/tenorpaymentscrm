@@ -83,7 +83,7 @@ function Choice({
         checked ? 'border-brand-600 bg-brand-50 font-medium text-brand-800' : 'border-line bg-white text-ink-700 hover:border-ink-300'
       } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
     >
-      <input type={type} name={name} checked={checked} onChange={onChange} disabled={disabled} className="size-4 accent-[#1d4ed8]" />
+      <input type={type} name={name} checked={checked} onChange={onChange} disabled={disabled} className="size-4 accent-[#1e4080]" />
       {label}
     </label>
   );
@@ -385,7 +385,7 @@ export function ApplicationForm({ answers, onChange, problems, ssnOnFile, ssnEnt
   return (
     <div className="space-y-5">
       {SECTIONS.map((s, i) => only && s.id !== only ? null : (
-        <section key={s.id} aria-labelledby={`sec-${s.id}`} className="rounded-2xl border border-line bg-white p-5 shadow-[0_1px_2px_rgba(8,32,47,.04)] sm:p-6">
+        <section key={s.id} aria-labelledby={`sec-${s.id}`} className="rounded-2xl border border-line bg-white p-5 shadow-[0_1px_2px_rgba(14,28,52,.04)] sm:p-6">
           <header className="mb-5 flex items-baseline gap-3 border-b border-line-soft pb-3">
             <span className="font-mono text-[12px] font-semibold text-ink-300">{String(i + 1).padStart(2, '0')}</span>
             <div>

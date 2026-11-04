@@ -70,7 +70,7 @@ export function BuyRatesSection({
       <Panel>
         <Empty
           title="No buy rates loaded"
-          body="Buy rates come with the processor's template. Without them the engine cannot work out what a fee item cost TapDash, and it refuses to guess."
+          body="Buy rates come with the processor's template. Without them the engine cannot work out what a fee item cost Tenor, and it refuses to guess."
         />
       </Panel>
     );

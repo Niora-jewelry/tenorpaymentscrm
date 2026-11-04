@@ -53,7 +53,7 @@ export default function AppError({
 
   return (
     <div className="flex h-full flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border border-line bg-white p-6 text-center shadow-[0_1px_2px_rgba(8,32,47,.04)]">
+      <div className="w-full max-w-md rounded-xl border border-line bg-white p-6 text-center shadow-[0_1px_2px_rgba(14,28,52,.04)]">
         <div className="mx-auto grid size-10 place-items-center rounded-full bg-warn-bg text-warn">
           <Icon name="alert-triangle" size={18} />
         </div>

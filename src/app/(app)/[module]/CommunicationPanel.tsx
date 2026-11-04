@@ -133,7 +133,7 @@ function PhoneViews({
               aria-selected={on}
               onClick={() => pick(v.key)}
               className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
-                on ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(8,32,47,.10)] ring-1 ring-line' : 'text-ink-500 hover:text-ink-900'
+                on ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(14,28,52,.10)] ring-1 ring-line' : 'text-ink-500 hover:text-ink-900'
               }`}
             >
               <Icon name={v.icon} size={12} className={on ? 'text-brand-600' : 'text-ink-400'} />
@@ -317,7 +317,7 @@ function LastMessageReceived({
   const meta = channelMeta(last.channel);
 
   return (
-    <div className="rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_rgba(8,32,47,.04)]">
+    <div className="rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_rgba(14,28,52,.04)]">
       <div className="flex flex-wrap items-center gap-2">
         <Icon name="reply" size={15} className="text-brand-600" />
         <span className="text-[12.5px] font-semibold uppercase tracking-[.06em] text-ink-400">

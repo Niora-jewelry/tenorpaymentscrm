@@ -34,7 +34,7 @@
  * from that, and both are deliberate:
  *
  * ⚠️ EVERY COLOUR IN HERE IS NOW WHITE-WITH-ALPHA, NOT AN INK TOKEN. `ink-400`
- * on `#1d4ed8` is 1.9:1 and effectively invisible. Alpha over the gradient
+ * on `#1e4080` is 1.9:1 and effectively invisible. Alpha over the gradient
  * keeps one hue and lets the gradient show through, which a flat opaque tint
  * would kill. Anything added to this file has to follow the same rule.
  *
@@ -73,8 +73,7 @@ import { useLiveCounts } from './useLiveCounts';
 
 /** The identity in the sidebar header. Two constants, one place to change them
  *  for a rebrand or a white-label deployment. */
-const BRAND_NAME = 'TapDash';
-const BRAND_TAGLINE = 'Merchant services CRM';
+const BRAND_NAME = 'Tenor Payments';
 
 /**
  * The Configure group, in its long-standing order: Users and Permissions
@@ -177,33 +176,9 @@ export function Sidebar({
           collapsed ? 'justify-center' : ''
         }`}
       >
-        {/* The mark. An inset highlight plus a soft shadow give the gradient a
-            top edge, so it reads as a raised object instead of a flat swatch.
-            It is the one piece of ornament on the whole panel, which is exactly
-            why it can afford to be there. */}
-        <span
-          aria-hidden
-          className="grid size-[30px] shrink-0 place-items-center rounded-[9px] bg-white/[.14] text-[13px] font-bold text-white ring-1 ring-inset ring-white/30 shadow-[inset_0_1px_0_rgba(255,255,255,.40),0_2px_8px_-3px_rgba(0,0,0,.5)]"
-        >
-          {BRAND_NAME.charAt(0)}
-        </span>
-
-        {!collapsed ? (
-          <>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-semibold leading-tight tracking-[-.01em] text-white">
-                {BRAND_NAME}
-              </span>
-              {/* Sentence case, no letter-spacing. Uppercase plus .07em
-                  tracking made this ~30% wider than the panel could give it, so
-                  it truncated to "MERCHANT SERVICES C…" — a tagline that gets
-                  cut off is worse than no tagline. */}
-              <span className="block truncate text-[11px] leading-[1.35] text-white/55">
-                {BRAND_TAGLINE}
-              </span>
-            </span>
-          </>
-        ) : null}
+        {/* The client's logo: the full one with room for it, the mark alone when collapsed. */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- a static brand file */}
+        <img src={collapsed ? '/brand/tenor-mark-white.png' : '/brand/tenor-logo-white.png'} alt={BRAND_NAME} className={collapsed ? 'h-[30px] w-auto' : 'h-[36px] w-auto'} />
       </div>
 
       {/* ── Collapse ────────────────────────────────────────────────────────

@@ -92,9 +92,9 @@ describe('application PDF', () => {
   });
 
   it('names the file after the DBA or legal name', () => {
-    expect(applicationFileName("Joe's Pizza")).toBe("TapDash Application - Joe's Pizza.pdf");
-    expect(applicationFileName('A/B: "C"')).toBe('TapDash Application - A B C.pdf');
-    expect(applicationFileName('')).toBe('TapDash Application - Merchant.pdf');
+    expect(applicationFileName("Joe's Pizza")).toBe("Tenor Application - Joe's Pizza.pdf");
+    expect(applicationFileName('A/B: "C"')).toBe('Tenor Application - A B C.pdf');
+    expect(applicationFileName('')).toBe('Tenor Application - Merchant.pdf');
   });
 });
 

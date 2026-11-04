@@ -75,9 +75,9 @@ export const RATE_GROUPS: { title: string; note?: string; fields: RateField[] }[
     fields: [
       {
         key: 'monthly_fee_tapdash',
-        label: 'Monthly fee (TapDash)',
+        label: 'Monthly fee (Tenor)',
         kind: 'money',
-        hint: 'Billed by TapDash directly, so it is additional income OUTSIDE the processor’s split.',
+        hint: 'Billed by Tenor directly, so it is additional income OUTSIDE the processor’s split.',
       },
       {
         key: 'monthly_fee_maverick',

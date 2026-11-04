@@ -93,7 +93,7 @@ export function ReadingPane({
     return (
       <div className="grid h-full place-items-center bg-canvas px-8">
         <div className="text-center">
-          <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-300 shadow-[0_1px_2px_rgba(8,32,47,.06)]">
+          <span className="mx-auto mb-3 grid size-11 place-items-center rounded-full bg-white text-ink-300 shadow-[0_1px_2px_rgba(14,28,52,.06)]">
             <Icon name="mail" size={20} />
           </span>
           <p className="text-[14px] font-semibold text-ink-700">Select a conversation</p>
@@ -233,7 +233,7 @@ function MessageCard({
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-3 rounded-xl border border-line bg-white px-4 py-2.5 text-left shadow-[0_1px_2px_rgba(8,32,47,.03)] transition-colors hover:border-ink-300/70"
+        className="flex w-full items-center gap-3 rounded-xl border border-line bg-white px-4 py-2.5 text-left shadow-[0_1px_2px_rgba(14,28,52,.03)] transition-colors hover:border-ink-300/70"
       >
         <Avatar name={m.fromName} address={m.fromAddress} size={28} />
         <span className={`w-40 shrink-0 truncate text-[13px] ${m.isRead ? 'text-ink-700' : 'font-semibold text-ink-900'}`}>{name}</span>
@@ -246,7 +246,7 @@ function MessageCard({
 
   const toLine = [...m.to, ...m.cc];
   return (
-    <div className="group/msg overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(8,32,47,.05)]">
+    <div className="group/msg overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_3px_rgba(14,28,52,.05)]">
       <div className="flex items-start gap-3 px-5 pt-4">
         <Avatar name={m.fromName} address={m.fromAddress} size={36} />
         <div className="min-w-0 flex-1">

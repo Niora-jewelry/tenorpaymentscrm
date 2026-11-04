@@ -199,7 +199,7 @@ export function RateEditor({
             percentage, which multiplies every line on the merchant.
           */}
           <p className="mt-1 max-w-[46ch] text-[11px] leading-snug text-ink-400">
-            Sets TapDash&rsquo;s share of the net on every line for this merchant. The wrong level
+            Sets Tenor&rsquo;s share of the net on every line for this merchant. The wrong level
             is not a small error.
           </p>
         </div>

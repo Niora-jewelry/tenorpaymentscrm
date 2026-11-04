@@ -69,15 +69,15 @@ export function Sidebar() {
       <div className={`flex items-center gap-2.5 px-3 py-3 ${collapsed ? 'justify-center' : ''}`}>
         <Link
           href="/prototype"
-          title="TapDash CRM — overview"
-          className="brand-gradient grid size-8 shrink-0 place-items-center rounded-lg text-[14px] font-bold text-white shadow-[0_1px_3px_rgba(8,32,47,.2)]"
+          title="Tenor Payments CRM — overview"
+          className="brand-gradient grid size-8 shrink-0 place-items-center rounded-lg text-[14px] font-bold text-white shadow-[0_1px_3px_rgba(14,28,52,.2)]"
         >
           T
         </Link>
         {!collapsed ? (
           <Link href="/prototype" className="min-w-0 flex-1">
             <span className="block truncate text-[14.5px] font-semibold leading-tight tracking-[-.01em] text-ink-900">
-              TapDash
+              Tenor Payments
             </span>
             <span className="block truncate text-[11px] leading-tight text-ink-400">
               Merchant services CRM

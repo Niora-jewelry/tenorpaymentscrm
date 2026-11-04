@@ -10,7 +10,7 @@ import type { MailErrorCode } from './errors';
 export const MAIL_MESSAGES = {
   reconnect: (address: string) => `Outlook disconnected ${address}. Reconnect to resume syncing.`,
   reconnectMfa: 'Microsoft asked for a fresh sign-in.',
-  consent: 'The TapDash app is not approved for this Microsoft account yet. Ask your Microsoft admin to approve it, then reconnect.',
+  consent: 'The Tenor app is not approved for this Microsoft account yet. Ask your Microsoft admin to approve it, then reconnect.',
   appSecretAdmin: 'Outlook sync is paused: the Microsoft app secret has expired. Rotate it in Azure and update MAIL_CLIENT_SECRET.',
   scopeMissing: (feature: string) => `Outlook needs one more permission for ${feature}. Reconnect to grant it.`,
   accessRemoved: (shared: string) => `You no longer have access to ${shared} in Outlook. Ask your Microsoft admin, then reconnect.`,
@@ -33,7 +33,7 @@ export const MAIL_MESSAGES = {
   connectionCap: "You've connected 30 mailboxes, the maximum. Disconnect one to add another.",
   oauthCancelled: 'Microsoft sign-in was cancelled. Nothing was connected.',
   oauthExpired: 'That sign-in link expired. Start the connection again.',
-  wrongTenant: "That account isn't in a TapDash Microsoft tenant, so it can't be connected.",
+  wrongTenant: "That account isn't in a Tenor Microsoft tenant, so it can't be connected.",
   personalAccount: 'Only work or school Microsoft 365 accounts can be connected, not personal Outlook.com accounts.',
   impersonating: "Hidden while you're signed in as another user.",
   notConfigured: 'Email is not set up on this deployment yet.',

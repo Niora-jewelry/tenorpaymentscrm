@@ -63,7 +63,7 @@ function explain(e: unknown, area: string): { ok: false; message: string } {
     if (c === 'provider_down') return { ok: false, message: MAIL_MESSAGES.providerDown };
     if (c === 'not_found') return { ok: false, message: 'That rule is no longer in Outlook.' };
     if (c === 'scope_missing' || c === 'mailbox_access_removed') {
-      return { ok: false, message: 'Outlook won’t let TapDash manage rules for this mailbox. Reconnect it, or ask your Microsoft admin for access.' };
+      return { ok: false, message: 'Outlook won’t let Tenor manage rules for this mailbox. Reconnect it, or ask your Microsoft admin for access.' };
     }
     if (c === 'rule_rejected' || e.status === 400) {
       const why = e.graphMessage ? `: ${e.graphMessage.replace(/\s+/g, ' ').slice(0, 200)}` : '. Check the folder and addresses, then try again.';

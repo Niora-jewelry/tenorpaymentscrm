@@ -345,7 +345,7 @@ function BulkEditDialog({
         className="absolute inset-0 animate-fade-in bg-brand-950/35"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-[480px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]">
+      <div className="relative w-full max-w-[480px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]">
         <h2 className="flex items-center gap-2 text-[16px] font-semibold text-ink-900">
           <Icon name="pencil" size={16} className="text-ink-400" />
           Bulk edit {count} records

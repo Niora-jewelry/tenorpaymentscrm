@@ -131,7 +131,7 @@ export function ChoicesSection({ fields, modules }: { fields: ChoiceFieldRow[]; 
   const overriddenIn = (f: ChoiceFieldRow, moduleId: string) => Boolean(f.byModule[moduleId]?.length);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="border-b border-line-soft px-4 py-3">
         <h2 className="text-[14px] font-semibold text-ink-900">Choices</h2>
         <p className="mt-0.5 text-[12.5px] text-ink-400">

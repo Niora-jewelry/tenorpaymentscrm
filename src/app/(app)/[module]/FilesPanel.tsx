@@ -380,7 +380,7 @@ function RequiredCell({ moduleSlug, row, have, canMark }: { moduleSlug: string; 
           checked={required}
           disabled={!canMark || saving}
           onChange={(e) => void save(e.target.checked, needed)}
-          className="size-3.5 accent-[#1d4ed8] disabled:opacity-60"
+          className="size-3.5 accent-[#1e4080] disabled:opacity-60"
         />
         {required ? (
           <>

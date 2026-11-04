@@ -71,7 +71,7 @@ export function PipelinesSection({ pipelines, modules }: { pipelines: AdminPipel
   const groups = modules.map((m) => ({ module: m, list: pipelines.filter((p) => p.moduleId === m.id) }));
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex items-start justify-between gap-3 border-b border-line-soft px-4 py-3">
         <div>
           <h2 className="text-[14px] font-semibold text-ink-900">
@@ -132,7 +132,7 @@ export function PipelinesSection({ pipelines, modules }: { pipelines: AdminPipel
           <div
             role="dialog"
             aria-modal="true"
-            className="relative max-h-[88vh] w-full max-w-[520px] animate-dialog-in overflow-y-auto rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+            className="relative max-h-[88vh] w-full max-w-[520px] animate-dialog-in overflow-y-auto rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
           >
             <h2 className="text-[16px] font-semibold text-ink-900">New pipeline</h2>
             <p className="mt-0.5 text-[12.5px] text-ink-400">

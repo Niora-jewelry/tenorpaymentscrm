@@ -147,7 +147,7 @@ export function ApplicationSection({ initial }: { initial: { linkExpiryDays: num
             ))}
           </div>
           <p className="flex items-center gap-2 rounded-lg border border-line-soft px-3 py-2 text-[12.5px] text-ink-600">
-            <Icon name="paperclip" size={13} className="text-ink-400" /> TapDash Application - Joe’s Pizza.pdf
+            <Icon name="paperclip" size={13} className="text-ink-400" /> Tenor Application - Joe’s Pizza.pdf
           </p>
         </div>
       </aside>

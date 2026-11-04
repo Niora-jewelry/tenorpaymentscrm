@@ -53,7 +53,7 @@ export function ReferenceSection({ reference }: { reference: ReferenceSummary })
           <Stat n={reference.rules} label="Calculation rules" hint="One per fee item on the statement" />
           <Stat n={reference.terms} label="Formula terms" hint="The income and buy-rate sides of each rule" />
           <Stat n={reference.feeItems} label="Fee items" hint="Matched on the exact name the processor uses" />
-          <Stat n={reference.buyRates} label="Buy rates" hint="What the processor charges TapDash" />
+          <Stat n={reference.buyRates} label="Buy rates" hint="What the processor charges Tenor" />
           <Stat n={reference.planCodes} label="Plan codes" hint="Mapped to volume buckets" />
           <Stat
             n={reference.ratedMids}
@@ -65,7 +65,7 @@ export function ReferenceSection({ reference }: { reference: ReferenceSummary })
 
       <Panel>
         <PanelHead>
-          <h2 className="text-[14px] font-semibold text-ink-900">TapDash&rsquo;s share</h2>
+          <h2 className="text-[14px] font-semibold text-ink-900">Tenor&rsquo;s share</h2>
           <span className="text-[12px] text-ink-400">per risk tier, after the processor&rsquo;s cut</span>
         </PanelHead>
         <div className="flex flex-wrap gap-2 p-4">
@@ -141,7 +141,7 @@ function Outstanding({ o }: { o: ReferenceSummary['outstanding'] }) {
 
   if (o.midsWithoutMonthlyFee > 0) {
     items.push(
-      `${o.midsWithoutMonthlyFee} merchant${o.midsWithoutMonthlyFee === 1 ? '' : 's'} ${o.midsWithoutMonthlyFee === 1 ? 'has' : 'have'} rates but no monthly TapDash fee, and one rule cannot compute without it.`,
+      `${o.midsWithoutMonthlyFee} merchant${o.midsWithoutMonthlyFee === 1 ? '' : 's'} ${o.midsWithoutMonthlyFee === 1 ? 'has' : 'have'} rates but no monthly Tenor fee, and one rule cannot compute without it.`,
     );
   }
 
@@ -158,7 +158,7 @@ function Outstanding({ o }: { o: ReferenceSummary['outstanding'] }) {
    * computes whichever the rules currently say.
    */
   items.push(
-    'The PCI question is unsettled: the template says the merchant pays it directly, the processor’s report says TapDash was charged.',
+    'The PCI question is unsettled: the template says the merchant pays it directly, the processor’s report says Tenor was charged.',
   );
 
   const onlyTheOpenQuestion = items.length === 1;

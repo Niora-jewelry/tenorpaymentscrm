@@ -146,7 +146,7 @@ export function FolderPane({
           <button
             type="button"
             onClick={onNewMail}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim"
           >
             <Icon name="pencil" size={14} />
             New email
@@ -538,7 +538,7 @@ function Row({
     <div
       className={`group relative flex items-center rounded-lg transition-[background-color,box-shadow] duration-150 ${
         active
-          ? 'bg-white shadow-[0_1px_2px_rgba(8,32,47,.08),0_0_0_1px_rgba(8,32,47,.04)]'
+          ? 'bg-white shadow-[0_1px_2px_rgba(14,28,52,.08),0_0_0_1px_rgba(14,28,52,.04)]'
           : 'hover:bg-white/70'
       }`}
       style={{ paddingLeft: 6 + Math.min(depth, 8) * 12 }}

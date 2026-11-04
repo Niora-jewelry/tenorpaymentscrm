@@ -161,7 +161,7 @@ export function TabOrderSection({
   };
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
         {/* The drag affordance has to be SAID. A grip handle is discoverable
             only by hovering the right few pixels, and the arrows beside it

@@ -88,7 +88,7 @@ export const RATE_IMPORT_GROUPS: { title: string; note?: string; fields: RateImp
     fields: [
       {
         key: 'monthly_fee_tapdash',
-        label: 'Monthly fee (TapDash)',
+        label: 'Monthly fee (Tenor)',
         kind: 'money',
         hint: 'Rule #2 raises without it, for every merchant. This is the column the first real month is waiting on.',
       },

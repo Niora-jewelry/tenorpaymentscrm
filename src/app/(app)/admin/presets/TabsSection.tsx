@@ -12,7 +12,7 @@ export function TabsSection({ tabs, modules }: { tabs: AdminTabRow[]; modules: M
   const [openCount, setOpenCount] = useState(0);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(8,32,47,.05)]">
+    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">
         <h2 className="text-[14px] font-semibold text-ink-900">
           Tabs <span className="ml-1 font-normal text-ink-400">({tabs.length})</span>
@@ -45,7 +45,7 @@ export function TabsSection({ tabs, modules }: { tabs: AdminTabRow[]; modules: M
           <div
             role="dialog"
             aria-modal="true"
-            className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+            className="relative w-full max-w-[440px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
           >
             <h2 className="text-[16px] font-semibold text-ink-900">New tab</h2>
             <p className="mt-0.5 text-[12.5px] text-ink-400">
@@ -140,7 +140,7 @@ function CreateTabForm({ modules, onClose }: { modules: ModuleOption[]; onClose:
                   prev.includes(m.id) ? prev.filter((x) => x !== m.id) : [...prev, m.id],
                 )
               }
-              className="size-3.5 accent-[#1d4ed8]"
+              className="size-3.5 accent-[#1e4080]"
             />
             {m.label}
           </label>
@@ -343,7 +343,7 @@ function ModuleAssignmentEditor({
         role="dialog"
         aria-modal="true"
         aria-label={`Modules for ${tab.label}`}
-        className="relative w-full max-w-[460px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(8,32,47,.4)]"
+        className="relative w-full max-w-[460px] animate-dialog-in rounded-panel border border-line bg-white p-5 shadow-[0_24px_64px_-12px_rgba(14,28,52,.4)]"
       >
         <h2 className="text-[16px] font-semibold text-ink-900">
           Modules for “{tab.label}”
@@ -365,7 +365,7 @@ function ModuleAssignmentEditor({
                   checked={on}
                   disabled={pending}
                   onChange={() => toggle(m.id)}
-                  className="size-3.5 accent-[#1d4ed8]"
+                  className="size-3.5 accent-[#1e4080]"
                 />
                 <span className="flex-1">{m.label}</span>
                 {/* The client's "do not work on it yet" flag. Shown so nobody

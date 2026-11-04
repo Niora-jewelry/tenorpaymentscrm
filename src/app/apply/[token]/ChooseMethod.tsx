@@ -101,7 +101,7 @@ export function ChooseMethod({
         {/* Online — the recommended route, and the screen's one accent. */}
         <section
           aria-labelledby="way-online"
-          className="relative flex flex-col rounded-2xl border border-brand-200 bg-white p-6 shadow-[0_1px_2px_rgba(8,32,47,.04),0_16px_40px_-24px_rgba(1,39,64,.35)] sm:p-7"
+          className="relative flex flex-col rounded-2xl border border-brand-200 bg-white p-6 shadow-[0_1px_2px_rgba(14,28,52,.04),0_16px_40px_-24px_rgba(16,35,71,.35)] sm:p-7"
         >
           <div className="flex items-start justify-between gap-3">
             <span className="grid size-11 place-items-center rounded-xl bg-brand-950 text-white">
@@ -125,7 +125,7 @@ export function ChooseMethod({
               type="button"
               onClick={onOnline}
               disabled={busy}
-              className="group/btn inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3 text-[14.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(8,32,47,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
+              className="group/btn inline-flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-5 py-3 text-[14.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim disabled:opacity-60"
             >
               Start online
               <Icon name="arrow-right" size={15} className="transition-transform group-hover/btn:translate-x-0.5" />
@@ -151,7 +151,7 @@ export function ChooseMethod({
             if (f && !busy) void uploadPdf(f);
           }}
           className={`relative flex flex-col rounded-2xl border bg-white p-6 transition-[border-color,box-shadow] sm:p-7 ${
-            drag ? 'border-brand-600 shadow-[0_0_0_4px_rgba(37,99,235,.12)]' : 'border-line shadow-[0_1px_2px_rgba(8,32,47,.04)]'
+            drag ? 'border-brand-600 shadow-[0_0_0_4px_rgba(37,99,235,.12)]' : 'border-line shadow-[0_1px_2px_rgba(14,28,52,.04)]'
           }`}
         >
           <span className="grid size-11 place-items-center rounded-xl border border-line bg-canvas text-ink-700">
@@ -181,7 +181,7 @@ export function ChooseMethod({
               </>
             ) : (
               <>
-                <span className="grid size-8 place-items-center rounded-full bg-white text-ink-600 shadow-[0_1px_2px_rgba(8,32,47,.08)]">
+                <span className="grid size-8 place-items-center rounded-full bg-white text-ink-600 shadow-[0_1px_2px_rgba(14,28,52,.08)]">
                   <Icon name="upload" size={14} />
                 </span>
                 <span className="mt-1 text-[13.5px] font-semibold text-ink-800">

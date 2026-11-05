@@ -167,12 +167,14 @@ const mapping: MappingEntry[] = [
 ];
 
 /**
- * The equipment/software providers, in the spec's order: the four provider
+ * The equipment/software providers, in the spec's order: the two provider
  * fields, then the merchant's own gateway, terminal and POS providers. Those
  * three were fields until the Field-Tab Review (3 Nov 2026) made them rows of
- * Merchant Direct Relationships.
+ * Merchant Direct Relationships. The two Merchant Pricing providers were removed
+ * from the record on 5 Nov 2026 and are not printed: nothing goes on a signed form
+ * that nobody can see on the record.
  */
-const EQUIPMENT_KEYS = ['vtd_gateway_provider', 'vtd_terminal_provider', 'td_gateway_provider_mav', 'td_terminal_provider_mav'];
+const EQUIPMENT_KEYS = ['vtd_gateway_provider', 'vtd_terminal_provider'];
 const DIRECT_KEY = 'merchant_direct_relationships';
 const DIRECT_TYPES = ['Gateway', 'Terminal', 'POS'];
 

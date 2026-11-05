@@ -7,6 +7,7 @@
  * Every request is appended to FAKE_TWILIO_LOG as one JSON line. A number ending
  * 0199 is refused the way Twilio refuses one.
  */
+/* eslint-disable @typescript-eslint/no-require-imports -- loaded with node --require, so it has to be CommonJS */
 const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs');

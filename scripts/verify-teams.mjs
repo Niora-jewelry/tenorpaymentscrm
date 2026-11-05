@@ -520,6 +520,105 @@ try {
     await mock('/__mock/teams-fault', {});
   });
 
+  await step('pictures: paste, drop, see, enlarge, edit keeps them', async () => {
+    // A picture made in the page, handed to the box the way the clipboard and a drag do.
+    const give = (kind, side, noisy) =>
+      page.evaluate(
+        async ({ kind, side, noisy }) => {
+          const c = document.createElement('canvas');
+          c.width = side;
+          c.height = Math.round(side * 0.6);
+          const g = c.getContext('2d');
+          if (noisy) {
+            const img = g.createImageData(c.width, c.height);
+            for (let i = 0; i < img.data.length; i += 1) img.data[i] = (i % 4 === 3) ? 255 : Math.floor(Math.random() * 256);
+            g.putImageData(img, 0, 0);
+          } else {
+            g.fillStyle = '#bcd7f5';
+            g.fillRect(0, 0, c.width, c.height);
+            g.fillStyle = '#102347';
+            g.fillRect(10, 10, c.width - 20, 20);
+          }
+          const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+          const dt = new DataTransfer();
+          dt.items.add(new File([blob], `shot-${side}.png`, { type: 'image/png' }));
+          const box = document.querySelector('.mail-editor-content');
+          box.focus();
+          if (kind === 'paste') box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+          else box.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: 20, clientY: 20 }));
+          return blob.size;
+        },
+        { kind, side, noisy },
+      );
+    const tray = page.getByRole('list', { name: 'Pictures in this message' });
+    await give('paste', 320, false);
+    await tray.locator('img').first().waitFor({ timeout: 15000 });
+    t('pasted screenshot waits in the box as a picture', (await tray.locator('img').count()) === 1);
+    await give('drop', 200, false);
+    await until(async () => (await tray.locator('img').count()) === 2);
+    t('dropped picture joins it', (await tray.locator('img').count()) === 2);
+    await tray.getByRole('button', { name: /^Remove shot-200/ }).click();
+    t('a picture can be taken off before sending', (await tray.locator('img').count()) === 1);
+    await composer(page).click();
+    await page.keyboard.type('Here is the screen');
+    await page.keyboard.press('Enter');
+    await idle(page);
+    const sent = lastMessage(await world(), DIRECT);
+    t('sent inside the message, as Teams keeps a pasted picture', Boolean(sent?.content.includes('Here is the screen') && /hostedContents\/[^/]+\/\$value/.test(sent.content) && sent.hosted && Object.keys(sent.hosted).length === 1), sent?.content?.slice(0, 200));
+    const shown = page.locator('li[data-message]', { hasText: 'Here is the screen' }).locator('img.chat-img');
+    await shown.waitFor({ timeout: 20000 });
+    t('the sent picture shows in the chat, through this server', await until(async () => (await shown.evaluate((i) => i.complete && i.naturalWidth)) === 320) && ((await shown.getAttribute('src')) ?? '').startsWith('/api/msteams/image?'), await shown.getAttribute('src'));
+    t('the box is empty again', (await tray.count()) === 0);
+
+    await shown.click();
+    const viewer = page.getByRole('dialog', { name: 'Picture' });
+    await viewer.waitFor({ timeout: 5000 });
+    t('a click opens it large, with Open full size', (await viewer.getByRole('link', { name: 'Open full size' }).count()) === 1);
+    await page.keyboard.press('Escape');
+    t('Escape closes it', await until(async () => (await viewer.count()) === 0));
+
+    const mine = page.locator('li[data-message]', { hasText: 'Here is the screen' });
+    await mine.hover();
+    await mine.getByRole('button', { name: 'Edit' }).click();
+    const edit = page.getByRole('dialog', { name: 'Edit message' });
+    t('edit says the picture stays', (await edit.getByText('The picture in this message stays as it is.').count()) === 1);
+    await edit.locator('[contenteditable="true"]').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' now');
+    await edit.getByRole('button', { name: 'Save' }).click();
+    await idle(page);
+    const after = (await world()).chats.find((c) => c.id === DIRECT).messages.find((x) => x.id === sent.id);
+    t('edit changes the words and keeps the picture at Microsoft', Boolean(after?.content.includes('screen now') && /hostedContents\/[^/]+\/\$value/.test(after.content)), after?.content?.slice(0, 200));
+    t('…and on screen', await until(async () => (await page.locator('li[data-message]', { hasText: 'screen now' }).locator('img.chat-img').count()) === 1));
+
+    // A big photo is made smaller before it goes, so it fits Microsoft's 4 MB.
+    const original = await give('paste', 2600, true);
+    await tray.locator('img').first().waitFor({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await idle(page);
+    const big = lastMessage(await world(), DIRECT);
+    const hosted = Object.values(big?.hosted ?? {})[0];
+    t('a big photo is shrunk and sent', Boolean(hosted && (hosted.bytes.data ?? hosted.bytes).length <= 1_200_000 && original > 1_200_000), `${original} -> ${(hosted?.bytes?.data ?? hosted?.bytes)?.length} ${hosted?.type}`);
+    t('a picture on its own sends with no empty line above it', Boolean(big && !/^<p><\/p>/.test(big.content)), big?.content?.slice(0, 80));
+
+    // Someone else's picture, received.
+    await chatRow(page, 'Partner onboarding').click();
+    const theirs = page.locator('li[data-message]', { hasText: 'Screenshot of the statement' }).locator('img.chat-img');
+    await theirs.waitFor({ timeout: 30000 });
+    t('a picture someone sent shows, not "open it in Teams"', await until(async () => (await theirs.evaluate((i) => i.complete && i.naturalWidth)) === 40));
+    const src = (await theirs.getAttribute('src')) ?? '';
+    const res = await page.request.get(`${BASE}${src}`);
+    t('served as a picture, private, never sniffed', res.status() === 200 && res.headers()['content-type'] === 'image/png' && /private/.test(res.headers()['cache-control'] ?? '') && res.headers()['x-content-type-options'] === 'nosniff', `${res.status()} ${res.headers()['content-type']}`);
+    const gone = await page.request.get(`${BASE}${src.replace(/h=[^&]+/, 'h=aWQ9bm9uZQ')}`);
+    t('a picture that is not there is a 404', gone.status() === 404, String(gone.status()));
+    const other = await page.request.get(`${BASE}${src.replace(/key=[^&]+/, `key=${encodeURIComponent('chat|00000000-0000-0000-0000-000000000000|19:x@thread.v2')}`)}`);
+    t('another account’s conversation is refused', other.status() >= 400, String(other.status()));
+    const bad = await page.request.get(`${BASE}/api/msteams/image?key=${encodeURIComponent(`chat|${memberIdentity}|${DIRECT}`)}&m=${encodeURIComponent('../../me/messages')}&h=x`);
+    t('ids that try to leave the conversation are refused', bad.status() === 404, String(bad.status()));
+    await chatRow(page, 'Mae Mate').click();
+    await page.getByText('Yes, all done.').first().waitFor({ timeout: 30000 });
+  });
+
   await step('not sent, then retry', async () => {
     await mock('/__mock/teams-fault', { chatSendFail: 'Sending is blocked in this chat.' });
     await typeAndSend(page, 'Retry me');
@@ -545,9 +644,9 @@ try {
   await step('call', async () => {
     const [tab] = await Promise.all([m.ctx.waitForEvent('page'), page.getByRole('button', { name: 'Call' }).click()]);
     await tab.waitForLoadState().catch(() => {});
-    t('Call opens Teams with the chat’s people', /teams\.microsoft\.com\/l\/call/.test(tab.url()) && decodeURIComponent(tab.url()).includes('mate@mock.test'), tab.url());
+    t('Call opens Teams with the chat’s people, on the chat’s own account', /teams\.microsoft\.com\/l\/call/.test(tab.url()) && decodeURIComponent(tab.url()).includes('mate@mock.test') && /[?&]tenantId=/.test(tab.url()), tab.url());
     await tab.close();
-    t('Call shows the "open Teams on your computer" note', (await page.getByText('open Teams on your computer').count()) === 1);
+    t('Call says which account Teams must be on', (await page.getByText('It has to be signed in as').count()) === 1);
   });
 
   await step('channel', async () => {

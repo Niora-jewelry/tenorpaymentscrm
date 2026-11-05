@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { authorize, type AuthContext } from '@/lib/records/permissions';
 import { TeamsError } from '@/lib/msteams/access';
 import { channelMembers, deleteMessage, editMessage, finishUpload, markRead, newChannel, newChat, newTeam, sendMessage, setFavorite, setThumb, startUpload } from '@/lib/msteams/chat';
+import { CHAT_IMAGE_TYPES, CHAT_IMAGES_MAX_BYTES, CHAT_IMAGES_MAX_COUNT } from '@/lib/msteams/format';
 import { linkPreview } from '@/lib/msteams/linkPreview';
 import { findRecordsToLink, linkConversation, unlinkConversation } from '@/lib/msteams/recordLinks';
 import type { ChatMember, ChatMessage, LinkPreview } from '@/lib/msteams/types';
@@ -42,6 +43,18 @@ export async function sendMessageAction(raw: unknown): Promise<Result<ChatMessag
       threadId: Thread,
       mentions: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().min(1).max(200) })).max(50).optional(),
       files: z.array(z.object({ id: z.string().min(1).max(100), name: z.string().min(1).max(255), url: z.url().max(2048) })).max(10).optional(),
+      images: z
+        .array(
+          z.object({
+            contentType: z.enum(CHAT_IMAGE_TYPES),
+            // Base64 of at most the whole message's allowance; the server checks the bytes too.
+            data: z.string().min(4).max(Math.ceil((CHAT_IMAGES_MAX_BYTES * 4) / 3) + 4).regex(/^[A-Za-z0-9+/]+={0,2}$/),
+            width: z.number().int().min(1).max(20_000),
+            height: z.number().int().min(1).max(20_000),
+          }),
+        )
+        .max(CHAT_IMAGES_MAX_COUNT)
+        .optional(),
     })
     .safeParse(raw);
   if (!p.success) return { ok: false, message: INVALID };

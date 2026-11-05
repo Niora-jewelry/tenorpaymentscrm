@@ -117,6 +117,8 @@ export type ChatSummary = {
   key: string;
   identityId: string;
   accountEmail: string;
+  /** The account's organisation at Microsoft, so a call opens on the right account. */
+  accountTenantId: string | null;
   kind: ChatKind;
   chatId: string | null;
   teamId: string | null;
@@ -160,7 +162,12 @@ export type ChatMessage = {
   replyCount: number;
   /** First link in the message, for its preview card. */
   link: string | null;
+  /** Pictures shown in the message. Editing the words keeps them. */
+  images: number;
 };
+
+/** A picture pasted or dropped into the box, ready to go with the message. */
+export type OutgoingImage = { contentType: 'image/png' | 'image/jpeg' | 'image/gif'; data: string; width: number; height: number };
 
 export type MessagesPage = {
   messages: ChatMessage[];
@@ -182,6 +189,7 @@ export type SendInput = {
   threadId?: string | null;
   mentions?: Mention[];
   files?: { id: string; name: string; url: string }[];
+  images?: OutgoingImage[];
 };
 
 export type PersonResult = { name: string; email: string; source: 'microsoft' | 'crm' };

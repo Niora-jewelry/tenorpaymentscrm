@@ -224,9 +224,64 @@ export function isTeamsFileUrl(url: string, extraHost?: string | null): boolean 
   }
 }
 
-/** Opens someone (or several people) in Teams, where the call starts. */
-export function teamsCallUrl(emails: string[]): string {
-  return `https://teams.microsoft.com/l/call/0/0?users=${emails.map(encodeURIComponent).join(',')}`;
+/**
+ * Opens a call in Teams with these people. Each person goes by their sign-in address,
+ * or by their Microsoft id when Teams did not give one (often someone from another
+ * company). The account's tenant goes too, so Teams opens the account the chat is
+ * on when the person has more than one signed in.
+ */
+export function teamsCallUrl(people: { email: string; id: string }[], tenantId?: string | null): string | null {
+  const users = people.map((p) => (p.email.trim() ? p.email.trim() : p.id.trim() ? `8:orgid:${p.id.trim()}` : '')).filter(Boolean);
+  if (users.length === 0) return null;
+  const tenant = tenantId?.trim() ? `&tenantId=${encodeURIComponent(tenantId.trim())}` : '';
+  return `https://teams.microsoft.com/l/call/0/0?users=${users.map(encodeURIComponent).join(',')}${tenant}`;
+}
+
+/* ── pictures in a message ─────────────────────────────────────────────────── */
+
+/** A picture pasted into Teams lives at Microsoft as the message's "hosted content". */
+export type HostedImageRef = { messageId: string; replyId: string | null; hostedId: string };
+
+const ID = /^[A-Za-z0-9=_\-+.:@/]{1,1000}$/;
+
+/**
+ * Reads Graph's address for a picture in a message. Only the three ids are kept: the
+ * address itself is never fetched, so a message cannot point the server anywhere.
+ */
+export function hostedImageRef(src: string): HostedImageRef | null {
+  let path: string;
+  try {
+    path = new URL(src.replace(/&amp;/g, '&')).pathname;
+  } catch {
+    return null;
+  }
+  const m = /\/messages\/([^/]+)(?:\/replies\/([^/]+))?\/hostedContents\/(.+)\/\$value$/.exec(path);
+  if (!m) return null;
+  const [messageId, replyId, hostedId] = [m[1], m[2], m[3]].map((s) => (s === undefined ? undefined : decodeURIComponent(s)));
+  if (!messageId || !hostedId || !ID.test(messageId) || !ID.test(hostedId) || (replyId !== undefined && !ID.test(replyId))) return null;
+  return { messageId, replyId: replyId ?? null, hostedId };
+}
+
+/** Where the browser loads a picture from: this server, which asks Microsoft as the account. */
+export function chatImageUrl(key: string, ref: HostedImageRef): string {
+  const q = new URLSearchParams({ key, m: ref.messageId, h: ref.hostedId });
+  if (ref.replyId) q.set('r', ref.replyId);
+  return `/api/msteams/image?${q.toString()}`;
+}
+
+/** The pictures a message can carry, as Teams itself accepts them. */
+export const CHAT_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif'] as const;
+export type ChatImageType = (typeof CHAT_IMAGE_TYPES)[number];
+/** Microsoft takes at most 4 MB in one request; base64 adds a third, so the pictures stay under this. */
+export const CHAT_IMAGES_MAX_BYTES = 2_800_000;
+export const CHAT_IMAGES_MAX_COUNT = 6;
+
+/** What the bytes really are, whatever the browser called them. */
+export function imageTypeOf(bytes: Uint8Array): ChatImageType | null {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) return 'image/gif';
+  return null;
 }
 
 /** The two-week line that the first load stops at. */

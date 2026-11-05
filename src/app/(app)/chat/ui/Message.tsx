@@ -131,8 +131,8 @@ export function MessageRow({
                   <p className="line-clamp-2 text-[12px] text-ink-500">{m.quote.preview}</p>
                 </div>
               ) : null}
-              {/* Sanitized on the server to a short allowlist: no images, no styles, no scripts. */}
-              <div className="chat-body break-words [&_a]:text-brand-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: m.html }} />
+              {/* Sanitized on the server to a short allowlist: no styles, no scripts; pictures only from this server. */}
+              <MessageBody html={m.html} />
               {m.files.length ? (
                 <ul className="mt-1.5 space-y-1">
                   {m.files.map((f) => (
@@ -217,6 +217,78 @@ export function MessageRow({
   );
 }
 
+/**
+ * The words and pictures of a message. A picture opens larger on a click; one that
+ * cannot be loaded (removed in Teams, or the account needs reconnecting) says so
+ * instead of showing a broken image.
+ */
+function MessageBody({ html }: { html: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    // A picture's load error does not bubble, so it is caught on the way down.
+    const failed = (e: Event) => {
+      const img = e.target as HTMLElement;
+      if (img.tagName !== 'IMG' || !img.classList.contains('chat-img')) return;
+      const note = document.createElement('span');
+      note.className = 'chat-img-missing';
+      note.textContent = 'This picture could not be loaded. Open it in Teams.';
+      img.replaceWith(note);
+    };
+    el.addEventListener('error', failed, true);
+    return () => el.removeEventListener('error', failed, true);
+  }, [html]);
+
+  return (
+    <>
+      <div
+        ref={box}
+        onClick={(e) => {
+          const img = e.target as HTMLImageElement;
+          if (img.tagName === 'IMG' && img.classList.contains('chat-img')) setViewing({ src: img.currentSrc || img.src, alt: img.alt });
+        }}
+        className="chat-body break-words [&_a]:text-brand-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-0 [&_ul]:list-disc [&_ul]:pl-5"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      {viewing ? <PictureViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} /> : null}
+    </>
+  );
+}
+
+function PictureViewer({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onClose]);
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Picture" onClick={onClose} className="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-3 bg-[rgba(8,14,28,.82)] p-4">
+      <div className="flex w-full max-w-[92vw] justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <a href={src} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-[12.5px] font-semibold text-white hover:bg-white/20">
+          <Icon name="external-link" size={13} /> Open full size
+        </a>
+        <button type="button" onClick={onClose} aria-label="Close" className="grid size-8 cursor-pointer place-items-center rounded-md bg-white/10 text-white hover:bg-white/20">
+          <Icon name="x" size={15} />
+        </button>
+      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element -- a picture from the message, already loaded */}
+      <img src={src} alt={alt || 'Picture'} onClick={(e) => e.stopPropagation()} className="max-h-[84vh] max-w-[92vw] rounded-md bg-white object-contain shadow-2xl" />
+    </div>
+  );
+}
+
+/** The pictures a shown message carries, to keep beside edited words. */
+const picturesIn = (html: string): string => {
+  const tags = html.match(/<img class="chat-img"[^>]*>/g) ?? [];
+  return tags.length ? `<p>${tags.join(' ')}</p>` : '';
+};
+const withoutPictures = (html: string): string => html.replace(/<img class="chat-img"[^>]*>/g, '');
+
 function ToolButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" title={label} aria-label={label} disabled={disabled} onClick={onClick} className="grid size-6 cursor-pointer place-items-center rounded text-ink-500 hover:bg-canvas disabled:cursor-default disabled:opacity-40">
@@ -230,8 +302,9 @@ function EditDialog({ m, chatKey, threadId, onRecord, onClose, onSaved }: { m: C
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
-    const html = editor.current?.getHTML() ?? '';
-    if (editor.current?.isEmpty()) {
+    const empty = editor.current?.isEmpty() ?? true;
+    const html = empty ? '' : (editor.current?.getHTML() ?? '');
+    if (empty && m.images === 0) {
       setError(onRecord ? 'A message cannot be empty.' : 'A message cannot be empty. Delete it instead.');
       return;
     }
@@ -239,14 +312,20 @@ function EditDialog({ m, chatKey, threadId, onRecord, onClose, onSaved }: { m: C
     setError(null);
     const r = await editMessageAction({ key: chatKey, messageId: m.id, threadId: threadId ?? null, html });
     setBusy(false);
-    if (r.ok) onSaved(html);
+    // The pictures stay: the server keeps them, and so does the message on screen.
+    if (r.ok) onSaved(`${html}${picturesIn(m.html)}`);
     else setError(r.message);
   };
   return (
     <Dialog title="Edit message" onClose={onClose} width={560}>
       <div className="overflow-hidden rounded-md border border-line">
-        <Editor initialHTML={m.html} placeholder="Message" minHeight={90} handleRef={editor} onChange={() => undefined} />
+        <Editor initialHTML={withoutPictures(m.html)} placeholder={m.images ? 'Words to go with the pictures' : 'Message'} minHeight={90} handleRef={editor} onChange={() => undefined} />
       </div>
+      {m.images ? (
+        <p className="mt-2 text-[12px] text-ink-500">
+          {m.images === 1 ? 'The picture in this message stays as it is.' : `The ${m.images} pictures in this message stay as they are.`} Only the words change.
+        </p>
+      ) : null}
       {error ? <p className="mt-2 text-[12.5px] font-medium text-[#b02a30]">{error}</p> : null}
       <div className="mt-3 flex justify-end">
         <Button variant="primary" loading={busy} onClick={() => void save()}>

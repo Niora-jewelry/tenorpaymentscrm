@@ -10,12 +10,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { Button, Dialog } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import type { ChatMember, ChatMessage, ChatSummary, Mention, MessagesPage } from '@/lib/msteams/types';
-import { teamsCallUrl } from '@/lib/msteams/format';
+import { CHAT_IMAGES_MAX_BYTES, CHAT_IMAGES_MAX_COUNT, teamsCallUrl } from '@/lib/msteams/format';
 import type { EditorHandle } from '@/app/(app)/email/ui/Editor';
 import { Notice } from '../../msteams-ui/shared';
 import { markReadAction, membersAction, newChannelAction, sendMessageAction } from '../actions';
 import { fileSize } from './format';
 import { MessageRow } from './Message';
+import { isPicture, preparePicture, previewHtml, type PendingImage } from './images';
 import { uploadFile, type Uploaded } from './upload';
 
 const Editor = dynamic(() => import('@/app/(app)/email/ui/Editor'), {
@@ -29,6 +30,7 @@ type Draft = {
   html: string;
   mentions: Mention[];
   files: Uploaded[];
+  images: PendingImage[];
   replyTo: ChatMessage | null;
   threadId: string | null;
 };
@@ -74,6 +76,8 @@ export function Conversation({
   const [threadOf, setThreadOf] = useState<ChatMessage | null>(null);
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [files, setFiles] = useState<Uploaded[]>([]);
+  const [images, setImages] = useState<PendingImage[]>([]);
+  const [preparing, setPreparing] = useState(0);
   const [uploading, setUploading] = useState<{
     name: string;
     progress: number;
@@ -205,20 +209,23 @@ export function Conversation({
     editor.current?.clear();
     setMentions([]);
     setFiles([]);
+    setImages([]);
     setReplyTo(null);
   };
 
   const send = async (retry?: Draft) => {
-    if (!canWrite) return;
+    // A picture still being prepared would be left behind.
+    if (!canWrite || preparing > 0) return;
     const draft: Draft = retry ?? {
       html: editor.current?.getHTML() ?? '',
       mentions,
       files,
+      images,
       replyTo,
       threadId: threadOf?.id ?? null,
     };
     const empty = !retry && (editor.current?.isEmpty() ?? true);
-    if (empty && draft.files.length === 0) return;
+    if (empty && draft.files.length === 0 && draft.images.length === 0) return;
     setFailed(null);
     resetComposer();
     keepBottom.current = true;
@@ -229,7 +236,7 @@ export function Conversation({
       authorName: 'You',
       mine: true,
       at: new Date().toISOString(),
-      html: draft.html,
+      html: draft.html + previewHtml(draft.images),
       text: '',
       edited: false,
       deleted: false,
@@ -252,6 +259,7 @@ export function Conversation({
       replies: [],
       replyCount: 0,
       link: null,
+      images: draft.images.length,
     };
     if (!draft.threadId) setPending((p) => [...p, temp]);
 
@@ -262,6 +270,7 @@ export function Conversation({
       threadId: draft.threadId,
       mentions: draft.mentions,
       files: draft.files.map((f) => ({ id: f.id, name: f.name, url: f.url })),
+      images: draft.images.map(({ contentType, data, width, height }) => ({ contentType, data, width, height })),
     });
     setPending((p) => p.filter((m) => m.id !== temp.id));
     if (!r.ok) {
@@ -269,10 +278,13 @@ export function Conversation({
       editor.current?.setHTML(draft.html);
       setMentions(draft.mentions);
       setFiles(draft.files);
+      setImages(draft.images);
       setReplyTo(draft.replyTo);
       setFailed({ draft, reason: r.message });
       return;
     }
+    // Teams has the pictures now; the copies made for the preview can go.
+    for (const img of draft.images) URL.revokeObjectURL(img.previewUrl);
     if (draft.threadId) {
       setMessages((cur) =>
         cur.map((m) =>
@@ -291,7 +303,7 @@ export function Conversation({
     onListChanged();
   };
 
-  const pickFiles = async (list: FileList | null) => {
+  const pickFiles = async (list: FileList | File[] | null) => {
     if (!list || !canWrite) return;
     setUploadError(null);
     const emails = people.map((p) => p.email).filter(Boolean);
@@ -308,6 +320,52 @@ export function Conversation({
     }
   };
 
+  /** Pasted or dropped: pictures go inside the message, anything else is attached as a file. */
+  const addFiles = async (list: File[]) => {
+    if (!canWrite || list.length === 0) return;
+    setUploadError(null);
+    const pictures = list.filter(isPicture);
+    const others = list.filter((f) => !isPicture(f));
+    if (pictures.length) {
+      setPreparing((n) => n + pictures.length);
+      const ready: PendingImage[] = [];
+      const problems: string[] = [];
+      for (const file of pictures) {
+        try {
+          ready.push(await preparePicture(file));
+        } catch (e) {
+          problems.push(e instanceof Error ? e.message : 'A picture could not be added.');
+        } finally {
+          setPreparing((n) => n - 1);
+        }
+      }
+      setImages((cur) => {
+        const next = [...cur];
+        for (const img of ready) {
+          const total = next.reduce((sum, x) => sum + x.size, 0) + img.size;
+          if (next.length >= CHAT_IMAGES_MAX_COUNT) problems.push('A message can hold ' + CHAT_IMAGES_MAX_COUNT + ' pictures. Send these, then add the rest.');
+          else if (total > CHAT_IMAGES_MAX_BYTES) problems.push('That is as many pictures as fit in one message. Send these, then add the rest.');
+          else {
+            next.push(img);
+            continue;
+          }
+          URL.revokeObjectURL(img.previewUrl);
+        }
+        return next;
+      });
+      if (problems.length) setUploadError([...new Set(problems)].join(' '));
+      editor.current?.focus();
+    }
+    if (others.length) await pickFiles(others);
+  };
+
+  const removeImage = (id: string) =>
+    setImages((cur) => {
+      const gone = cur.find((x) => x.id === id);
+      if (gone) URL.revokeObjectURL(gone.previewUrl);
+      return cur.filter((x) => x.id !== id);
+    });
+
   const mention = (m: ChatMember, typedAt: boolean) => {
     setMentionOpen(false);
     editor.current?.insertText(`${typedAt ? '' : '@'}${m.name}\u00a0`);
@@ -315,10 +373,10 @@ export function Conversation({
   };
   const typedAt = useRef(false);
 
+  const callUrl = teamsCallUrl(people, chat.accountTenantId);
   const call = () => {
-    const emails = people.map((p) => p.email).filter(Boolean);
-    if (emails.length === 0) return;
-    window.open(teamsCallUrl(emails), '_blank', 'noopener,noreferrer');
+    if (!callUrl) return;
+    window.open(callUrl, '_blank', 'noopener,noreferrer');
     setCallNote(true);
   };
 
@@ -344,7 +402,7 @@ export function Conversation({
           </Button>
         ) : null}
         {!isChannel ? (
-          <Button size="sm" variant="secondary" icon="phone" disabled={people.length === 0} onClick={call}>
+          <Button size="sm" variant="secondary" icon="phone" disabled={!callUrl} title={callUrl ? 'Call everyone in this chat in Teams' : 'Nobody to call in this chat'} onClick={call}>
             Call
           </Button>
         ) : null}
@@ -360,7 +418,9 @@ export function Conversation({
             </button>
           }
         >
-          The call opens in Teams. If Teams did not open, open Teams on your computer and call from there.
+          Teams is opening to call {people.length === 1 ? people[0]!.name : `${people.length} people`}. It has to be signed in as{' '}
+          <strong>{chat.accountEmail}</strong>: if Teams shows another account, switch to that one in Teams and press Call again. If Teams did not open, open it
+          and call from the chat there.
         </Notice>
       ) : null}
       {stale === 'down' ? <Notice tone="warn">Microsoft is not responding. These are the last loaded messages.</Notice> : null}
@@ -437,6 +497,7 @@ export function Conversation({
                     html,
                     mentions,
                     files,
+                    images,
                     replyTo,
                   });
                 }}
@@ -468,6 +529,29 @@ export function Conversation({
               </button>
             </div>
           ) : null}
+          {images.length || preparing ? (
+            <ul aria-label="Pictures in this message" className="mb-2 flex flex-wrap gap-2">
+              {images.map((img) => (
+                <li key={img.id} className="group/pic relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, not a page image */}
+                  <img src={img.previewUrl} alt={img.name} title={img.name} className="size-16 rounded-md border border-line object-cover" />
+                  <button
+                    type="button"
+                    aria-label={`Remove ${img.name}`}
+                    onClick={() => removeImage(img.id)}
+                    className="absolute -right-1.5 -top-1.5 grid size-5 cursor-pointer place-items-center rounded-full border border-line bg-white text-ink-500 shadow-sm hover:text-ink-900"
+                  >
+                    <Icon name="x" size={10} />
+                  </button>
+                </li>
+              ))}
+              {preparing ? (
+                <li className="grid size-16 place-items-center rounded-md border border-dashed border-line text-[11px] text-ink-400" aria-live="polite">
+                  Adding…
+                </li>
+              ) : null}
+            </ul>
+          ) : null}
           {files.length || uploading ? (
             <ul className="mb-2 flex flex-wrap gap-2">
               {files.map((f) => (
@@ -497,11 +581,12 @@ export function Conversation({
             <div className={`overflow-hidden rounded-lg border ${canWrite ? 'border-line focus-within:border-ink-500' : 'border-line-faint opacity-70'}`}>
               <Editor
                 initialHTML=""
-                placeholder={online ? (threadOf ? 'Reply in the thread' : isChannel ? 'Start a new post' : 'Type a message') : 'You are offline'}
+                placeholder={online ? (threadOf ? 'Reply in the thread' : isChannel ? 'Start a new post' : 'Type a message, or paste a screenshot') : 'You are offline'}
                 minHeight={52}
                 handleRef={editor}
                 onChange={() => undefined}
                 onEnter={() => void send()}
+                onFiles={(list) => void addFiles(list)}
                 onAt={() => {
                   if (people.length) {
                     typedAt.current = true;
@@ -536,7 +621,7 @@ export function Conversation({
                     <button
                       type="button"
                       title="Send (Enter)"
-                      disabled={!canWrite || Boolean(uploading)}
+                      disabled={!canWrite || Boolean(uploading) || preparing > 0}
                       onClick={() => void send()}
                       className="ml-1 grid size-7 cursor-pointer place-items-center rounded-md bg-brand-900 text-white hover:bg-brand-800 disabled:opacity-40"
                     >

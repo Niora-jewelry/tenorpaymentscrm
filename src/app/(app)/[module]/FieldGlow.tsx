@@ -10,6 +10,7 @@
  * permission there is no legend, so no switch to turn them on with.
  */
 import { createContext, useContext, useMemo, useState, useTransition, type ReactNode } from 'react';
+import { Icon } from '@/proto/ui/icons';
 import { activeGlows, GLOW_MEANING, type Glow } from '@/lib/records/fieldGlow';
 import type { GlowStage } from '@/lib/records/fieldNeeds';
 import { setFieldGlowHiddenAction } from './glowActions';
@@ -84,24 +85,44 @@ export function FieldGuide() {
   const { stage, permitted, hidden, setHidden } = useFieldGlow();
   const kinds = activeGlows(stage);
   if (!permitted || kinds.length === 0) return null;
+  // Hidden is a choice this person made once, and is easy to forget: say so plainly,
+  // with the way back right beside it, rather than just leaving the colours out.
+  if (hidden) {
+    return (
+      <div data-field-guide className="mt-2 flex min-h-6 flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[11.5px]">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f7e0af] bg-[#fdf1d8] px-2 py-0.5 font-medium text-[#8a5a09]">
+          <Icon name="eye-off" size={12} />
+          Field highlights are turned off for you
+        </span>
+        <button
+          type="button"
+          aria-pressed={false}
+          onClick={() => setHidden(false)}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-brand-600 bg-brand-600 px-2 py-0.5 font-semibold text-white hover:bg-brand-700"
+        >
+          <Icon name="eye" size={12} />
+          Show highlights
+        </button>
+      </div>
+    );
+  }
   return (
     <div data-field-guide className="mt-2 flex min-h-6 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11.5px] text-ink-500">
       <span className="font-semibold text-ink-600">Field guide</span>
-      {hidden
-        ? null
-        : kinds.map((kind) => (
-            <span key={kind} className="inline-flex items-center gap-1.5">
-              <span aria-hidden data-glow-swatch={kind} className="size-2.5 rounded-sm" />
-              {GLOW_MEANING[kind]}
-            </span>
-          ))}
+      {kinds.map((kind) => (
+        <span key={kind} className="inline-flex items-center gap-1.5">
+          <span aria-hidden data-glow-swatch={kind} className="size-2.5 rounded-sm" />
+          {GLOW_MEANING[kind]}
+        </span>
+      ))}
       <button
         type="button"
-        aria-pressed={!hidden}
-        onClick={() => setHidden(!hidden)}
-        className="rounded px-1.5 py-0.5 font-medium text-brand-700 hover:bg-canvas"
+        aria-pressed
+        title="Turns the colours off for you only. Others still see them."
+        onClick={() => setHidden(true)}
+        className="cursor-pointer rounded px-1.5 py-0.5 font-medium text-brand-700 hover:bg-canvas"
       >
-        {hidden ? 'Show highlights' : 'Hide highlights'}
+        Hide highlights
       </button>
     </div>
   );

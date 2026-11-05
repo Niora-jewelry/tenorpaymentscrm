@@ -416,6 +416,7 @@ try {
     await page.waitForTimeout(1200);
     await go(page, urlFor(appRequired));
     t('and stays hidden after a reload', (await page.locator('[data-glow]').count()) === 0 && (await page.getByRole('button', { name: 'Show highlights' }).count()) === 1);
+    t('and says plainly that highlights are off for this person', (await page.getByText('Field highlights are turned off for you').count()) === 1);
     await go(adminPage, urlFor(appRequired));
     t('and never changes anyone else\'s view', (await glowOf(adminPage, appRequired)) === 'application_required');
     await page.getByRole('button', { name: 'Show highlights' }).click();

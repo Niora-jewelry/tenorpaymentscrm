@@ -13,7 +13,7 @@ import type { AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { teamsGranted } from '@/lib/mail/scopes';
 import { dataOwner, identitiesOf, ownIdentity, readableIdentity, TeamsError, usable, type Identity } from './access';
-import { chatKindOf, chatName, firstLink, guidFromEtag, isExternal, isTeamsFileUrl, isUnread, newerThan, shareIdFor, THUMBS, thumbsOf, twoWeeksBefore } from './format';
+import { CHAT_IMAGES_MAX_BYTES, CHAT_IMAGES_MAX_COUNT, chatImageUrl, chatKindOf, chatName, firstLink, guidFromEtag, hostedImageRef, imageTypeOf, isExternal, isTeamsFileUrl, isUnread, newerThan, shareIdFor, THUMBS, thumbsOf, twoWeeksBefore } from './format';
 import { allPages, firstStale, readThrough, reasonFrom } from './snapshots';
 import type { ChatFile, ChatKind, ChatList, ChatMember, ChatMessage, ChatQuote, ChatSummary, Mention, MessagesPage, SendInput, Staleness } from './types';
 
@@ -60,7 +60,9 @@ type GraphChat = {
 
 const previewOf = (body: { content?: string; contentType?: string } | undefined): string => {
   const raw = body?.content ?? '';
-  return (body?.contentType === 'html' ? htmlToText(raw) : raw).replace(/\s+/g, ' ').trim().slice(0, 140);
+  const text = (body?.contentType === 'html' ? htmlToText(raw) : raw).replace(/\s+/g, ' ').trim().slice(0, 140);
+  // A picture on its own still says something in the list.
+  return text || (body?.contentType === 'html' && /<img\b/i.test(raw) ? 'Image' : '');
 };
 
 function summaryOfChat(c: GraphChat, identity: Identity): ChatSummary {
@@ -77,6 +79,7 @@ function summaryOfChat(c: GraphChat, identity: Identity): ChatSummary {
     key: chatKey(identity.id, c.id),
     identityId: identity.id,
     accountEmail: identity.email,
+    accountTenantId: identity.tenantId,
     kind: chatKindOf(c.chatType),
     chatId: c.id,
     teamId: null,
@@ -115,6 +118,7 @@ async function channelsOf(graph: GraphTransport, identity: Identity): Promise<Ch
       key: channelKey(identity.id, team.id, channel.id),
       identityId: identity.id,
       accountEmail: identity.email,
+      accountTenantId: identity.tenantId,
       kind: 'channel' as ChatKind,
       chatId: null,
       teamId: team.id,
@@ -221,6 +225,7 @@ export async function conversationFor(
         key: channelKey(identity.id, ref.teamId, ref.channelId),
         identityId: identity.id,
         accountEmail: identity.email,
+        accountTenantId: identity.tenantId,
         kind: 'channel',
         chatId: null,
         teamId: ref.teamId,
@@ -252,23 +257,60 @@ export async function chatList(ctx: AuthContext, ownerId?: string | null): Promi
 
 /* ── messages ─────────────────────────────────────────────────────────────── */
 
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 const ALLOWED_TAGS = ['b', 'strong', 'i', 'em', 'u', 's', 'strike', 'a', 'ul', 'ol', 'li', 'p', 'br', 'div', 'span', 'blockquote', 'code', 'pre'];
+
+/** Marks where a picture goes while the rest is cleaned. Private-use characters: nothing in a real message uses them. */
+const PIC_OPEN = '';
+const PIC_CLOSE = '';
+const PIC_MARK = /(\d{1,3})/g;
+
+const attrOf = (tag: string, name: string): string => {
+  const m = new RegExp(`\\s${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
+  return (m?.[2] ?? m?.[3] ?? m?.[4] ?? '').trim();
+};
 
 /**
  * A message goes straight into the page, not into a frame as an email does, so this
- * is a short allowlist: no images (they sit behind Microsoft sign-in), no styles,
- * nothing that could reach outside the bubble.
+ * is a short allowlist: no styles, nothing that could reach outside the bubble.
+ *
+ * Pictures are the one exception, and never pass through the cleaner: a picture
+ * Teams keeps for the message becomes a marker, and after cleaning the marker
+ * becomes an `<img>` this code writes itself, pointing at this server's own
+ * address for it (`imageFor`). Any other picture says to open it in Teams.
  */
-export function sanitizeChatHtml(raw: string): string {
+export function sanitizeChatHtml(raw: string, imageFor?: (src: string) => string | null): string {
+  const pictures: { url: string; alt: string }[] = [];
   const prepared = raw
+    .replace(/[]/g, '')
     .replace(/<at\b[^>]*>([\s\S]*?)<\/at>/gi, '<strong>@$1</strong>')
     .replace(/<attachment\b[^>]*>\s*<\/attachment>/gi, '')
-    .replace(/<img\b[^>]*>/gi, '<em>[Image: open it in Teams]</em>')
-    .replace(/<emoji\b[^>]*alt="([^"]*)"[^>]*>\s*(<\/emoji>)?/gi, '$1');
-  return DOMPurify.sanitize(prepared, { ALLOWED_TAGS, ALLOWED_ATTR: ['href', 'target', 'rel'], ALLOW_DATA_ATTR: false, ALLOW_UNKNOWN_PROTOCOLS: false }) as unknown as string;
+    .replace(/<emoji\b[^>]*alt="([^"]*)"[^>]*>\s*(<\/emoji>)?/gi, '$1')
+    .replace(/<img\b[^>]*>/gi, (tag) => {
+      const url = imageFor?.(attrOf(tag, 'src')) ?? null;
+      if (!url || pictures.length >= 50) return '<em>[Image: open it in Teams]</em>';
+      pictures.push({ url, alt: attrOf(tag, 'alt').replace(/&[a-z#0-9]+;/gi, ' ').trim().slice(0, 120) });
+      return `${PIC_OPEN}${pictures.length - 1}${PIC_CLOSE}`;
+    });
+  const clean = DOMPurify.sanitize(prepared, { ALLOWED_TAGS, ALLOWED_ATTR: ['href', 'target', 'rel'], ALLOW_DATA_ATTR: false, ALLOW_UNKNOWN_PROTOCOLS: false }) as unknown as string;
+  return clean.replace(PIC_MARK, (_, i: string) => {
+    const p = pictures[Number(i)];
+    return p ? `<img class="chat-img" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.alt || 'Image')}" loading="lazy" decoding="async">` : '';
+  });
 }
 
-const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+/** How many pictures a cleaned message shows. */
+export const imageCount = (html: string): number => (html.match(/<img class="chat-img"/g) ?? []).length;
+
+/** Pictures of this conversation, through this server. Without the key they say to open Teams. */
+const picturesOf = (key: string | undefined) =>
+  key
+    ? (src: string) => {
+        const ref = hostedImageRef(src);
+        return ref ? chatImageUrl(key, ref) : null;
+      }
+    : undefined;
 
 type GraphAttachment = { id?: string; contentType?: string; content?: string | null; contentUrl?: string | null; name?: string | null };
 type GraphMessage = {
@@ -295,10 +337,10 @@ function quoteOf(attachments: GraphAttachment[] | undefined): ChatQuote | null {
   }
 }
 
-export function toMessage(m: GraphMessage, myId: string, sizes: ReadonlyMap<string, number> = new Map()): ChatMessage {
+export function toMessage(m: GraphMessage, myId: string, sizes: ReadonlyMap<string, number> = new Map(), key?: string): ChatMessage {
   const deleted = Boolean(m.deletedDateTime);
   const raw = m.body?.content ?? '';
-  const html = deleted ? '' : m.body?.contentType === 'text' ? escapeHtml(raw).replace(/\n/g, '<br>') : sanitizeChatHtml(raw);
+  const html = deleted ? '' : m.body?.contentType === 'text' ? escapeHtml(raw).replace(/\n/g, '<br>') : sanitizeChatHtml(raw, picturesOf(key));
   const thumbs = thumbsOf(m.reactions, myId);
   const files: ChatFile[] = deleted
     ? []
@@ -318,9 +360,10 @@ export function toMessage(m: GraphMessage, myId: string, sizes: ReadonlyMap<stri
     thumbedByMe: thumbs.mine,
     files,
     quote: deleted ? null : quoteOf(m.attachments),
-    replies: (m.replies ?? []).map((r) => toMessage(r, myId, sizes)).sort((a, b) => a.at.localeCompare(b.at)),
+    replies: (m.replies ?? []).map((r) => toMessage(r, myId, sizes, key)).sort((a, b) => a.at.localeCompare(b.at)),
     replyCount: m.replies?.length ?? 0,
     link: deleted ? null : firstLink(html),
+    images: imageCount(html),
   };
 }
 
@@ -386,7 +429,7 @@ export async function messagesPage(ctx: AuthContext, args: { key: string; cursor
 
   const shape = async ({ raw, next }: { raw: GraphMessage[]; next: string | null }) => {
     const sizes = await fileSizes(graph, raw);
-    return { messages: raw.map((m) => toMessage(m, identity.microsoftUserId, sizes)).sort((a, b) => a.at.localeCompare(b.at)), olderCursor: next };
+    return { messages: raw.map((m) => toMessage(m, identity.microsoftUserId, sizes, args.key)).sort((a, b) => a.at.localeCompare(b.at)), olderCursor: next };
   };
 
   // Only the first page is kept: that is what an outage has to fall back on.
@@ -441,11 +484,41 @@ export function applyMentions(html: string, mentions: Mention[]): { html: string
   return { html: out, mentions: used };
 }
 
+/**
+ * Pictures for the message as Microsoft takes them: the bytes must really be the
+ * type they claim, and all of them together fit in one request.
+ */
+export function hostedContentsFor(images: SendInput['images']): { html: string; hosted: Record<string, unknown>[] } {
+  const list = images ?? [];
+  if (list.length === 0) return { html: '', hosted: [] };
+  if (list.length > CHAT_IMAGES_MAX_COUNT) throw new TeamsError(`Send at most ${CHAT_IMAGES_MAX_COUNT} pictures in one message.`);
+  let total = 0;
+  const tags: string[] = [];
+  const hosted = list.map((img, i) => {
+    const bytes = Buffer.from(img.data, 'base64');
+    total += bytes.length;
+    if (bytes.length === 0 || imageTypeOf(bytes) !== img.contentType) throw new TeamsError('One of the pictures could not be read. Paste it again.');
+    // Shown no wider than Teams shows a picture; a click in Teams opens it full size.
+    const scale = Math.min(1, 480 / Math.max(1, img.width));
+    const width = Math.max(1, Math.round(img.width * scale));
+    const height = Math.max(1, Math.round(img.height * scale));
+    tags.push(`<img src="../hostedContents/${i + 1}/$value" width="${width}" height="${height}" alt="image" style="vertical-align:bottom; width:${width}px; height:${height}px">`);
+    return { '@microsoft.graph.temporaryId': String(i + 1), contentBytes: img.data, contentType: img.contentType };
+  });
+  if (total > CHAT_IMAGES_MAX_BYTES) throw new TeamsError('These pictures are too big for one message. Send them in two messages.');
+  return { html: `<p>${tags.join(' ')}</p>`, hosted };
+}
+
+/** An editor's empty line, which would leave a gap above a picture sent on its own. */
+const EMPTY_PARAGRAPHS = /^(\s*<p>(\s|&nbsp;|<br\s*\/?>)*<\/p>\s*)*$/i;
+
 export async function sendMessage(ctx: AuthContext, input: SendInput): Promise<ChatMessage> {
   const ref = requireRef(input.key);
   const identity = await ownIdentity(ctx, ref.identityId);
   const graph = graphForIdentity(identity.id);
-  const clean = sanitizeOutgoing(input.html);
+  const pictures = hostedContentsFor(input.images);
+  const typed = sanitizeOutgoing(input.html);
+  const clean = pictures.hosted.length && EMPTY_PARAGRAPHS.test(typed) ? '' : typed;
   const { html, mentions } = applyMentions(clean, input.mentions ?? []);
   const attachments: Record<string, unknown>[] = (input.files ?? []).map((f) => ({ id: f.id, contentType: 'reference', contentUrl: f.url, name: f.name }));
   let prefix = '';
@@ -467,19 +540,36 @@ export async function sendMessage(ctx: AuthContext, input: SendInput): Promise<C
     const made = await graph.request<GraphMessage>({
       method: 'POST',
       path: messagesPath(ref, input.threadId),
-      body: { body: { contentType: 'html', content: `${prefix}${html}${files}` }, ...(mentions.length ? { mentions } : {}), ...(attachments.length ? { attachments } : {}) },
+      body: {
+        body: { contentType: 'html', content: `${prefix}${html}${pictures.html}${files}` },
+        ...(mentions.length ? { mentions } : {}),
+        ...(attachments.length ? { attachments } : {}),
+        ...(pictures.hosted.length ? { hostedContents: pictures.hosted } : {}),
+      },
     });
-    return toMessage(made, identity.microsoftUserId);
+    return toMessage(made, identity.microsoftUserId, new Map(), input.key);
   } catch (err) {
     throw new TeamsError(reasonFrom(err, 'The message could not be sent.'));
   }
 }
 
+/** The pictures a message already has, exactly as Microsoft wrote them, so an edit of the words keeps them. */
+export function keptPictures(rawHtml: string): string {
+  const tags = (rawHtml.match(/<img\b[^>]*>/gi) ?? []).filter((t) => hostedImageRef(attrOf(t, 'src')) !== null);
+  return tags.length ? `<p>${tags.join(' ')}</p>` : '';
+}
+
 export async function editMessage(ctx: AuthContext, args: { key: string; messageId: string; threadId?: string | null; html: string }): Promise<void> {
   const ref = requireRef(args.key);
   const identity = await ownIdentity(ctx, ref.identityId);
+  const graph = graphForIdentity(identity.id);
+  const path = messagesPath(ref, args.threadId, args.messageId);
   try {
-    await graphForIdentity(identity.id).request({ method: 'PATCH', path: messagesPath(ref, args.threadId, args.messageId), body: { body: { contentType: 'html', content: sanitizeOutgoing(args.html) } } });
+    const before = await graph.request<GraphMessage>({ path });
+    const pictures = keptPictures(before?.body?.content ?? '');
+    const typed = sanitizeOutgoing(args.html);
+    const words = pictures && EMPTY_PARAGRAPHS.test(typed) ? '' : typed;
+    await graph.request({ method: 'PATCH', path, body: { body: { contentType: 'html', content: `${words}${pictures}` } } });
   } catch (err) {
     throw new TeamsError(reasonFrom(err, 'The message could not be changed.'));
   }
@@ -492,6 +582,23 @@ export async function deleteMessage(ctx: AuthContext, args: { key: string; messa
     await graphForIdentity(identity.id).request({ method: 'POST', path: `${messagesPath(ref, args.threadId, args.messageId)}/softDelete`, body: {} });
   } catch (err) {
     throw new TeamsError(reasonFrom(err, 'The message could not be deleted.'));
+  }
+}
+
+/**
+ * One picture from a message, for whoever may read the conversation. The browser
+ * names only the ids; the address is built here from the conversation, so it can
+ * only ever be a picture in that conversation.
+ */
+export async function hostedImage(ctx: AuthContext, args: { key: string; messageId: string; replyId?: string | null; hostedId: string }): Promise<Response> {
+  const ref = requireRef(args.key);
+  const { identity } = await readableIdentity(ctx, 'chat', ref.identityId);
+  const base = args.replyId ? messagesPath(ref, args.messageId, args.replyId) : messagesPath(ref, null, args.messageId);
+  try {
+    return await graphForIdentity(identity.id).raw({ path: `${base}/hostedContents/${e(args.hostedId)}/$value` });
+  } catch (err) {
+    if (err instanceof GraphError && (err.status === 400 || err.status === 403 || err.status === 404)) throw new TeamsError('This picture could not be found. It may have been removed in Teams.');
+    throw err;
   }
 }
 

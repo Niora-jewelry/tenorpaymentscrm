@@ -19,6 +19,7 @@
  *   GET /__mock/teams     everything, for assertions
  */
 import { randomBytes, randomUUID } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 
 export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
   const BASE = `http://127.0.0.1:${PORT}`;
@@ -244,9 +245,23 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     };
   }
 
-  function newMessage(fromOid, body) {
+  function newMessage(fromOid, body, path) {
     if (fault.chatSendFail) return graphErr(403, 'Forbidden', fault.chatSendFail);
-    const content = String(body?.body?.content ?? '');
+    let content = String(body?.body?.content ?? '');
+    const id = Date.now() + randomBytes(2).toString('hex');
+    const hosted = {};
+    for (const h of body?.hostedContents ?? []) {
+      const temp = String(h['@microsoft.graph.temporaryId'] ?? '');
+      const local = '../hostedContents/' + temp + '/$value';
+      if (!temp || !content.includes(local)) return graphErr(400, 'BadRequest', 'Each hosted content must be referenced in the message body.');
+      if (!/^image\/(png|jpeg|gif)$/.test(String(h.contentType ?? ''))) return graphErr(400, 'BadRequest', 'Unsupported hosted content type.');
+      const bytes = Buffer.from(String(h.contentBytes ?? ''), 'base64');
+      if (bytes.length === 0) return graphErr(400, 'BadRequest', 'Hosted content is empty.');
+      const hcid = 'aWQ9' + randomBytes(9).toString('base64url');
+      hosted[hcid] = { bytes, type: h.contentType };
+      content = content.split(local).join(BASE + '/v1.0' + path + '/' + encodeURIComponent(id) + '/hostedContents/' + hcid + '/$value');
+    }
+    if (JSON.stringify(body ?? {}).length > 4 * 1024 * 1024) return graphErr(413, 'RequestEntityTooLarge', 'The request is larger than 4 MB.');
     for (const a of body?.attachments ?? []) {
       if (a.contentType === 'reference' && !content.includes(`<attachment id="${a.id}">`)) return graphErr(400, 'BadRequest', 'Each attachment must be referenced in the message body.');
       if (a.contentType === 'messageReference' && !content.includes(`<attachment id="${a.id}">`)) return graphErr(400, 'BadRequest', 'The quoted message must be referenced in the body.');
@@ -254,7 +269,7 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     for (const m of body?.mentions ?? []) {
       if (!content.includes(`<at id="${m.id}">`)) return graphErr(400, 'BadRequest', 'A mention must appear in the body.');
     }
-    return { id: `${Date.now()}${randomBytes(2).toString('hex')}`, from: fromOid, createdDateTime: now(), content, contentType: body?.body?.contentType ?? 'html', attachments: body?.attachments ?? [], mentions: body?.mentions ?? [], reactions: [], replies: [] };
+    return { id, from: fromOid, createdDateTime: now(), content, contentType: body?.body?.contentType ?? 'html', attachments: body?.attachments ?? [], mentions: body?.mentions ?? [], reactions: [], replies: [], hosted };
   }
 
   function chatJson(c, oid) {
@@ -292,7 +307,7 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
         return { status: 200, body: { value: page.map((m) => messageJson(m, url.searchParams.get('$expand') === 'replies')), ...(more ? { '@odata.nextLink': next.toString() } : {}) } };
       }
       if (method === 'POST') {
-        const m = newMessage(oid, body);
+        const m = newMessage(oid, body, opts.path);
         if (m.status) return m;
         list.push(m);
         return { status: 201, body: messageJson(m, false) };
@@ -306,6 +321,11 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
       return messageOps(oid, msg.replies, method, rest.slice(2), body, url, { ...opts, path: `${opts.path}/${encodeURIComponent(msg.id)}/replies` });
     }
     if (method === 'GET' && rest.length === 1) return { status: 200, body: messageJson(msg, opts.channel) };
+    if (method === 'GET' && rest[1] === 'hostedContents' && rest[3] === '$value') {
+      const h = (msg.hosted ?? {})[decodeURIComponent(rest[2] ?? '')];
+      if (!h || msg.deletedDateTime) return graphErr(404, 'NotFound', 'The hosted content was not found.');
+      return { status: 200, raw: h.bytes, type: h.type };
+    }
     if (method === 'PATCH' && rest.length === 1) {
       if (msg.from !== oid) return graphErr(403, 'Forbidden', 'Only the sender can edit this message.');
       msg.content = String(body?.body?.content ?? msg.content);
@@ -546,6 +566,25 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(hour)}:${pad(minute)}:00`;
   };
 
+  /** A 40x30 PNG, light blue with a dark band: big enough to see in the bubble. */
+  const SEED_PNG = (() => {
+    const w = 40, h = 30;
+    const raw = Buffer.alloc((w * 3 + 1) * h);
+    for (let y = 0; y < h; y++) {
+      raw[y * (w * 3 + 1)] = 0;
+      for (let x = 0; x < w; x++) {
+        const o = y * (w * 3 + 1) + 1 + x * 3;
+        const band = y > 10 && y < 20;
+        raw[o] = band ? 16 : 190; raw[o + 1] = band ? 35 : 215; raw[o + 2] = band ? 71 : 245;
+      }
+    }
+    const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+    const crc = (buf) => { let c = 0xffffffff; for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+    const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+    return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
+  })();
+
   function seed() {
     reset();
     const O = oidOf('owner@mock.test');
@@ -561,6 +600,10 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     chats.set(direct.id, direct);
 
     const group = { id: '19:group-external@thread.v2', chatType: 'group', topic: 'Partner onboarding', members: [O, M, X], messages: [], readAt: {} };
+    const pictured = msg(M, '', daysAgo(3));
+    pictured.hosted = { aWQ9c2VlZC1waWN0dXJl: { bytes: Buffer.from(SEED_PNG, 'base64'), type: 'image/png' } };
+    pictured.content = '<p>Screenshot of the statement:</p><p><img src="' + BASE + '/v1.0/chats/' + encodeURIComponent(group.id) + '/messages/' + pictured.id + '/hostedContents/aWQ9c2VlZC1waWN0dXJl/$value" width="40" height="30" alt="image"></p>';
+    group.messages.push(pictured);
     group.messages.push(msg(X, '<p>Hello from the partner side.</p>', daysAgo(2)));
     chats.set(group.id, group);
 

@@ -175,6 +175,12 @@ export async function settingGroups(): Promise<SettingGroup[]> {
       rows: [{ key: 'fields.highlights', label: 'See field highlights', options: YES_NO }],
     },
     {
+      id: 'equipment',
+      title: 'Merchant Equipment Setup',
+      blurb: 'Adding a custom provider to the shared list on the Merchant Equipment Setup rows. Everyone who can edit a row can pick any provider on the list, including custom ones.',
+      rows: [{ key: 'equipment.add_providers', label: 'Add custom providers', options: YES_NO }],
+    },
+    {
       id: 'reporting',
       title: 'Reporting',
       blurb: 'The Reporting tab: transactions, batches, payouts and ACH activity. Read-only for everyone; Hidden means the tab and its data never reach this user.',

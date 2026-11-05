@@ -86,6 +86,8 @@ export type Subtab = {
   comingSoon: boolean;
   /** Shows the Teams conversations linked to the record (migration 9907). */
   showsRecordChats?: boolean;
+  /** Shows the equipment rows, in the Files layout (migration 9910). */
+  showsEquipmentSetup?: boolean;
 };
 
 export type Field = {
@@ -133,6 +135,8 @@ export type Field = {
   /** For `mcc_lookup`: the field holding the MCC code. */
   autoSourceField: string | null;
   archivedAt: string | null;
+  /** A column of a row-based sub-tab: see `Config.rowColumns`. */
+  rowColumn?: boolean;
 };
 
 export type Choice = { fieldId: string; moduleId: string | null; key: string; value: string; swatch: string | null; position: number };
@@ -154,7 +158,14 @@ export type Config = {
   modules: Module[];
   tabs: Tab[];
   subtabs: Subtab[];
+  /** Ordinary fields, whose values live in `records.values`. Every field list reads this. */
   fields: Field[];
+  /**
+   * `fields` rows that are the columns of a row-based sub-tab (migration 9910). They
+   * exist so the grant chain can reach one column; their values are in that feature's
+   * own table, so the grid, the columns picker, Presets and automations never see them.
+   */
+  rowColumns: Field[];
   moduleTabOrder: { moduleId: string; tabId: string; position: number }[];
   moduleSubtabOrder: { moduleId: string; subtabId: string; position: number }[];
   /** `defaultVisible`: shown until a user hides it (migration 9808). */
@@ -181,6 +192,12 @@ export const CONFIG_CACHE_TAG = 'config';
  * `revalidateConfig()`, which every admin config write calls — the Presets
  * screen (tabs/subtabs today, fields/columns/choices/pipelines as later
  * sub-steps land) is the only thing in the app that changes this data. */
+const splitRowColumns = (config: Omit<Config, 'rowColumns'>): Config => ({
+  ...config,
+  fields: config.fields.filter((f) => !f.rowColumn),
+  rowColumns: config.fields.filter((f) => f.rowColumn),
+});
+
 const loadConfigCached = unstable_cache(
   async (): Promise<Config> => {
     const supabase = supabaseAdmin();
@@ -209,7 +226,7 @@ const loadConfigCached = unstable_cache(
       if (r.error) throw r.error;
     }
 
-    return {
+    return splitRowColumns({
       modules: modules.data!.map((m) => ({
         id: m.id, slug: m.slug, label: m.label, kind: m.kind,
         position: m.position, adminOnly: m.admin_only, fullAccessOnly: m.full_access_only ?? false, frozen: m.frozen,
@@ -230,6 +247,7 @@ const loadConfigCached = unstable_cache(
         // Migration 9907: this flag wins, and `coming_soon` stays true for older builds.
         comingSoon: s.coming_soon && !(s as { shows_record_chats?: boolean }).shows_record_chats,
         showsRecordChats: (s as { shows_record_chats?: boolean }).shows_record_chats ?? false,
+        showsEquipmentSetup: (s as { shows_equipment_setup?: boolean }).shows_equipment_setup ?? false,
       })),
       fields: fields.data!.map((f) => ({
         id: f.id, key: f.key, label: f.label, type: f.type,
@@ -246,6 +264,7 @@ const loadConfigCached = unstable_cache(
         autoSource: f.auto_source ?? null,
         autoSourceField: f.auto_source_field ?? null,
         archivedAt: f.archived_at,
+        rowColumn: (f as { row_column?: boolean }).row_column ?? false,
       })),
       moduleTabOrder: moduleTabOrder.data!.map((r) => ({ moduleId: r.module_id, tabId: r.tab_id, position: r.position })),
       moduleSubtabOrder: moduleSubtabOrder.data!.map((r) => ({ moduleId: r.module_id, subtabId: r.subtab_id, position: r.position })),
@@ -264,7 +283,7 @@ const loadConfigCached = unstable_cache(
       pipelineSteps: pipelineSteps.data!.map((s) => ({
         id: s.id, pipelineId: s.pipeline_id, label: s.label, swatch: s.swatch, position: s.position,
       })),
-    };
+    });
   },
   ['records-config'],
   { tags: [CONFIG_CACHE_TAG] },

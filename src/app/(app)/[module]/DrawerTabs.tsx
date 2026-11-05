@@ -20,6 +20,7 @@ import { requiredCount, signersFor, type GlowCount } from '@/lib/records/fieldGl
 import type { Need } from '@/lib/records/fieldNeeds';
 import type { Field as ProtoField } from '@/proto/schema';
 import { RealFieldGrid } from './RealFieldGrid';
+import { EquipmentPanel } from './EquipmentPanel';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
 import { TabNotes } from './NoteThread';
 import { CasesPanel } from './CasesPanel';
@@ -47,6 +48,7 @@ import type { ApplicationsPanelData } from '@/lib/applications/service';
 import type { AgreementsPanelData } from '@/lib/agreements/service';
 import { AgreementsPanel } from './AgreementsPanel';
 import type { ProposalsPanelData } from '@/lib/proposals/service';
+import type { EquipmentPanelData } from '@/lib/equipment/service';
 import { ProposalsPanel } from './ProposalsPanel';
 import { ApplicationsPanel } from './ApplicationsPanel';
 import { FilesSendBar } from './FilesSendBar';
@@ -109,7 +111,7 @@ export type TabPayload = {
   /** An automation lock this viewer is under: the lock icon says it, not a banner. */
   locked?: boolean;
   count?: number;
-  subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean; showsRecordChats?: boolean }[];
+  subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean; showsRecordChats?: boolean; showsEquipmentSetup?: boolean }[];
   fieldsBySubtab: Record<string, ProtoField[]>;
   repeatGroupsBySubtab: Record<string, RepeatGroupDef[]>;
   hasCustomFieldOrderBySubtab: Record<string, boolean>;
@@ -152,6 +154,7 @@ export function DrawerTabs({
   applications = null,
   agreements = null,
   proposals = null,
+  equipment = null,
   reporting = null,
   processorApp = null,
   otherCases = null,
@@ -229,6 +232,8 @@ export function DrawerTabs({
   agreements?: AgreementsPanelData | null;
   /** The record's proposals, when a visible tab carries them. */
   proposals?: ProposalsPanelData | null;
+  /** The equipment rows, when the viewer may see the sub-tab that shows them. */
+  equipment?: EquipmentPanelData | null;
   /** Reporting, when a visible tab carries it and the viewer may see it. */
   reporting?: ReportingPanelData | null;
   /** The application at the processor, on the Applications tab. */
@@ -589,6 +594,7 @@ export function DrawerTabs({
                 {activeTab.showsReporting && reporting ? <ReportingPanel recordId={recordId} data={reporting} /> : null}
                 {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
                 {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
+                {activeSubtab?.showsEquipmentSetup && equipment ? <EquipmentPanel moduleSlug={moduleSlug} recordId={recordId} data={equipment} /> : null}
                 <RealFieldGrid
                   teamSlot={teamSlot}
                   moduleSlug={moduleSlug}

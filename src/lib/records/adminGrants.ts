@@ -381,7 +381,8 @@ async function buildMatrix(
   }
 
   const fieldsByTab = new Map<string, typeof config.fields>();
-  for (const f of config.fields) {
+  // With the row columns: a column of a row-based sub-tab takes a grant like any field.
+  for (const f of [...config.fields, ...config.rowColumns]) {
     const list = fieldsByTab.get(f.tabId) ?? [];
     list.push(f);
     fieldsByTab.set(f.tabId, list);

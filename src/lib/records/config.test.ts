@@ -56,6 +56,7 @@ const config: Config = {
     }),
     field({ id: 'f6', key: 'archived_field', tabId: 'tab-overview', subtabId: null, position: 5, archivedAt: '2026-01-01' }),
   ],
+  rowColumns: [],
   moduleTabOrder: [
     { moduleId: 'mod-1', tabId: 'tab-overview', position: 0 },
     { moduleId: 'mod-1', tabId: 'tab-pricing', position: 1 },

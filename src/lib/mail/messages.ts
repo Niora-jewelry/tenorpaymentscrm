@@ -30,7 +30,7 @@ export const MAIL_MESSAGES = {
   ruleRejected: (graph: string) => `Outlook rejected this rule: ${graph}`,
   folderCap: 'This mailbox already has 500 folders.',
   connectionCap: "You've connected 30 mailboxes, the maximum. Disconnect one to add another.",
-  oauthCancelled: 'Microsoft sign-in was cancelled. Nothing was connected. If Microsoft said an admin has to approve this, open Chat for a request you can send them.',
+  oauthCancelled: 'Microsoft sign-in was cancelled. Nothing was connected. If Microsoft said you need admin approval, ask your admin below.',
   oauthExpired: 'That sign-in link expired. Start the connection again.',
   wrongTenant: "That account isn't in a Tenor Microsoft tenant, so it can't be connected.",
   personalAccount: 'Only work or school Microsoft 365 accounts can be connected, not personal Outlook.com accounts.',

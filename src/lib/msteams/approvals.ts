@@ -42,23 +42,28 @@ export async function adminApprovalUrl(): Promise<string> {
 }
 
 /**
- * The message someone copies and sends to their Microsoft admin. The admin only
- * approves: the admin panel route comes first because it involves no sign-in page
- * of ours at all, and the link covers a tenant where the app is not registered.
+ * The message someone copies and sends to their Microsoft admin. It goes to other
+ * companies, where the app is not registered, so App registrations cannot find it, and
+ * Enterprise apps lists it only once someone has approved it. Microsoft's request route
+ * comes first because the admin answers it in their own panel and nobody needs a link.
+ * The link names only what a signed-in person's connection uses.
  */
 export async function adminRequestText(): Promise<string> {
   const { creds } = await mailApp();
   return [
     'Hello,',
     '',
-    'We use Tenor Payments CRM, and I need to connect my own Microsoft account to it for my email, calendar and Teams chats. Our organization requires a Microsoft admin to approve the app once. You do not sign in to the CRM, and none of your own mail or accounts get connected.',
+    'We use Tenor Payments CRM, and I need to connect my own Microsoft account to it for my email, calendar and Teams chats. Our organization requires a Microsoft admin to approve the app once, for everyone. You do not sign in to the CRM, and none of your own mail or accounts get connected.',
     '',
-    'Option 1, in the admin panel:',
-    '1. Go to https://entra.microsoft.com and open Entra ID, then App registrations, then All applications.',
-    `2. Open the app with Application ID ${creds.clientId}.`,
-    '3. Open API permissions, click Grant admin consent, then Yes.',
+    `The app's Application ID is ${creds.clientId}.`,
     '',
-    "Option 2, Microsoft's approval page, which lists every permission the CRM asks for. Use this if the app is not listed above, or if I still get asked for approval after Option 1:",
+    'Option 1, approve my request in the admin panel. A Global Administrator switches this on once:',
+    '1. Go to https://entra.microsoft.com and open Entra ID, then Enterprise apps, then Consent and permissions, then Admin consent settings.',
+    '2. Set "Users can request admin consent to apps they are unable to consent to" to Yes, choose who reviews requests, and save. Microsoft says this can take up to an hour.',
+    '3. Tell me, and I will send the request from Microsoft\'s page. Reviewers get an email.',
+    '4. Open Enterprise apps, then Admin consent requests, then My Pending. Select the app, click Review permissions and consent, and accept.',
+    '',
+    "Option 2, approve now on Microsoft's approval page, which lists the permissions the CRM asks for:",
     await adminApprovalUrl(),
     'Sign in there with your admin account, review the permissions, click Accept and close the page.',
     '',

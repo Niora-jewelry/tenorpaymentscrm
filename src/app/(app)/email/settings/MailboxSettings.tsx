@@ -15,6 +15,7 @@ import { Button, Dialog, OutlineChip, Spinner, StatusPill } from '@/proto/ui/kit
 import { Icon } from '@/proto/ui/icons';
 import type { Swatch } from '@/proto/schema';
 import type { ConnectionHealth, MyMailbox } from '@/lib/mail/mailboxes';
+import { AskAdmin } from '@/app/(app)/msteams-ui/shared';
 import { disconnectMailboxAction } from '../actions';
 import { swatchFor } from '../ui/people';
 
@@ -80,12 +81,17 @@ export function MailboxSettings({
   readOnly,
   banner: initialBanner,
   justConnected,
+  requestText,
+  askAdminOpen,
 }: {
   mailboxes: MyMailbox[];
   max: number;
   readOnly: boolean;
   banner: Banner | null;
   justConnected: JustConnected | null;
+  /** The message for their Microsoft admin. */
+  requestText: string;
+  askAdminOpen: boolean;
 }) {
   const router = useRouter();
   const [banner, setBanner] = useState<Banner | null>(initialBanner);
@@ -223,6 +229,7 @@ export function MailboxSettings({
               </div>
             </form>
           </div>
+          <AskAdmin requestText={requestText} open={askAdminOpen} />
         </section>
       )}
 

@@ -150,6 +150,37 @@ export function PersonPicker({ people, value, label }: { people: PersonChoice[];
   );
 }
 
+/**
+ * How someone asks their Microsoft admin to approve the app. Microsoft's "Need admin
+ * approval" page offers a request button only if that organization switched requests on,
+ * and its other link connects the admin's own account, which is never what is wanted.
+ * Backing out of that page comes back as an ordinary cancel, so this is always on offer.
+ */
+export function AskAdmin({ requestText, open }: { requestText: string; open: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <details open={open} className="rounded-lg border border-line bg-white px-4 py-3">
+      <summary className="cursor-pointer text-[13px] font-semibold text-ink-800">Microsoft says you need admin approval? Ask your admin</summary>
+      <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">
+        A Microsoft admin approves Tenor once for your whole organization. They never sign in to this CRM. If Microsoft&apos;s page has a Request approval button, use it. If not, click &quot;Return to the application&quot;, not &quot;Have an admin account?&quot;, which would connect the admin&apos;s own account. Then send your admin this message, and connect again once they have approved.
+      </p>
+      <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={10} className="mt-2 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-700" />
+      <div className="mt-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={copied ? 'check' : 'copy'}
+          onClick={() => {
+            void navigator.clipboard.writeText(requestText).then(() => setCopied(true));
+          }}
+        >
+          {copied ? 'Copied' : 'Copy request'}
+        </Button>
+      </div>
+    </details>
+  );
+}
+
 /** The screen before anything can load. Own accounts only: an All users setting does not skip it. */
 export function ConnectScreen({ kind, accounts, waiting, requestText, errorText, impersonating }: { kind: TeamsKind; accounts: AccountView[]; waiting: boolean; requestText: string; errorText: string | null; impersonating: boolean }) {
   const label = kind === 'calendar' ? 'Calendar' : 'Chat';
@@ -213,29 +244,10 @@ export function ConnectScreen({ kind, accounts, waiting, requestText, errorText,
             </div>
           </>
         )}
-        {/*
-          Microsoft's "Need admin approval" page offers a way to request approval only if
-          the organization switched that on. Backing out of it comes back as an ordinary
-          cancel, so the waiting screen above never appears: this has to be here too.
-        */}
         {!impersonating && !waiting && requestText ? (
-          <details open={Boolean(errorText)} className="mt-5 border-t border-line-faint pt-3">
-            <summary className="cursor-pointer text-[12.5px] font-medium text-ink-600">Microsoft says you need admin approval?</summary>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">A Microsoft admin approves Tenor once for your whole organization, in the Microsoft admin panel. They never sign in to this CRM. Send them this message, then click Connect Microsoft again with your normal account. Don’t use “Have an admin account?” on Microsoft’s page: that can connect the admin’s account instead of yours.</p>
-            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={10} className="mt-2 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] text-ink-700" />
-            <div className="mt-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={copied ? 'check' : 'copy'}
-                onClick={() => {
-                  void navigator.clipboard.writeText(requestText).then(() => setCopied(true));
-                }}
-              >
-                {copied ? 'Copied' : 'Copy request'}
-              </Button>
-            </div>
-          </details>
+          <div className="mt-5">
+            <AskAdmin requestText={requestText} open={Boolean(errorText)} />
+          </div>
         ) : null}
       </div>
     </div>

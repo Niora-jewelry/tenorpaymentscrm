@@ -21,7 +21,7 @@ import { ComposeSettings } from './ComposeSettings';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { templatesAction } from '../composeActions';
 import { canHideOwn, identitiesOf, toAccountView } from '@/lib/msteams/access';
-import { isWaitingForAdmin } from '@/lib/msteams/approvals';
+import { adminRequestText, isWaitingForAdmin } from '@/lib/msteams/approvals';
 import { TeamsSettings } from './TeamsSettings';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -90,6 +90,8 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
             readOnly={Boolean(impersonating)}
             banner={banner}
             justConnected={justConnected}
+            requestText={impersonating ? '' : await adminRequestText()}
+            askAdminOpen={err === 'cancelled' || err === 'consent_required'}
           />
           {await teamsSettings(ctx, Boolean(impersonating))}
           {writing ? await writingSettings(ctx.userId, ctx.isAdmin, mailboxes) : null}

@@ -258,7 +258,7 @@ try {
 
   await step('admin approval, before anyone has been told to wait', async () => {
     await go(page, '/chat');
-    await page.getByText('Microsoft says you need admin approval?').click();
+    await page.getByText('Microsoft says you need admin approval? Ask your admin').click();
     const text = await page.getByLabel('Request for your Microsoft admin').inputValue();
     t('Connect screen: the request for the admin is there, with the approval link', /adminconsent\?/.test(text) && text.includes('client_id='), text.slice(0, 60));
     await shot(page, 'rt-1b-connect-request');

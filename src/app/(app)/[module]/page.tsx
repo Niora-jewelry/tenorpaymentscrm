@@ -57,6 +57,7 @@ import { allNotesFor } from '@/lib/records/notes';
 import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
 import { agreementsFor } from '@/lib/agreements/service';
 import { proposalsFor } from '@/lib/proposals/service';
+import { equipmentFor } from '@/lib/equipment/service';
 import { otherCasesFor, processorApplicationFor, processorVitals, reportingPanelFor, unmatchedFlags, unsyncedOtherCases } from '@/lib/processors/service';
 import type { Note } from '@/lib/records/notes';
 import { profileNamesFor } from '@/lib/records/users';
@@ -1100,6 +1101,15 @@ async function RecordDrawer({
     Object.entries(addressesRaw).filter(([key]) => grantByKey[key] !== undefined && grantByKey[key] !== 'hidden'),
   );
 
+  // Asks its own permission. Null when the viewer may not see it, and a failure here
+  // does not stop the drawer opening.
+  const equipment = config.subtabs.some((s) => s.showsEquipmentSetup)
+    ? await equipmentFor(ctx, record.id).catch((e) => {
+        console.error('[equipment] drawer', e instanceof Error ? e.message.slice(0, 200) : e);
+        return null;
+      })
+    : null;
+
   const tabs: TabPayload[] = await Promise.all(dbTabs.map(async (t) => {
     // A Hidden subtab is dropped from the strip, exactly as a Hidden tab is —
     // "absent, never blank". Its fields are then never built below either,
@@ -1107,7 +1117,7 @@ async function RecordDrawer({
     const subtabs = subtabsForModule(config, moduleId, t.id)
       .filter((s) => subtabGrantById.get(s.id) !== 'hidden')
       .map((s) => ({
-        id: s.id, key: s.key, label: s.label, description: s.description, comingSoon: s.comingSoon, showsRecordChats: s.showsRecordChats,
+        id: s.id, key: s.key, label: s.label, description: s.description, comingSoon: s.comingSoon, showsRecordChats: s.showsRecordChats, showsEquipmentSetup: s.showsEquipmentSetup,
       }));
 
     const fieldsBySubtab: Record<string, ReturnType<typeof adaptFieldForDrawer>[]> = {};
@@ -1349,6 +1359,7 @@ async function RecordDrawer({
         applications={applications}
         agreements={agreements}
         proposals={proposals}
+        equipment={equipment}
         reporting={reporting}
         processorApp={processorApp}
         otherCases={otherCases}

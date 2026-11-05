@@ -32,6 +32,7 @@ const config: Config = {
       gridColumns: [{ label: 'Vendor', type: 'text' }, { label: 'Amount', type: 'currency' }],
     }),
   ],
+  rowColumns: [],
   moduleTabOrder: [],
   moduleSubtabOrder: [],
   moduleColumns: [

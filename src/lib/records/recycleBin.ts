@@ -43,7 +43,7 @@ import { canOpenAdminPage, type AuthContext } from './permissions';
 
 /** What kind of thing a bin entry is. Drives the label, the icon and which
  *  restore function the row calls — nothing here branches on a module. */
-export type BinKind = 'file' | 'file_row' | 'update' | 'reply' | 'login' | 'case' | 'case_reply';
+export type BinKind = 'file' | 'file_row' | 'update' | 'reply' | 'login' | 'case' | 'case_reply' | 'equipment_row';
 
 export type BinItem = {
   kind: BinKind;
@@ -80,7 +80,7 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
    * losing rows off the end of a page). The cap is explicit and the screen says
    * so.
    */
-  const [files, fileRows, updates, logins, cases, replies, records] = await Promise.all([
+  const [files, fileRows, updates, logins, cases, replies, equipmentRows, records] = await Promise.all([
     supabase
       .from('files')
       .select('id, name, deleted_at, file_row_id, file_rows!inner(record_id)')
@@ -118,13 +118,20 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false })
       .limit(MAX_PER_KIND),
+    // The number only. What a row holds is shown again when it comes back.
+    supabase
+      .from('equipment_rows')
+      .select('id, row_no, record_id, deleted_at')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false })
+      .limit(MAX_PER_KIND),
     // Names for every record any of the above belongs to. Read in full rather
     // than joined six times: `records` is the one table all six point at, and a
     // second pass over ids in memory is cheaper than six nested selects.
     supabase.from('records').select('id, deal_name'),
   ]);
 
-  for (const r of [files, fileRows, updates, logins, cases, replies, records]) {
+  for (const r of [files, fileRows, updates, logins, cases, replies, equipmentRows, records]) {
     if (r.error) throw r.error;
   }
 
@@ -194,6 +201,10 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
     });
   }
 
+  for (const r of equipmentRows.data ?? []) {
+    out.push({ kind: 'equipment_row', id: r.id, title: `Equipment row ${r.row_no}`, deletedAt: r.deleted_at, ...named(r.record_id) });
+  }
+
   // Newest first across every kind, so the bin reads as one timeline of what
   // was removed rather than six lists that each start again.
   return out.sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
@@ -211,6 +222,7 @@ const RESTORE_FN: Record<BinKind, { fn: string; arg: string }> = {
   login: { fn: 'restore_login', arg: 'p_login_id' },
   case: { fn: 'restore_case', arg: 'p_case_id' },
   case_reply: { fn: 'restore_case_reply', arg: 'p_reply_id' },
+  equipment_row: { fn: 'restore_equipment_row', arg: 'p_row_id' },
 };
 
 /**

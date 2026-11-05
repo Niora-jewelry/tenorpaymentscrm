@@ -92,7 +92,9 @@ export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRo
     else columnsOf.set(c.field_id as string, [c.module_id as string]);
   }
 
-  return (data ?? []).map((f) => ({
+  // A row column is the system's own: its value isn't in `records.values`, so nothing
+  // on the Fields screen could do anything useful to it.
+  return (data ?? []).filter((f) => !f.row_column).map((f) => ({
     id: f.id,
     key: f.key,
     label: f.label,

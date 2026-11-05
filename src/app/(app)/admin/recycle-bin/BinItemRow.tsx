@@ -26,6 +26,7 @@ const LABEL: Record<BinKind, string> = {
   login: 'Login',
   case: 'Case',
   case_reply: 'Case reply',
+  equipment_row: 'Equipment row',
 };
 
 const ICON: Record<BinKind, IconName> = {
@@ -36,6 +37,7 @@ const ICON: Record<BinKind, IconName> = {
   login: 'key',
   case: 'lifebuoy',
   case_reply: 'reply',
+  equipment_row: 'file-text',
 };
 
 export function BinItemRow({ item }: { item: BinItem }) {

@@ -2,10 +2,13 @@
 
 /**
  * Merchant Equipment Setup actions. Parsed here; every rule is in the service and the
- * database. Each one revalidates the module, so the drawer redraws from what the
- * viewer may now see.
+ * database.
+ *
+ * Deliberately no `revalidatePath`, for the reason on the field save in `actions.ts`:
+ * it recomputes the whole route inside this action's own response, and every box in
+ * the panel would wait for that. Each action answers with the panel as the viewer may
+ * now see it, and the panel asks for a refresh afterwards, without waiting for it.
  */
-import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
 import { addEquipmentProvider, addEquipmentRow, deleteEquipmentRow, updateEquipmentRow, type EquipmentPanelData, type EquipmentResult } from '@/lib/equipment/service';
@@ -26,34 +29,26 @@ export async function addEquipmentRowAction(input: unknown): Promise<EquipmentRe
   const p = recordInput.safeParse(input);
   if (!p.success) return BAD;
   const ctx = await authorize();
-  const r = await addEquipmentRow(ctx, p.data.recordId);
-  revalidatePath(`/${p.data.moduleSlug}`);
-  return r;
+  return addEquipmentRow(ctx, p.data.recordId);
 }
 
 export async function updateEquipmentRowAction(input: unknown): Promise<EquipmentResult> {
   const p = updateInput.safeParse(input);
   if (!p.success) return BAD;
   const ctx = await authorize();
-  const r = await updateEquipmentRow(ctx, p.data.rowId, p.data.column, p.data.value);
-  revalidatePath(`/${p.data.moduleSlug}`);
-  return r;
+  return updateEquipmentRow(ctx, p.data.rowId, p.data.column, p.data.value);
 }
 
 export async function deleteEquipmentRowAction(input: unknown): Promise<EquipmentResult> {
   const p = rowInput.safeParse(input);
   if (!p.success) return BAD;
   const ctx = await authorize();
-  const r = await deleteEquipmentRow(ctx, p.data.rowId);
-  revalidatePath(`/${p.data.moduleSlug}`);
-  return r;
+  return deleteEquipmentRow(ctx, p.data.rowId);
 }
 
 export async function addEquipmentProviderAction(input: unknown): Promise<EquipmentResult<{ panel: EquipmentPanelData; providerId: string }>> {
   const p = providerInput.safeParse(input);
   if (!p.success) return BAD;
   const ctx = await authorize();
-  const r = await addEquipmentProvider(ctx, p.data.recordId, p.data.name);
-  revalidatePath(`/${p.data.moduleSlug}`);
-  return r;
+  return addEquipmentProvider(ctx, p.data.recordId, p.data.name);
 }

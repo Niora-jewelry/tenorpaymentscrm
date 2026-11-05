@@ -9,7 +9,8 @@
  * provider clears Billed by: the server does that, and this draws what the server
  * sends back, so the two cannot disagree.
  */
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button } from '@/proto/ui/kit';
 import { BILLED_TO_CHOICES, billedByChoices, displayValue, type ColumnValue } from '@/lib/equipment/columns';
@@ -32,6 +33,17 @@ const WIDTH: Record<EquipmentColumnView['kind'], string> = {
   checkbox: 'min-w-[64px]',
 };
 
+/**
+ * What a box shows while its save is on the way: the choice just made, not the old
+ * value. Once the save is over the server's answer is what counts, so a refused
+ * choice goes back by itself.
+ */
+function useChoiceWhileSaving<T>(value: T, pending: boolean): [T, (next: T) => void] {
+  const [choice, setChoice] = useState<{ value: T } | null>(null);
+  if (!pending && choice) setChoice(null);
+  return [pending && choice ? choice.value : value, (next) => setChoice({ value: next })];
+}
+
 export function EquipmentPanel({ moduleSlug, recordId, data }: { moduleSlug: string; recordId: string; data: EquipmentPanelData }) {
   // The page's own redraw and an action's answer both land here; the newest wins.
   const [seen, setSeen] = useState(data);
@@ -43,12 +55,26 @@ export function EquipmentPanel({ moduleSlug, recordId, data }: { moduleSlug: str
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * The rest of the drawer (the Updates count, and these rows when the sub-tab is left
+   * and come back to) catches up behind the save, without holding any box. One refresh
+   * after a burst of saves. Not cancelled on leaving the sub-tab: that is when it is
+   * needed most.
+   */
+  const refreshSoon = () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => router.refresh(), 400);
+  };
 
   const take = (r: { ok: true; data: EquipmentPanelData } | { ok: false; message: string }) => {
     if (r.ok) {
       setPanel(r.data);
       setSaved(true);
       setError(null);
+      refreshSoon();
     } else {
       setError(r.message);
     }
@@ -96,6 +122,7 @@ export function EquipmentPanel({ moduleSlug, recordId, data }: { moduleSlug: str
           return;
         }
         setPanel(added.data.panel);
+        refreshSoon();
         take(await updateEquipmentRowAction({ moduleSlug, rowId, column: 'provider_id', value: added.data.providerId }));
         done();
       } catch {
@@ -112,7 +139,9 @@ export function EquipmentPanel({ moduleSlug, recordId, data }: { moduleSlug: str
         {empty ? (
           <p className="px-3 py-6 text-center text-[13px] text-ink-400">No equipment rows yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          // `relative`: the header's screen-reader label is absolutely placed, and would
+          // otherwise escape this box and make the whole drawer scroll sideways.
+          <div className="relative overflow-x-auto">
             <table className="w-full border-collapse text-left">
               <thead>
                 <tr className="border-b border-line-soft bg-canvas text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">
@@ -236,16 +265,7 @@ function Cell({
 
   switch (column.kind) {
     case 'checkbox':
-      return (
-        <input
-          type="checkbox"
-          aria-label={label}
-          checked={value === true}
-          disabled={disabled || pending}
-          onChange={(e) => onSave(row.id, column.column, e.target.checked)}
-          className="mt-1.5 size-4 accent-brand-600 disabled:opacity-60"
-        />
-      );
+      return <CheckboxCell label={label} value={value} disabled={disabled} pending={pending} onChange={(v) => onSave(row.id, column.column, v)} />;
     case 'provider':
       return <ProviderCell panel={panel} row={row} column={column} label={label} pending={pending} onSave={onSave} onAddProvider={onAddProvider} />;
     case 'billed_by': {
@@ -255,34 +275,76 @@ function Cell({
         <Select
           label={label}
           value={value}
-          disabled={disabled || pending}
+          disabled={disabled}
+          pending={pending}
           choices={billedByChoices(providerName, providerShown, value)}
           onChange={(v) => onSave(row.id, column.column, v)}
         />
       );
     }
     case 'billed_to':
-      return <Select label={label} value={value} disabled={disabled || pending} choices={[...BILLED_TO_CHOICES]} onChange={(v) => onSave(row.id, column.column, v)} />;
+      return <Select label={label} value={value} disabled={disabled} pending={pending} choices={[...BILLED_TO_CHOICES]} onChange={(v) => onSave(row.id, column.column, v)} />;
     default:
       return <TextCell column={column} label={label} value={value} disabled={disabled} onCommit={(v) => onSave(row.id, column.column, v)} />;
   }
+}
+
+function CheckboxCell({
+  label,
+  value,
+  disabled,
+  pending,
+  onChange,
+}: {
+  label: string;
+  value: ColumnValue;
+  disabled: boolean;
+  pending: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  const [shown, setShown] = useChoiceWhileSaving(value === true, pending);
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={shown}
+      disabled={disabled || pending}
+      onChange={(e) => {
+        setShown(e.target.checked);
+        onChange(e.target.checked);
+      }}
+      className="mt-1.5 size-4 accent-brand-600 disabled:opacity-60"
+    />
+  );
 }
 
 function Select({
   label,
   value,
   disabled,
+  pending,
   choices,
   onChange,
 }: {
   label: string;
   value: ColumnValue;
   disabled: boolean;
+  pending: boolean;
   choices: { value: string; label: string }[];
   onChange: (value: string | null) => void;
 }) {
+  const [shown, setShown] = useChoiceWhileSaving(typeof value === 'string' ? value : '', pending);
   return (
-    <select aria-label={label} value={typeof value === 'string' ? value : ''} disabled={disabled} onChange={(e) => onChange(e.target.value || null)} className={BOX}>
+    <select
+      aria-label={label}
+      value={shown}
+      disabled={disabled || pending}
+      onChange={(e) => {
+        setShown(e.target.value);
+        onChange(e.target.value || null);
+      }}
+      className={BOX}
+    >
       <option value="" />
       {choices.map((c) => (
         <option key={c.value} value={c.value}>
@@ -312,6 +374,8 @@ function ProviderCell({
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
+  const current = row.values.provider_id;
+  const [shown, setShown] = useChoiceWhileSaving(typeof current === 'string' ? current : '', pending);
 
   if (adding) {
     const finish = () => {
@@ -343,15 +407,18 @@ function ProviderCell({
     );
   }
 
-  const value = row.values.provider_id;
   return (
     <select
       aria-label={label}
-      value={typeof value === 'string' ? value : ''}
+      value={shown}
       disabled={!column.canEdit || pending}
       onChange={(e) => {
-        if (e.target.value === ADD_PROVIDER) setAdding(true);
-        else onSave(row.id, column.column, e.target.value || null);
+        if (e.target.value === ADD_PROVIDER) {
+          setAdding(true);
+          return;
+        }
+        setShown(e.target.value);
+        onSave(row.id, column.column, e.target.value || null);
       }}
       className={BOX}
     >

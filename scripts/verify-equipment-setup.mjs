@@ -127,9 +127,9 @@ const recordUrl = `/${contacts.slug}?record=${probe.id}&tab=${where.tab_key}&sub
 
 const browser = await chromium.launch();
 const watchdog = setTimeout(() => {
-  fail.push('watchdog: the run took over 15 minutes');
+  fail.push('watchdog: the run took over 30 minutes');
   void browser.close();
-}, 15 * 60 * 1000);
+}, 30 * 60 * 1000);
 const errors = [];
 async function session(cookies) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 950 } });
@@ -224,7 +224,7 @@ try {
     const r = await dbRow(1);
     t('every fee starts NULL', [r.monthly_fee, r.per_item_fee, r.one_time_fee, r.volume_fee, r.item_amount].every((v) => v === null));
     t('a blank fee draws blank, not $0', (await box(adminPage, 'Monthly fee', 1).inputValue()) === '');
-    t('tab notes still under the panel', (await adminPage.getByPlaceholder('Add a note…').count()) >= 1);
+    t('tab notes still under the panel', (await adminPage.getByText(/^tab notes$/i).count()) >= 1);
     await shot(adminPage, 'eq-2-row');
   });
 
@@ -252,6 +252,9 @@ try {
     await typeInto(adminPage, 'Notes', 1, 'Probe note');
     t('Notes saved', (await dbRow(1)).notes === 'Probe note');
     const notes = box(adminPage, 'Notes', 1);
+    // Typing left the mouse over the box, and hovering is what opens it.
+    await adminPage.mouse.move(0, 0);
+    await adminPage.waitForTimeout(300);
     const small = (await notes.boundingBox()).height;
     await notes.click();
     await adminPage.waitForTimeout(250);
@@ -259,6 +262,14 @@ try {
     await notes.blur();
     t('Notes: one line, bigger on click', big > small * 1.5, `${small} → ${big}`);
     await adminPage.mouse.move(0, 0);
+    // The table scrolls inside its own box. The drawer around it must not move or scroll.
+    const sideways = await panel(adminPage).evaluate((el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) {
+        if (p.scrollLeft !== 0 || (getComputedStyle(p).overflowX !== 'visible' && p.scrollWidth > p.clientWidth + 1)) return `${p.tagName} ${p.scrollLeft} ${p.scrollWidth}/${p.clientWidth}`;
+      }
+      return null;
+    });
+    t('the drawer does not scroll sideways', sideways === null, sideways ?? '');
   });
 
   await step('admin: Billed by follows the provider', async () => {
@@ -310,6 +321,17 @@ try {
     await box(adminPage, 'Provider name', 2).selectOption({ label: 'NMI' });
     await idle(adminPage);
     t('one provider on many rows', (await dbRow(1)).provider_id === (await dbRow(2)).provider_id);
+
+    // Saves do not recompute the page, so leaving the sub-tab and coming back must still
+    // show them.
+    await box(adminPage, 'Item', 2).fill('Second probe item');
+    await box(adminPage, 'Item', 2).blur();
+    await idle(adminPage);
+    await adminPage.getByText('Merchant Equipment List', { exact: true }).click();
+    await panel(adminPage).waitFor({ state: 'detached', timeout: 30000 });
+    await adminPage.getByText('Merchant Equipment Setup', { exact: true }).click();
+    await panel(adminPage).waitFor({ timeout: 30000 });
+    t('saved rows are still there after leaving the sub-tab', await until(async () => (await box(adminPage, 'Item', 2).inputValue()) === 'Second probe item'));
   });
 
   await step('the log', async () => {
@@ -359,7 +381,8 @@ try {
     t('hidden column: no heading', !headers.includes('monthly fee') && headers.includes('per item fee'), headers.length + ' headings');
     t('hidden column: no cell', (await box(page, 'Monthly fee', 1).count()) === 0);
     const html = await page.content();
-    t('hidden column: the value is not in the page', !html.includes('monthly_fee') && !html.includes('eq_monthly_fee'));
+    // Exactly this key: other Pricing fields are called td_monthly_fee and so on.
+    t('hidden column: the value is not in the page', !/[\\"]monthly_fee[\\"]/.test(html) && !html.includes('eq_monthly_fee'));
     await setGrant('field', fieldId('eq_monthly_fee'), null);
     await shot(page, 'eq-5-hidden-column');
   });
@@ -412,6 +435,7 @@ try {
 
   await step('the Recycle Bin', async () => {
     await go(adminPage, '/admin/recycle-bin');
+    await adminPage.getByRole('tab', { name: /^Equipment/ }).or(adminPage.getByRole('button', { name: /^Equipment/ })).first().click();
     const entry = adminPage.locator('div.rounded-lg').filter({ hasText: 'Equipment row 2' }).filter({ hasText: NAME }).last();
     await entry.waitFor({ timeout: 30000 });
     t('admin: the row is in the bin, under its record', true);
@@ -429,7 +453,11 @@ try {
     await go(adminPage, `/admin/templates/${template.id}`);
     const text = await adminPage.locator('body').innerText();
     t('Permissions: "Add custom providers" is listed', text.includes('Add custom providers'));
-    t('Permissions: a column can be set on its own', text.includes('Per item fee') && text.includes('Merchant Equipment Setup'));
+    // The matrix starts collapsed; its search opens what it finds.
+    await adminPage.getByPlaceholder(/^Search module, tab, field or key/).fill('Per item fee');
+    await adminPage.waitForTimeout(500);
+    const found = await adminPage.locator('body').innerText();
+    t('Permissions: a column can be set on its own', found.includes('Per item fee') && found.includes('Merchant Equipment Setup'));
     await shot(adminPage, 'eq-8-permissions');
     await go(adminPage, '/admin/presets');
     t('Presets: the columns are not listed as fields', !(await adminPage.locator('body').innerText()).includes('Per item fee'));

@@ -47,6 +47,7 @@ export default async function RecycleBinPage() {
   const posts = of('update', 'reply');
   const logins = of('login');
   const cases = of('case', 'case_reply');
+  const equipment = of('equipment_row');
 
   const list = (rows: BinItem[]) => (
     <div className="space-y-2">
@@ -107,6 +108,15 @@ export default async function RecycleBinPage() {
       description:
         'Login rows from the Logins tab. Passwords are never read by this screen — they are reachable only through the reveal control on the record itself, which logs every use.',
       content: list(logins),
+    },
+    {
+      key: 'equipment',
+      label: 'Equipment',
+      icon: 'file-text',
+      count: equipment.length,
+      description:
+        'Rows deleted from Merchant Equipment Setup on a record. Restoring puts the row back on that record, under its old row number.',
+      content: list(equipment),
     },
     {
       key: 'users',

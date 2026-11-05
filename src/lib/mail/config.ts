@@ -8,7 +8,7 @@
 import 'server-only';
 import { serverEnv, mailBaseConfigured, mailProvider } from '@/lib/env.server';
 import { integrationValues, mailReadyFrom } from '@/lib/integrations/resolve';
-import { env } from '@/lib/env';
+import { appOrigin, usableOverride } from '@/lib/appOrigin';
 import { endpointsFor, type MailEndpoints } from './graph/endpoints';
 import { parseKey } from './crypto';
 import type { ClientCredentials } from './oauthClient';
@@ -39,11 +39,11 @@ export function mailConfig(): MailConfig {
   cached = {
     endpoints: endpointsFor(mailProvider, serverEnv.MAIL_MOCK_BASE_URL),
     redirectUri:
-      serverEnv.MAIL_REDIRECT_URI ?? `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/api/mail/oauth/callback`,
+      usableOverride(serverEnv.MAIL_REDIRECT_URI) ?? `${appOrigin()}/api/mail/oauth/callback`,
     stateSecret: serverEnv.MAIL_STATE_SIGNING_SECRET!,
     tokenKey: parseKey(serverEnv.MAIL_TOKEN_ENC_KEY!),
     webhooksEnabled: serverEnv.MAIL_WEBHOOKS_ENABLED === 'true',
-    webhookBase: (serverEnv.MAIL_WEBHOOK_BASE_URL ?? env.NEXT_PUBLIC_APP_URL).replace(/\/+$/, ''),
+    webhookBase: (usableOverride(serverEnv.MAIL_WEBHOOK_BASE_URL) ?? appOrigin()).replace(/\/+$/, ''),
   };
   return cached;
 }

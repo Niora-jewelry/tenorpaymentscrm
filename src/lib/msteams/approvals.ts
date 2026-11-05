@@ -41,16 +41,27 @@ export async function adminApprovalUrl(): Promise<string> {
   return `${base}/v2.0/adminconsent?${q.toString()}`;
 }
 
-/** The message someone copies and sends to their Microsoft admin. */
+/**
+ * The message someone copies and sends to their Microsoft admin. The admin only
+ * approves: the admin panel route comes first because it involves no sign-in page
+ * of ours at all, and the link covers a tenant where the app is not registered.
+ */
 export async function adminRequestText(): Promise<string> {
+  const { creds } = await mailApp();
   return [
     'Hello,',
     '',
-    'We use Tenor Payments CRM, and I need it connected to my Microsoft account so I can use my email, calendar and Teams chats there.',
-    'Our organization requires a Microsoft admin to approve this. Please open the link below, sign in with your admin account and approve it for the organization:',
+    'We use Tenor Payments CRM, and I need to connect my own Microsoft account to it for my email, calendar and Teams chats. Our organization requires a Microsoft admin to approve the app once. You do not sign in to the CRM, and none of your own mail or accounts get connected.',
     '',
+    'Option 1, in the admin panel:',
+    '1. Go to https://entra.microsoft.com and open Entra ID, then App registrations, then All applications.',
+    `2. Open the app with Application ID ${creds.clientId}.`,
+    '3. Open API permissions, click Grant admin consent, then Yes.',
+    '',
+    "Option 2, Microsoft's approval page, which lists every permission the CRM asks for. Use this if the app is not listed above, or if I still get asked for approval after Option 1:",
     await adminApprovalUrl(),
+    'Sign in there with your admin account, review the permissions, click Accept and close the page.',
     '',
-    'After approving, you can close the page. Thank you.',
+    'Please let me know when it is done, and I will connect my own account. Thank you.',
   ].join('\n');
 }

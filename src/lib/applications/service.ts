@@ -16,7 +16,7 @@ import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { companyBody, companyFromOption, queueCrmMail, sendingInboxFor, SendingInboxError, type SendingInbox } from '@/lib/mail/sendingInbox';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { env } from '@/lib/env';
+import { appOrigin } from '@/lib/appOrigin';
 import { loadConfig } from '@/lib/records/config';
 import { assertAdminPage } from '@/lib/records/adminConfig';
 import { permissionsFor, type AuthContext } from '@/lib/records/permissions';
@@ -77,7 +77,7 @@ async function requireApplicationsEdit(ctx: AuthContext, recordId: string): Prom
   if ((await requireTabAdd(ctx, recordId, tab)) !== 'edit') throw new ApplicationError('No edit access to applications.');
 }
 
-export const linkFor = (token: string) => `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/apply/${token}`;
+export const linkFor = (token: string) => `${appOrigin()}/apply/${token}`;
 
 // ── reading ─────────────────────────────────────────────────────────────────
 

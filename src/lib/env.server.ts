@@ -131,7 +131,7 @@ const serverSchema = z.object({
   MAIL_TOKEN_ENC_KEY: optionalString,
   /** Comma-separated Entra tenant ids allowed to connect. Blank = any work tenant. */
   MAIL_ALLOWED_TENANT_IDS: optionalString,
-  /** Override for a local tunnel only. Default: `${NEXT_PUBLIC_APP_URL}/api/mail/oauth/callback`. */
+  /** Override for a local tunnel only; a localhost value is ignored on a deployed site. Default: `${NEXT_PUBLIC_APP_URL}/api/mail/oauth/callback`. */
   MAIL_REDIRECT_URI: optionalString,
   /** Graph change notifications. Only 'true' turns them on, and only in production. */
   MAIL_WEBHOOKS_ENABLED: optionalString,

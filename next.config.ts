@@ -194,9 +194,9 @@ const nextConfig: NextConfig = {
        * Including them means the first deploy works before anyone has
        * configured anything, and preview deployments work permanently.
        *
-       * NEXT_PUBLIC_APP_URL is still worth setting — Twilio's callbacks are
-       * built from it (see lib/twilio/webhook-request.ts) and there is no
-       * fallback for that.
+       * NEXT_PUBLIC_APP_URL is still worth setting: it is the address every
+       * link and callback uses, and a custom domain needs it. lib/appOrigin.ts
+       * covers a localhost value on a deployed site.
        */
       allowedOrigins: [
         new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').host,

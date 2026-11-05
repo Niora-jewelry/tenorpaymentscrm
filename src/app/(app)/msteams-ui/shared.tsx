@@ -172,7 +172,7 @@ export function ConnectScreen({ kind, accounts, waiting, requestText, errorText,
         ) : waiting ? (
           <>
             <p className="mt-2 text-[13px] leading-relaxed text-ink-500">Your organization’s Microsoft admin has to approve Tenor before your account can finish connecting. No data loads until they do. Copy this request and send it to them, then try again once they have approved it.</p>
-            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={7} className="mt-3 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-700 outline-none" />
+            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={10} className="mt-3 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] leading-relaxed text-ink-700 outline-none" />
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 variant="secondary"
@@ -218,10 +218,10 @@ export function ConnectScreen({ kind, accounts, waiting, requestText, errorText,
           cancel, so the waiting screen above never appears: this has to be here too.
         */}
         {!impersonating && !waiting && requestText ? (
-          <details className="mt-5 border-t border-line-faint pt-3">
+          <details open={Boolean(errorText)} className="mt-5 border-t border-line-faint pt-3">
             <summary className="cursor-pointer text-[12.5px] font-medium text-ink-600">Microsoft says you need admin approval?</summary>
-            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">A Microsoft admin approves Tenor once for your whole organization. You keep signing in with your own account. Send them this:</p>
-            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={6} className="mt-2 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] text-ink-700" />
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">A Microsoft admin approves Tenor once for your whole organization, in the Microsoft admin panel. They never sign in to this CRM. Send them this message, then click Connect Microsoft again with your normal account. Don’t use “Have an admin account?” on Microsoft’s page: that can connect the admin’s account instead of yours.</p>
+            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={10} className="mt-2 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] text-ink-700" />
             <div className="mt-2">
               <Button
                 size="sm"

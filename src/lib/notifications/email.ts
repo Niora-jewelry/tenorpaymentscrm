@@ -10,6 +10,7 @@
  * never gets the row, so there is nothing here to skip. Failures are logged,
  * never thrown: the mention itself stands.
  */
+import { appOrigin } from '@/lib/appOrigin';
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { sendMentionEmail } from '@/lib/email/send';
@@ -30,14 +31,6 @@ type Row = {
   revoked_at: string | null;
   email_sent_at: string | null;
 };
-
-function appOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const platform = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
-  const looksLocal = !configured || /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(configured);
-  if (process.env.NODE_ENV === 'production' && looksLocal && platform) return `https://${platform.replace(/\/+$/, '')}`;
-  return (configured || 'http://localhost:3000').replace(/\/+$/, '');
-}
 
 export async function deliverMentionEmails(ids: string[]): Promise<{ sent: number; skipped: number }> {
   const out = { sent: 0, skipped: 0 };

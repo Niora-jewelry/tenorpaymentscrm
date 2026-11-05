@@ -9,7 +9,7 @@
 import 'server-only';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { sendAlertTest, verifySmtpLogin } from '@/lib/email/send';
-import { env } from '@/lib/env';
+import { appOrigin } from '@/lib/appOrigin';
 import { canOpenAdminPage, permissionsFor, type AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { cleanValue, hintFor, isSwitchable, settingDef, SETTINGS, settingsIn, type IntegrationGroup, type SettingKind } from './catalog';
@@ -19,7 +19,7 @@ import { agreementsReadyFrom, forgetIntegrationValues, integrationSnapshot, mail
 
 export class IntegrationError extends Error {}
 
-export const siteOrigin = (): string => env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
+export const siteOrigin = (): string => appOrigin();
 
 export const GROUPS: { group: IntegrationGroup; title: string; powers: string }[] = [
   { group: 'twilio', title: 'Twilio', powers: 'Calls, call recordings, voicemail and text messages.' },

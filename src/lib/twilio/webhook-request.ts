@@ -21,6 +21,7 @@
  * and was wrong: Twilio validates the callback URL up front. Worth keeping,
  * because "loud" is what makes it findable.
  */
+import { publicOrigin as configuredOrigin } from '@/lib/appOrigin';
 import 'server-only';
 import twilio from 'twilio';
 import type { NextRequest } from 'next/server';
@@ -50,7 +51,7 @@ export function publicOrigin(request: NextRequest): string {
  * Our public base URL from configuration, for server-action-initiated calls
  * (SMS delivery callbacks, and any outbound dial we place ourselves).
  *
- * Returns null when `NEXT_PUBLIC_APP_URL` is unset so the caller can fail with
+ * Returns null when nothing says what our address is, so the caller can fail with
  * a clear configuration error rather than handing Twilio a URL it will reject.
  *
  * ⚠ LOCAL DEVELOPMENT: this must point at your tunnel (e.g. a cloudflared
@@ -60,8 +61,7 @@ export function publicOrigin(request: NextRequest): string {
  * green send with a perpetually "queued" bubble means exactly this.
  */
 export function getPublicBaseUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  return url ? url.replace(/\/+$/, '') : null;
+  return configuredOrigin();
 }
 
 /**

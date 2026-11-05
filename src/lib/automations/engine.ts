@@ -14,7 +14,7 @@ import { mailReady } from '@/lib/integrations/resolve';
 import { OUTBOX_BUCKET, sendDue } from '@/lib/mail/compose/send';
 import { loadConfig, type Config } from '@/lib/records/config';
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { env } from '@/lib/env';
+import { appOrigin } from '@/lib/appOrigin';
 import { FILES_BUCKET } from './service';
 import { customAddresses, type EmailStep } from './steps';
 import { bodyHtml, fill, type Values } from './template';
@@ -217,7 +217,7 @@ async function emailAlerts(): Promise<void> {
         automationName: r.automation_name as string,
         recordName: (r.record_label as string | null) ?? 'a record',
         reason: (r.reason as string | null) ?? 'It stopped.',
-        href: `${env.NEXT_PUBLIC_APP_URL}/admin/automations/runs?automation=${r.automation_id as string}`,
+        href: `${appOrigin()}/admin/automations/runs?automation=${r.automation_id as string}`,
       });
       sent = sent || res.ok;
     }

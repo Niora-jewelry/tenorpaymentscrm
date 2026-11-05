@@ -17,7 +17,7 @@ import { after } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { companyBody, companyFromOption, queueCrmMail, sendingInboxFor, SendingInboxError, type SendingInbox } from '@/lib/mail/sendingInbox';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { env } from '@/lib/env';
+import { appOrigin } from '@/lib/appOrigin';
 import { loadConfig, type Config } from '@/lib/records/config';
 import type { AuthContext } from '@/lib/records/permissions';
 import { hiddenFieldKeysFor, requireTabAdd, tabAccess } from '@/lib/records/tabAccess';
@@ -41,7 +41,7 @@ export const PROPOSAL_EXPIRY_DAYS = 30;
 export type ProposalStatus = 'sent' | 'viewed' | 'approved' | 'expired' | 'voided';
 
 export const proposalLabel = (n: number) => `PRO-${String(n).padStart(6, '0')}`;
-export const proposalLinkFor = (token: string) => `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '')}/proposal/${token}`;
+export const proposalLinkFor = (token: string) => `${appOrigin()}/proposal/${token}`;
 
 /** Expired is a date, not a write. */
 export function effectiveProposalStatus(p: { status: string; expires_at: string }): ProposalStatus {

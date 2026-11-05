@@ -27,6 +27,7 @@
  * sends arrive in bursts (request, resend, a colleague signing up minutes
  * later).
  */
+import { appOrigin } from '@/lib/appOrigin';
 import 'server-only';
 import nodemailer, { type Transporter } from 'nodemailer';
 import { serverEnv, isProduction } from '@/lib/env.server';
@@ -251,37 +252,6 @@ function sendStamp(): string {
       hour12: false,
     }) + ' UTC'
   );
-}
-
-/**
- * The origin that links in emails are built from.
- *
- * `NEXT_PUBLIC_APP_URL` is the configured answer and is used whenever it is
- * sensible. The fallback exists for one specific, silent failure: that
- * variable is `http://localhost:3000` in local development, and a deployment
- * that inherits it unchanged sends every invited person a button pointing at
- * their OWN machine. The link is not broken in a way anyone can see - it
- * opens a browser, fails to connect, and looks like the recipient's problem.
- *
- * So in production a localhost value is refused in favour of the deployment's
- * own hostname, which the platform sets and nobody has to remember to.
- */
-function appOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const platform =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
-
-  const looksLocal = !configured || /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(configured);
-
-  if (isProduction && looksLocal && platform) {
-    console.warn(
-      '[email] NEXT_PUBLIC_APP_URL is unset or points at localhost in production; ' +
-        `using ${platform} for email links instead. Set it to the real site URL.`,
-    );
-    return `https://${platform.replace(/\/+$/, '')}`;
-  }
-
-  return (configured || 'http://localhost:3000').replace(/\/+$/, '');
 }
 
 

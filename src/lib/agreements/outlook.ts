@@ -12,7 +12,7 @@
  */
 import 'server-only';
 import { randomBytes } from 'node:crypto';
-import { env } from '@/lib/env';
+import { appOrigin } from '@/lib/appOrigin';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { hashTicket, toPostgresBytea } from '@/lib/security/otp';
 import { fromBytea } from '@/lib/mail/crypto';
@@ -69,7 +69,7 @@ export function openSignerLink(s: Pick<SignerRow, 'id' | 'link_sealed' | 'link_i
   return openText({ data: fromBytea(s.link_sealed), iv: fromBytea(s.link_iv) }, `agreement-link:${s.id}`);
 }
 
-const base = () => env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
+const base = () => appOrigin();
 export const signerLinkUrl = (token: string) => `${base()}/sign/${token}`;
 export const signingRedirects = () => ({ redirectUrl: `${base()}/sign/complete`, declineRedirectUrl: `${base()}/sign/declined` });
 

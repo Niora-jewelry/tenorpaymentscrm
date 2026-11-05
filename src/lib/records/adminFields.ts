@@ -32,9 +32,10 @@ import { loadConfig, type FieldType } from './config';
 import { assertAdminPage, slugifyKey, UNIQUE_VIOLATION, CHECK_VIOLATION, type Result } from './adminConfig';
 import type { ChangeFieldTypeInput, CreateFieldInput, FieldSetupInput, UpdateFieldInput } from './adminSchemas';
 import { normaliseChoices } from './adminChoices';
+import type { Need } from './fieldNeeds';
 
 export type GridColumn = { label: string; type: FieldType; options?: string[] };
-export type RepeatMember = { key: string; label: string; type: FieldType; sensitive?: boolean };
+export type RepeatMember = { key: string; label: string; type: FieldType; sensitive?: boolean; application_need?: Need; agreement_need?: Need };
 
 export type AdminFieldRow = {
   id: string;
@@ -47,6 +48,8 @@ export type AdminFieldRow = {
   hint: string | null;
   section: string | null;
   required: boolean;
+  applicationNeed: Need;
+  agreementNeed: Need;
   sensitive: boolean;
   wide: boolean;
   notesEnabled: boolean;
@@ -103,6 +106,8 @@ export async function listFieldsForAdmin(ctx: AuthContext): Promise<AdminFieldRo
     hint: f.hint,
     section: f.section ?? null,
     required: f.required,
+    applicationNeed: f.application_need ?? 'none',
+    agreementNeed: f.agreement_need ?? 'none',
     sensitive: f.sensitive,
     wide: f.wide,
     notesEnabled: f.notes_enabled,
@@ -175,6 +180,8 @@ export async function createFieldWithSetup(ctx: AuthContext, input: FieldSetupIn
       hint: input.hint,
       section: input.section,
       required: input.required,
+      application_need: input.applicationNeed,
+      agreement_need: input.agreementNeed,
       sensitive: input.sensitive,
       notes_enabled: input.notesEnabled,
       address_enabled: input.addressEnabled,
@@ -304,6 +311,8 @@ export async function createField(ctx: AuthContext, input: CreateFieldInput): Pr
       hint: input.hint.trim() || null,
       section: input.section.trim() || null,
       required: input.required,
+      application_need: input.applicationNeed,
+      agreement_need: input.agreementNeed,
       sensitive: input.sensitive,
       wide: input.wide,
       notes_enabled: input.notesEnabled,
@@ -376,6 +385,8 @@ export async function updateField(ctx: AuthContext, input: UpdateFieldInput): Pr
       hint: input.hint.trim() || null,
       section: input.section.trim() || null,
       required: input.required,
+      application_need: input.applicationNeed,
+      agreement_need: input.agreementNeed,
       sensitive: input.sensitive,
       wide: input.wide,
       notes_enabled: input.notesEnabled,

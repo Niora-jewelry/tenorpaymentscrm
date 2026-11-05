@@ -7,7 +7,7 @@
  *
  * Pure: takes the configuration, returns data. No module or field is named here.
  */
-import type { Config } from './config';
+import type { Config, Field } from './config';
 
 export type FieldProblem = { fieldKey: string; index?: number; member?: string; message: string };
 export type ProblemItem = { fieldKey: string; index?: number; member?: string; label: string; message: string; tabKey: string | null; subtabKey: string | null };
@@ -46,13 +46,20 @@ export { filled as isFilled };
 /**
  * Fields an admin marked Required in Presets, among the ones a document uses:
  * those join the document's own list. A field the sender cannot see is reported
- * without its value, so the list never discloses it.
+ * without its value, so the list never discloses it. A document with its own
+ * Presets list says which fields are required through `isRequired`.
  */
-export function requiredFlagProblems(config: Config, values: Record<string, unknown>, usedKeys: readonly string[], hidden: Set<string>): FieldProblem[] {
+export function requiredFlagProblems(
+  config: Config,
+  values: Record<string, unknown>,
+  usedKeys: readonly string[],
+  hidden: Set<string>,
+  isRequired: (f: Field) => boolean = (f) => f.required,
+): FieldProblem[] {
   const out: FieldProblem[] = [];
   for (const key of usedKeys) {
     const f = config.fields.find((x) => x.key === key);
-    if (!f?.required) continue;
+    if (!f || !isRequired(f)) continue;
     if (hidden.has(key)) out.push({ fieldKey: key, message: 'required, in a section you can’t see. Ask someone who can to fill it in.' });
     else if (!filled(values[key])) out.push({ fieldKey: key, message: 'required. Fill it in first.' });
   }

@@ -29,14 +29,14 @@ import { fromBytea } from '@/lib/mail/crypto';
 import { choiceLabels, merchantName, recordForApplication } from '@/lib/applications/store';
 import { openBytes, openText, sealBytes, sealText } from './crypto';
 import { describeSignerProblem, selectSigners, type Signer, type SignerProblem } from './signers';
-import { ownerName, ownersOf, renderAgreement, requiredProblems, signerDetailProblems } from './mapping';
+import { ownerName, ownersOf, renderAgreement, requiredFromFieldNeeds, requiredProblems, signerDetailProblems } from './mapping';
 import { agreementFileName, fillAndFlatten, loadTemplate, signatureSpots, templateInstalled, TemplateMissingError } from './pdf';
 import { achAuthorization, appendAchAuthorization } from './achAuthorization';
 import { buildSnapshot, diffSnapshot, showValue, type Snapshot } from './snapshot';
 import { agreementsReady, signwellTestMode, vendor } from './vendor';
 import { VendorError } from './vendor/types';
 import type { AgreementKindDef, AgreementProblem, AgreementSource } from './kinds/types';
-import { activeKinds, agreementById, agreementSettings, agrLabel, isOpen, newId, openAgreementFor, signersFor, type AgreementRow, type AgreementStatus, type Settings, type SignerRow, type SignerStatus } from './store';
+import { activeKinds, agreementById, agreementSettings, agrLabel, isOpen, kindSetsGlowStage, newId, openAgreementFor, signersFor, type AgreementRow, type AgreementStatus, type Settings, type SignerRow, type SignerStatus } from './store';
 import { storeCompletedPdf } from './download';
 import { deliveryFor, DeliveryError, emailNewLink, emailSigningLinks, emailWithdrawn, newSignerLink, remindSigners, signingRedirects } from './outlook';
 import { sendingInboxFor } from '@/lib/mail/sendingInbox';
@@ -129,6 +129,11 @@ function signerProblems(problems: SignerProblem[], src: AgreementSource): Agreem
   }));
 }
 
+/** The kind as the checks should see it: a kind that sets the glow stage takes its required list from Presets. */
+async function checkedKind(kind: AgreementKindDef, config: Config): Promise<AgreementKindDef> {
+  return (await kindSetsGlowStage(kind.key)) ? { ...kind, required: requiredFromFieldNeeds(kind, config.fields) } : kind;
+}
+
 /** Every rule of spec §5, at once. Past four principals nobody can sign yet, so their details wait. */
 function sendProblems(kind: AgreementKindDef, src: AgreementSource, picked: ReturnType<typeof selectSigners>): AgreementProblem[] {
   const tooMany = picked.problems.some((p) => p.kind === 'too_many');
@@ -192,7 +197,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
   const { src, dealName } = found;
 
   const picked = selectSigners(ownerInputs(src.values));
-  const problems = sendProblems(kind, src, picked);
+  const problems = sendProblems(await checkedKind(kind, config), src, picked);
   const ach = achAuthorization(src, picked.signers);
   if (open) problems.push({ fieldKey: 'owner_ownership', message: `This ${kind.label.toLowerCase()} is already out (${agrLabel(open.number)}). Void it first.` });
 
@@ -274,7 +279,7 @@ export async function sendAgreement(ctx: AuthContext, input: SendInput): Promise
 
   // The same check again, on the server: never the browser alone (spec §5).
   const picked = selectSigners(ownerInputs(src.values));
-  const problems = sendProblems(kind, src, picked);
+  const problems = sendProblems(await checkedKind(kind, await loadConfig()), src, picked);
   if (problems.length) throw new AgreementError(`Can't send yet: ${problems.length} item${problems.length === 1 ? '' : 's'} need fixing. Open the check to see them.`);
   if (await openAgreementFor(input.recordId, kind.key)) throw new AgreementError(`This ${kind.label.toLowerCase()} is already out. Void it first.`);
 

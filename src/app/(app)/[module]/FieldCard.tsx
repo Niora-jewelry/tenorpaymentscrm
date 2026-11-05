@@ -64,6 +64,7 @@ export function FieldLabelRow({
   handle,
   children,
   tone = 'default',
+  meaning,
 }: {
   field: Pick<ProtoField, 'id' | 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type'>;
   requiredEmpty?: boolean;
@@ -72,6 +73,9 @@ export function FieldLabelRow({
   /** Right-hand controls. */
   children?: ReactNode;
   tone?: 'default' | 'muted';
+  /** What the field's glow means. The label has a title of its own, which would
+   *  otherwise answer instead of the box's. */
+  meaning?: string;
 }) {
   return (
     <div className="flex min-w-0 items-start gap-1.5">
@@ -80,7 +84,7 @@ export function FieldLabelRow({
         className={`line-clamp-2 min-w-0 break-words text-[11px] font-semibold uppercase leading-[15px] tracking-[.05em] ${
           tone === 'muted' ? 'text-ink-400' : 'text-ink-500'
         }`}
-        title={field.label}
+        title={meaning ? `${field.label}: ${meaning}` : field.label}
       >
         {field.label}
         {field.required ? <span className="ml-0.5 text-warn" aria-label="required">*</span> : null}

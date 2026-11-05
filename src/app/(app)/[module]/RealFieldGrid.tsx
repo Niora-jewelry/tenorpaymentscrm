@@ -55,6 +55,8 @@ import {
   queueEdit, flushPendingEdits, type PendingEdit,
 } from './recordVersion';
 import type { RepeatGroupDef } from './DrawerTabs';
+import { glowAttrs, useFieldGlow } from './FieldGlow';
+import { fieldGlow, memberGlow, signersFor, type Glow } from '@/lib/records/fieldGlow';
 import { NoteThread } from './NoteThread';
 import {
   FIELD_GRID, FIELD_GRID_CONTAINER, FIELD_VALUE_SLOT, FieldLabelRow, SectionHeading,
@@ -128,6 +130,8 @@ type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes'
  * collide with the label row's own trailing notes-toggle button. */
 /** A repeat group's section, addressable like a field card so a `?field=`
  *  link or a search pick can land on it. */
+const NO_SIGNERS: ReadonlySet<number> = new Set();
+
 function RepeatGroupSection({ groupKey, flash, children }: { groupKey: string; flash: boolean; children: React.ReactNode }) {
   const flashing = useFlashTarget(targetId.field(groupKey), flash);
   return (
@@ -139,10 +143,10 @@ function RepeatGroupSection({ groupKey, flash, children }: { groupKey: string; f
 
 /** One member's card. A search pick scrolls to the first instance and flashes
  *  this member on all of them: the viewer asked for "Phone", not for owner 1's. */
-function RepeatMemberCell({ targetKey, first, flash, span, fullRow, children }: { targetKey: string; first: boolean; flash: boolean; span: string; fullRow: boolean; children: React.ReactNode }) {
+function RepeatMemberCell({ targetKey, first, flash, span, fullRow, glow, pulse, children }: { targetKey: string; first: boolean; flash: boolean; span: string; fullRow: boolean; glow: Glow | null; pulse: boolean; children: React.ReactNode }) {
   const flashing = useFlashTarget(targetId.field(targetKey), flash);
   return (
-    <div id={first ? targetId.field(targetKey) : undefined} style={{ gridColumn: span }} className={`${fieldCardClass({ fullRow })} ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}>
+    <div id={first ? targetId.field(targetKey) : undefined} {...glowAttrs(glow, pulse || flashing)} style={{ gridColumn: span }} className={`${fieldCardClass({ fullRow })} ${flashing && !glow ? `z-10 ${FLASH_CLASS}` : ''}`}>
       {children}
     </div>
   );
@@ -153,6 +157,7 @@ function SortableFieldCell({
   span,
   requiredEmpty,
   flash = false,
+  glow = null,
   children,
 }: {
   id: string;
@@ -161,6 +166,8 @@ function SortableFieldCell({
   requiredEmpty?: boolean;
   /** A mention link landed on this field: scroll to it and flash. */
   flash?: boolean;
+  /** Its highlight, if it has one: a landing then pulses that instead of the ring. */
+  glow?: Glow | null;
   children: (handle: DragHandleProps) => ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -184,9 +191,10 @@ function SortableFieldCell({
        * A required-but-empty box is amber-bordered.
        */
       id={targetId.field(id)}
+      {...glowAttrs(glow, flashing)}
       className={`${fieldCardClass({ requiredEmpty, fullRow: span === '1 / -1' })} ${
         isDragging ? 'z-10 opacity-40' : ''
-      } ${flashing ? `z-10 ${FLASH_CLASS}` : ''}`}
+      } ${flashing ? (glow ? 'z-10' : `z-10 ${FLASH_CLASS}`) : ''}`}
     >
       {children({ attributes, listeners })}
     </div>
@@ -202,6 +210,7 @@ export function RealFieldGrid({
   subtabId,
   fields,
   repeatGroups,
+  glowSigners,
   hasCustomFieldOrder,
   grantByKey,
   values,
@@ -239,6 +248,8 @@ export function RealFieldGrid({
   subtabId: string | null;
   fields: ProtoField[];
   repeatGroups: RepeatGroupDef[];
+  /** The owner rows chosen to sign, worked out across the whole drawer. */
+  glowSigners?: ReadonlySet<number>;
   hasCustomFieldOrder: boolean;
   grantByKey: Record<string, Grant>;
   /*
@@ -273,6 +284,8 @@ export function RealFieldGrid({
 }) {
   // Files fields are empty or not by their uploads, which live outside `values`.
   const fieldFiles = useFieldFiles();
+  const { stage: glowStage, showing: glowsShowing } = useFieldGlow();
+  const signers = glowSigners ?? NO_SIGNERS;
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [openAddress, setOpenAddress] = useState<Set<string>>(new Set());
   // What this session saved, ahead of the server's next render.
@@ -763,16 +776,22 @@ export function RealFieldGrid({
                     ? !(fieldFiles?.list(f.id).length)
                     : v == null || v === '' || (Array.isArray(v) && !v.length) ||
                       (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v as object).length);
+                  // Locked and view-only fields glow too (spec): this asks nothing about the grant.
+                  const glow = glowsShowing
+                    ? fieldGlow(f, glowStage, v, (notesByField[`field:${f.id}`] ?? []).length > 0, f.type === 'file' ? fieldEmpty : undefined)
+                    : null;
                   const fieldMentions = mentionsByField[f.id] ?? [];
                   const landedHere = openMention?.fieldKey === f.id || focusFieldKey === f.id;
                   const noteCount = (notesByField[`field:${f.id}`] ?? []).length;
-                  const requiredEmpty = Boolean(f.required && fieldEmpty);
+                  // The highlight says it instead: an amber box beside an orange glow reads as two rules.
+                  const requiredEmpty = Boolean(f.required && fieldEmpty && !glow);
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={requiredEmpty} flash={landedHere}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={requiredEmpty} flash={landedHere} glow={glow}>
                       {(handle) => (
                       <>
                       <FieldLabelRow
                         field={f}
+                        meaning={glow?.meaning}
                         requiredEmpty={requiredEmpty}
                         handle={
                           <button
@@ -971,6 +990,9 @@ export function RealFieldGrid({
                         sensitive: member.sensitive, hint: member.hint, digits: member.digits,
                         tab: '', columnIn: [],
                       };
+                      const glow = glowsShowing
+                        ? memberGlow(member, glowStage, index, Boolean(group.glowSignersOnly), signers, instance[member.key])
+                        : null;
                       return (
                         <RepeatMemberCell
                           key={`${index}-${member.key}`}
@@ -979,8 +1001,10 @@ export function RealFieldGrid({
                           flash={focusFieldKey === memberKey(group.key, member.key)}
                           span={spanFor(memberField)}
                           fullRow={isFullRow(memberField.type)}
+                          glow={glow}
+                          pulse={focusFieldKey === group.key || focusFieldKey === memberKey(group.key, member.key)}
                         >
-                          <FieldLabelRow field={memberField} tone="muted" />
+                          <FieldLabelRow field={memberField} tone="muted" meaning={glow?.meaning} />
                           <div className={FIELD_VALUE_SLOT}>
                           <FieldRenderer
                             field={memberField}

@@ -103,6 +103,23 @@ export function signerDetailProblems(src: AgreementSource, ownerIndexes: number[
   return out;
 }
 
+/**
+ * The required list of a kind that takes it from Presets (Field Highlight Glows
+ * spec: "the lists can be changed without a developer"). The kind's own wording
+ * is kept where it has some, because it can carry an instruction (Prior
+ * processor: type "No" if none). Repeat groups stay with the signer rules, which
+ * ask per chosen principal.
+ */
+export function requiredFromFieldNeeds(
+  kind: AgreementKindDef,
+  fields: readonly { key: string; label: string; type: string; agreementNeed: string }[],
+): AgreementKindDef['required'] {
+  const worded = new Map(kind.required.map((r) => [r.fieldKey, r.label]));
+  return fields
+    .filter((f) => f.agreementNeed === 'required' && f.type !== 'repeat_group')
+    .map((f) => ({ fieldKey: f.key, label: worded.get(f.key) ?? f.label }));
+}
+
 /** Spec §5: required fields, conditional rules, totals. "0 counts as filled". */
 export function requiredProblems(kind: AgreementKindDef, src: AgreementSource): AgreementProblem[] {
   const out: AgreementProblem[] = [];

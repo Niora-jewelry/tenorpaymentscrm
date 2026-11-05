@@ -26,6 +26,7 @@ import {
   NEW_FIELD_TYPES, NEW_FIELD_TYPE_LABELS, AUTO_SOURCES, AUTO_SOURCE_LABELS, CHOICE_FIELD_TYPES, SWATCHES,
 } from '@/lib/records/adminSchemas';
 import type { AdminFieldRow } from '@/lib/records/adminFields';
+import type { Need } from '@/lib/records/fieldNeeds';
 import type { AdminTabRow, AdminSubtabRow } from '@/lib/records/adminPresets';
 import { createFieldAction, updateFieldAction, changeFieldTypeAction, type PresetFormState } from './actions';
 
@@ -87,6 +88,36 @@ function Toggle({
         <span className="absolute left-0.5 top-0.5 size-[14px] rounded-full bg-white shadow transition-transform peer-checked:translate-x-[14px]" />
       </span>
     </label>
+  );
+}
+
+/**
+ * The Field Highlight Glows lists: what this field is to each form. Required
+ * blocks sending and glows; Optional only glows; Not on this form does neither.
+ */
+function FormNeeds({ application = 'none', agreement = 'none' }: { application?: Need; agreement?: Need }) {
+  const select = (name: string, label: string, value: Need) => (
+    <label className="min-w-0">
+      <span className="block text-[13px] font-medium text-ink-800">{label}</span>
+      <select name={name} defaultValue={value} className={inputClass}>
+        <option value="required">Required</option>
+        <option value="optional">Optional</option>
+        <option value="none">Not on this form</option>
+      </select>
+    </label>
+  );
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3">
+        {select('applicationNeed', 'Application', application)}
+        {select('agreementNeed', 'Agreement', agreement)}
+      </div>
+      <p className="mt-2 text-[11.5px] leading-snug text-ink-400">
+        Required: must be filled before that form can be sent, and glows while empty. Optional: glows while empty, never
+        stops a send. Not on this form: no glow and no check. The application sets the colors until it is sent, then the
+        agreement does.
+      </p>
+    </>
   );
 }
 
@@ -491,6 +522,10 @@ export function CreateFieldForm({
             </div>
           </Group>
 
+          <Group title="Application and agreement">
+            <FormNeeds />
+          </Group>
+
           <Group title="Where it shows">
             <ShowsIn modules={modules} inVital={false} columnModuleIds={[]} />
           </Group>
@@ -593,6 +628,10 @@ export function EditFieldForm({
               <Toggle name="addressEnabled" label="Allow an address" hint="A pin beside the notes that holds one address." defaultChecked={field.addressEnabled} />
               <Toggle name="sensitive" label="Sensitive" hint="Masked until revealed; every reveal is logged." defaultChecked={field.sensitive} />
             </div>
+          </Group>
+
+          <Group title="Application and agreement">
+            <FormNeeds application={field.applicationNeed} agreement={field.agreementNeed} />
           </Group>
 
           <Group title="Where it shows">

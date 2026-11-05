@@ -128,4 +128,11 @@ export async function activeKinds(): Promise<AgreementKindDef[]> {
   return rows.map((r) => kindFor(r.key)).filter((k): k is AgreementKindDef => Boolean(k)).map((k) => ({ ...k, label: rows.find((r) => r.key === k.key)?.label ?? k.label }));
 }
 
+/** Whether this kind's required list comes from Presets. It also moves the field glows. */
+export async function kindSetsGlowStage(key: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin().from('agreement_kinds').select('sets_glow_stage').eq('key', key).maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.sets_glow_stage);
+}
+
 export { KINDS };

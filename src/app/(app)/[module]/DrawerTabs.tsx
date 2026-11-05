@@ -14,6 +14,10 @@ import type { Candidate, NotificationView } from '@/lib/records/notifications';
 import type { FieldPath } from './UpdatesPanel';
 import { Icon } from '@/proto/ui/icons';
 import { CountPill, CompletenessBadge } from '@/proto/ui/kit';
+import { useFieldFiles } from '@/proto/ui/fieldFiles';
+import { useFieldGlow } from './FieldGlow';
+import { requiredCount, signersFor, type GlowCount } from '@/lib/records/fieldGlow';
+import type { Need } from '@/lib/records/fieldNeeds';
 import type { Field as ProtoField } from '@/proto/schema';
 import { RealFieldGrid } from './RealFieldGrid';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
@@ -78,9 +82,14 @@ export type RepeatGroupDef = {
     hint?: string;
     /** Allowed lengths for a digits-only member (an SSN is 9). */
     digits?: number[];
+    /** Field highlights: this member's place on each form. */
+    application_need?: Need;
+    agreement_need?: Need;
   }[];
   values: Record<string, unknown>[];
   count: number;
+  /** Field highlights: at the agreement stage only the owners chosen to sign glow. */
+  glowSignersOnly?: boolean;
 };
 
 export type TabPayload = {
@@ -100,7 +109,6 @@ export type TabPayload = {
   /** An automation lock this viewer is under: the lock icon says it, not a banner. */
   locked?: boolean;
   count?: number;
-  fieldCompleteness?: { have: number; need: number };
   subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean; showsRecordChats?: boolean }[];
   fieldsBySubtab: Record<string, ProtoField[]>;
   repeatGroupsBySubtab: Record<string, RepeatGroupDef[]>;
@@ -357,6 +365,35 @@ export function DrawerTabs({
       ),
     [tabs, liveValues],
   );
+  /*
+   * The tab counters: how many of the fields that glow as required are done.
+   * Worked out here from `liveValues`, so they follow typing with no reload. They
+   * read the stage, not the permission: "See field highlights" covers the glows,
+   * the legend and the tooltips, and these stay meaningful without them.
+   */
+  const { stage: glowStage } = useFieldGlow();
+  const fieldFilesForCount = useFieldFiles();
+  const glowSigners = useMemo(
+    () => signersFor(tabs.flatMap((t) => Object.values(t.repeatGroupsBySubtab).flat()), liveValues),
+    [tabs, liveValues],
+  );
+  const tabCounts = useMemo(() => {
+    const out: Record<string, GlowCount | null> = {};
+    for (const t of tabs) {
+      out[t.id] = requiredCount({
+        stage: glowStage,
+        fields: Object.values(t.fieldsBySubtab).flat(),
+        groups: Object.values(t.repeatGroupsBySubtab).flat(),
+        signers: glowSigners,
+        liveValues,
+        hasNote: (key) => (notesByScope[`field:${key}`] ?? []).length > 0,
+        isHidden: (key) => grantByKey[key] === 'hidden',
+        emptyOverride: (f) => (f.type === 'file' ? !fieldFilesForCount?.list(f.id).length : undefined),
+      });
+    }
+    return out;
+  }, [tabs, liveValues, glowStage, glowSigners, notesByScope, grantByKey, fieldFilesForCount]);
+
   const [conflicts, setConflicts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(0);
   /* How many field writes have landed successfully in this drawer session.
@@ -412,7 +449,7 @@ export function DrawerTabs({
   const notesEffect = notesRestriction(activeTab.key, activeSubtabId ?? null);
 
   return (
-    <div className="mt-4">
+    <div className="mt-4" data-drawer-tabs>
       <nav className="-mb-px flex gap-0.5 overflow-x-auto border-b border-line">
         {tabs.map((t) => {
           const active = t.id === activeTab.id;
@@ -443,9 +480,9 @@ export function DrawerTabs({
                 </span>
               ) : null}
               {mentionsByTab.byTab[t.key] ? <MentionPill n={mentionsByTab.byTab[t.key]} /> : null}
-              {t.fieldCompleteness ? (
-                <span className="ml-1.5">
-                  <CompletenessBadge have={t.fieldCompleteness.have} need={t.fieldCompleteness.need} />
+              {tabCounts[t.id] ? (
+                <span className="ml-1.5" data-tab-counter>
+                  <CompletenessBadge have={tabCounts[t.id]!.have} need={tabCounts[t.id]!.need} />
                 </span>
               ) : null}
             </button>
@@ -561,6 +598,7 @@ export function DrawerTabs({
                   subtabId={activeSubtabId ?? null}
                   fields={fields}
                   repeatGroups={activeTab.repeatGroupsBySubtab[activeSubtabId ?? '_'] ?? []}
+                  glowSigners={glowSigners}
                   hasCustomFieldOrder={activeTab.hasCustomFieldOrderBySubtab[activeSubtabId ?? '_'] ?? false}
                   grantByKey={grantByKey}
                   values={liveValues}

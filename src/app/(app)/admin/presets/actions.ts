@@ -239,6 +239,8 @@ export async function createFieldAction(_prev: PresetFormState, formData: FormDa
     section: formData.get('section') ?? '',
     hint: formData.get('hint') ?? '',
     required: formData.get('required'),
+    applicationNeed: formData.get('applicationNeed'),
+    agreementNeed: formData.get('agreementNeed'),
     notesEnabled: formData.get('notesEnabled'),
     addressEnabled: formData.get('addressEnabled'),
     sensitive: formData.get('sensitive'),
@@ -272,6 +274,10 @@ export async function updateFieldAction(_prev: PresetFormState, formData: FormDa
     // then cleared its section.
     section: formData.get('section') ?? '',
     required: formData.get('required'),
+    // Same rule as section: the form always sends these, so a save never
+    // quietly takes a field off a form's list.
+    applicationNeed: formData.get('applicationNeed'),
+    agreementNeed: formData.get('agreementNeed'),
     sensitive: formData.get('sensitive'),
     wide: formData.get('wide'),
     notesEnabled: formData.get('notesEnabled'),

@@ -300,7 +300,9 @@ export async function previewApplicationPdf(ctx: AuthContext, recordId: string):
  * names no required fields, so the list is the least a merchant application can
  * be sent without: the business's legal name and address, and the first owner's
  * name and email. A field an admin marks Required in Presets joins the list when
- * the application uses it.
+ * the application uses it, and so does any field whose Application setting there
+ * says Required (Field Highlight Glows spec: required "must be filled before the
+ * form can be sent").
  */
 export async function applicationPreCheck(ctx: AuthContext, recordId: string): Promise<{ groups: ProblemGroup[] }> {
   await requireApplicationsEdit(ctx, recordId);
@@ -324,7 +326,9 @@ export async function applicationPreCheck(ctx: AuthContext, recordId: string): P
     if (!owner || !isEmail(String(owner.email ?? ''))) problems.push({ fieldKey: 'owner_ownership', index: 0, member: 'email', message: 'Owner 1 needs a valid email address.' });
   }
   const already = new Set(problems.map((p) => p.fieldKey));
-  problems.push(...requiredFlagProblems(config, v, APPLICATION_FIELD_KEYS.filter((k) => !already.has(k)), hidden));
+  const onList = config.fields.filter((f) => f.applicationNeed === 'required').map((f) => f.key);
+  const keys = [...new Set<string>([...APPLICATION_FIELD_KEYS, ...onList])].filter((k) => !already.has(k));
+  problems.push(...requiredFlagProblems(config, v, keys, hidden, (f) => f.required || f.applicationNeed === 'required'));
   return { groups: groupFieldProblems(config, problems) };
 }
 
@@ -454,6 +458,10 @@ function checkRecipients(to: string, cc: string[]) {
 
 export async function sendApplication(ctx: AuthContext, input: SendInput): Promise<{ id: string; label: string }> {
   await requireApplicationsEdit(ctx, input.recordId);
+  // The same check again, on the server: never the browser alone.
+  const { groups } = await applicationPreCheck(ctx, input.recordId);
+  const open = groups.reduce((n, g) => n + g.items.length, 0);
+  if (open) throw new ApplicationError(`Can't send yet: ${open} item${open === 1 ? '' : 's'} need fixing. Open the check to see them.`);
   const inbox = await sendingInboxFor('applications');
   await mailGate(ctx, inbox);
   checkRecipients(input.to, input.cc);

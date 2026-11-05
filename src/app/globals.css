@@ -524,3 +524,33 @@ input:-webkit-autofill:focus {
   .files-ticker:hover .files-ticker-track { animation: none; }
   .files-ticker:hover .files-ticker-more { visibility: visible; }
 }
+
+/* =============================================================================
+   Field Highlight Glows. A soft coloured edge around a field's box: a shadow,
+   not a border width, so the field does not change size or move.
+   In `components` so a Tailwind utility on the box (the focus ring) still wins.
+   ========================================================================== */
+:root {
+  --glow-application-required: 234 128 26;  /* light orange */
+  --glow-application-optional: 59 130 246;  /* light blue */
+  --glow-agreement-required: 225 56 70;     /* light red */
+  --glow-agreement-optional: 150 90 235;    /* light purple */
+}
+[data-glow='application_required'], [data-glow-swatch='application_required'] { --glow: var(--glow-application-required); }
+[data-glow='application_optional'], [data-glow-swatch='application_optional'] { --glow: var(--glow-application-optional); }
+[data-glow='agreement_required'], [data-glow-swatch='agreement_required'] { --glow: var(--glow-agreement-required); }
+[data-glow='agreement_optional'], [data-glow-swatch='agreement_optional'] { --glow: var(--glow-agreement-optional); }
+@layer components {
+  [data-glow] {
+    border-color: rgb(var(--glow) / 0.65);
+    box-shadow: 0 0 0 1px rgb(var(--glow) / 0.35), 0 0 9px 1px rgb(var(--glow) / 0.32);
+  }
+  [data-glow-swatch] { background: rgb(var(--glow) / 0.75); box-shadow: 0 0 5px rgb(var(--glow) / 0.6); }
+  [data-glow][data-pulse] { animation: glow-pulse 750ms ease-in-out 4; }
+}
+@keyframes glow-pulse {
+  50% { box-shadow: 0 0 0 3px rgb(var(--glow) / 0.75), 0 0 20px 7px rgb(var(--glow) / 0.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-glow][data-pulse] { animation: none; box-shadow: 0 0 0 3px rgb(var(--glow) / 0.75); }
+}

@@ -169,6 +169,12 @@ export async function settingGroups(): Promise<SettingGroup[]> {
       rows: [{ key: 'agreements.send', label: 'Send agreements for e-signature', options: YES_NO }],
     },
     {
+      id: 'field-highlights',
+      title: 'Field highlights',
+      blurb: 'The colored edges on empty fields in the record drawer, the Field guide key and the hover text. No hides all three. Each user can also hide them on their own screen, which never turns them on for someone set to No.',
+      rows: [{ key: 'fields.highlights', label: 'See field highlights', options: YES_NO }],
+    },
+    {
       id: 'reporting',
       title: 'Reporting',
       blurb: 'The Reporting tab: transactions, batches, payouts and ACH activity. Read-only for everyone; Hidden means the tab and its data never reach this user.',

@@ -185,6 +185,9 @@ const optionalUuid = z.preprocess((v) => (v === '' || v == null ? null : v), uui
  * the string 'on'. Neither is a boolean, so this cannot be `z.boolean()`. */
 const checkbox = z.preprocess((v) => v === 'on' || v === 'true' || v === true, z.boolean());
 
+/** Required / optional / not on this form. A form that does not send it gets 'none'. */
+const need = z.preprocess((v) => (v === '' || v == null ? 'none' : v), z.enum(['required', 'optional', 'none']));
+
 /**
  * A dynamic list the client component built in React state and submitted as
  * one JSON string, rather than as parallel `getAll()` arrays — zipping two
@@ -251,6 +254,8 @@ const fieldMetaShape = {
   hint: hintSchema,
   section: sectionSchema,
   required: checkbox,
+  applicationNeed: need,
+  agreementNeed: need,
   sensitive: checkbox,
   wide: checkbox,
   notesEnabled: checkbox,
@@ -488,6 +493,8 @@ export const fieldSetupSchema = z
     section: sectionSchema,
     hint: hintSchema,
     required: checkbox,
+    applicationNeed: need,
+    agreementNeed: need,
     notesEnabled: checkbox,
     addressEnabled: checkbox,
     sensitive: checkbox,

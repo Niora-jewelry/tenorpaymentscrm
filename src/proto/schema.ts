@@ -19,6 +19,8 @@
 /* Field types                                                                 */
 /* -------------------------------------------------------------------------- */
 
+import type { Need, NoteWhen } from '@/lib/records/fieldNeeds';
+
 /**
  * The 15 types the Admin Module Plan §3.4 specifies, plus five the field
  * spreadsheet demands and the spec's list omits.
@@ -254,6 +256,14 @@ export type Field = {
   /** Never editable by anyone, including admins (Record creator). */
   readOnly?: boolean;
   required?: boolean;
+  /** What this field is to the application and to the agreement (`lib/records/fieldNeeds`). */
+  applicationNeed?: Need;
+  agreementNeed?: Need;
+  /** A repeat group whose rows glow at the agreement stage only for chosen signers. */
+  glowSignersOnly?: boolean;
+  /** What the field's note is to the agreement, while `agreementNoteWhen` holds. */
+  agreementNoteNeed?: Need;
+  agreementNoteWhen?: NoteWhen;
   /** SSN, EIN, bank and routing numbers. Masked in the UI. */
   sensitive?: boolean;
   /** Fixed column width in px on the dashboard. */

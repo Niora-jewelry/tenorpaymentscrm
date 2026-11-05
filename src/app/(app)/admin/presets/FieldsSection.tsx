@@ -355,6 +355,8 @@ function FieldRow({
         {field.readOnly ? <OutlineChip>Read only</OutlineChip> : null}
         {field.sensitive ? <OutlineChip>Sensitive</OutlineChip> : null}
         {field.required ? <OutlineChip>Required</OutlineChip> : null}
+        {field.applicationNeed !== 'none' ? <OutlineChip>Application: {field.applicationNeed}</OutlineChip> : null}
+        {field.agreementNeed !== 'none' ? <OutlineChip>Agreement: {field.agreementNeed}</OutlineChip> : null}
         {field.inVital ? <OutlineChip tone="brand">Vital Info</OutlineChip> : null}
         {field.columnModuleIds.length ? <OutlineChip>List column</OutlineChip> : null}
         {archived ? <OutlineChip tone="danger" icon="eye-off">Hidden</OutlineChip> : null}

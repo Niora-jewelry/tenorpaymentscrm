@@ -56,6 +56,7 @@ import { messagesForRecord as smsForRecord } from '@/lib/phone/messages';
 import { allNotesFor } from '@/lib/records/notes';
 import { fieldAddressesFor } from '@/lib/records/fieldAddresses';
 import { agreementsFor } from '@/lib/agreements/service';
+import { fieldGlowAccess, recordGlowStage } from '@/lib/records/fieldGlowAccess';
 import { proposalsFor } from '@/lib/proposals/service';
 import { otherCasesFor, processorApplicationFor, processorVitals, reportingPanelFor, unmatchedFlags, unsyncedOtherCases } from '@/lib/processors/service';
 import type { Note } from '@/lib/records/notes';
@@ -68,6 +69,7 @@ import { CreateRecordDialog } from './CreateRecordDialog';
 import { MembershipsForm, ArchiveButton } from './MembershipsForm';
 import { RecordsTable } from './RecordsTable';
 import { DrawerTabs, type TabPayload, type RepeatGroupDef } from './DrawerTabs';
+import { FieldGlowProvider, FieldGuide } from './FieldGlow';
 import { FieldSearch } from './FieldSearch';
 import { fieldHits } from './fieldHits';
 import { DrawerShell } from './DrawerShell';
@@ -1118,8 +1120,6 @@ async function RecordDrawer({
     // fields only (a repeat_group's own instance count already renders via
     // `RepeatGroupDef.count`/`max`, so folding it into this ratio too would
     // double-count the same completeness signal two different ways).
-    let fieldsHave = 0;
-    let fieldsNeed = 0;
     if (t.kind === 'custom') {
       const buildFor = async (subtabId: string | null, slotKey: string) => {
         const visible = fieldsInTab(config, t.id, subtabId)
@@ -1132,16 +1132,6 @@ async function RecordDrawer({
           // disabled, the same "absent, never blank" rule hidden fields follow.
           .filter((f) => !statusFieldOwners.has(f.id));
         const plain = visible.filter((f) => f.type !== 'repeat_group');
-        fieldsNeed += plain.length;
-        fieldsHave += plain.filter((f) => {
-          // A Files field holds uploads, not a value.
-          if (f.type === 'file') return (filesByField[f.key]?.length ?? 0) > 0;
-          const v = record.values[f.key];
-          if (v == null || v === '') return false;
-          if (Array.isArray(v)) return v.length > 0;
-          if (typeof v === 'object') return Object.keys(v).length > 0;
-          return true;
-        }).length;
 
         // Personalization layer 2: "admin default → user override" — one
         // saved order per tab/subtab covers every module, since the drawer
@@ -1165,6 +1155,7 @@ async function RecordDrawer({
               schema: f.repeatSchema!,
               values: (record.values[f.key] as Record<string, unknown>[] | undefined) ?? [],
               count: repeatInstanceCount(record.values, siblings.map((s) => s.key)),
+              glowSignersOnly: f.glowSignersOnly,
             };
           });
       };
@@ -1181,9 +1172,7 @@ async function RecordDrawer({
       t.kind === 'updates' ? updates.length :
       undefined;
 
-    const fieldCompleteness = t.kind === 'custom' && fieldsNeed > 0 ? { have: fieldsHave, need: fieldsNeed } : undefined;
-
-    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, fieldCompleteness, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false, showsReporting: t.showsReporting ?? false };
+    return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false, showsReporting: t.showsReporting ?? false };
   }));
 
   /* What reaches the browser: the locks, and the hides on the two tabs that stay
@@ -1195,8 +1184,15 @@ async function RecordDrawer({
     ),
   };
 
+  // A failure here must not take the drawer with it: no highlights, and it says nothing false.
+  const [glowStage, glowAccess] = await Promise.all([
+    recordGlowStage(ctx, record.id).catch(() => 'none' as const),
+    fieldGlowAccess(ctx).catch(() => ({ permitted: false, hidden: false })),
+  ]);
+
   return (
     <section className="@container min-h-full bg-white px-6 py-5">
+      <FieldGlowProvider stage={glowStage} permitted={glowAccess.permitted} hidden={glowAccess.hidden}>
       <DrawerFieldLinks moduleSlug={moduleSlug} recordId={record.id}>
       <DrawerFieldFiles moduleSlug={moduleSlug} recordId={record.id} filesByField={filesByField}>
       <ItemAccessProvider value={{ ...itemAccess, viewerId: ctx.userId }}>
@@ -1241,6 +1237,8 @@ async function RecordDrawer({
           </Link>
         </div>
       </div>
+
+      <FieldGuide />
 
       {/*
         ── Band 2: Pipeline | In modules (UI spec §2) ──────────────────────
@@ -1370,6 +1368,7 @@ async function RecordDrawer({
       </ItemAccessProvider>
       </DrawerFieldFiles>
       </DrawerFieldLinks>
+      </FieldGlowProvider>
     </section>
   );
 }

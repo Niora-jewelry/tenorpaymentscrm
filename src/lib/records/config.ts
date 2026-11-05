@@ -26,6 +26,7 @@ import 'server-only';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import type { Need, NoteWhen } from './fieldNeeds';
 
 export type FieldType =
   | 'text' | 'long_text' | 'number' | 'currency' | 'date' | 'datetime'
@@ -103,13 +104,21 @@ export type Field = {
   isSystem: boolean;
   readOnly: boolean;
   required: boolean;
+  /** What this field is to the application and to the agreement (migration 9909). */
+  applicationNeed: Need;
+  agreementNeed: Need;
+  /** A repeat group whose rows glow at the agreement stage only for chosen signers. */
+  glowSignersOnly: boolean;
+  /** What the field's note is to the agreement, while `agreementNoteWhen` holds. */
+  agreementNoteNeed: Need;
+  agreementNoteWhen: NoteWhen;
   sensitive: boolean;
   wide: boolean;
   placeholder: boolean;
   width: number | null;
   digits: number[] | null;
   repeatMax: number | null;
-  repeatSchema: { key: string; label: string; type: FieldType; sensitive?: boolean; sync?: boolean; hint?: string; digits?: number[] }[] | null;
+  repeatSchema: { key: string; label: string; type: FieldType; sensitive?: boolean; sync?: boolean; hint?: string; digits?: number[]; application_need?: Need; agreement_need?: Need }[] | null;
   /** The semantic group key ('owner'), distinct from `key` when a group spans
    * more than one tab/subtab location ('owner_private', 'owner_ownership') —
    * migration 27. Every `repeat_group` row that shares this value represents
@@ -227,6 +236,9 @@ const loadConfigCached = unstable_cache(
         tabId: f.tab_id, subtabId: f.subtab_id, position: f.position, hint: f.hint,
         notesEnabled: f.notes_enabled, addressEnabled: f.address_enabled ?? false, syncEnabled: f.sync_enabled, isSystem: f.is_system,
         readOnly: f.read_only, required: f.required, sensitive: f.sensitive,
+        applicationNeed: f.application_need ?? 'none', agreementNeed: f.agreement_need ?? 'none',
+        glowSignersOnly: f.glow_signers_only ?? false,
+        agreementNoteNeed: f.agreement_note_need ?? 'none', agreementNoteWhen: f.agreement_note_when ?? null,
         wide: f.wide, placeholder: f.placeholder, width: f.width, digits: f.digits,
         repeatMax: f.repeat_max, repeatSchema: f.repeat_schema, repeatGroupKey: f.repeat_group_key,
         gridColumns: f.grid_columns,

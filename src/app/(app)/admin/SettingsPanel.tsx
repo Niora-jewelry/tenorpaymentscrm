@@ -9,6 +9,7 @@
  *               an OVERRIDE, marked as such with a reset back to the type
  *               (spec: "clearly mark which settings on a user are overrides,
  *               and offer a way to reset a user back to their template").
+ *   Invite mode the same as User mode, for somebody who has not signed up yet.
  *
  * A value above the acting admin's own level is shown but cannot be picked
  * (guardrail 2); the database refuses it regardless.
@@ -36,7 +37,7 @@ function TeamMatrix({
   onSet,
 }: {
   rows: SettingRow[];
-  mode: 'template' | 'user';
+  mode: 'template' | 'user' | 'invite';
   shown: Record<string, string>;
   typeValues: Record<string, string>;
   ceiling: Record<string, string>;
@@ -46,7 +47,7 @@ function TeamMatrix({
 }) {
   const teams = [...new Map(rows.map((r) => [r.cell!.team, r.cell!.teamLabel])).entries()];
   const settings = [...new Map(rows.map((r) => [r.cell!.setting, r.cell!])).values()];
-  const valueOf = (key: string) => shown[key] ?? (mode === 'user' ? typeValues[key] : undefined) ?? 'no';
+  const valueOf = (key: string) => shown[key] ?? (mode !== 'template' ? typeValues[key] : undefined) ?? 'no';
 
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-line-soft">
@@ -69,7 +70,7 @@ function TeamMatrix({
               {teams.map(([team, label]) => {
                 const key = `team.${team}.${s.setting}`;
                 const on = valueOf(key) === 'yes';
-                const isOverride = mode === 'user' && shown[key] !== undefined;
+                const isOverride = mode !== 'template' && shown[key] !== undefined;
                 const tooHigh = !on && !actorIsSuper && (RANK[ceiling[key] ?? 'no'] ?? 0) < RANK.yes!;
                 // Rule 4: without See team, See users does nothing.
                 const inert = s.setting === 'see_users' && valueOf(`team.${team}.see_team`) !== 'yes';
@@ -124,8 +125,9 @@ export function SettingsPanel({
   actorIsSuper,
   locked = null,
   grantOverrides = 0,
+  onChanged,
 }: {
-  mode: 'template' | 'user';
+  mode: 'template' | 'user' | 'invite';
   ownerId: string;
   groups: SettingGroup[];
   /** The type's values (type mode), or the user's own overrides (user mode). */
@@ -138,6 +140,11 @@ export function SettingsPanel({
   locked?: string | null;
   /** The user's tab / sub-tab / field overrides — "Reset to their type" removes those too. */
   grantOverrides?: number;
+  /**
+   * Fetch fresh values after a save, where nothing redraws this by itself (the invite
+   * dialog). Awaited, so the choice stays on screen until the new values have arrived.
+   */
+  onChanged?: () => Promise<void>;
 }) {
   const [shown, apply] = useOptimistic(values, (cur: Record<string, string>, change: { key: string; value: string | null }) => {
     const next = { ...cur };
@@ -148,7 +155,7 @@ export function SettingsPanel({
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [resetting, startReset] = useTransition();
-  const overrides = mode === 'user' ? Object.keys(shown).length + grantOverrides : 0;
+  const overrides = mode !== 'template' ? Object.keys(shown).length + grantOverrides : 0;
 
   const set = (key: string, value: string | null) =>
     start(async () => {
@@ -156,6 +163,7 @@ export function SettingsPanel({
       apply({ key, value });
       const r = await setPermissionSettingAction({ ownerKind: mode, ownerId, key, value });
       if (!r.ok) setError(r.message ?? 'That change was not saved.');
+      else await onChanged?.();
     });
 
   return (
@@ -169,12 +177,12 @@ export function SettingsPanel({
               : `What ${typeLabel ? `the ${typeLabel} type` : 'their type'} gives them, and where they differ.`}
           </p>
         </div>
-        {mode === 'user' ? (
+        {mode !== 'template' ? (
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${overrides ? 'bg-warn-bg text-warn' : 'bg-canvas text-ink-500'}`}>
               {overrides ? `${overrides} override${overrides === 1 ? '' : 's'}` : 'Matches their type'}
             </span>
-            {overrides && !locked ? (
+            {overrides && !locked && mode === 'user' ? (
               <button
                 type="button"
                 disabled={resetting}
@@ -216,9 +224,9 @@ export function SettingsPanel({
                 const own = shown[row.key];
                 // Nothing stored resolves to the most restrictive value, which
                 // every option list puts first (`user_perm`, migration 9810).
-                const fromType = mode === 'user' ? typeValues[row.key] ?? row.options[0]?.value : undefined;
+                const fromType = mode !== 'template' ? typeValues[row.key] ?? row.options[0]?.value : undefined;
                 const current = own ?? fromType ?? row.options[0]?.value;
-                const isOverride = mode === 'user' && own !== undefined;
+                const isOverride = mode !== 'template' && own !== undefined;
                 return (
                   <div key={row.key} className="flex min-w-0 items-center gap-3 rounded-lg py-1.5">
                     <div className="min-w-0 flex-1">

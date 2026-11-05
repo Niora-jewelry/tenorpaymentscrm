@@ -18,15 +18,23 @@
  * `GrantMatrix` unchanged, the real `setInviteGrantAction`/`clearInviteGrantAction`
  * behind it, and the module picker in its non-navigating mode. An admin who
  * has used the Users screen already knows this one.
+ *
+ * ── SETTINGS ARE NOT PER MODULE, SO THEY ARE NOT UNDER THE MODULE PICKER ──
+ * Module access (Hidden / Only mine / All records) is a setting, one row per module.
+ * The module picker chooses which module a TAB or FIELD level applies in. Under one
+ * heading those read as the same thing, and the client looked here for module access
+ * and could not find it. So two views, and the settings come first.
  */
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { Button, Spinner } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import { GrantMatrix, type GrantWriter } from '../GrantMatrix';
+import { SettingsPanel } from '../SettingsPanel';
 import type { GrantResult } from '@/lib/records/adminGrants';
 import { ModuleScopePicker, type ModuleOption } from '../ModuleScopePicker';
 import {
   inviteMatrixAction,
+  inviteSettingsAction,
   setInviteGrantAction,
   clearInviteGrantAction,
   setInviteGrantsAction,
@@ -48,6 +56,10 @@ export function InvitePermissionsStep({
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [matrix, setMatrix] = useState<GrantMatrixData | null>(null);
   const [loading, startLoading] = useTransition();
+  const [view, setView] = useState<'settings' | 'tabs'>('settings');
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof inviteSettingsAction>>>(null);
+  const [settingsTried, setSettingsTried] = useState(false);
+  const [, startSettings] = useTransition();
 
   /*
    * ── SENDING IS THE LAST THING THAT HAPPENS ────────────────────────────
@@ -95,6 +107,16 @@ export function InvitePermissionsStep({
   useEffect(() => {
     reload();
   }, [reload]);
+
+  const loadSettings = useCallback(async () => {
+    const next = await inviteSettingsAction(inviteId).catch(() => null);
+    setSettings(next);
+    setSettingsTried(true);
+  }, [inviteId]);
+
+  useEffect(() => {
+    startSettings(loadSettings);
+  }, [loadSettings]);
 
   /*
    * Every write is confirmed out loud. The matrix draws the new value
@@ -189,6 +211,63 @@ export function InvitePermissionsStep({
         </span>
       </div>
 
+      <div role="tablist" aria-label="What to set" className="inline-flex rounded-lg border border-line bg-canvas p-0.5">
+        {(
+          [
+            ['settings', 'Module access & settings'],
+            ['tabs', 'Tabs & fields'],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => setView(key)}
+            className={`rounded-md px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+              view === key ? 'bg-white text-ink-900 shadow-[0_1px_2px_rgba(14,28,52,.12)] ring-1 ring-line' : 'text-ink-500 hover:text-ink-900'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'settings' ? (
+        settings ? (
+          <div className="max-h-[56vh] overflow-y-auto pr-1">
+            <SettingsPanel
+              mode="invite"
+              ownerId={inviteId}
+              groups={settings.groups}
+              values={settings.settings.values}
+              typeValues={settings.settings.typeValues}
+              typeLabel={settings.settings.typeLabel}
+              ceiling={settings.settings.ceiling}
+              actorIsSuper={settings.settings.actorIsSuper}
+              locked={settings.settings.locked}
+              grantOverrides={settings.settings.grantOverrides}
+              onChanged={loadSettings}
+            />
+          </div>
+        ) : (
+          <p className="flex items-center justify-center gap-2 py-8 text-center text-[13px] text-ink-400">
+            {settingsTried ? (
+              'Those settings could not be loaded.'
+            ) : (
+              <>
+                <span aria-hidden className="inline-block text-[13px] leading-none">
+                  <Spinner />
+                </span>
+                Loading settings…
+              </>
+            )}
+          </p>
+        )
+      ) : null}
+
+      {view === 'tabs' ? (
+      <>
       <ModuleScopePicker
         modules={modules}
         activeModuleId={moduleId}
@@ -262,6 +341,8 @@ export function InvitePermissionsStep({
           )}
         </p>
       )}
+      </>
+      ) : null}
 
       {sendError ? (
         <p

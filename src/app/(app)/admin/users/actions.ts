@@ -22,6 +22,7 @@
  */
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
+import { inviteSettings, settingGroups, type SettingGroup, type UserSettings } from '@/lib/records/permissionSettings';
 import {
   inviteUser, pauseUser, resumeUser, assignTemplate,
   getUserRecordCount, reassignUserRecords, softDeleteUser, restoreUser, purgeUser,
@@ -523,6 +524,22 @@ export async function clearInviteGrantAction(
  * already serialisable, so nothing has to be rebuilt for this to cross the
  * boundary.
  */
+/**
+ * Module access and the other settings, for the invite dialog. Module access first:
+ * it is what decides whether anything else in a module matters.
+ */
+export async function inviteSettingsAction(inviteId: string): Promise<{ groups: SettingGroup[]; settings: UserSettings } | null> {
+  const ctx = await authorize();
+  if (!ctx.isAdmin) return null;
+
+  const parsed = inviteIdSchema.safeParse({ inviteId });
+  if (!parsed.success) return null;
+
+  const [groups, settings] = await Promise.all([settingGroups(), inviteSettings(ctx, parsed.data.inviteId)]);
+  if (!settings) return null;
+  return { groups: [...groups.filter((g) => g.id === 'modules'), ...groups.filter((g) => g.id !== 'modules')], settings };
+}
+
 export async function inviteMatrixAction(
   inviteId: string,
   moduleId: string | null,

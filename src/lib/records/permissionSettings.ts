@@ -292,10 +292,50 @@ export async function userSettings(ctx: AuthContext, userId: string): Promise<Us
   };
 }
 
-/** One setting on a user type or a user. `null` on a user = back to their type. */
+/**
+ * The same, for somebody who has not signed up yet: `complete_signup` copies these to
+ * the user in the step that creates the account.
+ */
+export async function inviteSettings(ctx: AuthContext, inviteId: string): Promise<UserSettings | null> {
+  await assertAdminPage(ctx, 'permissions');
+  const admin = supabaseAdmin();
+  const { data: invite, error } = await admin
+    .from('invites')
+    .select('status, template_id, roles!inner(is_admin), permission_templates(label)')
+    .eq('id', inviteId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!invite) return null;
+  const typeId = (invite.template_id as string | null) ?? null;
+  const targetIsSuper = Boolean((invite as unknown as { roles?: { is_admin?: boolean } }).roles?.is_admin);
+  const [own, typeRows, grants] = await Promise.all([
+    admin.from('permission_settings').select('key, value').eq('owner_kind', 'invite').eq('owner_id', inviteId),
+    typeId ? admin.from('permission_settings').select('key, value').eq('owner_kind', 'template').eq('owner_id', typeId) : Promise.resolve({ data: [] }),
+    admin.from('invite_grants').select('invite_id', { count: 'exact', head: true }).eq('invite_id', inviteId),
+  ]);
+  if (own.error) throw own.error;
+  return {
+    values: Object.fromEntries((own.data ?? []).map((r) => [r.key as string, r.value as string])),
+    typeValues: Object.fromEntries((typeRows.data ?? []).map((r) => [r.key as string, r.value as string])),
+    typeLabel: (invite as unknown as { permission_templates?: { label?: string } | null }).permission_templates?.label ?? null,
+    typeId,
+    targetIsSuper,
+    grantOverrides: grants.count ?? 0,
+    ceiling: await ceilingFor(ctx),
+    actorIsSuper: ctx.isAdmin,
+    locked:
+      invite.status !== 'pending'
+        ? 'This invite is no longer open.'
+        : targetIsSuper
+          ? 'A Super admin always has everything. Change their user type to limit them.'
+          : null,
+  };
+}
+
+/** One setting on a user type, a user or an invite. `null` on the last two = back to their type. */
 export async function setPermissionSetting(
   ctx: AuthContext,
-  input: { ownerKind: 'template' | 'user'; ownerId: string; key: string; value: string | null },
+  input: { ownerKind: 'template' | 'user' | 'invite'; ownerId: string; key: string; value: string | null },
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   await assertAdminPage(ctx, 'permissions');
   const { error } = await supabaseAdmin().rpc('perm_set_setting', {

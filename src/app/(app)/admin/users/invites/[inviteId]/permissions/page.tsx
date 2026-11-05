@@ -26,10 +26,12 @@ import { redirect, notFound } from 'next/navigation';
 import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { loadConfig } from '@/lib/records/config';
 import { inviteGrantMatrix } from '@/lib/records/adminGrants';
+import { inviteSettings, settingGroups } from '@/lib/records/permissionSettings';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { OutlineChip } from '@/proto/ui/kit';
 import { GrantMatrix, MatrixBackLink, type GrantWriter } from '../../../../GrantMatrix';
 import { ModuleScopePicker } from '../../../../ModuleScopePicker';
+import { SettingsPanel } from '../../../../SettingsPanel';
 import { setInviteGrantAction, clearInviteGrantAction, setInviteGrantsAction } from '../../../actions';
 
 export default async function InvitePermissionsPage({
@@ -73,6 +75,8 @@ export default async function InvitePermissionsPage({
   const matrix = await inviteGrantMatrix(ctx, inviteId, activeModuleId);
   if (!matrix || matrix.subject.kind !== 'user') notFound();
   const { subject } = matrix;
+  const [groups, settings] = await Promise.all([settingGroups(), inviteSettings(ctx, inviteId)]);
+  if (!settings) notFound();
 
   // Bound to this invite here, so the matrix never carries an id the client
   // could send back changed — the same reason the user screen binds its own.
@@ -123,6 +127,19 @@ export default async function InvitePermissionsPage({
           )}
         </p>
       </div>
+
+      <SettingsPanel
+        mode="invite"
+        ownerId={inviteId}
+        groups={groups}
+        values={settings.values}
+        typeValues={settings.typeValues}
+        typeLabel={settings.typeLabel}
+        ceiling={settings.ceiling}
+        actorIsSuper={settings.actorIsSuper}
+        locked={settings.locked}
+        grantOverrides={settings.grantOverrides}
+      />
 
       <ModuleScopePicker
         modules={config.modules

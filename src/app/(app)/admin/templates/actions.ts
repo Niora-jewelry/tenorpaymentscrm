@@ -211,14 +211,14 @@ export async function clearTemplateGrantAction(
 /* -------------------------------------------------------------------------- */
 
 export async function setPermissionSettingAction(input: {
-  ownerKind: 'template' | 'user';
+  ownerKind: 'template' | 'user' | 'invite';
   ownerId: string;
   key: string;
   value: string | null;
 }): Promise<{ ok: boolean; message?: string }> {
   const parsed = z
     .object({
-      ownerKind: z.enum(['template', 'user']),
+      ownerKind: z.enum(['template', 'user', 'invite']),
       ownerId: z.string().uuid(),
       key: z.string().regex(/^team\.[a-z_]+\.[a-z_]+$|^(action|admin|items)\.[a-z_]+$|^(notifications|email|phone|communication)\.scope$|^module:[0-9a-f-]{36}$|^applications\.pdfs$|^agreements\.send$/),
       value: z.string().regex(/^[a-z]+$/).max(10).nullable(),
@@ -228,6 +228,12 @@ export async function setPermissionSettingAction(input: {
   const ctx = await authorize();
   const r = await setPermissionSetting(ctx, parsed.data);
   if (!r.ok) return r;
+  if (parsed.data.ownerKind === 'invite') {
+    // Only its own screen: this is also called from inside the invite dialog, which
+    // reads the answer itself and must not wait for the Users page to redraw.
+    revalidatePath(`/admin/users/invites/${parsed.data.ownerId}/permissions`);
+    return { ok: true };
+  }
   revalidatePath('/admin/templates');
   revalidatePath('/admin/users');
   return { ok: true };

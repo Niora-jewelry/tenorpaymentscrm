@@ -6,7 +6,7 @@
  * box with "Not sent" and a Retry button.
  */
 import dynamic from 'next/dynamic';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button, Dialog } from '@/proto/ui/kit';
 import { Icon } from '@/proto/ui/icons';
 import type { ChatMember, ChatMessage, ChatSummary, Mention, MessagesPage } from '@/lib/msteams/types';
@@ -48,6 +48,8 @@ export function Conversation({
   onRead,
   onLoaded,
   onListChanged,
+  onRecord,
+  belowHeader,
 }: {
   chat: ChatSummary;
   own: boolean;
@@ -55,6 +57,9 @@ export function Conversation({
   onRead: (key: string) => void;
   onLoaded: (key: string, text: string) => void;
   onListChanged: () => void;
+  /** Shown inside a merchant record rather than in the Chat module. */
+  onRecord?: boolean;
+  belowHeader?: ReactNode;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<ChatMessage[]>([]);
@@ -342,6 +347,7 @@ export function Conversation({
           </Button>
         ) : null}
       </header>
+      {belowHeader}
       {chat.external ? <Notice tone="warn">People outside your organization are in this chat.</Notice> : null}
       {callNote ? (
         <Notice
@@ -380,6 +386,7 @@ export function Conversation({
               chatKey={chat.key}
               isChannel={isChannel}
               canWrite={canWrite && !m.id.startsWith('pending-')}
+              onRecord={onRecord}
               sending={m.id.startsWith('pending-')}
               onQuote={(msg) => {
                 setThreadOf(null);

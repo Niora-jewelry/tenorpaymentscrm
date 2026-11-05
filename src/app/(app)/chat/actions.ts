@@ -6,6 +6,7 @@ import { authorize, type AuthContext } from '@/lib/records/permissions';
 import { TeamsError } from '@/lib/msteams/access';
 import { channelMembers, deleteMessage, editMessage, finishUpload, markRead, newChannel, newChat, newTeam, sendMessage, setFavorite, setThumb, startUpload } from '@/lib/msteams/chat';
 import { linkPreview } from '@/lib/msteams/linkPreview';
+import { findRecordsToLink, linkConversation, unlinkConversation } from '@/lib/msteams/recordLinks';
 import type { ChatMember, ChatMessage, LinkPreview } from '@/lib/msteams/types';
 import { rateLimit, RATE_LIMITS, userKey, type RateLimitRule } from '@/lib/security/rate-limit';
 
@@ -137,4 +138,30 @@ export async function linkPreviewAction(raw: unknown): Promise<Result<LinkPrevie
   const p = z.object({ url: z.url().max(2048) }).safeParse(raw);
   if (!p.success) return { ok: true, data: null };
   return run(RATE_LIMITS.teamsLinkPreviewPerUser, 'teams_link', () => linkPreview(p.data.url), 'No preview.');
+}
+
+/* ── Teams on a record ──────────────────────────────────────────────────── */
+
+export async function linkChatToRecordAction(raw: unknown): Promise<Result<null>> {
+  const p = z.object({ recordId: z.uuid(), key: Key }).safeParse(raw);
+  if (!p.success) return { ok: false, message: INVALID };
+  return run(action, 'teams_action', async (ctx) => {
+    if (!(await linkConversation(ctx, p.data))) throw new TeamsError('This chat is already linked to this record.');
+    return null;
+  }, 'The chat could not be linked.');
+}
+
+export async function unlinkChatFromRecordAction(raw: unknown): Promise<Result<null>> {
+  const p = z.object({ linkId: z.uuid() }).safeParse(raw);
+  if (!p.success) return { ok: false, message: INVALID };
+  return run(action, 'teams_action', async (ctx) => {
+    await unlinkConversation(ctx, p.data.linkId);
+    return null;
+  }, 'The chat could not be unlinked.');
+}
+
+export async function findRecordsToLinkAction(raw: unknown): Promise<Result<{ id: string; name: string }[]>> {
+  const p = z.object({ q: z.string().max(80) }).safeParse(raw);
+  if (!p.success) return { ok: false, message: INVALID };
+  return run(RATE_LIMITS.teamsReadPerUser, 'teams_read', (ctx) => findRecordsToLink(ctx, p.data.q), 'Records could not be searched.');
 }

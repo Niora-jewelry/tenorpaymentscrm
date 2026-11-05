@@ -9,14 +9,15 @@
  * moved here unchanged (nothing deleted). Instantly is gone, sub-tab and
  * integration both.
  *
- * TEAMS is still `ComingSoon`, by the client's own spec: no provider is wired
- * for it. Which sub-tab is a placeholder is read from `subtabs.coming_soon`
- * rather than decided here (CLAUDE.md rule 1).
+ * TEAMS shows the chats linked to this record. Which sub-tab does that is read
+ * from `subtabs.shows_record_chats`, and which is a placeholder from
+ * `subtabs.coming_soon`, rather than decided here (CLAUDE.md rule 1).
  *
  * Email is a real read of `messages`; there is no send path on THIS panel
  * because those rows only ever arrive through a provider running as the
  * service role. Texting does have a send path — the composer on Texts.
  */
+import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { CHANNEL_ICON } from '@/proto/ui/icons';
@@ -28,6 +29,9 @@ import type { PhoneMessage } from '@/lib/phone/messages';
 import type { TextableNumber } from '@/lib/phone/textableNumbers';
 import { PhonePanel, RecordingsPanel, SmsThread } from './PhonePanels';
 import { PHONE_VIEWS, phoneViewFrom, type PhoneView } from './phoneViews';
+
+// Loaded with the sub-tab: it brings the chat composer and its editor along.
+const RecordChatsPanel = dynamic(() => import('../chat/ui/RecordChatsPanel').then((m) => m.RecordChatsPanel), { ssr: false });
 
 function channelMeta(channel: MessageChannel) {
   if (channel === 'text') return { label: 'SMS', swatch: 'teal' as const };
@@ -46,6 +50,8 @@ function relativeTime(iso: string, now: number): string {
 export function CommunicationPanel({
   subtabId,
   comingSoon,
+  showsRecordChats,
+  recordId,
   subtabLabel,
   messages,
   moduleSlug,
@@ -55,6 +61,9 @@ export function CommunicationPanel({
 }: {
   subtabId: string;
   comingSoon: boolean;
+  /** Migration 9907: this sub-tab holds the record's linked Teams chats. */
+  showsRecordChats: boolean;
+  recordId: string;
   subtabLabel: string;
   messages: Message[];
   moduleSlug: string;
@@ -69,6 +78,8 @@ export function CommunicationPanel({
    * The flag decides, not this file: an admin can switch a sub-tab to
    * "coming soon" and back in Presets (migration 70 cleared it for Phone).
    */
+  if (showsRecordChats) return <RecordChatsPanel recordId={recordId} />;
+
   if (comingSoon) {
     return <ComingSoon what={subtabLabel} icon={subtabId === 'teams' ? 'video' : 'phone'} />;
   }

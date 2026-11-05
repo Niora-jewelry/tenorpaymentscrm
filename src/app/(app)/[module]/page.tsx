@@ -1107,7 +1107,7 @@ async function RecordDrawer({
     const subtabs = subtabsForModule(config, moduleId, t.id)
       .filter((s) => subtabGrantById.get(s.id) !== 'hidden')
       .map((s) => ({
-        id: s.id, key: s.key, label: s.label, description: s.description, comingSoon: s.comingSoon,
+        id: s.id, key: s.key, label: s.label, description: s.description, comingSoon: s.comingSoon, showsRecordChats: s.showsRecordChats,
       }));
 
     const fieldsBySubtab: Record<string, ReturnType<typeof adaptFieldForDrawer>[]> = {};

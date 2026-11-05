@@ -77,7 +77,7 @@ const TAB_FOR_PHONE: Record<string, { tab: string; subtab?: string; view?: strin
  * see. Null when there is none (archived, or only in the admin-only Records
  * List for a member) — the row then renders as text with no link.
  */
-async function moduleForRecords(ctx: AuthContext, recordIds: string[]): Promise<Map<string, { slug: string; label: string }>> {
+export async function moduleForRecords(ctx: AuthContext, recordIds: string[]): Promise<Map<string, { slug: string; label: string }>> {
   const out = new Map<string, { slug: string; label: string }>();
   const ids = [...new Set(recordIds)];
   if (!ids.length) return out;

@@ -101,7 +101,7 @@ export type TabPayload = {
   locked?: boolean;
   count?: number;
   fieldCompleteness?: { have: number; need: number };
-  subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean }[];
+  subtabs: { id: string; key: string; label: string; description: string | null; comingSoon: boolean; showsRecordChats?: boolean }[];
   fieldsBySubtab: Record<string, ProtoField[]>;
   repeatGroupsBySubtab: Record<string, RepeatGroupDef[]>;
   hasCustomFieldOrderBySubtab: Record<string, boolean>;
@@ -700,6 +700,8 @@ export function DrawerTabs({
           <CommunicationPanel
             subtabId={activeSubtab?.key ?? 'email'}
             comingSoon={activeSubtab?.comingSoon ?? false}
+            showsRecordChats={activeSubtab?.showsRecordChats ?? false}
+            recordId={recordId}
             subtabLabel={activeSubtab?.label ?? ''}
             messages={messages}
             moduleSlug={moduleSlug}

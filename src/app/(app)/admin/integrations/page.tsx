@@ -129,9 +129,9 @@ function providers(twilioReady: boolean, mail: AdminHealth | null, maverick: boo
     },
     {
       name: 'Teams on records',
-      what: 'Kept for later: not linked to records in this version',
+      what: 'Teams chats and channels linked to a merchant record',
       where: 'Communication → Teams',
-      state: 'coming-soon',
+      state: mail ? 'live' : 'needs-config',
     },
     {
       name: 'Maverick Payments',

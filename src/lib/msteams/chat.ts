@@ -186,6 +186,63 @@ export async function listForIdentity(identity: Identity, own: boolean, maxAgeMs
   return { chats, stale: result.stale };
 }
 
+/**
+ * One conversation read directly, for a link on a record. Null means Microsoft says
+ * this account is not in it; an outage throws, because "not in it" and "could not
+ * ask" must never read the same on screen.
+ *
+ * The list cannot answer this. It stops at 150 chats and leaves out hidden ones, so
+ * an old chat linked to a record would look as if its members had lost it.
+ *
+ * For a channel the proof is reading its messages: the basic team and channel reads
+ * can succeed for someone who is not in a private channel.
+ */
+export async function conversationFor(
+  identity: Identity,
+  ref: { kind: 'chat'; chatId: string } | { kind: 'channel'; teamId: string; channelId: string },
+): Promise<{ summary: ChatSummary; topic: string | null } | null> {
+  const graph = graphForIdentity(identity.id);
+  try {
+    if (ref.kind === 'chat') {
+      const c = await graph.request<GraphChat>({ path: `/chats/${e(ref.chatId)}`, query: { $expand: 'members' } });
+      return c ? { summary: summaryOfChat(c, identity), topic: c.topic?.trim() || null } : null;
+    }
+    const base = `/teams/${e(ref.teamId)}/channels/${e(ref.channelId)}`;
+    const [team, channel, posts] = await Promise.all([
+      graph.request<GraphTeam>({ path: `/teams/${e(ref.teamId)}`, query: { $select: 'id,displayName' } }),
+      graph.request<GraphChannel>({ path: base, query: { $select: 'id,displayName,webUrl' } }),
+      graph.request<{ value?: GraphPost[] }>({ path: `${base}/messages`, query: { $top: 1 } }),
+    ]);
+    if (!channel) return null;
+    const post = posts?.value?.[0];
+    return {
+      topic: null,
+      summary: {
+        key: channelKey(identity.id, ref.teamId, ref.channelId),
+        identityId: identity.id,
+        accountEmail: identity.email,
+        kind: 'channel',
+        chatId: null,
+        teamId: ref.teamId,
+        channelId: ref.channelId,
+        name: channel.displayName ?? 'Channel',
+        teamName: team?.displayName ?? '',
+        members: [],
+        memberCount: 0,
+        external: false,
+        lastAt: post?.createdDateTime ?? null,
+        preview: previewOf(post?.body),
+        unread: false,
+        favorite: false,
+        webUrl: channel.webUrl ?? null,
+      },
+    };
+  } catch (err) {
+    if (err instanceof GraphError && (err.status === 403 || err.status === 404)) return null;
+    throw err;
+  }
+}
+
 export async function chatList(ctx: AuthContext, ownerId?: string | null): Promise<ChatList> {
   const { ownerId: who, own } = await dataOwner(ctx, 'chat', ownerId);
   const identities = await identitiesOf(who);

@@ -13,6 +13,7 @@ import { connectHref, goToMicrosoft, Notice, PersonPicker, StatusNotices, useOnl
 import type { ModulePage } from '../../msteams-ui/page-data';
 import { favoriteAction } from '../actions';
 import { colorFor, initials, listTime } from './format';
+import { ChatRecordLinks } from './ChatRecordLinks';
 import { Conversation } from './Conversation';
 import { NewChatDialog, NewTeamDialog } from './NewDialogs';
 
@@ -217,6 +218,7 @@ export function ChatShell({ page }: { page: ModulePage }) {
               onRead={onRead}
               onLoaded={onLoaded}
               onListChanged={() => void load()}
+              belowHeader={<ChatRecordLinks key={open.key} chatKey={open.key} online={online} />}
             />
           ) : (
             <div className="grid h-full place-items-center bg-canvas text-center">

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   awaitsAnswer,
   chatName,
+  conversationRefKey,
   countUnanswered,
   dayBefore,
   firstLink,
@@ -10,6 +11,7 @@ import {
   isExternal,
   isTeamsFileUrl,
   isUnread,
+  linkedChatTitle,
   safeHttps,
   shareIdFor,
   thumbsOf,
@@ -132,5 +134,19 @@ describe('chat', () => {
 
   it('encodes a share id as Graph expects', () => {
     expect(shareIdFor('https://a.test/?x=1')).toBe(`u!${Buffer.from('https://a.test/?x=1').toString('base64url')}`);
+  });
+});
+
+describe('a conversation linked to a record', () => {
+  it('has no account in its reference, so it is one link whoever made it', () => {
+    expect(conversationRefKey({ kind: 'chat', chatId: '19:abc' })).toBe('chat|19:abc');
+    expect(conversationRefKey({ kind: 'channel', teamId: 't1', channelId: 'c1' })).toBe('channel|t1|c1');
+  });
+
+  it('names everyone when a chat has no topic, and is capped to what the column holds', () => {
+    expect(linkedChatTitle(null, ['Olive Owner', 'Mae Mate'])).toBe('Olive Owner, Mae Mate');
+    expect(linkedChatTitle('  Acme setup ', ['Olive Owner'])).toBe('Acme setup');
+    expect(linkedChatTitle('x'.repeat(300), [])).toHaveLength(200);
+    expect(linkedChatTitle(null, [])).toBe('Chat');
   });
 });

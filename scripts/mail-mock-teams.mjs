@@ -342,6 +342,7 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     }
     const c = chats.get(decodeURIComponent(parts[1] ?? ''));
     if (!c || !c.members.includes(oid)) return graphErr(404, 'NotFound', 'The chat was not found.');
+    if (parts.length === 2 && method === 'GET') return { status: 200, body: chatJson(c, oid) };
     if (parts[2] === 'markChatReadForUser' && method === 'POST') {
       if (body?.user?.id !== oid) return graphErr(403, 'Forbidden', 'You can only mark your own chats read.');
       c.readAt[oid] = now();
@@ -372,6 +373,7 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
       });
       return { status: 200, body: { value: values } };
     }
+    if (parts.length === 2 && method === 'GET') return { status: 200, body: { id: t.id, displayName: t.displayName } };
     if (parts[2] !== 'channels') return null;
     if (parts.length === 3) {
       if (method === 'GET') return { status: 200, body: { value: t.channels.map((c) => ({ id: c.id, displayName: c.displayName, webUrl: `https://teams.microsoft.com/l/channel/${encodeURIComponent(c.id)}` })) } };
@@ -385,6 +387,7 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
     }
     const ch = t.channels.find((c) => c.id === decodeURIComponent(parts[3] ?? ''));
     if (!ch) return graphErr(404, 'NotFound', 'The channel was not found.');
+    if (parts.length === 4 && method === 'GET') return { status: 200, body: { id: ch.id, displayName: ch.displayName, webUrl: `https://teams.microsoft.com/l/channel/${encodeURIComponent(ch.id)}/0` } };
     if (parts[4] === 'members' && method === 'GET') return { status: 200, body: { value: t.members.map((o) => ({ ...memberOf(byOid(o)), roles: t.owners.includes(o) ? ['owner'] : [] })) } };
     if (parts[4] === 'filesFolder' && method === 'GET') return { status: 200, body: { id: ch.driveItem, name: ch.displayName, parentReference: { driveId: `drive-${t.id}` } } };
     if (parts[4] === 'messages') return messageOps(oid, ch.messages, method, parts.slice(5), body, url, { channel: true, path: `/teams/${t.id}/channels/${encodeURIComponent(ch.id)}/messages` });
@@ -624,6 +627,23 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
       const b = JSON.parse(await readBody(req));
       const r = createEvent(b.organizer, null, { subject: b.subject, start: { dateTime: b.start }, end: { dateTime: b.end }, attendees: (b.attendees ?? []).map((a) => ({ emailAddress: { address: a } })), sensitivity: b.sensitivity, isOnlineMeeting: b.online });
       send(res, 200, r.body);
+      return true;
+    }
+    if (url.pathname === '/__mock/teams-chat' && req.method === 'POST') {
+      // A chat the seed does not have: {chatType, topic, members: [emails], from?, html?}.
+      const b = JSON.parse(await readBody(req));
+      const c = { id: `19:${randomBytes(8).toString('hex')}@thread.v2`, chatType: b.chatType ?? 'group', topic: b.topic ?? null, members: (b.members ?? []).map(oidOf), messages: [], readAt: {} };
+      if (b.html) c.messages.push({ id: `${Date.now()}${randomBytes(2).toString('hex')}`, from: oidOf(b.from), createdDateTime: now(), content: b.html, contentType: 'html', attachments: [], mentions: [], reactions: [], replies: [] });
+      chats.set(c.id, c);
+      send(res, 200, { id: c.id });
+      return true;
+    }
+    if (url.pathname === '/__mock/teams-soft-delete' && req.method === 'POST') {
+      // Someone removes a message in Teams itself: {chatId, messageId}.
+      const b = JSON.parse(await readBody(req));
+      const m = chats.get(b.chatId)?.messages.find((x) => x.id === b.messageId);
+      if (m) m.deletedDateTime = now();
+      send(res, 200, { ok: Boolean(m) });
       return true;
     }
     if (url.pathname === '/__mock/teams-message' && req.method === 'POST') {

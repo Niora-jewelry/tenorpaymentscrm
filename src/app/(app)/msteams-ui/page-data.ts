@@ -36,7 +36,9 @@ export async function modulePage(ctx: AuthContext, kind: TeamsKind, sp: Record<s
   const accounts = mine.map(toAccountView);
   const err = first(sp.mail_error);
   const errorText = isConnectErrorCode(err) && err !== 'consent_required' ? connectErrorMessage(err, { isAdmin: ctx.isAdmin }) : null;
-  const requestText = waiting ? await adminRequestText() : '';
+  // Always, not only when waiting: backing out of Microsoft's "Need admin approval" page
+  // comes back as an ordinary cancel, so the app cannot tell that person needs it.
+  const requestText = await adminRequestText();
 
   let ownerId = ctx.userId;
   let own = true;

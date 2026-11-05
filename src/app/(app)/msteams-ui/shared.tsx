@@ -212,6 +212,30 @@ export function ConnectScreen({ kind, accounts, waiting, requestText, errorText,
             </div>
           </>
         )}
+        {/*
+          Microsoft's "Need admin approval" page offers a way to request approval only if
+          the organization switched that on. Backing out of it comes back as an ordinary
+          cancel, so the waiting screen above never appears: this has to be here too.
+        */}
+        {!impersonating && !waiting && requestText ? (
+          <details className="mt-5 border-t border-line-faint pt-3">
+            <summary className="cursor-pointer text-[12.5px] font-medium text-ink-600">Microsoft says you need admin approval?</summary>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-500">A Microsoft admin approves Tenor once for your whole organization. You keep signing in with your own account. Send them this:</p>
+            <textarea readOnly aria-label="Request for your Microsoft admin" value={requestText} rows={6} className="mt-2 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-[12px] text-ink-700" />
+            <div className="mt-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={copied ? 'check' : 'copy'}
+                onClick={() => {
+                  void navigator.clipboard.writeText(requestText).then(() => setCopied(true));
+                }}
+              >
+                {copied ? 'Copied' : 'Copy request'}
+              </Button>
+            </div>
+          </details>
+        ) : null}
       </div>
     </div>
   );

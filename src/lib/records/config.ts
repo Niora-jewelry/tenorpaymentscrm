@@ -83,6 +83,8 @@ export type Subtab = {
   description: string | null;
   position: number;
   comingSoon: boolean;
+  /** Shows the Teams conversations linked to the record (migration 9907). */
+  showsRecordChats?: boolean;
 };
 
 export type Field = {
@@ -215,7 +217,10 @@ const loadConfigCached = unstable_cache(
       })),
       subtabs: subtabs.data!.map((s) => ({
         id: s.id, tabId: s.tab_id, key: s.key, label: s.label,
-        description: s.description, position: s.position, comingSoon: s.coming_soon,
+        description: s.description, position: s.position,
+        // Migration 9907: this flag wins, and `coming_soon` stays true for older builds.
+        comingSoon: s.coming_soon && !(s as { shows_record_chats?: boolean }).shows_record_chats,
+        showsRecordChats: (s as { shows_record_chats?: boolean }).shows_record_chats ?? false,
       })),
       fields: fields.data!.map((f) => ({
         id: f.id, key: f.key, label: f.label, type: f.type,

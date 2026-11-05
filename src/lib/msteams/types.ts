@@ -178,3 +178,50 @@ export type SendInput = {
 };
 
 export type PersonResult = { name: string; email: string; source: 'microsoft' | 'crm' };
+
+/* ── Teams on a record ──────────────────────────────────────────────────── */
+
+/**
+ * What this viewer gets of a linked conversation.
+ *   member: they are in it, through their own account.
+ *   look: All users, through the account that linked it, read only.
+ *   none: the card only. Nothing of the conversation is read.
+ *   unavailable: Microsoft did not answer, so whether they are in it is unknown.
+ */
+export type RecordChatAccess = 'member' | 'look' | 'none' | 'unavailable';
+
+export type RecordChatLink = {
+  id: string;
+  kind: ChatKind;
+  /** Stored when linked, so it can be shown without asking Microsoft. */
+  title: string;
+  teamName: string | null;
+  linkedByName: string;
+  linkedAt: string;
+  access: RecordChatAccess;
+  /** Only for member and look. Its key decides whose account reads the messages. */
+  chat: ChatSummary | null;
+  /** Whose account a look-only view reads through. */
+  lookingThrough: string | null;
+};
+
+export type RecordChats = {
+  configured: boolean;
+  impersonating: boolean;
+  /** Communication and its Teams sub-tab are Edit for this viewer on this record. */
+  canEdit: boolean;
+  /** The viewer's own accounts: they decide the connect prompt, and what can be linked. */
+  accounts: AccountView[];
+  links: RecordChatLink[];
+  /** Own only, Microsoft down: a chat they are in may be missing from `links`. */
+  someUnavailable: boolean;
+};
+
+/** A record a conversation is linked to, as the Chat module shows it. */
+export type ChatRecordLink = { recordId: string; name: string; href: string };
+
+export type ChatRecords = {
+  records: ChatRecordLink[];
+  /** The viewer's own conversation, on an account that can link it. */
+  canLink: boolean;
+};

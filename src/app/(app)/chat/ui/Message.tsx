@@ -51,6 +51,7 @@ export function MessageRow({
   canWrite,
   sending,
   threadId,
+  onRecord,
   onQuote,
   onThread,
   onChanged,
@@ -63,6 +64,11 @@ export function MessageRow({
   sending?: boolean;
   /** Set on a reply inside a channel thread. */
   threadId?: string;
+  /**
+   * Inside a merchant record, where "delete" is a reserved word (CLAUDE.md): that
+   * screen offers no way to remove a message, and removing one is left to Chat.
+   */
+  onRecord?: boolean;
   onQuote: (m: ChatMessage) => void;
   onThread: (m: ChatMessage) => void;
   onChanged: () => void;
@@ -116,7 +122,7 @@ export function MessageRow({
         </div>
         <div className={`relative rounded-lg px-3 py-2 text-[13px] leading-relaxed text-ink-800 ${m.deleted ? 'border border-dashed border-line bg-transparent' : m.mine ? 'bg-brand-100' : 'bg-white shadow-[0_1px_1px_rgba(14,28,52,.06)]'} ${sending ? 'opacity-60' : ''}`}>
           {m.deleted ? (
-            <span className="italic text-ink-400">Message deleted</span>
+            <span className="italic text-ink-400">{onRecord ? 'Message removed' : 'Message deleted'}</span>
           ) : (
             <>
               {m.quote ? (
@@ -167,9 +173,11 @@ export function MessageRow({
                   <ToolButton label="Edit" disabled={!canWrite} onClick={() => setEditing(true)}>
                     <Icon name="pencil" size={13} />
                   </ToolButton>
-                  <ToolButton label="Delete" disabled={!canWrite} onClick={() => setDeleting(true)}>
-                    <Icon name="trash" size={13} />
-                  </ToolButton>
+                  {onRecord ? null : (
+                    <ToolButton label="Delete" disabled={!canWrite} onClick={() => setDeleting(true)}>
+                      <Icon name="trash" size={13} />
+                    </ToolButton>
+                  )}
                 </>
               ) : null}
             </div>
@@ -185,7 +193,7 @@ export function MessageRow({
         {isChannel && !threadId && m.replies.length ? (
           <ol className="mt-2 w-full space-y-2 border-l-2 border-line pl-3">
             {m.replies.map((r) => (
-              <MessageRow key={r.id} message={r} chatKey={chatKey} isChannel threadId={m.id} canWrite={canWrite} onQuote={onQuote} onThread={onThread} onChanged={onChanged} onLocal={onLocal} />
+              <MessageRow key={r.id} message={r} chatKey={chatKey} onRecord={onRecord} isChannel threadId={m.id} canWrite={canWrite} onQuote={onQuote} onThread={onThread} onChanged={onChanged} onLocal={onLocal} />
             ))}
           </ol>
         ) : null}
@@ -195,7 +203,7 @@ export function MessageRow({
           </button>
         ) : null}
       </div>
-      {editing ? <EditDialog m={m} chatKey={chatKey} threadId={threadId} onClose={() => setEditing(false)} onSaved={(html) => {
+      {editing ? <EditDialog m={m} chatKey={chatKey} threadId={threadId} onRecord={onRecord} onClose={() => setEditing(false)} onSaved={(html) => {
         setEditing(false);
         onLocal({ ...m, html, edited: true });
         onChanged();
@@ -217,14 +225,14 @@ function ToolButton({ label, disabled, onClick, children }: { label: string; dis
   );
 }
 
-function EditDialog({ m, chatKey, threadId, onClose, onSaved }: { m: ChatMessage; chatKey: string; threadId?: string; onClose: () => void; onSaved: (html: string) => void }) {
+function EditDialog({ m, chatKey, threadId, onRecord, onClose, onSaved }: { m: ChatMessage; chatKey: string; threadId?: string; onRecord?: boolean; onClose: () => void; onSaved: (html: string) => void }) {
   const editor = useRef<EditorHandle>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     const html = editor.current?.getHTML() ?? '';
     if (editor.current?.isEmpty()) {
-      setError('A message cannot be empty. Delete it instead.');
+      setError(onRecord ? 'A message cannot be empty.' : 'A message cannot be empty. Delete it instead.');
       return;
     }
     setBusy(true);

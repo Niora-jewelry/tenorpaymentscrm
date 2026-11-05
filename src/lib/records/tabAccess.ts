@@ -37,6 +37,7 @@ import {
   fieldGrant,
   maxGrant,
   moduleGrant,
+  subtabGrant,
   tabGrant,
   type AuthContext,
   type Grant,
@@ -231,6 +232,26 @@ export async function tabCapsFor(
   const caps = await chainCapFor(ctx, recordIds, [(moduleId) => tabGrant(ctx, tabId, moduleId)]);
   const tab = (await loadConfig()).tabs.find((t) => t.id === tabId);
   return tab ? restrictedCaps(ctx, caps, [`tab:${tab.key}`], tab.allowsAddOnly ?? false) : caps;
+}
+
+/**
+ * The chain for one sub-tab on a set of records: module -> tab -> sub-tab, capped
+ * inside each module before the best is taken (see `chainCapFor`). For a sub-tab
+ * that is not made of fields, where the sub-tab's own grant would otherwise only
+ * ever have hidden it from the strip and not from a direct request.
+ */
+export async function subtabCapsFor(
+  ctx: AuthContext,
+  recordIds: string[],
+  subtabId: string,
+  tabId: string,
+): Promise<Map<string, Grant>> {
+  const caps = await chainCapFor(ctx, recordIds, [
+    (moduleId) => tabGrant(ctx, tabId, moduleId),
+    (moduleId) => subtabGrant(ctx, subtabId, moduleId, tabId),
+  ]);
+  const tab = (await loadConfig()).tabs.find((t) => t.id === tabId);
+  return restrictedCaps(ctx, caps, [`subtab:${subtabId}`, ...(tab ? [`tab:${tab.key}`] : [])], false);
 }
 
 /**

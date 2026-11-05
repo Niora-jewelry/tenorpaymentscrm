@@ -172,6 +172,23 @@ export function chatName(topic: string | null | undefined, names: string[]): str
   return list.length <= 3 ? list.join(', ') : `${list.slice(0, 3).join(', ')} +${list.length - 3}`;
 }
 
+/**
+ * A conversation as a record stores it: no account in it, because Graph's ids are
+ * the same for everyone in the conversation.
+ */
+export function conversationRefKey(ref: { kind: 'chat'; chatId: string } | { kind: 'channel'; teamId: string; channelId: string }): string {
+  return ref.kind === 'chat' ? `chat|${ref.chatId}` : `channel|${ref.teamId}|${ref.channelId}`;
+}
+
+/**
+ * The name a linked conversation shows on a record. The Chat list leaves the viewer
+ * out of an untitled chat's name, which only works when there is one viewer; on a
+ * record everyone reads the same card, so everyone in the chat is named.
+ */
+export function linkedChatTitle(topic: string | null | undefined, memberNames: string[]): string {
+  return chatName(topic, memberNames).slice(0, 200);
+}
+
 /** Only the thumbs-up counts: the client wants no other reactions shown. */
 export const THUMBS = '👍';
 const isThumb = (type: string | undefined) => type === 'like' || type === THUMBS;

@@ -658,8 +658,7 @@ function CreatePipelineForm({ modules, onClose }: { modules: ModuleOption[]; onC
         </Button>
       </div>
       <p className="mt-1 text-[11.5px] text-ink-400">
-        At least one. Assigning a record puts it on the first step — and steps cannot be removed afterwards, only added,
-        renamed and reordered.
+        At least one. Assigning a record puts it on the first step. Steps can be added, renamed, reordered and removed later.
       </p>
       <input type="hidden" name="steps" value={serialised} />
 

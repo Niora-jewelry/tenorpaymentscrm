@@ -144,8 +144,9 @@ export async function sendViaGraph(cfg: GraphSender, mail: AlertMail, fetchImpl:
         body,
       });
       if (res.ok) return { ok: true };
-      // A token revoked or rotated before its time: one fresh try.
-      if (res.status === 401 && attempt === 0) {
+      // A token revoked or rotated before its time, or one from before a permission
+      // was granted (a held token keeps its old permissions): one fresh try.
+      if ((res.status === 401 || res.status === 403) && attempt === 0) {
         cached = null;
         continue;
       }

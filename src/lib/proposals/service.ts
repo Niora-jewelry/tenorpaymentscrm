@@ -31,7 +31,9 @@ import type { FromOption } from '@/lib/mail/viewTypes';
 import { toPostgresBytea } from '@/lib/security/otp';
 import { newId, newToken, recordForApplication } from '@/lib/applications/store';
 import type { Recipient } from '@/lib/applications/service';
-import { buildProposal, hasSavingsFigures, PROPOSAL_FIELD_KEYS, type ProposalContent } from './content';
+import { equipmentFor } from '@/lib/equipment/service';
+import type { EquipmentColumn } from '@/lib/equipment/columns';
+import { buildProposal, hasSavingsFigures, PROPOSAL_FIELD_KEYS, ticked, type EquipmentLine, type ProposalContent } from './content';
 
 export class ProposalError extends Error {}
 
@@ -127,6 +129,34 @@ function placeOf(config: Config, key: string): { words: string; tab?: string; su
   return { words: [tab?.label, sub?.label].filter(Boolean).join(' › ') || 'the record', tab: tab?.key, subtab: sub?.key };
 }
 
+/** The columns Detailed POS prints, and the tick that picks a row. */
+const DETAILED_POS_COLUMNS: readonly EquipmentColumn[] = ['provider_id', 'item', 'item_amount', 'monthly_fee', 'per_item_fee', 'one_time_fee', 'proposal'];
+
+/**
+ * The Merchant Equipment Setup rows Detailed POS may print: what the sender may not see is
+ * not sent out in their name, the same rule as every other proposal field. Only asked when
+ * the page is ticked, because it runs the permission checks for every column.
+ */
+async function equipmentLines(ctx: AuthContext, recordId: string, wanted: boolean): Promise<{ lines: EquipmentLine[]; partial: boolean }> {
+  if (!wanted) return { lines: [], partial: false };
+  const panel = await equipmentFor(ctx, recordId);
+  if (!panel) return { lines: [], partial: true };
+  const shown = new Set(panel.columns.map((c) => c.column));
+  const names = new Map(panel.providers.map((p) => [p.id, p.name]));
+  return {
+    partial: DETAILED_POS_COLUMNS.some((c) => !shown.has(c)),
+    lines: panel.rows.map(({ values: r }) => ({
+      provider: names.get(String(r.provider_id)),
+      item: r.item,
+      amount: r.item_amount,
+      monthlyFee: r.monthly_fee,
+      perItemFee: r.per_item_fee,
+      oneTimeFee: r.one_time_fee,
+      proposal: r.proposal,
+    })),
+  };
+}
+
 async function draftFor(ctx: AuthContext, recordId: string, moduleSlug: string | null): Promise<Draft> {
   const rec = await recordForApplication(recordId);
   if (!rec) throw new ProposalError('That record no longer exists.');
@@ -142,7 +172,8 @@ async function draftFor(ctx: AuthContext, recordId: string, moduleSlug: string |
     const live = (data ?? []).filter((p) => p.status === 'active' && !p.deleted_at);
     rmEmail = (rmIds.map((id) => live.find((p) => p.id === id)?.email as string | undefined).find(Boolean) ?? null) as string | null;
   }
-  const content = buildProposal(visible, { dealName: rec.dealName, relationshipManagerEmail: rmEmail, preparedOn: new Date() });
+  const equipment = await equipmentLines(ctx, recordId, ticked(visible.pos_detail_in_proposal));
+  const content = buildProposal(visible, { dealName: rec.dealName, relationshipManagerEmail: rmEmail, preparedOn: new Date(), equipment: equipment.lines });
 
   const notes: ProposalNote[] = [];
   const link = (key: string) => {
@@ -157,15 +188,14 @@ async function draftFor(ctx: AuthContext, recordId: string, moduleSlug: string |
     notes.push({ tone: 'block', text: `The Savings Analysis has no figures yet. Fill them in on ${at.words}.`, href: at.href });
   }
   const hiddenUsed = PROPOSAL_FIELD_KEYS.filter((k) => hidden.has(k));
-  if (hiddenUsed.length) notes.push({ tone: 'info', text: 'Some proposal fields are in a section you can’t see, so they are left out.' });
-  const ticked = (v: unknown) => v === true || v === 'Yes' || v === 'yes' || v === 'true';
+  if (hiddenUsed.length || equipment.partial) notes.push({ tone: 'info', text: 'Some proposal fields are in a section you can’t see, so they are left out.' });
   if (ticked(visible.pos_in_proposal) && !content.pos) {
     const at = link('pos_description');
     notes.push({ tone: 'info', text: `POS Architecture is ticked but has nothing to show — add a description or requirements on ${at.words}.`, href: at.href });
   }
   if (ticked(visible.pos_detail_in_proposal) && !content.detailedPos) {
-    const at = link('merchant_direct_relationships');
-    notes.push({ tone: 'info', text: `Detailed POS is ticked but no row is ticked “In proposal” on ${at.words}.`, href: at.href });
+    const at = link('pos_detail_in_proposal');
+    notes.push({ tone: 'info', text: `Detailed POS is ticked but no row is ticked “Proposal” on ${at.words}.`, href: at.href });
   }
   if (!rmEmail) notes.push({ tone: 'info', text: `No relationship manager on the record: the closing page shows ${content.closing.email}.` });
 
@@ -239,8 +269,8 @@ export async function proposalPreCheck(ctx: AuthContext, recordId: string, modul
   const already = new Set(problems.map((p) => p.fieldKey));
   problems.push(...requiredFlagProblems(config, rec.values, PROPOSAL_FIELD_KEYS.filter((k) => !already.has(k)), hidden));
 
-  const ticked = (v: unknown) => v === true || v === 'Yes' || v === 'yes' || v === 'true';
-  const content = buildProposal(visible, { dealName: rec.dealName, relationshipManagerEmail: null, preparedOn: new Date() });
+  const equipment = await equipmentLines(ctx, recordId, ticked(visible.pos_detail_in_proposal));
+  const content = buildProposal(visible, { dealName: rec.dealName, relationshipManagerEmail: null, preparedOn: new Date(), equipment: equipment.lines });
   const link = (key: string) => {
     const p = placeOf(config, key);
     return moduleSlug && p.tab ? `/${moduleSlug}?record=${recordId}&tab=${encodeURIComponent(p.tab)}${p.subtab ? `&subtab=${encodeURIComponent(p.subtab)}` : ''}&field=${key}` : undefined;
@@ -249,7 +279,7 @@ export async function proposalPreCheck(ctx: AuthContext, recordId: string, modul
   if (!ticked(visible.pos_in_proposal)) optional.push({ page: 'POS Architecture', reason: 'not ticked to include', href: link('pos_in_proposal') });
   else if (!content.pos) optional.push({ page: 'POS Architecture', reason: 'ticked, but it has no description or requirements, so it is left out', href: link('pos_description') });
   if (!ticked(visible.pos_detail_in_proposal)) optional.push({ page: 'Detailed POS', reason: 'not ticked to include', href: link('pos_detail_in_proposal') });
-  else if (!content.detailedPos) optional.push({ page: 'Detailed POS', reason: 'ticked, but no Merchant Direct Relationships row is ticked “In proposal”, so it is left out', href: link('merchant_direct_relationships') });
+  else if (!content.detailedPos) optional.push({ page: 'Detailed POS', reason: 'ticked, but no Merchant Equipment Setup row is ticked “Proposal”, so it is left out', href: link('pos_detail_in_proposal') });
   return { groups: groupFieldProblems(config, problems), optional };
 }
 

@@ -7,6 +7,8 @@
  * working phone line down. No value ever leaves this file for the browser or a log.
  */
 import 'server-only';
+import { forgetGraphToken } from '@/lib/email/graphAlert';
+import { clearSecretRefused } from '@/lib/mail/health';
 import { currentImpersonation } from '@/lib/auth/impersonation';
 import { sendAlertTest, verifySmtpLogin } from '@/lib/email/send';
 import { appOrigin } from '@/lib/appOrigin';
@@ -184,6 +186,7 @@ async function apply(ctx: AuthContext, group: IntegrationGroup, set: { key: stri
     throw new IntegrationError('The change was not saved. Try again.');
   }
   forgetIntegrationValues();
+  forgetGraphToken();
 }
 
 const probe = (group: IntegrationGroup, v: IntegrationValues) => probeGroup(group, v, { origin: siteOrigin(), verifySmtp: verifySmtpLogin });
@@ -213,6 +216,8 @@ export async function saveIntegrationGroup(ctx: AuthContext, group: IntegrationG
   const result = await probe(group, next);
   if (!result.ok) return { saved: false, result };
   await apply(ctx, group, set, [], result);
+  // Microsoft has just accepted these keys. Nobody should wait for the next sign-in to hear so.
+  if (group === 'microsoft') await clearSecretRefused();
   return { saved: true, result };
 }
 
@@ -249,7 +254,7 @@ export async function connectSignwell(ctx: AuthContext): Promise<ProbeResult> {
 
 /**
  * Switches a service on or off. Its keys stay saved either way; Off makes the
- * CRM treat it as not connected, within a minute everywhere.
+ * CRM treat it as not connected, within seconds everywhere.
  */
 export async function setIntegrationEnabled(ctx: AuthContext, group: IntegrationGroup, enabled: boolean): Promise<void> {
   await requireEditor(ctx);
@@ -263,12 +268,12 @@ export async function setIntegrationEnabled(ctx: AuthContext, group: Integration
 }
 
 /** Sends one real alert to the person pressing the button, the only proof of Mail.Send. */
-export async function sendTestAlert(ctx: AuthContext): Promise<{ to: string }> {
+export async function sendTestAlert(ctx: AuthContext): Promise<{ to: string; microsoftRefused: string | null }> {
   await requireEditor(ctx);
   const { data } = await supabaseAdmin().from('profiles').select('email').eq('id', ctx.userId).maybeSingle();
   const to = data?.email as string | undefined;
   if (!to) throw new IntegrationError('Your account has no email address.');
   const sent = await sendAlertTest(to);
-  if (!sent.ok) throw new IntegrationError('The test alert could not be sent. Check the settings above and try again.');
-  return { to };
+  if (!sent.ok) throw new IntegrationError(`The test alert could not be sent${sent.graphCode ? ` (Microsoft said ${sent.graphCode})` : ''}. Check the settings above and try again.`);
+  return { to, microsoftRefused: sent.graphCode ?? null };
 }

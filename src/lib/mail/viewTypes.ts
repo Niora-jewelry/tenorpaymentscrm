@@ -2,7 +2,7 @@
  * The shapes the Email UI receives. Plain data, no server imports, so client
  * components can share them with the server code that builds them.
  */
-export type Health = 'ok' | 'setting_up' | 'needs_reconnect' | 'needs_permission' | 'stalled' | 'throttled';
+export type Health = 'ok' | 'setting_up' | 'needs_reconnect' | 'needs_permission' | 'stalled' | 'throttled' | 'paused';
 
 export type FolderView = {
   id: string;

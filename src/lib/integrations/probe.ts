@@ -185,14 +185,39 @@ export async function probeAlerts(v: IntegrationValues, deps: ProbeDeps): Promis
 
 /* ── Maverick Payments ───────────────────────────────────────────────────── */
 
+const MAVERICK_ADDRESS = 'https://dashboard.maverickpayments.com';
+/** Says plainly who is calling. Never made to look like a browser: see the note below. */
+const MAVERICK_CLIENT = 'TenorPaymentsCRM/1.0';
+
+const MAVERICK_FIREWALL =
+  'The key is saved but still unchecked: Maverick’s firewall (Cloudflare) stopped this request before Maverick could read the key. Maverick has to let API traffic through. See Help.';
+
 /**
- * Maverick's API documentation is not in yet, so there is no call to make that
- * proves a key. The key's shape is checked and it is saved; Test connection
- * says plainly that it could not be verified.
+ * Asks Maverick for the campaign list, the smallest read in their Platforms API.
+ *
+ * Saving is refused only when Maverick itself turns the key down. A firewall
+ * answer says nothing about the key, so it saves with a warning: refusing it would
+ * stop anyone replacing a wrong key while the firewall is up. The answer is a rule
+ * on Maverick's side. This code must not try to get past their bot check.
  */
-export async function probeMaverick(v: IntegrationValues): Promise<ProbeResult> {
+export async function probeMaverick(v: IntegrationValues, fetchImpl: typeof fetch = fetch): Promise<ProbeResult> {
   if (!v.MAVERICK_API_KEY) return { ok: false, note: 'Enter the Maverick API key first.' };
-  return { ok: true, note: 'The key is stored.', warning: 'It could not be checked with Maverick yet: the connection is switched on once their API documentation is in.' };
+  const base = (v.MAVERICK_API_URL ?? MAVERICK_ADDRESS).replace(/\/+$/, '');
+  try {
+    const res = await timed(fetchImpl, `${base}/api/boarding-application/campaigns`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${v.MAVERICK_API_KEY}`, 'User-Agent': MAVERICK_CLIENT },
+    });
+    const html = (res.headers.get('content-type') ?? '').includes('text/html');
+    if (res.headers.get('cf-mitigated') || (html && (res.headers.get('server') ?? '').toLowerCase() === 'cloudflare' && !res.ok)) {
+      return { ok: true, note: 'The key is stored.', warning: MAVERICK_FIREWALL };
+    }
+    if (res.ok) return { ok: true, note: 'Maverick accepted this key.' };
+    if (res.status === 401) return { ok: false, note: 'Maverick refused this key. Check it was copied in full.' };
+    if (res.status === 403) return { ok: false, note: 'Maverick accepted the request but this key has no access to platform data. Ask Maverick for an agent API token.' };
+    return { ok: true, note: 'The key is stored.', warning: `Maverick answered with an error (${res.status}), so the key is still unchecked. Try again later.` };
+  } catch {
+    return { ok: true, note: 'The key is stored.', warning: 'Could not reach Maverick, so the key is still unchecked. Try again in a minute.' };
+  }
 }
 
 export function probeGroup(group: IntegrationGroup, v: IntegrationValues, deps: ProbeDeps): Promise<ProbeResult> {
@@ -206,6 +231,6 @@ export function probeGroup(group: IntegrationGroup, v: IntegrationValues, deps: 
     case 'alerts':
       return probeAlerts(v, deps);
     case 'maverick':
-      return probeMaverick(v);
+      return probeMaverick(v, deps.fetchImpl);
   }
 }

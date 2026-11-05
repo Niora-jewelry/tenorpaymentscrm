@@ -68,7 +68,7 @@ export async function setIntegrationEnabledAction(input: z.input<typeof Switch>)
   if (!parsed.success) return { ok: false, message: 'That service is not valid.' };
   return run(async () => {
     await setIntegrationEnabled(await authorize(), parsed.data.group, parsed.data.enabled);
-    return { ok: true, note: parsed.data.enabled ? 'Switched on. The CRM uses these keys again within a minute.' : 'Switched off. The keys are kept; nothing uses them until you switch it back on.' };
+    return { ok: true, note: parsed.data.enabled ? 'Switched on. The CRM uses these keys again within seconds.' : 'Switched off. The keys are kept; nothing uses them until you switch it back on.' };
   });
 }
 
@@ -78,7 +78,9 @@ export async function connectSignwellAction(): Promise<IntegrationOutcome> {
 
 export async function sendTestAlertAction(): Promise<IntegrationOutcome> {
   return run(async () => {
-    const { to } = await sendTestAlert(await authorize());
-    return { ok: true, note: `Test alert sent to ${to}.` };
+    const { to, microsoftRefused } = await sendTestAlert(await authorize());
+    return microsoftRefused
+      ? { ok: true, note: `Test alert sent to ${to} by the backup mail login.`, warning: `Microsoft refused it (${microsoftRefused}), so it will not come from the From address above.` }
+      : { ok: true, note: `Test alert sent to ${to}.` };
   });
 }

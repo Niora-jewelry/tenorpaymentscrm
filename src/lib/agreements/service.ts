@@ -27,6 +27,8 @@ import { rateLimit, userKey } from '@/lib/security/rate-limit';
 import { toPostgresBytea } from '@/lib/security/otp';
 import { fromBytea } from '@/lib/mail/crypto';
 import { choiceLabels, merchantName, recordForApplication } from '@/lib/applications/store';
+import { PROVIDER_FIELD_KEY } from '@/lib/equipment/columns';
+import { equipmentProviderNames } from './store';
 import { openBytes, openText, sealBytes, sealText } from './crypto';
 import { describeSignerProblem, selectSigners, type Signer, type SignerProblem } from './signers';
 import { ownerName, ownersOf, renderAgreement, requiredFromFieldNeeds, requiredProblems, signerDetailProblems } from './mapping';
@@ -100,11 +102,19 @@ async function fieldAddresses(recordId: string): Promise<Record<string, unknown>
   return Object.fromEntries(((data ?? []) as { field_key: string; address: unknown }[]).map((r) => [r.field_key, r.address]));
 }
 
+/**
+ * What this viewer may not see of what an agreement prints. `config.fields` leaves out
+ * row columns, and the equipment line prints one, so it is added: without it a member who
+ * can't see providers could still open a PDF that names them.
+ */
+const hiddenOnAgreement = (ctx: AuthContext, recordId: string, config: Config) =>
+  hiddenFieldKeysFor(ctx, recordId, [...config.fields, ...config.rowColumns.filter((f) => f.key === PROVIDER_FIELD_KEY)]);
+
 async function sourceFor(recordId: string, sentAt = new Date()): Promise<{ src: AgreementSource; dealName: string; updatedAt: string } | null> {
   const rec = await recordForApplication(recordId);
   if (!rec) return null;
-  const [labels, notes, addresses] = await Promise.all([choiceLabels(), latestNotes(recordId), fieldAddresses(recordId)]);
-  return { src: { values: rec.values, addresses, notes, label: labels, sentAt }, dealName: rec.dealName, updatedAt: rec.updatedAt };
+  const [labels, notes, addresses, providers] = await Promise.all([choiceLabels(), latestNotes(recordId), fieldAddresses(recordId), equipmentProviderNames(recordId)]);
+  return { src: { values: { ...rec.values, [PROVIDER_FIELD_KEY]: providers }, addresses, notes, label: labels, sentAt }, dealName: rec.dealName, updatedAt: rec.updatedAt };
 }
 
 function ownerInputs(values: Record<string, unknown>) {
@@ -202,7 +212,7 @@ export async function preSendCheck(ctx: AuthContext, recordId: string, kindKey: 
   if (open) problems.push({ fieldKey: 'owner_ownership', message: `This ${kind.label.toLowerCase()} is already out (${agrLabel(open.number)}). Void it first.` });
 
   // A problem on a field the viewer cannot see is named by its place, not its value.
-  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
+  const hidden = await hiddenOnAgreement(ctx, recordId, config);
   const visibleProblems = problems.map((p) => (hidden.has(p.fieldKey) ? { ...p, message: 'A value in a section you cannot see is missing or wrong. Ask an underwriter or admin to complete it.' } : p));
 
   const name = merchantName(src.values, dealName);
@@ -251,7 +261,7 @@ export async function previewAgreementPdf(ctx: AuthContext, recordId: string, ki
   const rendered = renderAgreement(kind, src, picked.signers);
   const ach = achAuthorization(src, picked.signers);
   const used = new Set([...rendered.usedFieldKeys, ...(ach.include ? ach.used.map((u) => u.fieldKey) : [])]);
-  const hidden = await hiddenFieldKeysFor(ctx, recordId, (await loadConfig()).fields);
+  const hidden = await hiddenOnAgreement(ctx, recordId, await loadConfig());
   if ([...used].some((k) => hidden.has(k))) {
     throw new AgreementError('This agreement uses fields in a section you can’t see, so it can’t be previewed here. Sending it still works.');
   }
@@ -638,7 +648,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
     loadConfig(),
   ]);
   if (rows.error) throw rows.error;
-  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
+  const hidden = await hiddenOnAgreement(ctx, recordId, config);
   const kindLabel = (k: string) => kinds.find((x) => x.key === k)?.label ?? k;
 
   const items: AgreementView[] = ((rows.data ?? []) as Record<string, unknown>[]).map((r) => {
@@ -691,7 +701,7 @@ export async function agreementsFor(ctx: AuthContext, recordId: string): Promise
       changesById[openRow.id] = diffSnapshot(snap, found.src)
         .filter((c) => !hidden.has(c.key))
         .map((c) => {
-          const f = config.fields.find((x) => x.key === c.key);
+          const f = [...config.fields, ...config.rowColumns].find((x) => x.key === c.key);
           const member = c.member && f?.repeatSchema ? (f.repeatSchema as { key: string; label: string; sensitive?: boolean }[]).find((m) => m.key === c.member) : undefined;
           const masked = Boolean(f?.sensitive || member?.sensitive);
           const label = [f?.label ?? c.key, c.index !== undefined ? `#${c.index + 1}` : null, member?.label ?? null, c.kind === 'address' ? 'address' : c.kind === 'note' ? 'note' : null].filter(Boolean).join(' · ');
@@ -713,7 +723,7 @@ export async function openAgreementPdf(ctx: AuthContext, fileId: string): Promis
   const a = await agreementById(visible.agreement_id as string);
   if (!a) throw new AgreementError('Not found.');
   const config = await loadConfig();
-  const hidden = await hiddenFieldKeysFor(ctx, recordId, config.fields);
+  const hidden = await hiddenOnAgreement(ctx, recordId, config);
   if (a.used_field_keys.some((k) => hidden.has(k))) throw new AgreementError('This PDF holds values from a section you cannot see.');
   const { data: row } = await supabaseAdmin().from('agreement_files').select('storage_path, iv').eq('id', fileId).single();
   const dl = await supabaseAdmin().storage.from(FILES_BUCKET).download(row!.storage_path as string);

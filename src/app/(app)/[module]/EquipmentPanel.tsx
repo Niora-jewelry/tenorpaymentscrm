@@ -215,8 +215,8 @@ function Row({
           <td className="px-2 py-1.5 text-right">
             <button
               type="button"
-              title={`Delete row ${row.rowNo}`}
-              aria-label={`Delete row ${row.rowNo}`}
+              title={`Remove row ${row.rowNo}`}
+              aria-label={`Remove row ${row.rowNo}`}
               onClick={() => setConfirming(true)}
               className="mt-1 rounded text-ink-400 hover:text-danger"
             >
@@ -229,9 +229,9 @@ function Row({
         <tr className="border-b border-line-soft bg-canvas last:border-b-0">
           <td colSpan={colSpan} className="px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[12px] text-ink-700">Delete this row? It goes to the Recycle Bin.</span>
+              <span className="text-[12px] text-ink-700">Remove this row? It goes to the Recycle Bin.</span>
               <Button size="sm" variant="danger" disabled={pending} onClick={() => onRemove(row.id, () => setConfirming(false))}>
-                Delete
+                Remove
               </Button>
               <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirming(false)}>
                 Cancel

@@ -28,6 +28,7 @@ const HEALTH: Record<ConnectionHealth, { label: string; swatch: Swatch; hint: st
   needs_permission: { label: 'Needs permission', swatch: 'amber', hint: 'Some permissions were not granted. Reconnect and approve them all.' },
   stalled: { label: 'Stopped syncing', swatch: 'red', hint: 'Nobody’s sign-in can reach this mailbox any more. Reconnect it.' },
   throttled: { label: 'Outlook busy', swatch: 'amber', hint: 'Microsoft asked Tenor to slow down. Syncing resumes by itself.' },
+  paused: { label: 'Sync paused', swatch: 'amber', hint: "Tenor can't reach Outlook right now. Your saved mail stays here, and syncing resumes once it's back." },
 };
 
 const BANNER_STYLE: Record<Banner['tone'], string> = {

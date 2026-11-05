@@ -46,7 +46,7 @@ export function MaverickConnection({ screen, adapterReady }: { screen: Connectio
               {!screen.connected
                 ? 'Not connected. Enter the API key in Integrations and switch Maverick on.'
                 : !adapterReady
-                  ? 'Key saved. The daily update starts once Maverick’s API documentation is wired in; until then nothing is fetched.'
+                  ? 'Key saved, but nothing is fetched yet. Maverick’s firewall is stopping API requests, and only Maverick can change that. Press Test in Integrations to check again.'
                   : 'Connected. Updates daily at 7 AM New York time.'}
             </p>
           </div>

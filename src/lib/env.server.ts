@@ -160,7 +160,7 @@ const serverSchema = z.object({
   /**
    * Maverick Payments (merchant boarding, reporting, statements and support
    * tickets). Entered in CRM Settings › Integrations like the others. The
-   * endpoints are wired once Maverick's API documentation is in.
+   * reading side is in lib/processors/maverickApi.ts, off until a real answer is checked.
    */
   MAVERICK_API_KEY: optionalString,
   MAVERICK_API_SECRET: optionalString,

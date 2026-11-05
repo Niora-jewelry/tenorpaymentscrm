@@ -131,6 +131,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/twilio/recording',
   '/api/twilio/message',
   '/api/twilio/message-status',
+  '/api/twilio/group-message',
+  '/api/phone/broadcast-tick',
 
   /*
    * The phone menu. Twilio fetches every one of these while a caller is on the

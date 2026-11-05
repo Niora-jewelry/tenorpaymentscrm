@@ -90,6 +90,36 @@ export async function consentStatuses(e164s: string[]): Promise<Map<string, Cons
   return out;
 }
 
+export type ConsentState = 'consented' | 'opted_out' | 'none';
+
+/**
+ * The state of many numbers at once, for a screen that has to sort them. Uses the
+ * same rule as `isOptedOut`: opted out means a revocation and no live consent.
+ * Read with the service role, so the answer does not depend on who is asking, and
+ * the caller must already have passed the gate. An error throws: a broadcast must
+ * not go out on a guess.
+ */
+export async function consentStates(e164s: string[]): Promise<Map<string, ConsentState>> {
+  const unique = [...new Set(e164s.filter(Boolean))];
+  const live = new Set<string>();
+  const revoked = new Set<string>();
+  const admin = supabaseAdmin();
+  for (let i = 0; i < unique.length; i += 200) {
+    const { data, error } = await admin
+      .from('sms_consents')
+      .select('e164, revoked_at')
+      .in('e164', unique.slice(i, i + 200))
+      .limit(5000);
+    if (error) throw error;
+    for (const row of (data ?? []) as { e164: string; revoked_at: string | null }[]) {
+      (row.revoked_at ? revoked : live).add(row.e164);
+    }
+  }
+  return new Map(
+    unique.map((n): [string, ConsentState] => [n, live.has(n) ? 'consented' : revoked.has(n) ? 'opted_out' : 'none']),
+  );
+}
+
 export type RecordConsentInput = {
   e164: string;
   source: ConsentSource;

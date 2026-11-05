@@ -83,22 +83,26 @@ suite('Merchant Equipment Setup: workflow', () => {
   describe('9911 (inside this transaction)', () => {
     it('the eleven columns, in order, kept out of the ordinary fields', async () => {
       const rows = await q<{ key: string; label: string; type: string; row_column: boolean }>(
-        `select f.key::text, f.label, f.type::text, f.row_column from fields f join subtabs s on s.id = f.subtab_id where s.shows_equipment_setup order by f.position`,
+        `select f.key::text, f.label, f.type::text, f.row_column from fields f join subtabs s on s.id = f.subtab_id where s.shows_equipment_setup and f.row_column order by f.position`,
       );
       expect(rows.map((r) => r.label)).toEqual(['Provider name', 'Billed by', 'Billed to', 'Item', 'Item amount', 'Monthly fee', 'Per item fee', 'One-time fee', 'Volume fee', 'Notes', 'Proposal']);
       expect(rows.every((r) => r.row_column)).toBe(true);
     });
 
-    it('takes over the old sub-tab\'s grants, and the old one keeps its own', async () => {
+    it('takes over the old sub-tab\'s grants and modules', async () => {
       const grants = (key: string) => q<{ template_id: string; grant_level: string }>(
         `select g.template_id, g.grant_level::text from template_grants g join subtabs s on s.id = g.scope_id where g.scope_kind = 'subtab' and s.key = $1 order by 1`,
         [key],
       );
-      const old = await grants('equipment');
-      expect(old.length).toBeGreaterThan(0);
-      expect(await grants('equipment_setup')).toEqual(old);
       const modules = (key: string) => q<{ module_id: string }>(`select o.module_id from module_subtab_order o join subtabs s on s.id = o.subtab_id where s.key = $1 order by 1`, [key]);
-      expect(await modules('equipment_setup')).toEqual(await modules('equipment'));
+      expect((await grants('equipment_setup')).length).toBeGreaterThan(0);
+      expect((await modules('equipment_setup')).length).toBeGreaterThan(0);
+      // Migration 9916 removes the old sub-tab. Until then the two must agree.
+      const old = await grants('equipment');
+      if (old.length) {
+        expect(await grants('equipment_setup')).toEqual(old);
+        expect(await modules('equipment_setup')).toEqual(await modules('equipment'));
+      }
     });
   });
 

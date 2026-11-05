@@ -19,6 +19,7 @@
 import type { AgreementKindDef, AgreementProblem, AgreementSource, CrmValues, MappingEntry, PrincipalSlot } from './types';
 import { addressParts, ein, equipmentList, money, percent, phone, ssn, str, usDate, yearsSince, yesNo } from '../format';
 import { addressBlock, bankruptcy, hasDba, part, splitTotal, text, tick, used, v } from './fill';
+import { PROVIDER_FIELD_KEY } from '@/lib/equipment/columns';
 
 const priorProcessor = (src: AgreementSource) => str(v(src, 'prior_processor'));
 const processesCards = (src: AgreementSource) => priorProcessor(src) !== '' && priorProcessor(src).toLowerCase() !== 'no';
@@ -99,8 +100,8 @@ const mapping: MappingEntry[] = [
   {
     pdf: 'ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC',
     fill: (src) => ({
-      text: equipmentList([...EQUIPMENT_KEYS.map((k) => v(src, k)), ...directProviders(src.values[DIRECT_KEY])]),
-      used: [...EQUIPMENT_KEYS, DIRECT_KEY].map((k) => ({ fieldKey: k, kind: 'value' as const })),
+      text: equipmentList(equipmentProviders(src)),
+      used: [{ fieldKey: PROVIDER_FIELD_KEY, kind: 'value' as const }],
     }),
   },
   { pdf: 'ONSITE', fill: (src) => ({ check: inventory(src).includes('on_site'), used: used('inventory') }) },
@@ -167,25 +168,17 @@ const mapping: MappingEntry[] = [
 ];
 
 /**
- * The equipment/software providers, in the spec's order: the two provider
- * fields, then the merchant's own gateway, terminal and POS providers. Those
- * three were fields until the Field-Tab Review (3 Nov 2026) made them rows of
- * Merchant Direct Relationships. The two Merchant Pricing providers were removed
- * from the record on 5 Nov 2026 and are not printed: nothing goes on a signed form
- * that nobody can see on the record.
+ * The equipment and software line: every provider on the record's Merchant Equipment
+ * Setup rows, in row order, each once (client, 5 Nov 2026: Other Costs, Merchant Direct
+ * Relationships and Merchant Equipment List were removed in favour of that tab). Those
+ * rows live in their own table, so `sourceFor` puts the names under the provider
+ * column's field key: the snapshot, the "data changed" banner and the hidden-field
+ * check then treat them like any other value.
  */
-const EQUIPMENT_KEYS = ['vtd_gateway_provider', 'vtd_terminal_provider'];
-const DIRECT_KEY = 'merchant_direct_relationships';
-const DIRECT_TYPES = ['Gateway', 'Terminal', 'POS'];
-
-/** Providers of the Gateway, Terminal and POS rows, in that order. */
-export function directProviders(rows: unknown): string[] {
-  if (!Array.isArray(rows)) return [];
-  const list = rows.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object');
-  return DIRECT_TYPES.flatMap((type) =>
-    list.filter((r) => r['Provider type'] === type).map((r) => (typeof r.Provider === 'string' ? r.Provider : '')),
-  );
-}
+const equipmentProviders = (src: AgreementSource): unknown[] => {
+  const names = src.values[PROVIDER_FIELD_KEY];
+  return Array.isArray(names) ? names : [];
+};
 
 function addressLineOf(a: unknown): string {
   const p = addressParts(a);

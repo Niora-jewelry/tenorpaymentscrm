@@ -34,6 +34,7 @@ import { authorize, canOpenAdminPage } from '@/lib/records/permissions';
 import { Icon } from '@/proto/ui/icons';
 import { mailReady, maverickReady, phoneReady } from '@/lib/integrations/resolve';
 import { integrationsScreen } from '@/lib/integrations/service';
+import { forgetIntegrationValues } from '@/lib/integrations/resolve';
 import { adminHealth, SECRET_WARNING_DAYS, type AdminHealth } from '@/lib/mail/health';
 import { IntegrationsPanel } from './IntegrationsPanel';
 
@@ -139,8 +140,8 @@ function providers(twilioReady: boolean, mail: AdminHealth | null, maverick: boo
       where: 'Applications · Reporting · Statements · Cases → Other cases',
       state: 'needs-config',
       note: maverick
-        ? 'The API key is saved. The connection is switched on once Maverick’s API documentation is in.'
-        : 'Enter the Maverick API key above. The connection is switched on once Maverick’s API documentation is in.',
+        ? 'The API key is saved. The connection is switched on once Maverick lets API requests through.'
+        : 'Enter the Maverick API key above. The connection is switched on once Maverick lets API requests through.',
     },
     {
       name: 'DocuSign',
@@ -154,6 +155,8 @@ function providers(twilioReady: boolean, mail: AdminHealth | null, maverick: boo
 export default async function AdminIntegrationsPage() {
   const ctx = await authorize();
   if (!(await canOpenAdminPage(ctx, 'integrations'))) redirect('/dashboard');
+  // This screen never shows a value another server instance has since changed.
+  forgetIntegrationValues();
 
   const [twilioLive, mailLive, maverickKey, screen] = await Promise.all([phoneReady(), mailReady(), maverickReady(), integrationsScreen(ctx)]);
   const list = providers(twilioLive, mailLive ? await adminHealth() : null, maverickKey);

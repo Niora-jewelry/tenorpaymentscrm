@@ -277,9 +277,9 @@ export function createTeamsMock({ PORT, ACCOUNTS, graphErr }) {
       if (method === 'GET') {
         let all = list.filter((m) => !m.system || opts.channel).slice().sort((a, b) => b.createdDateTime.localeCompare(a.createdDateTime));
         const f = url.searchParams.get('$filter') ?? '';
-        const gt = /createdDateTime gt (\S+)/.exec(f)?.[1];
+        // As Microsoft documents it: a chat's created date takes `lt` only.
+        if (!opts.channel && /createdDateTime gt /.test(f)) return { status: 400, body: { error: { code: 'BadRequest', message: 'Filter not supported.' } } };
         const lt = /createdDateTime lt (\S+)/.exec(f)?.[1];
-        if (gt) all = all.filter((m) => m.createdDateTime > gt);
         if (lt) all = all.filter((m) => m.createdDateTime < lt);
         const top = Number(url.searchParams.get('$top') ?? 20);
         const skip = Number(url.searchParams.get('$skiptoken') ?? 0);

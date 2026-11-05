@@ -17,8 +17,7 @@ import {
   thumbsOf,
   toCalEvent,
   toGraphRecurrence,
-  weekdayOf,
-} from './format';
+  weekdayOf, newerThan } from './format';
 
 const privateEvent = {
   id: 'e1',
@@ -148,5 +147,16 @@ describe('a conversation linked to a record', () => {
     expect(linkedChatTitle('  Acme setup ', ['Olive Owner'])).toBe('Acme setup');
     expect(linkedChatTitle('x'.repeat(300), [])).toHaveLength(200);
     expect(linkedChatTitle(null, [])).toBe('Chat');
+  });
+});
+
+describe('newerThan', () => {
+  it('keeps what falls after the line, in any precision Microsoft sends', () => {
+    const line = '2026-10-22T16:00:00.000Z';
+    const kept = newerThan(
+      [{ id: 'a', createdDateTime: '2026-11-05T21:59:00.1234567Z' }, { id: 'b', createdDateTime: '2026-10-22T16:00:00.000Z' }, { id: 'c', createdDateTime: '2026-01-01T00:00:00Z' }, { id: 'd', createdDateTime: null }],
+      line,
+    );
+    expect(kept.map((m) => m.id)).toEqual(['a']);
   });
 });

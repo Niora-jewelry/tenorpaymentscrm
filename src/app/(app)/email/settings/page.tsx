@@ -42,7 +42,7 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
   const err = first(sp.mail_error);
   const connected = first(sp.connected);
   if (isConnectErrorCode(err)) {
-    banner = { tone: 'error', text: connectErrorMessage(err, { shared: asEmail(first(sp.shared)), isAdmin: ctx.isAdmin }) };
+    banner = { tone: 'error', text: connectErrorMessage(err, { shared: asEmail(first(sp.shared)) }) };
   } else if (connected) {
     // The id is only a pointer: it must be one of this person's own connections.
     const mb = mailboxes.find((m) => m.mailboxId === connected);

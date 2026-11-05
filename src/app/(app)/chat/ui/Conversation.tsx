@@ -68,6 +68,7 @@ export function Conversation({
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState<MessagesPage['stale']>(null);
+  const [staleReason, setStaleReason] = useState<string | null>(null);
   const [channelPeople, setChannelPeople] = useState<ChatMember[] | null>(null);
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [threadOf, setThreadOf] = useState<ChatMessage | null>(null);
@@ -110,6 +111,7 @@ export function Conversation({
       }
       const page = (await res.json()) as MessagesPage;
       setStale(page.stale);
+      setStaleReason(page.staleReason);
       setError(null);
       setMessages((cur) => merge(cur, page.messages));
       // Only the first page decides where "older" starts; later polls only add the newest.
@@ -362,6 +364,7 @@ export function Conversation({
         </Notice>
       ) : null}
       {stale === 'down' ? <Notice tone="warn">Microsoft is not responding. These are the last loaded messages.</Notice> : null}
+      {stale === 'refused' ? <Notice tone="warn">Microsoft turned this request down{staleReason ? ` (${staleReason})` : ''}. These may not be the latest messages.</Notice> : null}
       {stale === 'reconnect' ? <Notice tone="error">Microsoft stopped accepting this account. These messages are out of date until it is reconnected.</Notice> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
 
@@ -376,7 +379,7 @@ export function Conversation({
         {first ? (
           <p className="py-10 text-center text-[12.5px] text-ink-400">Loading…</p>
         ) : shown.length === 0 ? (
-          <p className="py-10 text-center text-[12.5px] text-ink-400">No messages in the last two weeks.</p>
+          <p className="py-10 text-center text-[12.5px] text-ink-400">{stale ? 'These messages could not be loaded.' : 'No messages in the last two weeks.'}</p>
         ) : null}
         <ol className="space-y-3">
           {shown.map((m) => (

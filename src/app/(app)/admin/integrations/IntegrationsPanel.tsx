@@ -13,7 +13,7 @@
  * A saved secret never comes back to the browser. The screen shows that it is
  * set, who set it and its last four characters, and it can only be replaced.
  */
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useOptimistic, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon, type IconName } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
@@ -318,7 +318,16 @@ function HelpSheet({ g, origin, onClose }: { g: GroupView; origin: string; onClo
 
 /* ── one service ───────────────────────────────────────────────────────── */
 
-function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEdit: boolean }) {
+function GroupCard({ g: fromServer, origin, canEdit }: { g: GroupView; origin: string; canEdit: boolean }) {
+  // The switch and Remove show at once. If the server refuses, these fall back by themselves.
+  const [enabled, setEnabledNow] = useOptimistic(fromServer.enabled);
+  const [gone, markGone] = useOptimistic<readonly string[], string>([], (list, key) => [...list, key]);
+  const g: GroupView = {
+    ...fromServer,
+    enabled,
+    ready: enabled && fromServer.ready,
+    settings: fromServer.settings.map((s) => (gone.includes(s.key) ? { ...s, source: null, hint: null, unreadable: false, updatedBy: null, updatedAt: null } : s)),
+  };
   const [edits, setEdits] = useState<Record<string, string | undefined>>({});
   const [outcome, setOutcome] = useState<IntegrationOutcome | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<SettingView | null>(null);
@@ -326,6 +335,7 @@ function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEd
   const [helpOpen, setHelpOpen] = useState(false);
   const [open, setOpen] = useState(canEdit && g.enabled && !g.ready);
   const [pending, start] = useTransition();
+  const [saving, setSaving] = useState(false);
   const changed = Object.entries(edits).filter(([, v]) => v !== undefined) as [string, string][];
   const addresses = ADDRESSES[g.group];
   const required = g.settings.filter((s) => s.required);
@@ -339,18 +349,27 @@ function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEd
       after?.(r);
     });
 
-  const save = () =>
+  const save = () => {
+    setSaving(true);
     act(
       () => saveIntegrationAction({ group: g.group, values: Object.fromEntries(changed) }),
       // What was typed leaves the browser's memory once it is saved. On a failure it stays so a typo can be fixed.
       (r) => {
+        setSaving(false);
         if (r.ok) setEdits({});
       },
     );
+  };
+
+  const setSwitch = (next: boolean) =>
+    start(async () => {
+      setEnabledNow(next);
+      setOutcome(await setIntegrationEnabledAction({ group: g.group, enabled: next }));
+    });
 
   const flip = (next: boolean) => {
     if (!next) return setConfirmOff(true);
-    act(() => setIntegrationEnabledAction({ group: g.group, enabled: true }));
+    setSwitch(true);
   };
 
   return (
@@ -399,7 +418,7 @@ function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEd
             disabled={pending}
             onClick={() => {
               setConfirmOff(false);
-              act(() => setIntegrationEnabledAction({ group: g.group, enabled: false }));
+              setSwitch(false);
             }}
             className="rounded-md bg-[#8a5a09] px-2.5 py-1 font-semibold text-white hover:opacity-90"
           >
@@ -462,7 +481,10 @@ function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEd
                     onClick={() => {
                       const key = confirmRemove.key;
                       setConfirmRemove(null);
-                      act(() => removeIntegrationAction(key));
+                      start(async () => {
+                        markGone(key);
+                        setOutcome(await removeIntegrationAction(key));
+                      });
                     }}
                     className="rounded-md bg-[#a12a20] px-2.5 py-1 font-semibold text-white hover:opacity-90"
                   >
@@ -476,7 +498,7 @@ function GroupCard({ g, origin, canEdit }: { g: GroupView; origin: string; canEd
                   <>
                     <button type="button" disabled={pending} onClick={save} className="inline-flex items-center gap-2 rounded-lg bg-brand-900 px-3.5 py-2 text-[13px] font-semibold text-white hover:bg-brand-800 disabled:opacity-60">
                       {pending ? <Spinner /> : null}
-                      Test and save
+                      {saving ? `Testing with ${g.title}…` : 'Test and save'}
                     </button>
                     <span className="mr-auto text-[12.5px] text-ink-500">{g.title} checks the keys first. If it refuses them, nothing changes.</span>
                   </>
@@ -602,7 +624,7 @@ export function IntegrationsPanel({ screen }: { screen: IntegrationsScreen }) {
       {screen.canEdit ? (
         <p className="flex gap-2 rounded-lg border border-brand-100 bg-brand-50 px-3 py-2.5 text-[12.5px] leading-relaxed text-brand-700">
           <Icon name="lock" size={14} className="mt-0.5 shrink-0 opacity-70" />
-          <span>Keys are encrypted when saved and can’t be viewed again, only replaced. Each one is tested with the provider first, and a change reaches the whole CRM within a minute.</span>
+          <span>Keys are encrypted when saved and can’t be viewed again, only replaced. Each one is tested with the provider first, and a change reaches the whole CRM within seconds.</span>
         </p>
       ) : (
         <p className="flex gap-2 rounded-lg border border-line bg-white px-3 py-2.5 text-[12.5px] leading-relaxed text-ink-500">

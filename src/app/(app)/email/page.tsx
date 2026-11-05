@@ -107,6 +107,7 @@ const HEALTH_LABEL: Record<MailboxView['health'], string> = {
   needs_permission: 'Needs permission',
   stalled: 'Stopped syncing',
   throttled: 'Outlook busy',
+  paused: 'Sync paused',
 };
 
 /** "Sign in as": whether this person's mail is healthy — never what is in it. */

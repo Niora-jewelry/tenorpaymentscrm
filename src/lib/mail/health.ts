@@ -1,6 +1,7 @@
 /**
- * The Email module's own health, for admins: is Microsoft accepting our app
- * secret, when does that secret expire, and how many mailboxes need someone.
+ * The Email module's own health. Why Microsoft is refusing us, and when the app
+ * secret expires, is for Integrations alone (client, 5 Nov 2026): the Email module
+ * says only that Outlook can't be reached, to everyone, admins included.
  * Read with the service role (these tables have no policies) — callers must
  * already be on an admin-only path, or pass only the banner text onward.
  */
@@ -24,28 +25,18 @@ export async function providerState(): Promise<ProviderState> {
   return ((data?.state as ProviderState | undefined) ?? 'up');
 }
 
-/**
- * The one line a person should see about the whole module, if any: the
- * secret has expired or is about to (admins), or Outlook can't be reached.
- */
-export async function moduleNotice(isAdmin: boolean): Promise<{ tone: 'warn' | 'error'; text: string } | null> {
-  const state = await providerState();
-  if (state === 'config_error') return { tone: 'error', text: isAdmin ? MAIL_MESSAGES.appSecretAdmin : MAIL_MESSAGES.providerDown };
-  if (state === 'down') return { tone: 'warn', text: MAIL_MESSAGES.providerDown };
-  if (!isAdmin) return null;
-  const expiresAt = (await integrationValues()).MAIL_CLIENT_SECRET_EXPIRES_AT;
-  const days = secretDaysLeft(expiresAt);
-  if (days !== null && days <= SECRET_WARNING_DAYS) {
-    const on = new Date(Date.parse(expiresAt!)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-    return {
-      tone: days <= 7 ? 'error' : 'warn',
-      text:
-        days < 0
-          ? `The Microsoft app secret expired on ${on}. Create a new one in Azure and replace it in Integrations.`
-          : `The Microsoft app secret expires on ${on} (${days === 0 ? 'today' : `in ${days} day${days === 1 ? '' : 's'}`}). Create a new one in Azure and update MAIL_CLIENT_SECRET before then, or mail stops syncing.`,
-    };
-  }
-  return null;
+/** The one line a person should see about the whole module, if any. */
+export async function moduleNotice(): Promise<{ tone: 'warn' | 'error'; text: string } | null> {
+  return (await providerState()) === 'up' ? null : { tone: 'warn', text: MAIL_MESSAGES.providerDown };
+}
+
+/** Microsoft has just accepted the app's keys, so stop saying it refuses them. */
+export async function clearSecretRefused(): Promise<void> {
+  await supabaseAdmin()
+    .from('mail_provider_health')
+    .update({ state: 'up', last_error_code: null, updated_at: new Date().toISOString() })
+    .eq('id', 1)
+    .eq('state', 'config_error');
 }
 
 export type AdminHealth = {

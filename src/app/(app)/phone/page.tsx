@@ -21,17 +21,23 @@ import { DialPad, CallHistory } from './Dialer';
 import { Threads } from './Threads';
 import { Contacts } from './Contacts';
 import { MarkPhoneRead } from './MarkPhoneRead';
+import { canTextMany, broadcastsForUser } from '@/lib/phone/broadcasts';
+import { groupsForUser } from '@/lib/phone/groups';
+import { TextMany } from './TextMany';
 
 export default async function PhonePage() {
   const ctx = await authorize();
   if (!(await canSeePhone(ctx))) redirect('/dashboard');
 
   const supabase = await createSupabaseServerClient();
-  const [calls, myNumber, threads, contacts] = await Promise.all([
+  const [calls, myNumber, threads, contacts, mayTextMany, broadcasts, groups] = await Promise.all([
     callsForUser(ctx),
     resolveUserActiveNumber(supabase, ctx.userId),
     threadsForUser(ctx),
     contactsForUser(ctx),
+    canTextMany(ctx),
+    broadcastsForUser(ctx),
+    groupsForUser(ctx),
   ]);
 
   return (
@@ -41,6 +47,14 @@ export default async function PhonePage() {
         <h1 className="text-xl font-semibold text-ink-900">Phone</h1>
         <p className="text-[13px] text-ink-500">
           Calls are recorded and attached to a merchant automatically when the number matches one.
+          {mayTextMany || broadcasts.length > 0 || groups.length > 0 ? (
+            <>
+              {' '}
+              <a href="#text-many" className="font-medium text-brand-700 hover:underline">
+                Broadcast and group texts
+              </a>
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -72,6 +86,21 @@ export default async function PhonePage() {
           <Contacts contacts={contacts} />
         </div>
       </div>
+
+      {/*
+        Below the line's own panels and full width: choosing people and reading a
+        group need more room than either column has. Somebody without the permission
+        who can still see groups (Phone = All users) reads them here without controls.
+      */}
+      {mayTextMany || broadcasts.length > 0 || groups.length > 0 ? (
+        <TextMany
+          allowed={mayTextMany}
+          myNumber={myNumber?.e164 ?? null}
+          contacts={contacts}
+          broadcasts={broadcasts}
+          groups={groups}
+        />
+      ) : null}
     </div>
   );
 }

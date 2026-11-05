@@ -13,7 +13,7 @@ import type { AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { teamsGranted } from '@/lib/mail/scopes';
 import { dataOwner, identitiesOf, ownIdentity, readableIdentity, TeamsError, usable, type Identity } from './access';
-import { chatKindOf, chatName, firstLink, guidFromEtag, isExternal, isTeamsFileUrl, isUnread, shareIdFor, THUMBS, thumbsOf, twoWeeksBefore } from './format';
+import { chatKindOf, chatName, firstLink, guidFromEtag, isExternal, isTeamsFileUrl, isUnread, newerThan, shareIdFor, THUMBS, thumbsOf, twoWeeksBefore } from './format';
 import { allPages, firstStale, readThrough, reasonFrom } from './snapshots';
 import type { ChatFile, ChatKind, ChatList, ChatMember, ChatMessage, ChatQuote, ChatSummary, Mention, MessagesPage, SendInput, Staleness } from './types';
 
@@ -372,9 +372,10 @@ export async function messagesPage(ctx: AuthContext, args: { key: string; cursor
   const load = async (): Promise<{ raw: GraphMessage[]; next: string | null }> => {
     if (ref.kind === 'chat') {
       const line = args.cursor ?? twoWeeksBefore(Date.now());
-      const filter = first ? `createdDateTime gt ${line}` : `createdDateTime lt ${line}`;
-      const body = await graph.request<{ value?: GraphMessage[] }>({ path: messagesPath(ref), query: { $top: 50, $orderby: 'createdDateTime desc', $filter: filter } });
-      const raw = body?.value ?? [];
+      // Microsoft filters a chat's created date with `lt` only, and refuses `gt`. So the
+      // first page asks for the newest and cuts at the two-week line here.
+      const body = await graph.request<{ value?: GraphMessage[] }>({ path: messagesPath(ref), query: { $top: 50, $orderby: 'createdDateTime desc', $filter: first ? undefined : `createdDateTime lt ${line}` } });
+      const raw = first ? newerThan(body?.value ?? [], line) : (body?.value ?? []);
       const oldest = raw[raw.length - 1]?.createdDateTime;
       // After the first page there is always possibly more, until a page comes back empty.
       return { raw, next: raw.length === 0 ? (first ? line : null) : (oldest ?? null) };
@@ -389,8 +390,8 @@ export async function messagesPage(ctx: AuthContext, args: { key: string; cursor
   };
 
   // Only the first page is kept: that is what an outage has to fall back on.
-  const { data, stale } = await readThrough(identity.id, 'messages', first ? args.key : `${args.key}|${args.cursor}`.slice(0, 500), async () => shape(await load()), { keep: first });
-  return { messages: data?.messages ?? [], olderCursor: data?.olderCursor ?? null, stale };
+  const { data, stale, reason } = await readThrough(identity.id, 'messages', first ? args.key : `${args.key}|${args.cursor}`.slice(0, 500), async () => shape(await load()), { keep: first });
+  return { messages: data?.messages ?? [], olderCursor: data?.olderCursor ?? null, stale, staleReason: reason };
 }
 
 /** Marks a conversation read, for its owner only: someone looking on changes nothing. */

@@ -7,6 +7,7 @@
  * can also read other people's connections to mailboxes they can see, which
  * is not what "my mailboxes" means).
  */
+import { providerState } from './health';
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from '@/lib/records/permissions';
@@ -49,13 +50,14 @@ type Row = {
   } | null;
 };
 
-export function healthOf(r: { status: string; mb: { sync_status: string; seeded_at: string | null } }): ConnectionHealth {
+/** `providerUp` false: nothing can sync for anyone, so no mailbox gets to say it is syncing. */
+export function healthOf(r: { status: string; mb: { sync_status: string; seeded_at: string | null }; providerUp?: boolean }): ConnectionHealth {
   if (r.status === 'broken') return 'needs_reconnect';
   if (r.status === 'degraded') return 'needs_permission';
   if (r.mb.sync_status === 'broken' || r.mb.sync_status === 'stalled') return 'stalled';
   if (r.mb.sync_status === 'throttled') return 'throttled';
   if (r.mb.sync_status === 'pending' || !r.mb.seeded_at) return 'setting_up';
-  return 'ok';
+  return r.providerUp === false ? 'paused' : 'ok';
 }
 
 export async function myMailboxes(ctx: AuthContext): Promise<MyMailbox[]> {
@@ -95,6 +97,7 @@ export async function myMailboxes(ctx: AuthContext): Promise<MyMailbox[]> {
     stats.set(f.mailbox_id, st);
   }
 
+  const providerUp = (await providerState()) === 'up';
   return live
     .map((r) => ({
       ...(stats.get(r.mailbox_id) ?? { folders: 0, foldersReady: 0, messages: 0, inboxUnread: 0, inboxId: null }),
@@ -103,7 +106,7 @@ export async function myMailboxes(ctx: AuthContext): Promise<MyMailbox[]> {
       address: r.mail_mailboxes.address,
       displayName: r.mail_mailboxes.display_name,
       kind: r.mail_mailboxes.kind,
-      health: healthOf({ status: r.status, mb: r.mail_mailboxes }),
+      health: healthOf({ status: r.status, mb: r.mail_mailboxes, providerUp }),
       connectedAt: r.connected_at,
       lastSyncedAt: r.mail_mailboxes.last_graph_ok_at,
     }));

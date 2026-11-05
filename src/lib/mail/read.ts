@@ -9,7 +9,7 @@
  */
 import 'server-only';
 import { profileNamesFor } from '@/lib/records/users';
-import { moduleNotice } from './health';
+import { moduleNotice, providerState } from './health';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { seesAll, type AuthContext } from '@/lib/records/permissions';
 import { healthOf } from './mailboxes';
@@ -415,15 +415,16 @@ export async function syncState(ctx: AuthContext, mailboxIds: string[]): Promise
     supabase.from('mail_outbox').select('id', { count: 'exact', head: true }).eq('user_id', ctx.userId).eq('status', 'scheduled'),
   ]);
   const status = new Map((conns ?? []).map((c) => [c.mailbox_id as string, c.status as 'ok']));
+  const providerUp = (await providerState()) === 'up';
   return {
     mailboxes: (boxes ?? []).map((b) => ({
       id: b.id as string,
       seq: Number(b.change_seq ?? 0),
-      health: healthOf({ status: status.get(b.id as string) ?? 'ok', mb: { sync_status: b.sync_status as string, seeded_at: b.seeded_at as string | null } }),
+      health: healthOf({ status: status.get(b.id as string) ?? 'ok', mb: { sync_status: b.sync_status as string, seeded_at: b.seeded_at as string | null }, providerUp }),
     })),
     unreadTotal: Number(total ?? 0),
     scheduled: scheduled ?? 0,
-    moduleNotice: await moduleNotice(ctx.isAdmin),
+    moduleNotice: await moduleNotice(),
     notices: (notices ?? []).map((n) => ({ id: n.id as string, kind: n.kind as string, body: n.body as string, at: n.created_at as string })),
   };
 }

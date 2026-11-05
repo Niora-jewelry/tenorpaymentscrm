@@ -13,14 +13,16 @@ import type { Staleness } from './types';
 const KEEP_DAYS = 30;
 
 const RECONNECT = new Set(['reconnect_required', 'consent_required', 'app_secret_invalid']);
+const DOWN = new Set(['provider_down', 'throttled']);
 
 /** What an error from Microsoft means for the person looking at the screen. */
 export function stalenessOf(e: unknown): Exclude<Staleness, null> {
   if (e instanceof GraphError && RECONNECT.has(e.classified.code)) return 'reconnect';
+  if (e instanceof GraphError && e.status !== 0 && !DOWN.has(e.classified.code)) return 'refused';
   return 'down';
 }
 
-export const firstStale = (list: Staleness[]): Staleness => (list.includes('reconnect') ? 'reconnect' : list.includes('down') ? 'down' : null);
+export const firstStale = (list: Staleness[]): Staleness => (list.includes('reconnect') ? 'reconnect' : list.includes('down') ? 'down' : list.includes('refused') ? 'refused' : null);
 
 async function readSnapshot<T>(identityId: string, kind: string, key: string): Promise<{ data: T; at: number } | null> {
   const { data } = await supabaseAdmin().from('teams_snapshots').select('data, fetched_at').eq('identity_id', identityId).eq('kind', kind).eq('key', key).maybeSingle();
@@ -48,20 +50,21 @@ export async function readThrough<T>(
   key: string,
   load: () => Promise<T>,
   opts: { maxAgeMs?: number; keep?: boolean } = {},
-): Promise<{ data: T | null; stale: Staleness }> {
+): Promise<{ data: T | null; stale: Staleness; reason: string | null }> {
   if (opts.maxAgeMs) {
     const hit = await readSnapshot<T>(identityId, kind, key);
-    if (hit && Date.now() - hit.at < opts.maxAgeMs) return { data: hit.data, stale: null };
+    if (hit && Date.now() - hit.at < opts.maxAgeMs) return { data: hit.data, stale: null, reason: null };
   }
   try {
     const data = await load();
     if (opts.keep !== false) await writeSnapshot(identityId, kind, key, data);
-    return { data, stale: null };
+    return { data, stale: null, reason: null };
   } catch (e) {
     if (!(e instanceof GraphError)) throw e;
     console.error('[teams] Microsoft refused or failed', { kind, status: e.status, code: e.classified.code });
     const kept = await readSnapshot<T>(identityId, kind, key);
-    return { data: kept?.data ?? null, stale: stalenessOf(e) };
+    const stale = stalenessOf(e);
+    return { data: kept?.data ?? null, stale, reason: stale === 'refused' ? `${e.status}${e.graphCode ? ` ${e.graphCode}` : ''}` : null };
   }
 }
 

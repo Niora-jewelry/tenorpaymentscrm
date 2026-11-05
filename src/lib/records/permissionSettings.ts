@@ -110,6 +110,7 @@ export async function settingGroups(): Promise<SettingGroup[]> {
         { key: 'notifications.scope', label: 'Notifications', options: OWN_ALL },
         { key: 'email.scope', label: 'Email', options: OWN_ALL },
         { key: 'phone.scope', label: 'Phone', options: OWN_ALL },
+        { key: 'phone.bulk', label: 'Broadcast and group texts', options: YES_NO },
         { key: 'calendar.scope', label: 'Calendar', options: OWN_ALL },
         { key: 'chat.scope', label: 'Chat', options: OWN_ALL },
       ],

@@ -7,7 +7,7 @@
  *
  * This never throws. Sign-in codes and phone webhooks depend on it, so if the
  * database cannot be read the last known values stand, and failing that the
- * environment's. Each server instance keeps the answer for 30 seconds, so a saved
+ * environment's. Each server instance keeps the answer for 10 seconds, so a saved
  * change reaches every instance within that time.
  */
 import 'server-only';
@@ -16,7 +16,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 import { SETTING_KEYS, settingsIn, SWITCHABLE, type IntegrationGroup } from './catalog';
 import { openSetting } from './crypto';
 
-const TTL_MS = 30_000;
+const TTL_MS = 10_000;
 const READ_TIMEOUT_MS = 3_000;
 
 export type IntegrationValues = Partial<Record<IntegrationEnvKey, string>>;
@@ -116,7 +116,7 @@ export async function integrationSnapshot(): Promise<IntegrationSnapshot> {
 
 export const integrationValues = async (): Promise<IntegrationValues> => (await integrationSnapshot()).values;
 
-/** After a save, so this instance does not act on the old key for 30 seconds. */
+/** After a save, and before the Integrations screen reads, so neither acts on an old value. */
 export function forgetIntegrationValues(): void {
   held = null;
   loading = null;

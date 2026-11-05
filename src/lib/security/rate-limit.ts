@@ -61,6 +61,9 @@ export const RATE_LIMITS = {
 
   /* Calendar and Chat. Every one of these is a call to Microsoft under someone's own account. */
   teamsSendPerUserMinute: { limit: 40, windowSeconds: 60 },
+  smsBroadcastPerUserHour: { limit: 10, windowSeconds: 3600 },
+  smsGroupCreatePerUserHour: { limit: 20, windowSeconds: 3600 },
+  smsGroupSendPerUserMinute: { limit: 30, windowSeconds: 60 },
   teamsActionPerUser: { limit: 120, windowSeconds: 60 },
   teamsReadPerUser: { limit: 240, windowSeconds: 60 },
   teamsLinkPreviewPerUser: { limit: 60, windowSeconds: 60 },

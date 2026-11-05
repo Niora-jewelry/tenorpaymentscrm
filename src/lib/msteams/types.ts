@@ -7,7 +7,8 @@
 export type TeamsKind = 'calendar' | 'chat';
 
 /** Why what is on screen may be old. Null = this is live from Microsoft. */
-export type Staleness = null | 'reconnect' | 'down';
+/** 'down' = Microsoft did not answer. 'refused' = it answered, and said no. Never call one the other. */
+export type Staleness = null | 'reconnect' | 'down' | 'refused';
 
 export type AccountView = {
   identityId: string;
@@ -161,7 +162,13 @@ export type ChatMessage = {
   link: string | null;
 };
 
-export type MessagesPage = { messages: ChatMessage[]; olderCursor: string | null; stale: Staleness };
+export type MessagesPage = {
+  messages: ChatMessage[];
+  olderCursor: string | null;
+  stale: Staleness;
+  /** Microsoft's status and error code when it refused, such as "400 BadRequest". Never its message. */
+  staleReason: string | null;
+};
 
 export type ChatList = { chats: ChatSummary[]; stale: Staleness };
 

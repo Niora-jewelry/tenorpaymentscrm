@@ -406,7 +406,7 @@ try {
     await go(page, recordUrl);
     await panel(page).waitFor({ timeout: 30000 });
     t('view: no Add row', (await page.getByRole('button', { name: 'Add row' }).count()) === 0);
-    t('view: no row removal', (await page.getByRole('button', { name: /Delete row/ }).count()) === 0);
+    t('view: no row removal', (await page.getByRole('button', { name: /Remove row/ }).count()) === 0);
     t('view: boxes disabled', await box(page, 'Monthly fee', 1).isDisabled());
   });
 
@@ -422,10 +422,10 @@ try {
   await step('removing a row', async () => {
     await go(page, recordUrl);
     await panel(page).waitFor({ timeout: 30000 });
-    await row(page, 2).getByRole('button', { name: 'Delete row 2' }).click();
-    await page.getByText('Delete this row? It goes to the Recycle Bin.').waitFor();
+    await row(page, 2).getByRole('button', { name: 'Remove row 2' }).click();
+    await page.getByText('Remove this row? It goes to the Recycle Bin.').waitFor();
     await shot(page, 'eq-6-confirm');
-    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove', exact: true }).click();
     await until(async () => (await row(page, 2).count()) === 0);
     const r = await dbRow(2);
     t('soft: still in the table, marked by who', r.deleted_at !== null && r.deleted_by === member.id);
@@ -465,7 +465,8 @@ try {
 
   await step('nothing old moved', async () => {
     await go(adminPage, `/${contacts.slug}?record=${probe.id}&tab=${where.tab_key}&subtab=equipment`);
-    t('old sub-tab: still the field grid, not the panel', (await panel(adminPage).count()) === 0);
+    // Migration 9916 removes the old sub-tab, and an unknown one falls back to another.
+    if (oldSubtabBefore.some((s) => s.key === 'equipment')) t('old sub-tab: still the field grid, not the panel', (await panel(adminPage).count()) === 0);
     const after = await q(`select s.key, s.label, s.position, (select count(*)::int from fields f where f.subtab_id = s.id) fields from subtabs s where s.key in ('equipment', 'vendor_to_td', 'other_vendor') order by s.key`);
     t('the old sub-tabs and their fields are as they were', JSON.stringify(after) === JSON.stringify(oldSubtabBefore));
     t('the eleven columns are not in the ordinary grid', (await adminPage.getByText('Provider name', { exact: true }).count()) === 0);

@@ -151,8 +151,8 @@ export function InviteForm({
         <Button type="button" variant="ghost" disabled={isPending} onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" icon="check" loading={isPending} loadingLabel="Sending…">
-          Send invite
+        <Button type="submit" variant="primary" loading={isPending} loadingLabel="Creating…">
+          Continue to permissions
         </Button>
       </div>
     </form>

@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({}) }));
 const { sealSetting, openSetting } = await import('./crypto');
 const { cleanValue, hintFor, settingDef, SETTINGS, SETTING_KEYS, validFrom } = await import('./catalog');
 const { agreementsReadyFrom, applySwitches, envValues, mailReadyFrom, merge, phoneReadyFrom, signwellTestModeFrom } = await import('./resolve');
-const { connectSignwellHook, probeAlerts, probeMicrosoft, probeSignwell, probeTwilio } = await import('./probe');
+const { connectSignwellHook, probeAlerts, probeMaverick, probeMicrosoft, probeSignwell, probeTwilio } = await import('./probe');
 
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 const fetchOf = (fn: (url: string, init?: RequestInit) => Response) => vi.fn(async (url: string | URL | Request, init?: RequestInit) => fn(String(url), init)) as unknown as typeof fetch;
@@ -346,5 +346,60 @@ describe('asking about alerts', () => {
     expect(r.ok).toBe(true);
     expect(r.note).toBe('Microsoft and the SMTP server accepted these details.');
     expect(r.warning).toContain('test alert');
+  });
+});
+
+describe('probeMaverick', () => {
+  const key = { MAVERICK_API_KEY: 'k' };
+  const answer = (status: number, headers: Record<string, string> = {}, body = '{}') => vi.fn(async () => new Response(body, { status, headers })) as unknown as typeof fetch;
+
+  it('asks for a key first, without calling anyone', async () => {
+    const f = answer(200);
+    expect((await probeMaverick({}, f)).ok).toBe(false);
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it('calls the campaign list with the bearer token and says who is calling', async () => {
+    const f = answer(200);
+    expect(await probeMaverick(key, f)).toEqual({ ok: true, note: 'Maverick accepted this key.' });
+    const [url, init] = (f as unknown as { mock: { calls: [string, RequestInit][] } }).mock.calls[0]!;
+    expect(url).toBe('https://dashboard.maverickpayments.com/api/boarding-application/campaigns');
+    expect(init.headers).toMatchObject({ Authorization: 'Bearer k', 'User-Agent': 'TenorPaymentsCRM/1.0' });
+  });
+
+  it('uses a saved address without doubling the slash', async () => {
+    const f = answer(200);
+    await probeMaverick({ ...key, MAVERICK_API_URL: 'https://sandbox-dashboard.maverickpayments.com/' }, f);
+    expect((f as unknown as { mock: { calls: [string][] } }).mock.calls[0]![0]).toBe('https://sandbox-dashboard.maverickpayments.com/api/boarding-application/campaigns');
+  });
+
+  it('saves with a warning when the firewall answers, because that says nothing about the key', async () => {
+    const r = await probeMaverick(key, answer(403, { 'cf-mitigated': 'challenge', server: 'cloudflare', 'content-type': 'text/html' }, '<html>'));
+    expect(r.ok).toBe(true);
+    expect(r.warning).toMatch(/firewall/);
+  });
+
+  it('treats a Cloudflare block page the same way', async () => {
+    const r = await probeMaverick(key, answer(403, { server: 'cloudflare', 'content-type': 'text/html; charset=utf-8' }, '<html>'));
+    expect(r.ok).toBe(true);
+    expect(r.warning).toMatch(/firewall/);
+  });
+
+  it('refuses a key Maverick itself turned down', async () => {
+    expect((await probeMaverick(key, answer(401, { server: 'cloudflare', 'content-type': 'application/json' }))).ok).toBe(false);
+  });
+
+  it('refuses a key with no platform access, and names the fix', async () => {
+    const r = await probeMaverick(key, answer(403, { server: 'cloudflare', 'content-type': 'application/json' }));
+    expect(r.ok).toBe(false);
+    expect(r.note).toMatch(/agent API token/);
+  });
+
+  it('keeps the key when Maverick is down or unreachable', async () => {
+    expect((await probeMaverick(key, answer(503))).warning).toMatch(/503/);
+    const down = vi.fn(async () => { throw new Error('network'); }) as unknown as typeof fetch;
+    const r = await probeMaverick(key, down);
+    expect(r.ok).toBe(true);
+    expect(r.warning).toMatch(/Could not reach/);
   });
 });

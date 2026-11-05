@@ -32,6 +32,9 @@ export const EQUIPMENT_COLUMNS: readonly { column: EquipmentColumn; fieldKey: st
   { column: 'proposal', fieldKey: 'eq_proposal', kind: 'checkbox' },
 ];
 
+/** The Provider name column's field: the grant that decides who may see a provider's name. */
+export const PROVIDER_FIELD_KEY = 'eq_provider';
+
 export const columnNamed = (column: string) => EQUIPMENT_COLUMNS.find((c) => c.column === column);
 
 export type ColumnValue = string | number | boolean | null;

@@ -183,7 +183,7 @@ try {
     await go(page, '/admin/users');
     await page.getByRole('button', { name: 'Invite a user' }).first().click();
     await page.locator('input[name="email"]').fill(INVITED);
-    await page.getByRole('button', { name: 'Send invite' }).click();
+    await page.getByRole('button', { name: 'Continue to permissions' }).click();
     await page.getByRole('tab', { name: 'Module access & settings' }).waitFor({ timeout: 30000 });
     invite = await inviteRow();
     t('the invite exists, nothing emailed yet', invite?.status === 'pending' && (await page.getByText('Nothing has been emailed yet').count()) === 1);

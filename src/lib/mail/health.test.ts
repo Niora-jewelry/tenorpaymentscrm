@@ -1,10 +1,28 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
-vi.mock('@/lib/supabase/admin', () => ({ supabaseAdmin: () => ({}) }));
+const providerRow = vi.hoisted(() => ({ state: 'up' }));
+vi.mock('@/lib/supabase/admin', () => ({
+  supabaseAdmin: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { state: providerRow.state } }) }) }) }) }),
+}));
+vi.mock('@/lib/integrations/resolve', () => ({ integrationValues: async () => ({ MAIL_CLIENT_SECRET_EXPIRES_AT: '2020-01-01' }) }));
 vi.mock('@/lib/env.server', () => ({ serverEnv: {} }));
 
-const { secretDaysLeft } = await import('./health');
+const { moduleNotice, secretDaysLeft } = await import('./health');
+
+describe('moduleNotice', () => {
+  it('never talks about the app secret: that belongs to Integrations alone', async () => {
+    providerRow.state = 'config_error';
+    const refused = await moduleNotice();
+    expect(refused?.text).toMatch(/Can't reach Outlook/);
+    expect(refused?.text).not.toMatch(/secret|azure|MAIL_CLIENT/i);
+  });
+
+  it('says nothing when Outlook is answering, even with a secret past its date', async () => {
+    providerRow.state = 'up';
+    expect(await moduleNotice()).toBeNull();
+  });
+});
 
 describe('secretDaysLeft', () => {
   const now = Date.parse('2026-10-21T12:00:00Z');

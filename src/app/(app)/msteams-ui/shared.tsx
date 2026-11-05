@@ -101,6 +101,7 @@ export function StatusNotices({ kind, online, stale, accounts, lookingAt, waitin
       ))}
       {stale === 'reconnect' && broken.length === 0 ? <Notice tone="error">Microsoft stopped accepting this connection. What is shown is out of date.</Notice> : null}
       {stale === 'down' ? <Notice tone="warn">Microsoft is not responding. This is the last loaded data, so it may be out of date.</Notice> : null}
+      {stale === 'refused' ? <Notice tone="warn">Microsoft turned this request down. This is the last loaded data, so it may be out of date.</Notice> : null}
       {waiting ? <Notice tone="warn">Waiting for admin approval on an account you tried to connect.</Notice> : null}
       {!waiting && onApprove
         ? unapproved.map((a) => (

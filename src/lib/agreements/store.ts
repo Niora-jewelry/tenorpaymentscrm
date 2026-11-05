@@ -80,6 +80,25 @@ export type SignerRow = {
 
 export type Settings = { expiresDays: number; reminders: boolean; requesterName: string; requesterEmail: string | null; emailSubject: string; emailMessage: string };
 
+/** The providers on a record's Merchant Equipment Setup rows, in row order, each once. */
+export async function equipmentProviderNames(recordId: string): Promise<string[]> {
+  const admin = supabaseAdmin();
+  const rows = await admin
+    .from('equipment_rows')
+    .select('provider_id')
+    .eq('record_id', recordId)
+    .is('deleted_at', null)
+    .not('provider_id', 'is', null)
+    .order('row_no');
+  if (rows.error) throw rows.error;
+  const ids = [...new Set((rows.data ?? []).map((r) => r.provider_id as string))];
+  if (!ids.length) return [];
+  const names = await admin.from('equipment_providers').select('id, name').in('id', ids);
+  if (names.error) throw names.error;
+  const byId = new Map((names.data ?? []).map((p) => [p.id as string, p.name as string]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+}
+
 export const agrLabel = (n: number) => `AGR-${String(n).padStart(6, '0')}`;
 export const newId = () => randomUUID();
 export const isOpen = (s: AgreementStatus) => OPEN_STATUSES.includes(s);

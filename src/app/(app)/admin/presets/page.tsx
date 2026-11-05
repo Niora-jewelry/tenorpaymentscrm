@@ -74,6 +74,7 @@ export default async function AdminPresetsPage() {
   const sections: PresetSection[] = [
     {
       key: 'tabs',
+      group: 'Record structure',
       label: 'Tabs',
       icon: 'layout-list',
       count: tabs.length,
@@ -99,6 +100,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'subtabs',
+      group: 'Record structure',
       label: 'Subtabs',
       icon: 'panel-left',
       count: subtabs.length,
@@ -108,6 +110,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'fields',
+      group: 'Record structure',
       label: 'Fields',
       icon: 'sliders',
       count: fields.length,
@@ -117,6 +120,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'columns',
+      group: 'Lists & options',
       label: 'Columns',
       icon: 'database',
       count: modules.length,
@@ -126,6 +130,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'choices',
+      group: 'Lists & options',
       label: 'Choices',
       icon: 'circle-dot',
       count: choiceFields.length,
@@ -135,6 +140,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'pipelines',
+      group: 'Lists & options',
       label: 'Pipelines',
       icon: 'route',
       count: pipelines.length,
@@ -148,6 +154,7 @@ export default async function AdminPresetsPage() {
       // Statements tab holds no fields at all, so it appears in none of the six
       // editors above and had no home in Presets before.
       key: 'statements',
+      group: 'Lists & options',
       label: 'Statements',
       icon: 'calendar',
       count: statements.years.length,
@@ -157,6 +164,7 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'application',
+      group: 'Sending',
       label: 'Application',
       icon: 'file-pen',
       description:
@@ -165,13 +173,15 @@ export default async function AdminPresetsPage() {
     },
     {
       key: 'agreement',
+      group: 'Sending',
       label: 'Agreements',
-      icon: 'file-pen',
+      icon: 'file-text',
       description: 'The agreements sent for e-signature: how long signers have, reminders, the sender name, and the email they receive.',
       content: <AgreementSection key="agreement" initial={agreementSettings} />,
     },
     {
       key: 'sending-inbox',
+      group: 'Sending',
       label: 'Sending inbox',
       icon: 'inbox',
       description: 'Which inbox applications, proposals and agreements are emailed from — each sender’s own, or one company inbox such as office@.',

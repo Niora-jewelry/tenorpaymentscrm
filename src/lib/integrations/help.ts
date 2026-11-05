@@ -161,6 +161,7 @@ export const HELP: Record<IntegrationGroup, IntegrationHelp> = {
       { text: 'Sign in to the Maverick Payments dashboard with an admin account.', link: { label: 'Maverick Payments', href: 'https://www.maverickpayments.com/' } },
       { text: 'Open the API or Developer section and create an API key for “Tenor CRM”. If there is no such section, ask your Maverick account manager to issue API credentials for your ISO.' },
       { text: 'Copy the API key, and the secret if Maverick shows one. If they gave you a separate address (for example a sandbox), copy that too.' },
+      { text: 'If Test says the firewall stopped the request, ask your Maverick account manager to let API traffic through Cloudflare for this key. Only Maverick can change that.' },
       { text: 'Back here, add them and press Test and save.' },
     ],
     where: {
@@ -170,7 +171,7 @@ export const HELP: Record<IntegrationGroup, IntegrationHelp> = {
     },
     links: [{ label: 'Maverick Payments', href: 'https://www.maverickpayments.com/' }],
     notes: [
-      'The connection itself is switched on once Maverick’s API documentation is in. Saving the key now means nothing else is needed then.',
+      'The connection is switched on once Maverick lets API requests through and one real answer has been checked. The key saved here is the one it will use.',
       'Never paste a dashboard password here. Only API keys.',
     ],
   },

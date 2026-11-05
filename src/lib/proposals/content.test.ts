@@ -55,18 +55,31 @@ describe('the proposal (client\'s "Proposal items" sheet)', () => {
     expect(buildProposal({ pos_in_proposal: true }, { dealName: 'x', relationshipManagerEmail: null, preparedOn: at }).pos).toBeNull();
   });
 
-  it('Detailed POS lists the rows ticked In proposal: Amount × Monthly fee', () => {
-    const mdr = [
-      { Provider: 'Clover', Item: 'Station Duo', Amount: '2', 'Monthly fee': '32.16', 'Per item fee': '10', 'One time fee': '99', 'In proposal': 'Yes' },
-      { Provider: 'Comcast', Item: 'Internet', Amount: '1', 'Monthly fee': '80', 'In proposal': '' },
-      { Provider: 'Clover', Item: 'Mini', 'Monthly fee': '0.30', 'In proposal': 'Yes' },
+  it('Detailed POS lists the Equipment Setup rows ticked Proposal: Amount × Monthly fee', () => {
+    const equipment = [
+      { provider: 'Clover', item: 'Station Duo', amount: 2, monthlyFee: '32.16', perItemFee: '10', oneTimeFee: '99', proposal: true },
+      { provider: 'Comcast', item: 'Internet', amount: 1, monthlyFee: '80', proposal: false },
+      { provider: 'Clover', item: 'Mini', monthlyFee: '0.30', proposal: true },
+      { provider: 'Valor', amount: 1, proposal: true },
     ];
-    expect(posRows(mdr)).toEqual([
+    expect(posRows(equipment)).toEqual([
       { product: 'Station Duo', amount: 2, hardwareCost: 10, setupFee: 99, monthlyCost: 64.32 },
       { product: 'Mini', amount: null, hardwareCost: null, setupFee: null, monthlyCost: 0.3 },
+      { product: 'Valor', amount: 1, hardwareCost: null, setupFee: null, monthlyCost: null },
     ]);
-    expect(buildProposal({ merchant_direct_relationships: mdr }, { dealName: 'x', relationshipManagerEmail: null, preparedOn: at }).detailedPos).toBeNull();
-    expect(buildProposal({ merchant_direct_relationships: mdr, pos_detail_in_proposal: true }, { dealName: 'x', relationshipManagerEmail: null, preparedOn: at }).detailedPos?.rows).toHaveLength(2);
+    const opts = { dealName: 'x', relationshipManagerEmail: null, preparedOn: at };
+    expect(buildProposal({}, { ...opts, equipment }).detailedPos).toBeNull();
+    expect(buildProposal({ pos_detail_in_proposal: true }, { ...opts, equipment }).detailedPos?.rows).toHaveLength(3);
+    expect(buildProposal({ pos_detail_in_proposal: true }, opts).detailedPos).toBeNull();
+  });
+
+  it('a column the sender may not see is absent, so a row with no tick is not printed', () => {
+    expect(posRows([{ provider: 'Clover', item: 'Station Duo', amount: 2 }])).toEqual([]);
+  });
+
+  it('the old grid no longer feeds Detailed POS', () => {
+    const old = [{ Provider: 'Clover', Item: 'Station Duo', 'In proposal': 'Yes' }];
+    expect(buildProposal({ pos_detail_in_proposal: true, merchant_direct_relationships: old }, { dealName: 'x', relationshipManagerEmail: null, preparedOn: at }).detailedPos).toBeNull();
   });
 
   it('knows when the Savings Analysis has nothing to show', () => {

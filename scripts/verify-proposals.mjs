@@ -34,6 +34,8 @@ const q = (s, p = []) => db.query(s, p).then((r) => r.rows);
 const [me] = await q(`select id from profiles where email=$1`, [ADMIN]);
 const svc = createClient(SUPA, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const PW = 'ZzProbe-2026!page';
+// Put back at the end: this password is in the repository, and the site is public.
+const savedHash = (await q('select encrypted_password p from auth.users where id = $1', [me.id]))[0]?.p ?? null;
 await svc.auth.admin.updateUserById(me.id, { password: PW });
 await q(`update profiles set last_seen_at = now() where id = $1`, [me.id]).catch(() => {});
 const anon = createClient(SUPA, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
@@ -72,15 +74,14 @@ const values = {
   merchant_requirements: [{ Requirement: 'Kiosk ordering', Check: 'Yes' }, { Requirement: 'Gift cards', Check: '' }],
   tenor_features: [{ Feature: 'Phone-number customer lookup', Check: 'Yes' }],
   pos_detail_in_proposal: true,
-  merchant_direct_relationships: [
-    { Provider: 'Clover', Item: 'Station Duo', Amount: '2', 'Monthly fee': '32.16', 'Per item fee': '10', 'One time fee': '99', 'In proposal': 'Yes' },
-    { Provider: 'Comcast', Item: 'Internet', Amount: '1', 'Monthly fee': '80', 'In proposal': '' },
-  ],
 };
 const [probe] = await q(`insert into records (deal_name, creator_kind, creator_user_id, "values") values ($1, 'user', $2, $3::jsonb) returning id`, [
   `ZZ proposal probe ${tag}`, me.id, JSON.stringify(values),
 ]);
 await q(`insert into record_modules (record_id, module_id, added_by) values ($1, $2, $3)`, [probe.id, home.id, me.id]);
+// Detailed POS reads Merchant Equipment Setup. These go with the record at the end.
+await q(`insert into equipment_rows (record_id, row_no, item, item_amount, monthly_fee, per_item_fee, one_time_fee, proposal, created_by)
+         values ($1, 1, 'Station Duo', 2, 32.16, 10, 99, true, $2), ($1, 2, 'Internet', 1, 80, null, null, false, $2)`, [probe.id, me.id]);
 
 // What `sendProposal` would freeze for these values (content.test.ts pins the arithmetic).
 const content = {
@@ -126,12 +127,14 @@ try {
   await page.goto(`${BASE}/${home.slug}?record=${probe.id}&tab=${tabKey}`, { waitUntil: 'networkidle', timeout: 180000 });
   const panel = page.locator('section.rounded-xl', { has: page.getByRole('heading', { name: 'Proposals' }) });
   t('panel: Proposals on the Files tab', await until(() => panel.isVisible()));
-  t('panel: Preview and Send proposal', (await panel.getByRole('link', { name: 'Preview' }).isVisible()) && (await panel.getByRole('button', { name: 'Send proposal' }).isVisible()));
+  // The send buttons moved out of the panel into the Files tab's send bar (4 Nov 2026).
+  const bar = page.getByRole('region', { name: 'Send documents' });
+  t('send bar: Preview and Send proposal', (await bar.locator('a[href*="/proposals/preview/"]').isVisible()) && (await bar.getByRole('button', { name: 'Send proposal' }).isVisible()));
   t('panel: sits with Send agreement on Files', await page.getByRole('heading', { name: /Agreements/ }).first().isVisible().catch(() => false));
   await shot('pr-panel-empty');
 
   // ── the send dialog ────────────────────────────────────────────────────
-  await panel.getByRole('button', { name: 'Send proposal' }).click();
+  await bar.getByRole('button', { name: 'Send proposal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Send proposal' });
   t('dialog: opens with the proposal and its savings', await until(async () => (await dialog.innerText().catch(() => '')).includes('$573.95')));
   const dt = await dialog.innerText();
@@ -233,6 +236,7 @@ try {
   const same = JSON.stringify(before) === JSON.stringify(after);
   console.log(same ? `restore: ${JSON.stringify(after)} — exactly as before` : `⚠ RESTORE MISMATCH\n${JSON.stringify(before)}\n${JSON.stringify(after)}`);
   if (!same) fail.push('restore mismatch');
+  if (savedHash) await db.query('update auth.users set encrypted_password = $2 where id = $1', [me.id, savedHash]).catch((e) => fail.push(`restore password failed: ${e.message}`));
   await browser.close();
   await db.end();
 }

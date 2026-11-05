@@ -13,10 +13,10 @@
  *                      Totals             the sums; savings = current − proposed
  *                    then Monthly, Annual (×12) and 3-year (×36) savings.
  *   POS Architecture only when ticked to include and something is filled in.
- *   Detailed POS     only when ticked to include, listing the Merchant Direct
- *                    Relationships rows ticked "In proposal": Product name =
- *                    Item, Amount, Hardware cost = Per item fee, Setup fee = One
- *                    time fee, Monthly cost = Amount × Monthly fee.
+ *   Detailed POS     only when ticked to include, listing the Merchant Equipment
+ *                    Setup rows ticked "Proposal": Product name = Item, else the
+ *                    provider, Amount = Item amount, Hardware cost = Per item fee,
+ *                    Setup fee = One-time fee, Monthly cost = Amount × Monthly fee.
  *   Closing          the relationship manager's email, else sales@tenorpayments.com.
  */
 import { TENOR } from '@/lib/brand/tenor';
@@ -29,7 +29,7 @@ export const PROPOSAL_FIELD_KEYS = [
   'prior_monthly_volume', 'prior_effective_rate', 'tenor_effective_rate',
   'prior_monthly_transactions', 'prior_auth_fees', 'tenor_auth_fees', 'prior_monthly_fees', 'tenor_monthly_fees',
   'pos_in_proposal', 'pos_description', 'merchant_requirements', 'tenor_features',
-  'pos_detail_in_proposal', 'merchant_direct_relationships',
+  'pos_detail_in_proposal',
 ] as const;
 
 /** The inputs of the Savings Analysis table. */
@@ -98,7 +98,7 @@ const cents = (n: number) => Math.round(n * 100) / 100;
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 const rows = (v: unknown): Record<string, unknown>[] =>
   Array.isArray(v) ? v.filter((r): r is Record<string, unknown> => Boolean(r) && typeof r === 'object') : [];
-const ticked = (v: unknown) => v === true || v === 'Yes' || v === 'yes' || v === 'true';
+export const ticked = (v: unknown) => v === true || v === 'Yes' || v === 'yes' || v === 'true';
 
 export function checklist(v: unknown, textColumn: string): ChecklistItem[] {
   return rows(v)
@@ -106,17 +106,28 @@ export function checklist(v: unknown, textColumn: string): ChecklistItem[] {
     .filter((r) => r.text);
 }
 
-export function posRows(v: unknown): PosRow[] {
-  return rows(v)
-    .filter((r) => ticked(r['In proposal']))
+/** One Merchant Equipment Setup row, as the sender may see it. A hidden column is absent. */
+export type EquipmentLine = {
+  provider?: unknown;
+  item?: unknown;
+  amount?: unknown;
+  monthlyFee?: unknown;
+  perItemFee?: unknown;
+  oneTimeFee?: unknown;
+  proposal?: unknown;
+};
+
+export function posRows(lines: readonly EquipmentLine[]): PosRow[] {
+  return lines
+    .filter((r) => ticked(r.proposal))
     .map((r) => {
-      const amount = num(r.Amount);
-      const monthly = num(r['Monthly fee']);
+      const amount = num(r.amount);
+      const monthly = num(r.monthlyFee);
       return {
-        product: text(r.Item) || text(r.Provider),
+        product: text(r.item) || text(r.provider),
         amount,
-        hardwareCost: num(r['Per item fee']),
-        setupFee: num(r['One time fee']),
+        hardwareCost: num(r.perItemFee),
+        setupFee: num(r.oneTimeFee),
         monthlyCost: monthly === null ? null : cents((amount ?? 1) * monthly),
       };
     })
@@ -130,7 +141,7 @@ export function hasSavingsFigures(values: Record<string, unknown>): boolean {
 
 export function buildProposal(
   values: Record<string, unknown>,
-  opts: { dealName: string; relationshipManagerEmail: string | null; preparedOn: Date },
+  opts: { dealName: string; relationshipManagerEmail: string | null; preparedOn: Date; equipment?: readonly EquipmentLine[] },
 ): ProposalContent {
   const vol = num(values.prior_monthly_volume);
   const priorRate = num(values.prior_effective_rate);
@@ -164,7 +175,7 @@ export function buildProposal(
   const pos = ticked(values.pos_in_proposal) && (description || requirements.length || features.length)
     ? { description: description || DEFAULT_POS_DESCRIPTION, requirements, features }
     : null;
-  const posList = posRows(values.merchant_direct_relationships);
+  const posList = posRows(opts.equipment ?? []);
   const detailedPos = ticked(values.pos_detail_in_proposal) && posList.length ? { rows: posList } : null;
 
   return {

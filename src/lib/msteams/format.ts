@@ -231,3 +231,9 @@ export function teamsCallUrl(emails: string[]): string {
 
 /** The two-week line that the first load stops at. */
 export const twoWeeksBefore = (now: number): string => new Date(now - 14 * 24 * 3600 * 1000).toISOString();
+
+/** What falls after the line. Microsoft cannot do this for a chat's created date, so it is done here. */
+export function newerThan<T extends { createdDateTime?: string | null }>(messages: T[], line: string): T[] {
+  const cut = Date.parse(line);
+  return messages.filter((m) => Date.parse(m.createdDateTime ?? '') > cut);
+}

@@ -11,7 +11,6 @@ export const MAIL_MESSAGES = {
   reconnect: (address: string) => `Outlook disconnected ${address}. Reconnect to resume syncing.`,
   reconnectMfa: 'Microsoft asked for a fresh sign-in.',
   consent: 'The Tenor app is not approved for this Microsoft account yet. Ask your Microsoft admin to approve it, then reconnect.',
-  appSecretAdmin: 'Outlook sync is paused: the Microsoft app secret has expired. Rotate it in Azure and update MAIL_CLIENT_SECRET.',
   scopeMissing: (feature: string) => `Outlook needs one more permission for ${feature}. Reconnect to grant it.`,
   accessRemoved: (shared: string) => `You no longer have access to ${shared} in Outlook. Ask your Microsoft admin, then reconnect.`,
   goneMessage: 'That message was already moved or deleted in Outlook.',
@@ -66,7 +65,7 @@ export function isConnectErrorCode(v: string | null | undefined): v is ConnectEr
   return !!v && (CONNECT_ERRORS as readonly string[]).includes(v);
 }
 
-export function connectErrorMessage(code: ConnectErrorCode, ctx: { shared?: string; isAdmin?: boolean } = {}): string {
+export function connectErrorMessage(code: ConnectErrorCode, ctx: { shared?: string } = {}): string {
   switch (code) {
     case 'cancelled': return MAIL_MESSAGES.oauthCancelled;
     case 'state_invalid': return MAIL_MESSAGES.oauthExpired;
@@ -77,7 +76,7 @@ export function connectErrorMessage(code: ConnectErrorCode, ctx: { shared?: stri
     case 'shared_access_denied': return MAIL_MESSAGES.sharedDenied(ctx.shared ?? 'that mailbox');
     case 'limit_reached': return MAIL_MESSAGES.connectionCap;
     case 'provider_down': return MAIL_MESSAGES.providerDown;
-    case 'app_secret_invalid': return ctx.isAdmin ? MAIL_MESSAGES.appSecretAdmin : MAIL_MESSAGES.providerDown;
+    case 'app_secret_invalid': return MAIL_MESSAGES.providerDown;
     case 'impersonating': return MAIL_MESSAGES.impersonating;
     case 'rate_limited': return MAIL_MESSAGES.rateLimited;
     case 'bad_address': return MAIL_MESSAGES.badAddress;

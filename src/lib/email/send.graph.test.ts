@@ -52,8 +52,10 @@ describe('the road an alert takes', () => {
   it('Graph refuses: the code still goes, by SMTP', async () => {
     graphAnswers(() => new Response(JSON.stringify({ error: { code: 'ErrorAccessDenied' } }), { status: 403 }));
     const { sendOtpEmail } = await load({ ...graphEnv, ...smtpEnv });
-    expect(await sendOtpEmail('jane@example.com', '123456', 'signup')).toEqual({ ok: true });
+    expect(await sendOtpEmail('jane@example.com', '123456', 'signup')).toEqual({ ok: true, graphCode: 'graph_403:ErrorAccessDenied' });
     expect(sendMail).toHaveBeenCalledTimes(1);
+    // One fresh try first: a held token keeps the permissions it was issued with.
+    expect(graphCalls()).toHaveLength(2);
   });
 
   it('Microsoft unreachable: the code still goes, by SMTP', async () => {
@@ -61,7 +63,7 @@ describe('the road an alert takes', () => {
       throw new TypeError('fetch failed');
     });
     const { sendOtpEmail } = await load({ ...graphEnv, ...smtpEnv });
-    expect(await sendOtpEmail('jane@example.com', '123456', 'signup')).toEqual({ ok: true });
+    expect(await sendOtpEmail('jane@example.com', '123456', 'signup')).toEqual({ ok: true, graphCode: 'network' });
     expect(sendMail).toHaveBeenCalledTimes(1);
   });
 

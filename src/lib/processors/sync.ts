@@ -78,7 +78,7 @@ const since = (backfilled: boolean, last: Date | null, now: Date) =>
 export async function runProcessorSync(now = new Date(), { force = false } = {}): Promise<{ ran: boolean; outcome?: string; reason?: string }> {
   if (!force && newYorkHour(now) !== 7) return { ran: false, reason: 'not 7 AM in New York' };
   if (!(await processorConnected())) return { ran: false, reason: 'not connected' };
-  if (!ADAPTER_READY) return { ran: false, reason: 'the Maverick adapter is not wired yet' };
+  if (!ADAPTER_READY) return { ran: false, reason: 'the Maverick adapter is switched off until a real response has been checked' };
 
   const { data: run, error: runError } = await db()
     .from('processor_sync_runs')

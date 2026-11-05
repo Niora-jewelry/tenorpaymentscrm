@@ -130,9 +130,10 @@ async function graphSender(): Promise<GraphSender | null> {
 /** What an alert can carry: Graph takes far less in one request than SMTP does. */
 export const alertAttachmentLimit = async (smtpLimit: number): Promise<number> => ((await graphSender()) ? Math.min(GRAPH_ATTACHMENT_BYTES, smtpLimit) : smtpLimit);
 
-export type SendResult = { ok: true } | { ok: false; error: string };
+/** `graphCode`: Microsoft refused it first, so any success came by the SMTP login behind it. */
+export type SendResult = { ok: true; graphCode?: string } | { ok: false; error: string; graphCode?: string };
 
-async function send(
+async function sendBySmtp(
   to: string,
   subject: string,
   html: string,
@@ -140,14 +141,6 @@ async function send(
   headers?: Record<string, string>,
   attachments?: { filename: string; content: Buffer }[],
 ): Promise<SendResult> {
-  // Graph first, with SMTP behind it: a Graph failure must not lock anyone out of a sign-in code.
-  const graph = await graphSender();
-  if (graph) {
-    const sent = await sendViaGraph(graph, { to, subject, html, headers, attachments });
-    if (sent.ok) return { ok: true };
-    console.error('[email] Graph send failed, trying SMTP', { to, subject, code: sent.code });
-  }
-
   const api = await client();
   const v = await integrationValues();
 
@@ -229,6 +222,23 @@ async function send(
     console.error('[email] SMTP send failed', { to, subject, error });
     return { ok: false, error };
   }
+}
+
+async function send(
+  to: string,
+  subject: string,
+  html: string,
+  text: string,
+  headers?: Record<string, string>,
+  attachments?: { filename: string; content: Buffer }[],
+): Promise<SendResult> {
+  // Graph first, with SMTP behind it: a Graph failure must not lock anyone out of a sign-in code.
+  const graph = await graphSender();
+  if (!graph) return sendBySmtp(to, subject, html, text, headers, attachments);
+  const sent = await sendViaGraph(graph, { to, subject, html, headers, attachments });
+  if (sent.ok) return { ok: true };
+  console.error('[email] Graph send failed, trying SMTP', { to, subject, code: sent.code });
+  return { ...(await sendBySmtp(to, subject, html, text, headers, attachments)), graphCode: sent.code };
 }
 
 const MINUTES = Math.round(OTP_TTL_SECONDS / 60);

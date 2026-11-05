@@ -56,7 +56,7 @@ import {
 } from './recordVersion';
 import type { RepeatGroupDef } from './DrawerTabs';
 import { glowAttrs, useFieldGlow } from './FieldGlow';
-import { fieldGlow, memberGlow, signersFor, type Glow } from '@/lib/records/fieldGlow';
+import { fieldGlow, memberGlow, type Glow } from '@/lib/records/fieldGlow';
 import { NoteThread } from './NoteThread';
 import {
   FIELD_GRID, FIELD_GRID_CONTAINER, FIELD_VALUE_SLOT, FieldLabelRow, SectionHeading,

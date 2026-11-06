@@ -39,11 +39,14 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { FILES_BUCKET as AUTOMATION_FILES_BUCKET } from '@/lib/automations/service';
+import { KINDS, type AutomationKind } from '@/lib/automations/steps';
+import { SYSTEM, isSystemKey } from '@/lib/automations/system';
 import { canOpenAdminPage, type AuthContext } from './permissions';
 
 /** What kind of thing a bin entry is. Drives the label, the icon and which
  *  restore function the row calls — nothing here branches on a module. */
-export type BinKind = 'file' | 'file_row' | 'update' | 'reply' | 'login' | 'case' | 'case_reply' | 'equipment_row';
+export type BinKind = 'file' | 'file_row' | 'update' | 'reply' | 'login' | 'case' | 'case_reply' | 'equipment_row' | 'automation' | 'system_automation';
 
 export type BinItem = {
   kind: BinKind;
@@ -57,6 +60,8 @@ export type BinItem = {
   recordId: string | null;
   recordName: string | null;
   deletedAt: string | null;
+  /** Names the sort of thing when its kind alone is too broad. */
+  label?: string;
 };
 
 const MAX_PER_KIND = 200;
@@ -80,7 +85,7 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
    * losing rows off the end of a page). The cap is explicit and the screen says
    * so.
    */
-  const [files, fileRows, updates, logins, cases, replies, equipmentRows, records] = await Promise.all([
+  const [files, fileRows, updates, logins, cases, replies, equipmentRows, automations, systemAutomations, records] = await Promise.all([
     supabase
       .from('files')
       .select('id, name, deleted_at, file_row_id, file_rows!inner(record_id)')
@@ -125,6 +130,19 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
       .not('deleted_at', 'is', null)
       .order('deleted_at', { ascending: false })
       .limit(MAX_PER_KIND),
+    supabase
+      .from('automations')
+      .select('id, name, kind, deleted_at')
+      .not('deleted_at', 'is', null)
+      .order('deleted_at', { ascending: false })
+      .limit(MAX_PER_KIND),
+    // A purged one keeps its row, to keep the job off, but has left the bin.
+    supabase
+      .from('system_automations')
+      .select('key, deleted_at')
+      .not('deleted_at', 'is', null)
+      .is('purged_at', null)
+      .order('deleted_at', { ascending: false }),
     // Names for every record any of the above belongs to. Read in full rather
     // than joined six times: `records` is the one table all six point at, and a
     // second pass over ids in memory is cheaper than six nested selects.
@@ -205,6 +223,15 @@ export async function listBin(ctx: AuthContext): Promise<BinItem[]> {
     out.push({ kind: 'equipment_row', id: r.id, title: `Equipment row ${r.row_no}`, deletedAt: r.deleted_at, ...named(r.record_id) });
   }
 
+  for (const a of automations.data ?? []) {
+    out.push({ kind: 'automation', id: a.id, title: a.name, label: KINDS[a.kind as AutomationKind].label.replace(/s$/, ''), deletedAt: a.deleted_at, recordId: null, recordName: null });
+  }
+
+  for (const a of systemAutomations.data ?? []) {
+    if (!isSystemKey(a.key)) continue;
+    out.push({ kind: 'system_automation', id: a.key, title: SYSTEM[a.key].name, deletedAt: a.deleted_at, recordId: null, recordName: null });
+  }
+
   // Newest first across every kind, so the bin reads as one timeline of what
   // was removed rather than six lists that each start again.
   return out.sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
@@ -223,6 +250,14 @@ const RESTORE_FN: Record<BinKind, { fn: string; arg: string }> = {
   case: { fn: 'restore_case', arg: 'p_case_id' },
   case_reply: { fn: 'restore_case_reply', arg: 'p_reply_id' },
   equipment_row: { fn: 'restore_equipment_row', arg: 'p_row_id' },
+  automation: { fn: 'restore_automation', arg: 'p_automation' },
+  system_automation: { fn: 'restore_system_automation', arg: 'p_key' },
+};
+
+/** What can be purged from a row of this list. Records and users have their own. */
+const PURGE_FN: Partial<Record<BinKind, { fn: string; arg: string }>> = {
+  automation: { fn: 'purge_automation', arg: 'p_automation' },
+  system_automation: { fn: 'purge_system_automation', arg: 'p_key' },
 };
 
 /**
@@ -245,5 +280,30 @@ export async function restoreBinItem(
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.rpc(spec.fn, { [spec.arg]: id });
   if (error) return { ok: false, message: error.message };
+  return { ok: true };
+}
+
+/**
+ * Remove one for good. The files an automation sends go too: their rows cascade with
+ * it, and nothing could reach what they point at afterwards.
+ */
+export async function purgeBinItem(ctx: AuthContext, kind: BinKind, id: string): Promise<BinRestoreResult> {
+  if (!(await canOpenAdminPage(ctx, 'recycle_bin'))) return { ok: false, message: 'Admin only' };
+  const spec = PURGE_FN[kind];
+  if (!spec) return { ok: false, message: 'That cannot be purged.' };
+
+  const admin = supabaseAdmin();
+  const files = kind === 'automation' ? await admin.from('automation_files').select('storage_path').eq('automation_id', id) : null;
+  if (files?.error) return { ok: false, message: 'Could not purge it. Try again.' };
+
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.rpc(spec.fn, { [spec.arg]: id });
+  if (error) return { ok: false, message: error.message };
+
+  const paths = (files?.data ?? []).map((f) => f.storage_path as string);
+  if (paths.length) {
+    const removed = await admin.storage.from(AUTOMATION_FILES_BUCKET).remove(paths);
+    if (removed.error) console.error('[recycle bin] automation files left in storage', { count: paths.length });
+  }
   return { ok: true };
 }

@@ -212,7 +212,10 @@ export async function setAutomationStatus(
 export async function deleteAutomation(ctx: AuthContext, id: string): Promise<void> {
   await assertAutomationsEdit(ctx);
   const { error } = await supabaseAdmin().rpc('automation_delete', { p_automation: id, p_actor: ctx.userId });
-  if (error) throw error;
+  if (error) {
+    if (error.code === 'P0001') throw new AutomationError(error.message);
+    throw error;
+  }
 }
 
 /** For the Test record picker. */
@@ -296,7 +299,7 @@ export async function listRuns(
     .order('started_at', { ascending: false })
     .range(page * PAGE, page * PAGE + PAGE - 1);
   if (opts.automationId) q = q.eq('automation_id', opts.automationId);
-  q = opts.status ? q.eq('status', opts.status) : q.neq('status', 'not_matched');
+  if (opts.status) q = q.eq('status', opts.status);
   const { data, error, count } = await q;
   if (error) throw error;
 

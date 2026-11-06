@@ -36,7 +36,8 @@ const FULL: Record<string, unknown> = {
   td_vmd_auth_fee: 0.1, td_batch_fee: 0.25, td_vmd_transaction_fee: '', td_chargeback_fee: 25, td_avs_fee: 0.05, td_monthly_fee: 10, td_pci_fee: 9.95,
   vtd_gateway_provider: 'Removed Other Costs', td_gateway_provider_mav: 'Removed Field Gateway',
   merchant_direct_relationships: [{ Provider: 'Removed Direct', 'Provider type': 'POS' }],
-  eq_provider: ['Authorize.net', 'authorize.NET', 'Clover'],
+  eq_provider: ['Accept.blue'],
+  eq_item: ['Clover Flex', 'clover FLEX', 'PAX A920'],
   owner_ownership: [
     { first: 'Jane', last: 'Doe', title: 'CEO', email: 'jane@zz.test', phone: '5125550101', percentage: 60, address: { street: '2 Oak', street2: '', city: 'Austin', state: 'TX', zip: '78702' }, dob: '1980-01-02' },
     { first: 'John', last: 'Roe', title: 'CFO', email: 'john@zz.test', phone: '5125550102', percentage: 40 },
@@ -126,8 +127,8 @@ describe('rendering the spec’s rules', () => {
     const line = f['ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC'];
     for (const old of ['Removed Field Gateway', 'Removed Other Costs', 'Removed Direct']) expect(line).not.toContain(old);
   });
-  it('equipment joins the providers once each, in order', () => {
-    expect(f['ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC']).toBe('Authorize.net, Clover');
+  it('equipment joins the items once each, in order, and never a provider', () => {
+    expect(f['ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC']).toBe('Clover Flex, PAX A920');
   });
   it('recurring: "Choice – notes"', () => {
     expect(f['iii  DO YOU OFFER RECURRING AND TIMEEXTENDED SERVICES SUBSCRIPTIONS MEMBERSHIPS RECURRING PLANS ETC IF YES PLEASE DESCRIBE AND INCLUDE DURATION']).toBe('Yes - Monthly plans');

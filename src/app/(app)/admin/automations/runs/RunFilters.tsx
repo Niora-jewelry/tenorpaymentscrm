@@ -19,7 +19,9 @@ export function RunFilters({
   const go = (next: { automation?: string; status?: string }) => {
     const q = new URLSearchParams();
     const a = next.automation ?? automation;
-    const s = next.status ?? status;
+    // Hard-coded jobs log different things, so a status from one list means nothing in the other.
+    const sameList = a.startsWith('system:') === automation.startsWith('system:');
+    const s = next.status ?? (sameList ? status : '');
     if (a) q.set('automation', a);
     if (s) q.set('status', s);
     const text = q.toString();

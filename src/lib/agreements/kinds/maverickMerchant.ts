@@ -19,7 +19,7 @@
 import type { AgreementKindDef, AgreementProblem, AgreementSource, CrmValues, MappingEntry, PrincipalSlot } from './types';
 import { addressParts, ein, equipmentList, money, percent, phone, ssn, str, usDate, yearsSince, yesNo } from '../format';
 import { addressBlock, bankruptcy, hasDba, part, splitTotal, text, tick, used, v } from './fill';
-import { PROVIDER_FIELD_KEY } from '@/lib/equipment/columns';
+import { ITEM_FIELD_KEY } from '@/lib/equipment/columns';
 
 const priorProcessor = (src: AgreementSource) => str(v(src, 'prior_processor'));
 const processesCards = (src: AgreementSource) => priorProcessor(src) !== '' && priorProcessor(src).toLowerCase() !== 'no';
@@ -100,8 +100,8 @@ const mapping: MappingEntry[] = [
   {
     pdf: 'ii  PLEASE LIST EQUIPMENT ANDOR SOFTWARE USED TO PROCESS CARDS POINTOFSALE TERMINAL PAYMENT GATEWAY ETC',
     fill: (src) => ({
-      text: equipmentList(equipmentProviders(src)),
-      used: [{ fieldKey: PROVIDER_FIELD_KEY, kind: 'value' as const }],
+      text: equipmentList(equipmentItems(src)),
+      used: [{ fieldKey: ITEM_FIELD_KEY, kind: 'value' as const }],
     }),
   },
   { pdf: 'ONSITE', fill: (src) => ({ check: inventory(src).includes('on_site'), used: used('inventory') }) },
@@ -168,16 +168,15 @@ const mapping: MappingEntry[] = [
 ];
 
 /**
- * The equipment and software line: every provider on the record's Merchant Equipment
- * Setup rows, in row order, each once (client, 5 Nov 2026: Other Costs, Merchant Direct
- * Relationships and Merchant Equipment List were removed in favour of that tab). Those
- * rows live in their own table, so `sourceFor` puts the names under the provider
- * column's field key: the snapshot, the "data changed" banner and the hidden-field
- * check then treat them like any other value.
+ * The equipment and software line: the Item on each Merchant Equipment Setup row billed
+ * by Maverick, in row order, each once (client, 6 Nov 2026: "fill it only with items that
+ * have the field Billed by as Maverick"). Those rows live in their own table, so
+ * `sourceFor` puts the items under the Item column's field key: the snapshot, the "data
+ * changed" banner and the hidden-field check then treat them like any other value.
  */
-const equipmentProviders = (src: AgreementSource): unknown[] => {
-  const names = src.values[PROVIDER_FIELD_KEY];
-  return Array.isArray(names) ? names : [];
+const equipmentItems = (src: AgreementSource): unknown[] => {
+  const items = src.values[ITEM_FIELD_KEY];
+  return Array.isArray(items) ? items : [];
 };
 
 function addressLineOf(a: unknown): string {

@@ -510,7 +510,7 @@ export function Builder({ automation, kind, catalog, canEdit }: { automation: Au
               ) : null}
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-line-faint pt-2.5">
                 <Link href={`/admin/automations/runs?automation=${automation.id}`} className="text-[12.5px] font-medium text-brand-700 hover:underline">Run history</Link>
-                {canEdit ? <button type="button" onClick={() => setDialog('delete')} className="text-[12.5px] font-medium text-[#b02a30] hover:underline">Delete</button> : null}
+                {canEdit && (status === 'off' || status === 'draft') ? <button type="button" onClick={() => setDialog('delete')} className="text-[12.5px] font-medium text-[#b02a30] hover:underline">Delete</button> : null}
               </div>
             </div>
           ) : (
@@ -547,7 +547,7 @@ export function Builder({ automation, kind, catalog, canEdit }: { automation: Au
       ) : null}
       {dialog === 'delete' ? (
         <Dialog title="Delete this automation?" tone="danger" confirmLabel="Delete" onConfirm={remove} onClose={() => setDialog(null)}>
-          <p className="text-[13px] text-ink-600">It stops running, and any {copy.noun} waiting on it won&rsquo;t finish. Its run history stays.</p>
+          <p className="text-[13px] text-ink-600">It moves to the Recycle Bin, where an admin can restore it or purge it. Its run history stays.</p>
         </Dialog>
       ) : null}
     </div>

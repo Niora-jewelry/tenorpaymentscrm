@@ -13,10 +13,11 @@
  * deleted and was then gone for good, by a button that called itself a soft
  * delete. `recycleBin.ts` is the list; migrations 53-55 are the restores.
  *
- * ── PURGE IS STILL RECORDS AND USERS ONLY ────────────────────────────────
- * Deliberately. §6 gives permanent removal for records, and §2.1 for users as
- * the third of three levels. Nothing in the client's documents asks to purge a
- * file or an update, and a button that permanently destroys one would be a
+ * ── PURGE IS RECORDS, USERS AND AUTOMATIONS ONLY ─────────────────────────
+ * Deliberately. §6 gives permanent removal for records, §2.1 for users as the
+ * third of three levels, and the client added automations (6 Nov 2026: "it lives
+ * in recycle bin. It can also be deleted from recycle bin"). Nothing asks to purge
+ * a file or an update, and a button that permanently destroys one would be a
  * requirement this build invented for itself.
  */
 import { redirect } from 'next/navigation';
@@ -48,6 +49,7 @@ export default async function RecycleBinPage() {
   const logins = of('login');
   const cases = of('case', 'case_reply');
   const equipment = of('equipment_row');
+  const automations = of('automation', 'system_automation');
 
   const list = (rows: BinItem[]) => (
     <div className="space-y-2">
@@ -117,6 +119,15 @@ export default async function RecycleBinPage() {
       description:
         'Rows deleted from Merchant Equipment Setup on a record. Restoring puts the row back on that record, under its old row number.',
       content: list(equipment),
+    },
+    {
+      key: 'automations',
+      label: 'Automations',
+      icon: 'route',
+      count: automations.length,
+      description:
+        'Restoring brings an automation back turned off, and it does nothing until someone turns it on. Purging removes it for good, with its run history. A purged hard-coded automation stays off for good.',
+      content: list(automations),
     },
     {
       key: 'users',

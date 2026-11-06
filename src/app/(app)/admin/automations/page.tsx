@@ -5,19 +5,23 @@
  * Builder spec: "a separate builder called Ticket automations"). A third tab,
  * Hard-coded automations, lists the jobs the CRM runs by itself (client, 6 Nov
  * 2026), each of which can be turned off.
+ *
+ * All three draw the same row: History, Status, Edit, Turn off, then Delete once it is
+ * off. The row itself opens nothing (client: "There should be a dedicated edit button").
  */
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { automationsAccess, authorize } from '@/lib/records/permissions';
-import { automationCatalog } from '@/lib/automations/catalog';
+import { automationCatalog, type Catalog } from '@/lib/automations/catalog';
 import { automationBacklog, listAlerts, listAutomations } from '@/lib/automations/service';
 import { listSystemAutomations } from '@/lib/automations/system';
 import { CONDITIONS, KINDS, TRIGGERS, actionLabel, conditionsIn, type AutomationKind } from '@/lib/automations/steps';
 import type { AutomationSummary } from '@/lib/automations/service';
 import { Icon } from '@/proto/ui/icons';
 import { Alerts } from './Alerts';
+import { AutomationRows } from './AutomationRows';
 import { SystemAutomations } from './SystemAutomations';
-import { BehindNotice, StatusBadge, when } from './bits';
+import { BehindNotice, systemHistoryHref } from './bits';
 
 function flowSummary(a: AutomationSummary): string {
   const starts = a.steps.triggers.map((t) => TRIGGERS[t.type].label);
@@ -25,6 +29,22 @@ function flowSummary(a: AutomationSummary): string {
   const does = a.steps.flow.flatMap((f) => (f.type === 'wait' ? [] : [actionLabel(f.type, a.kind)]));
   const parts = [starts.join(' or '), checks.length ? (checks.length === 1 ? checks[0]! : `${checks.length} conditions`) : null, does.join(', ')];
   return parts.filter(Boolean).join('  →  ') || 'Nothing added yet';
+}
+
+/** The modules it is tied to, by its triggers and its Only in module conditions. */
+function whereItActs(a: AutomationSummary, catalog: Catalog): string {
+  if (a.kind === 'ticket') return 'Every ticket';
+  const labels = new Set<string>();
+  const moduleLabel = (id: string) => catalog.modules.find((m) => m.value === id)?.label;
+  for (const t of a.steps.triggers) {
+    const label = 'moduleId' in t ? moduleLabel(t.moduleId) : t.type === 'stage' ? catalog.pipelines.find((p) => p.id === t.pipelineId)?.moduleLabel : undefined;
+    if (label) labels.add(label);
+  }
+  for (const c of conditionsIn(a.steps)) {
+    const label = c.type === 'in_module' ? moduleLabel(c.moduleId) : undefined;
+    if (label) labels.add(label);
+  }
+  return labels.size ? [...labels].join(', ') : 'Every module';
 }
 
 const EMPTY: Record<AutomationKind, { title: string; body: string; icon: 'route' | 'lifebuoy' }> = {
@@ -70,7 +90,7 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/admin/automations/runs" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3.5 py-2 text-[13.5px] font-semibold text-ink-700 transition-colors hover:border-ink-400 hover:bg-canvas">
+          <Link href={system ? systemHistoryHref('all') : '/admin/automations/runs'} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3.5 py-2 text-[13.5px] font-semibold text-ink-700 transition-colors hover:border-ink-400 hover:bg-canvas">
             <Icon name="list" size={15} /> Run history
           </Link>
           {access === 'full' && !system ? (
@@ -137,33 +157,20 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
           <p className="mx-auto mt-1 max-w-[46ch] text-[13px] text-ink-500">{EMPTY[kind].body}</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-line bg-white">
-          <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_90px_90px_110px] gap-4 border-b border-line-soft bg-canvas px-4 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400 lg:grid">
-            <span>Name</span>
-            <span>What it does</span>
-            <span>Status</span>
-            <span className="text-right">Waiting</span>
-            <span className="text-right">Last run</span>
-          </div>
-          <ul className="divide-y divide-line-faint">
-            {automations.map((a) => (
-              <li key={a.id}>
-                <Link href={`/admin/automations/${a.id}`} className="grid gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-canvas lg:grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_90px_90px_110px] lg:items-center">
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13.5px] font-semibold text-ink-900">{a.name}</span>
-                    {a.status === 'test' && (a.testCaseLabel ?? a.testRecordLabel) ? (
-                      <span className="block truncate text-[11.5px] text-ink-400">On {a.testCaseLabel ?? a.testRecordLabel}</span>
-                    ) : null}
-                  </span>
-                  <span className="truncate text-[12.5px] text-ink-600">{flowSummary(a)}</span>
-                  <span><StatusBadge status={a.status} /></span>
-                  <span className="text-[12.5px] tabular-nums text-ink-600 lg:text-right">{a.waiting || '—'}</span>
-                  <span className="text-[12px] text-ink-400 lg:text-right">{a.lastRunAt ? when(a.lastRunAt) : 'Never'}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <AutomationRows
+          noun={KINDS[kind].noun}
+          canEdit={access === 'full'}
+          rows={automations.map((a) => ({
+            id: a.id,
+            name: a.name,
+            status: a.status,
+            what: flowSummary(a),
+            where: whereItActs(a, catalog),
+            testTarget: a.status === 'test' ? (a.testCaseLabel ?? a.testRecordLabel) : null,
+            waiting: a.waiting,
+            lastRunAt: a.lastRunAt,
+          }))}
+        />
       )}
     </div>
   );

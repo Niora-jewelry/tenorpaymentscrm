@@ -81,6 +81,14 @@ suite('Automations', () => {
   const statusOf = async (rec: string) => (await one<{ s: string | null }>(`select values ->> 'current_status' s from records where id = $1`, [rec])).s;
   const expire = (run: string) => q(`update automation_runs set resume_at = now() - interval '1 minute' where id = $1`, [run]);
 
+  /** A raised exception aborts the transaction, so each refusal is fenced in a savepoint. */
+  const refused = async (fn: () => Promise<unknown>, pattern: RegExp) => {
+    await q('savepoint before_refusal');
+    await expect(fn()).rejects.toThrow(pattern);
+    await q('rollback to savepoint before_refusal');
+    await q(`select set_config('request.jwt.claims', '', true), set_config('role', 'none', true)`);
+  };
+
   const onStatus = (value: string) => ({ id: 't', type: 'status', value });
   const setStatus = (value: string) => ({ id: randomUUID().slice(0, 8), type: 'change_status', value });
   const group = (join: string, ...conditions: Step[]) => ({ id: randomUUID().slice(0, 8), join, conditions });
@@ -994,14 +1002,98 @@ suite('Automations', () => {
       expect(await runs(a)).toHaveLength(0);
     });
 
-    it('Delete stops it, and the history stays', async () => {
+    it('Delete waits for Turn off, and the history stays', async () => {
       const a = await automation({ triggers: [onStatus('high')], flow: [{ id: 'w', type: 'wait', amount: 1, unit: 'hours' }, setStatus('low')] });
       const rec = await record();
       await setValue(sales, rec, 'current_status', 'high');
       await work();
+      await refused(() => q(`select automation_delete($1, $2)`, [a, builder]), /Turn it off before deleting it/);
+      await q(`select automation_set_status($1, 'off', null, $2)`, [a, builder]);
+      expect((await lastRun(a)).status).toBe('cancelled');
       await q(`select automation_delete($1, $2)`, [a, builder]);
       expect((await one<{ n: number }>(`select count(*)::int n from automation_triggers where automation_id = $1`, [a])).n).toBe(0);
       expect(await runs(a)).toHaveLength(1);
+    });
+  });
+
+  // ── the Recycle Bin ──────────────────────────────────
+  describe('the Recycle Bin', () => {
+    let admin: string;
+    const JOB = 'automation_history_cleanup';
+    const binned = async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('mid')] });
+      const rec = await record();
+      await setValue(sales, rec, 'current_status', 'high');
+      await work();
+      await q(`select automation_set_status($1, 'off', null, $2)`, [a, builder]);
+      await q(`select automation_delete($1, $2)`, [a, builder]);
+      return a;
+    };
+    const count = async (sql: string, p: unknown[]) => (await one<{ n: number }>(sql, p)).n;
+    const jobOn = async () => (await one<{ on: boolean }>(`select system_automation_on($1) as on`, [JOB])).on;
+    const jobToBin = async () => {
+      await q(`select system_automation_set($1, 'turn_off', $2)`, [JOB, admin]);
+      await q(`select system_automation_set($1, 'delete', $2)`, [JOB, admin]);
+    };
+
+    beforeAll(async () => {
+      admin = (await one<{ id: string }>(`select id from profiles where email = 'admin@tapdash.test'`)).id;
+    });
+
+    it('Restore brings one back off, and it reacts to nothing until turned on', async () => {
+      const a = await binned();
+      await as(admin, () => q(`select restore_automation($1)`, [a]));
+      const back = await one<{ status: string; deleted_at: string | null }>(`select status, deleted_at from automations where id = $1`, [a]);
+      expect(back).toEqual({ status: 'off', deleted_at: null });
+      expect(await count(`select count(*)::int n from automation_triggers where automation_id = $1`, [a])).toBe(0);
+      await q(`select automation_set_status($1, 'on', null, $2)`, [a, builder]);
+      expect(await count(`select count(*)::int n from automation_triggers where automation_id = $1`, [a])).toBeGreaterThan(0);
+    });
+
+    it('Purge removes it and its history, and leaves what it did on the record', async () => {
+      const a = await binned();
+      const { record_id: rec } = await one<{ record_id: string }>(`select record_id from automation_runs where automation_id = $1 limit 1`, [a]);
+      await as(admin, () => q(`select purge_automation($1)`, [a]));
+      expect(await count(`select count(*)::int n from automations where id = $1`, [a])).toBe(0);
+      expect(await count(`select count(*)::int n from automation_runs where automation_id = $1`, [a])).toBe(0);
+      expect(await count(`select count(*)::int n from automation_versions where automation_id = $1`, [a])).toBe(0);
+      expect(await statusOf(rec)).toBe('mid');
+    });
+
+    it('Purge refuses one that is not in the bin', async () => {
+      const a = await automation({ triggers: [onStatus('high')], flow: [setStatus('mid')] });
+      await refused(() => as(admin, () => q(`select purge_automation($1)`, [a])), /no longer in the Recycle Bin/);
+      expect(await count(`select count(*)::int n from automations where id = $1`, [a])).toBe(1);
+    });
+
+    it('a member can do neither', async () => {
+      const a = await binned();
+      await refused(() => as(sales, () => q(`select restore_automation($1)`, [a])), /Only an admin/);
+      await refused(() => as(sales, () => q(`select purge_automation($1)`, [a])), /Only an admin/);
+      await jobToBin();
+      await refused(() => as(sales, () => q(`select restore_system_automation($1)`, [JOB])), /Only an admin/);
+      await refused(() => as(sales, () => q(`select purge_system_automation($1)`, [JOB])), /Only an admin/);
+      await as(admin, () => q(`select restore_system_automation($1)`, [JOB]));
+      await q(`select system_automation_set($1, 'turn_on', $2)`, [JOB, admin]);
+    });
+
+    it('a hard-coded one comes back off, and only Turn on starts it', async () => {
+      await jobToBin();
+      expect(await jobOn()).toBe(false);
+      await as(admin, () => q(`select restore_system_automation($1)`, [JOB]));
+      expect(await jobOn()).toBe(false);
+      await q(`select system_automation_set($1, 'turn_on', $2)`, [JOB, admin]);
+      expect(await jobOn()).toBe(true);
+    });
+
+    it('a purged hard-coded one stays off for good, because its row stays', async () => {
+      await jobToBin();
+      await as(admin, () => q(`select purge_system_automation($1)`, [JOB]));
+      expect(await count(`select count(*)::int n from system_automations where key = $1`, [JOB])).toBe(1);
+      expect(await jobOn()).toBe(false);
+      await refused(() => as(admin, () => q(`select restore_system_automation($1)`, [JOB])), /no longer in the Recycle Bin/);
+      await refused(() => q(`select system_automation_set($1, 'turn_on', $2)`, [JOB, admin]), /was deleted/);
+      expect(await jobOn()).toBe(false);
     });
   });
 

@@ -2,20 +2,20 @@
 
 /**
  * One non-record row in the Recycle Bin — a file, an update, a reply, a login,
- * a case thread or a case reply.
+ * a case thread, a case reply or an automation.
  *
  * Separate from `BinRow` (which is records) rather than merged with it, because
- * the two do genuinely different things: a record can be PURGED from here and
- * these cannot. Nothing in the build permanently removes a file, an update or a
- * login row, and offering a button that does would be inventing a requirement —
- * Admin §6 lists purge for records only. What these get is restore, and the
- * refusals each one can raise.
+ * the two do genuinely different things. Nothing in the build permanently removes
+ * a file, an update or a login row, and offering a button that does would be
+ * inventing a requirement. What these get is restore, and the refusals each one
+ * can raise. Automations are the exception: the client asked for them to be purged
+ * from here too, which `canPurge` decides.
  */
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { Spinner } from '@/proto/ui/kit';
 import { Icon, type IconName } from '@/proto/ui/icons';
-import { restoreBinItemAction } from './actions';
+import { purgeBinItemAction, restoreBinItemAction } from './actions';
 import type { BinItem, BinKind } from '@/lib/records/recycleBin';
 
 const LABEL: Record<BinKind, string> = {
@@ -27,7 +27,12 @@ const LABEL: Record<BinKind, string> = {
   case: 'Case',
   case_reply: 'Case reply',
   equipment_row: 'Equipment row',
+  automation: 'Automation',
+  system_automation: 'Hard-coded automation',
 };
+
+/** Mirrors `PURGE_FN`: that file is server-only, and the server refuses anything else. */
+const canPurge = (kind: BinKind) => kind === 'automation' || kind === 'system_automation';
 
 const ICON: Record<BinKind, IconName> = {
   file: 'paperclip',
@@ -38,14 +43,31 @@ const ICON: Record<BinKind, IconName> = {
   case: 'lifebuoy',
   case_reply: 'reply',
   equipment_row: 'file-text',
+  automation: 'route',
+  system_automation: 'cog',
 };
 
 export function BinItemRow({ item }: { item: BinItem }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'Restoring…' | 'Purging…'>('Restoring…');
+  const [confirming, setConfirming] = useState(false);
+
+  const purge = () => {
+    setError(null);
+    setBusy('Purging…');
+    startTransition(async () => {
+      const result = await purgeBinItemAction(item.kind, item.id);
+      if (!result.ok) {
+        setConfirming(false);
+        setError(result.message);
+      }
+    });
+  };
 
   const restore = () => {
     setError(null);
+    setBusy('Restoring…');
     startTransition(async () => {
       const result = await restoreBinItemAction(item.kind, item.id);
       // Each refusal is already a sentence written for a person — "Restore the
@@ -65,7 +87,7 @@ export function BinItemRow({ item }: { item: BinItem }) {
           <div className="min-w-0">
             <div className="truncate text-[13px] font-medium text-ink-900">{item.title}</div>
             <div className="flex flex-wrap items-center gap-x-1.5 text-[11.5px] text-ink-400">
-              <span>{LABEL[item.kind]}</span>
+              <span>{item.label ?? LABEL[item.kind]}</span>
               {item.recordId ? (
                 <>
                   <span aria-hidden>·</span>
@@ -86,16 +108,37 @@ export function BinItemRow({ item }: { item: BinItem }) {
         {pending ? (
           <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-ink-400">
             <Spinner />
-            Restoring…
+            {busy}
+          </span>
+        ) : confirming ? (
+          <span className="flex shrink-0 items-center gap-3">
+            <span className="text-[12.5px] font-semibold text-[#b02a30]">Purge permanently?</span>
+            <button type="button" onClick={purge} className="text-[12.5px] font-semibold text-[#b02a30] transition-colors hover:underline">
+              Yes, purge
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} className="text-[12.5px] font-semibold text-ink-500 transition-colors hover:text-ink-900">
+              Cancel
+            </button>
           </span>
         ) : (
-          <button
-            type="button"
-            onClick={restore}
-            className="shrink-0 text-[12.5px] font-semibold text-brand-700 transition-colors hover:underline"
-          >
-            Restore
-          </button>
+          <span className="flex shrink-0 items-center gap-4">
+            <button
+              type="button"
+              onClick={restore}
+              className="text-[12.5px] font-semibold text-brand-700 transition-colors hover:underline"
+            >
+              Restore
+            </button>
+            {canPurge(item.kind) ? (
+              <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                className="text-[12.5px] font-semibold text-[#b02a30] transition-colors hover:underline"
+              >
+                Purge permanently
+              </button>
+            ) : null}
+          </span>
         )}
       </div>
 

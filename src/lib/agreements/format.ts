@@ -110,7 +110,7 @@ export function winAnsi(s: string): string {
     .replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 }
 
-/** The seven equipment/software providers, joined once each, "NA" when none (spec §6). */
+/** The equipment and software on the line, joined once each, "NA" when none (spec §6). */
 export function equipmentList(values: unknown[]): string {
   const seen = new Set<string>();
   const out: string[] = [];

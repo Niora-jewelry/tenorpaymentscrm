@@ -197,7 +197,8 @@ export type SystemView = {
   waiting: number | null;
 };
 
-export type SystemEvent = { id: string; kind: 'ran' | 'failed' | 'turned_on' | 'turned_off' | 'deleted'; at: string; by: string | null; count: number | null; note: string | null };
+export type SystemEventKind = 'ran' | 'failed' | 'turned_on' | 'turned_off' | 'deleted' | 'restored' | 'purged';
+export type SystemEvent = { id: string; key: SystemKey; name: string; kind: SystemEventKind; at: string; by: string | null; count: number | null; note: string | null };
 
 async function namesOf(ids: (string | null)[]): Promise<Map<string, string>> {
   const list = [...new Set(ids.filter((x): x is string => Boolean(x)))];
@@ -242,19 +243,40 @@ export async function listSystemAutomations(ctx: AuthContext): Promise<SystemVie
     .sort((a, b) => SYSTEM_KEYS.indexOf(a.key) - SYSTEM_KEYS.indexOf(b.key));
 }
 
-export async function systemHistory(ctx: AuthContext, key: SystemKey): Promise<SystemEvent[]> {
+const EVENTS_PAGE = 50;
+
+/** The Run history page's view of the hard-coded jobs: one job, or all of them. */
+export async function systemEvents(
+  ctx: AuthContext,
+  opts: { key?: SystemKey; kind?: string; page?: number },
+): Promise<{ events: SystemEvent[]; total: number; pageSize: number }> {
   await assertAutomationsView(ctx);
-  const { data, error } = await db().from('system_automation_events').select('id, kind, at, actor_id, count, note').eq('key', key).order('at', { ascending: false }).limit(100);
+  const page = Math.max(0, opts.page ?? 0);
+  let q = db()
+    .from('system_automation_events')
+    .select('id, key, kind, at, actor_id, count, note', { count: 'exact' })
+    .order('at', { ascending: false })
+    .range(page * EVENTS_PAGE, page * EVENTS_PAGE + EVENTS_PAGE - 1);
+  if (opts.key) q = q.eq('key', opts.key);
+  if (opts.kind) q = q.eq('kind', opts.kind);
+  const { data, error, count: total } = await q;
   if (error) throw error;
-  const names = await namesOf((data ?? []).map((e) => e.actor_id as string | null));
-  return (data ?? []).map((e) => ({
-    id: String(e.id),
-    kind: e.kind as SystemEvent['kind'],
-    at: e.at as string,
-    by: e.actor_id ? (names.get(e.actor_id as string) ?? 'Someone') : null,
-    count: (e.count as number | null) ?? null,
-    note: (e.note as string | null) ?? null,
-  }));
+  const rows = (data ?? []).filter((e) => isSystemKey(e.key as string));
+  const names = await namesOf(rows.map((e) => e.actor_id as string | null));
+  return {
+    total: total ?? 0,
+    pageSize: EVENTS_PAGE,
+    events: rows.map((e) => ({
+      id: String(e.id),
+      key: e.key as SystemKey,
+      name: SYSTEM[e.key as SystemKey].name,
+      kind: e.kind as SystemEventKind,
+      at: e.at as string,
+      by: e.actor_id ? (names.get(e.actor_id as string) ?? 'Someone') : null,
+      count: (e.count as number | null) ?? null,
+      note: (e.note as string | null) ?? null,
+    })),
+  };
 }
 
 export async function setSystemAutomation(ctx: AuthContext, key: SystemKey, action: 'turn_on' | 'turn_off' | 'delete'): Promise<void> {

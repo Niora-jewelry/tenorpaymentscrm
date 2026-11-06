@@ -20,7 +20,7 @@ import {
   type AutomationFile,
 } from '@/lib/automations/service';
 import { stepsSchema } from '@/lib/automations/steps';
-import { SYSTEM_KEYS, setSystemAutomation, systemHistory, type SystemEvent, type SystemKey } from '@/lib/automations/system';
+import { SYSTEM_KEYS, setSystemAutomation, type SystemKey } from '@/lib/automations/system';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -151,9 +151,3 @@ export async function setSystemAutomationAction(input: unknown): Promise<Result<
   return r;
 }
 
-export async function systemHistoryAction(key: unknown): Promise<Result<SystemEvent[]>> {
-  const parsed = systemKey.safeParse(key);
-  if (!parsed.success) return { ok: false, message: 'That automation is not valid.' };
-  const ctx = await authorize();
-  return run(() => systemHistory(ctx, parsed.data), 'Could not load the history.');
-}

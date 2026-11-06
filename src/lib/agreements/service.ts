@@ -27,8 +27,8 @@ import { rateLimit, userKey } from '@/lib/security/rate-limit';
 import { toPostgresBytea } from '@/lib/security/otp';
 import { fromBytea } from '@/lib/mail/crypto';
 import { choiceLabels, merchantName, recordForApplication } from '@/lib/applications/store';
-import { PROVIDER_FIELD_KEY } from '@/lib/equipment/columns';
-import { equipmentProviderNames } from './store';
+import { ITEM_FIELD_KEY } from '@/lib/equipment/columns';
+import { billedEquipmentItems } from './store';
 import { openBytes, openText, sealBytes, sealText } from './crypto';
 import { describeSignerProblem, selectSigners, type Signer, type SignerProblem } from './signers';
 import { ownerName, ownersOf, renderAgreement, requiredFromFieldNeeds, requiredProblems, signerDetailProblems } from './mapping';
@@ -105,16 +105,16 @@ async function fieldAddresses(recordId: string): Promise<Record<string, unknown>
 /**
  * What this viewer may not see of what an agreement prints. `config.fields` leaves out
  * row columns, and the equipment line prints one, so it is added: without it a member who
- * can't see providers could still open a PDF that names them.
+ * can't see that column could still open a PDF that prints it.
  */
 const hiddenOnAgreement = (ctx: AuthContext, recordId: string, config: Config) =>
-  hiddenFieldKeysFor(ctx, recordId, [...config.fields, ...config.rowColumns.filter((f) => f.key === PROVIDER_FIELD_KEY)]);
+  hiddenFieldKeysFor(ctx, recordId, [...config.fields, ...config.rowColumns.filter((f) => f.key === ITEM_FIELD_KEY)]);
 
 async function sourceFor(recordId: string, sentAt = new Date()): Promise<{ src: AgreementSource; dealName: string; updatedAt: string } | null> {
   const rec = await recordForApplication(recordId);
   if (!rec) return null;
-  const [labels, notes, addresses, providers] = await Promise.all([choiceLabels(), latestNotes(recordId), fieldAddresses(recordId), equipmentProviderNames(recordId)]);
-  return { src: { values: { ...rec.values, [PROVIDER_FIELD_KEY]: providers }, addresses, notes, label: labels, sentAt }, dealName: rec.dealName, updatedAt: rec.updatedAt };
+  const [labels, notes, addresses, items] = await Promise.all([choiceLabels(), latestNotes(recordId), fieldAddresses(recordId), billedEquipmentItems(recordId)]);
+  return { src: { values: { ...rec.values, [ITEM_FIELD_KEY]: items }, addresses, notes, label: labels, sentAt }, dealName: rec.dealName, updatedAt: rec.updatedAt };
 }
 
 function ownerInputs(values: Record<string, unknown>) {

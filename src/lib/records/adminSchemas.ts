@@ -873,10 +873,16 @@ export type AddStatementYearInput = z.infer<typeof addStatementYearSchema>;
  * function runs. A Server Action is a public endpoint, and an unchecked kind is
  * an unchecked function name.
  */
-export const binItemSchema = z.object({
-  kind: z.enum(['file', 'file_row', 'update', 'reply', 'login', 'case', 'case_reply', 'equipment_row']),
-  id: uuid,
-});
+export const binItemSchema = z
+  .object({
+    kind: z.enum(['file', 'file_row', 'update', 'reply', 'login', 'case', 'case_reply', 'equipment_row', 'automation', 'system_automation']),
+    id: z.string().max(64),
+  })
+  // A hard-coded automation's id is its key; everything else in the bin has a uuid.
+  .refine((v) => (v.kind === 'system_automation' ? /^[a-z_]{2,40}$/.test(v.id) : uuid.safeParse(v.id).success), {
+    message: 'That item is not valid.',
+    path: ['id'],
+  });
 
 export type BinItemInput = z.infer<typeof binItemSchema>;
 

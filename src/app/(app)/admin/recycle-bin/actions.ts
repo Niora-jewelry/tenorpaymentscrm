@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { authorize } from '@/lib/records/permissions';
 import { restoreRecord, purgeRecord } from '@/lib/records/records';
-import { restoreBinItem, type BinKind, type BinRestoreResult } from '@/lib/records/recycleBin';
+import { purgeBinItem, restoreBinItem, type BinKind, type BinRestoreResult } from '@/lib/records/recycleBin';
 import { binItemSchema, firstIssueMessage } from '@/lib/records/adminSchemas';
 
 export type RestoreState =
@@ -57,4 +57,16 @@ export async function restoreBinItemAction(kind: BinKind, id: string): Promise<B
   // the config invalidator is: the change is not visible from here.
   revalidatePath('/', 'layout');
   return { ok: true };
+}
+
+/** Purge an automation. Each refusal is a sentence for a person, like restore's. */
+export async function purgeBinItemAction(kind: BinKind, id: string): Promise<BinRestoreResult> {
+  const ctx = await authorize();
+
+  const parsed = binItemSchema.safeParse({ kind, id });
+  if (!parsed.success) return { ok: false, message: firstIssueMessage(parsed.error) };
+
+  const result = await purgeBinItem(ctx, parsed.data.kind, parsed.data.id);
+  if (result.ok) revalidatePath('/admin/recycle-bin');
+  return result;
 }

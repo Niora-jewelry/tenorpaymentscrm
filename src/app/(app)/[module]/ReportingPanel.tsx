@@ -62,10 +62,10 @@ export function ReportingPanel({ recordId, data }: { recordId: string; data: Pan
           <Icon name="panel-left-open" size={14} /> Open Reporting
         </button>
       </header>
-      {!data.matched ? (
+      {!data.matched && !data.connected ? (
         <p className="flex items-start gap-2 border-t border-line-soft bg-canvas px-4 py-2.5 text-[12.5px] text-ink-500">
           <Icon name="info" size={13} className="mt-[2px] shrink-0" />
-          {data.connected ? 'This merchant isn’t matched to the processor yet (by MID), so there is no data to show.' : 'Data appears here once the processor is connected and the daily sync has run.'}
+          Data appears here once the processor is connected and the daily sync has run.
         </p>
       ) : null}
       <ul className="grid gap-px border-t border-line-soft bg-line-soft sm:grid-cols-2">
@@ -215,7 +215,7 @@ function ReportingView({ recordId, data, onClose }: { recordId: string; data: Pa
               </tbody>
             </table>
             {!rows.length && !loading ? (
-              <p className="px-4 py-10 text-center text-[13px] text-ink-500">{filterCount ? 'Nothing matches these filters.' : data.matched ? view.empty : 'No data yet: this merchant isn’t matched to the processor.'}</p>
+              <p className="px-4 py-10 text-center text-[13px] text-ink-500">{filterCount ? 'Nothing matches these filters.' : data.matched ? view.empty : 'No data yet.'}</p>
             ) : null}
           </div>
           {more ? (

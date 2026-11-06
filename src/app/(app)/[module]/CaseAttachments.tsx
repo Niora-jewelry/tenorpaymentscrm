@@ -105,7 +105,10 @@ export function CaseAttachments({
    */
   const download = (id: string) => {
     setBusyId(id);
-    const tab = window.open('', '_blank', 'noopener,noreferrer');
+    // Not `noopener`: with it the browser returns null, and the tab could never be
+    // pointed at the file. The opener is cut by hand instead.
+    const tab = window.open('', '_blank');
+    if (tab) tab.opener = null;
     startTransition(async () => {
       try {
         const url = await getFileUrlAction(id);

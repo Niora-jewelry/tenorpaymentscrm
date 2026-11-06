@@ -38,7 +38,7 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type { AuthContext } from './permissions';
-import { loadConfig, type FieldType, type Choice } from './config';
+import { fieldListLabel, loadConfig, type FieldType, type Choice } from './config';
 import { assertAdminPage, slugifyKey } from './adminConfig';
 import {
   CHOICE_FIELD_TYPES,
@@ -130,7 +130,7 @@ export async function listChoiceFields(ctx: AuthContext): Promise<ChoiceFieldRow
       return {
         id: f.id,
         key: f.key,
-        label: f.label,
+        label: fieldListLabel(config, f),
         type: f.type,
         tabLabel: tabById.get(f.tabId)?.label ?? '(unknown tab)',
         subtabLabel: f.subtabId ? (subtabById.get(f.subtabId)?.label ?? null) : null,

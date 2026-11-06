@@ -150,11 +150,10 @@ try {
   // ── the agreement dialog ────────────────────────────────────────────────
   await openRecord();
   const panel = page.locator('section.rounded-xl', { has: page.getByRole('heading', { name: /Agreements/ }) });
-  await until(() => panel.getByRole('button', { name: 'Send agreement' }).isVisible());
+  await until(() => page.getByRole('button', { name: 'Acquiring agreement' }).isVisible());
   const dialog = dialogOn(page);
   const openSend = async () => {
-    await panel.getByRole('button', { name: 'Send agreement' }).click();
-    await page.getByRole('button', { name: /Maverick merchant agreement/ }).first().click();
+    await page.getByRole('button', { name: 'Acquiring agreement' }).click();
   };
   const actionsMenu = (name) => panel.getByRole('button', { name: /^Actions for AGR-/ }).first().click().then(() => page.getByRole('button', { name, exact: true }).click());
   await openSend();
@@ -297,7 +296,7 @@ try {
   const mp = await memberCtx.newPage();
   mp.on('pageerror', (e) => errors.push(String(e)));
   await openRecord(mp, (await one(`select applications_tab_key() k`)).k);
-  const sendApp = mp.getByRole('button', { name: /Send application/ }).first();
+  const sendApp = mp.getByRole('button', { name: 'Application', exact: true }).first();
   if (await until(() => sendApp.isVisible(), 20000)) {
     await sendApp.click();
     const appDialog = dialogOn(mp);
@@ -319,7 +318,7 @@ try {
 
   // ── the proposal dialog; then the other settings ────────────────────────
   await openRecord();
-  const propBtn = page.getByRole('button', { name: 'Send proposal' }).first();
+  const propBtn = page.getByRole('button', { name: 'Proposal', exact: true }).first();
   if (await until(() => propBtn.isVisible(), 20000)) {
     await propBtn.click();
     const pd = dialogOn(page);

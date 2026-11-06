@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Spinner } from '@/proto/ui/kit';
 import { SECTIONS, type Answers } from '@/lib/applications/catalog';
+import { PDF_APPLICATION_OFFERED } from '@/lib/applications/offer';
 import { problemsInSection, problemsWith } from '@/lib/applications/validate';
 import { ApplicationForm } from '../ApplicationForm';
 import { ChooseMethod } from './ChooseMethod';
@@ -50,7 +51,7 @@ export function MerchantApplication({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, startSubmit] = useTransition();
   // Online once they have saved answers here; otherwise they choose first.
-  const [mode, setMode] = useState<'choose' | 'online'>(initialSavedAt ? 'online' : 'choose');
+  const [mode, setMode] = useState<'choose' | 'online'>(initialSavedAt || !PDF_APPLICATION_OFFERED ? 'online' : 'choose');
   const [step, setStep] = useState(0);
   const section = SECTIONS[step]!;
   const last = step === SECTIONS.length - 1;
@@ -206,18 +207,20 @@ export function MerchantApplication({
             We have filled in what we already know. Check each answer, complete the rest, and submit. Your answers save as you type — you can close
             this page and come back through the same link until <strong className="font-semibold text-ink-800">{fmtDate(expiresAt)}</strong>.
           </p>
-          <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-line-soft pt-3.5 text-[13px] text-ink-500">
-            <Icon name="file-text" size={14} className="shrink-0 text-ink-400" />
-            Rather send the PDF?
-            <button
-              type="button"
-              onClick={() => show('choose')}
-              disabled={submitting}
-              className="font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2 hover:decoration-brand-700 disabled:opacity-60"
-            >
-              Upload or download it
-            </button>
-          </p>
+          {PDF_APPLICATION_OFFERED ? (
+            <p className="mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-line-soft pt-3.5 text-[13px] text-ink-500">
+              <Icon name="file-text" size={14} className="shrink-0 text-ink-400" />
+              Rather send the PDF?
+              <button
+                type="button"
+                onClick={() => show('choose')}
+                disabled={submitting}
+                className="font-semibold text-brand-700 underline decoration-brand-200 underline-offset-2 hover:decoration-brand-700 disabled:opacity-60"
+              >
+                Upload or download it
+              </button>
+            </p>
+          ) : null}
         </div>
 
         <ol className="mb-5 grid grid-cols-4 gap-1.5" aria-label="Pages">

@@ -10,6 +10,7 @@ import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { loadConfig } from './config';
+import { baseFieldKey } from './memberPath';
 import { moduleWriteCap, tabAccessById } from './tabAccess';
 
 export type Note = {
@@ -36,7 +37,9 @@ export type Note = {
 async function tabIdForScope(scopeKind: 'field' | 'tab', scopeId: string): Promise<string | null> {
   if (scopeKind === 'tab') return scopeId.split('/')[0] ?? null;
   const config = await loadConfig();
-  return config.fields.find((f) => f.key === scopeId || f.id === scopeId)?.tabId ?? null;
+  // A member's note (`contact[0].email`) belongs to its group's tab.
+  const key = baseFieldKey(scopeId);
+  return config.fields.find((f) => f.key === key || f.id === scopeId)?.tabId ?? null;
 }
 
 /** Refuses unless this record's copy of that tab is Edit for this viewer. A

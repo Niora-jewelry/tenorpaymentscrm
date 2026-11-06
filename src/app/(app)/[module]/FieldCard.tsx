@@ -23,6 +23,25 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Field as ProtoField } from '@/proto/schema';
 import { Icon } from '@/proto/ui/icons';
 import { InfoTip } from '@/proto/ui/InfoTip';
+import { PROPOSAL_FIELD_KEYS } from '@/lib/proposals/content';
+
+const IN_PROPOSAL: ReadonlySet<string> = new Set(PROPOSAL_FIELD_KEYS);
+
+/**
+ * The documents a field is printed on (client, 6 Nov 2026: "every contract,
+ * application and proposal field should have an icon"). Read from the field's
+ * own settings — `application_need` / `agreement_need`, set in Presets — and
+ * the proposal's field list, so a field added later is marked by itself.
+ */
+export function documentsOf(field: { id: string; applicationNeed?: string; agreementNeed?: string }): string[] {
+  const out: string[] = [];
+  if (field.applicationNeed && field.applicationNeed !== 'none') out.push('application');
+  if (field.agreementNeed && field.agreementNeed !== 'none') out.push('agreement');
+  if (IN_PROPOSAL.has(field.id)) out.push('proposal');
+  return out;
+}
+
+const listOf = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 /** Types that always take the whole row (UI spec §3/§4). Keyed by TYPE, so a
  *  field added in Presets is placed correctly with no change here. */
@@ -66,7 +85,7 @@ export function FieldLabelRow({
   tone = 'default',
   meaning,
 }: {
-  field: Pick<ProtoField, 'id' | 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type'>;
+  field: Pick<ProtoField, 'id' | 'label' | 'hint' | 'system' | 'sync' | 'required' | 'type' | 'applicationNeed' | 'agreementNeed'>;
   requiredEmpty?: boolean;
   /** The reorder handle, when the grid is sortable. */
   handle?: ReactNode;
@@ -77,9 +96,15 @@ export function FieldLabelRow({
    *  otherwise answer instead of the box's. */
   meaning?: string;
 }) {
+  const docs = documentsOf(field);
   return (
     <div className="flex min-w-0 items-start gap-1.5">
       {handle}
+      {docs.length ? (
+        <span title={`Printed on the ${listOf(docs)}`} aria-label={`Printed on the ${listOf(docs)}`} className="mt-px inline-flex shrink-0 text-brand-600">
+          <Icon name="file-text" size={11} />
+        </span>
+      ) : null}
       <span
         className={`line-clamp-2 min-w-0 break-words text-[11px] font-semibold uppercase leading-[15px] tracking-[.05em] ${
           tone === 'muted' ? 'text-ink-400' : 'text-ink-500'

@@ -3,8 +3,9 @@
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
 import { fieldHistory, type FieldHistoryEntry } from '@/lib/records/activity';
+import { FIELD_OR_MEMBER } from '@/lib/records/memberPath';
 
-const Input = z.object({ recordId: z.uuid(), fieldKey: z.string().regex(/^[a-z0-9_]{1,80}$/) });
+const Input = z.object({ recordId: z.uuid(), fieldKey: z.string().regex(FIELD_OR_MEMBER) });
 
 /** One field's history on one record. Hidden fields return nothing (`fieldHistory`). */
 export async function fieldHistoryAction(input: z.input<typeof Input>): Promise<{ ok: true; entries: FieldHistoryEntry[] } | { ok: false; message: string }> {

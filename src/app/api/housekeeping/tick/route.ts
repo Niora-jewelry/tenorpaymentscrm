@@ -18,6 +18,7 @@ import { ipKey, rateLimit, RATE_LIMITS } from '@/lib/security/rate-limit';
 import { pruneStagedUploads } from '@/lib/applications/housekeeping';
 import { expireStaleAgreements, reconcileOpenAgreements } from '@/lib/agreements/housekeeping';
 import { remindDueSigners } from '@/lib/agreements/outlook';
+import { runSystem } from '@/lib/automations/system';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,22 +34,39 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // Each job is a hard-coded automation (Automations › Hard-coded automations):
+  // it runs only while switched on, and its result feeds Last run and History.
+  // One failing never stops the next.
   after(async () => {
     try {
-      const { data, error } = await supabaseAdmin().rpc('notifications_prune');
-      if (error) console.error('[housekeeping] notifications_prune failed', error.code);
-      else if (Number(data ?? 0) > 0) console.log('[housekeeping] notifications pruned', Number(data));
-      const staged = await pruneStagedUploads();
-      if (staged > 0) console.log('[housekeeping] abandoned application uploads removed', staged);
-      const expired = await expireStaleAgreements();
-      if (expired > 0) console.log('[housekeeping] agreements expired', expired);
-      const reconciled = await reconcileOpenAgreements();
-      if (reconciled.changed > 0) console.log('[housekeeping] agreements reconciled', reconciled);
+      await runSystem('notifications_cleanup', async () => {
+        const { data, error } = await supabaseAdmin().rpc('notifications_prune');
+        if (error) throw new Error(`notifications_prune ${error.code}`);
+        const n = Number(data ?? 0);
+        return { count: n, note: n ? `${n} removed` : null };
+      });
+      await runSystem('upload_cleanup', async () => {
+        const n = await pruneStagedUploads();
+        return { count: n, note: n ? `${n} removed` : null };
+      });
+      await runSystem('agreement_expiry', async () => {
+        const n = await expireStaleAgreements();
+        return { count: n, note: n ? `${n} expired` : null };
+      });
+      await runSystem('agreement_status_check', async () => {
+        const r = await reconcileOpenAgreements();
+        return { count: r.changed, note: `${r.checked} checked, ${r.changed} updated` };
+      });
       // Agreements sent through Outlook: day 3, 6 and 10 reminders (SignWell sends its own otherwise).
-      const reminded = await remindDueSigners();
-      if (reminded > 0) console.log('[housekeeping] agreement reminders queued', reminded);
-      const pruned = await supabaseAdmin().rpc('automation_prune');
-      if (pruned.error) console.error('[housekeeping] automation_prune failed', pruned.error.code);
+      await runSystem('agreement_reminders', async () => {
+        const n = await remindDueSigners();
+        return { count: n, note: n ? `${n} reminders sent` : null };
+      });
+      await runSystem('automation_history_cleanup', async () => {
+        const { error } = await supabaseAdmin().rpc('automation_prune');
+        if (error) throw new Error(`automation_prune ${error.code}`);
+        return { count: 0 };
+      });
     } catch (e) {
       console.error('[housekeeping] crashed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
     }

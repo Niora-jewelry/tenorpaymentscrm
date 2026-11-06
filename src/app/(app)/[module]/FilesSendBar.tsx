@@ -1,35 +1,37 @@
 'use client';
 
 /**
- * The Files tab's send bar (client, 4 Nov 2026): Send application, Send
- * proposal and Send agreement side by side under the tabs, each with an
- * optional preview.
+ * The Files tab's send bar (client, 6 Nov 2026): Application, Proposal, one
+ * button per agreement, and the application to Maverick, side by side under the
+ * tabs, each with a small Preview.
  *
  *  - A required field that is empty → a list of the fields, each a link that
  *    lands on it. Nothing is sent. (The agreement dialog runs its own check,
  *    which already lists every problem the same way.)
  *  - A proposal with an optional page blank or not ticked → the user confirms
  *    before it goes out without it.
+ *  - Maverick always asks: its dialog runs the check, then has the confirm button.
  *
  * Which buttons show is permission: the same flags the panels below use.
  * The server runs every check again on Send.
  */
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon, type IconName } from '@/proto/ui/icons';
 import { Button } from '@/proto/ui/kit';
-import { MenuSurface } from '@/proto/ui/MenuSurface';
 import type { ApplicationsPanelData } from '@/lib/applications/service';
 import type { AgreementsPanelData } from '@/lib/agreements/service';
 import type { ProposalsPanelData } from '@/lib/proposals/service';
+import type { ProcessorApplicationView } from '@/lib/processors/service';
 import type { ProblemGroup } from '@/lib/records/fieldProblems';
 import { applicationPreCheckAction } from './applicationActions';
 import { proposalPreCheckAction } from './proposalActions';
 import { SendApplicationDialog } from './SendApplicationDialog';
 import { SendProposalDialog } from './SendProposalDialog';
 import { SendAgreementDialog } from './SendAgreementDialog';
+import { ProcessorCheckDialog } from './ProcessorApplicationCard';
 
 type OptionalPage = { page: string; reason: string; href?: string };
 type Doc = 'application' | 'proposal' | 'agreement';
@@ -49,9 +51,12 @@ export function FilesSendBar({
   applications,
   proposals,
   agreements,
+  processor = null,
 }: {
   moduleSlug: string;
   recordId: string;
+  /** The application at the processor; null when the viewer has nothing there. */
+  processor?: ProcessorApplicationView | null;
   applications: ApplicationsPanelData | null;
   proposals: ProposalsPanelData | null;
   agreements: AgreementsPanelData | null;
@@ -60,28 +65,29 @@ export function FilesSendBar({
   const [step, setStep] = useState<Step>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
   const [, start] = useTransition();
-  const kindAnchor = useRef<HTMLSpanElement>(null);
-  const [kindMenu, setKindMenu] = useState<null | 'send' | 'preview'>(null);
+  const [processorDialog, setProcessorDialog] = useState<null | 'send' | 'check'>(null);
 
   const canApp = Boolean(applications?.canEdit);
   const canProp = Boolean(proposals?.canEdit);
   const canAgr = Boolean(agreements?.canSend);
-  if (!canApp && !canProp && !canAgr) return null;
+  const canSendProcessor = processor ? (processor.sent ? processor.canUpdate : processor.canSend) : false;
+  const canProcessor = canSendProcessor || Boolean(processor?.canCheck);
+  if (!canApp && !canProp && !canAgr && !canProcessor) return null;
 
   const kinds = agreements?.kinds ?? [];
   const openByKind = new Map((agreements?.items ?? []).filter((a) => OPEN_AGREEMENT.has(a.status)).map((a) => [a.kind, a] as const));
-  const allOut = kinds.length > 0 && kinds.every((k) => openByKind.has(k.key));
-  const agrBlocked = !agreements?.configured
-    ? 'The signing service is not set up yet. Connect SignWell in CRM Settings › Integrations.'
-    : !kinds.length
-      ? 'No agreement is set up yet.'
-      : allOut
-        ? kinds.length === 1
-          ? `${openByKind.get(kinds[0]!.key)?.label ?? 'An agreement'} is already out. Void it first.`
-          : 'Every agreement is already out. Void one first.'
-        : null;
+  const agrBlocked = (kind: string) => {
+    if (!agreements?.configured) return 'The signing service is not set up yet. Connect SignWell in CRM Settings › Integrations.';
+    const out = openByKind.get(kind);
+    return out ? `${out.label} is already out. Void it first.` : null;
+  };
+  const processorBlocked = !processor?.connected
+    ? `${processor?.label ?? 'The processor'} is not connected yet.`
+    : canSendProcessor
+      ? null
+      : 'You can look at this, but not send it.';
 
-  const appPreview = `/api/applications/preview/${recordId}`;
+  const appPreview = `/applications/preview/${recordId}?module=${encodeURIComponent(moduleSlug)}`;
   const propPreview = `/proposals/preview/${recordId}?module=${encodeURIComponent(moduleSlug)}`;
   const agrPreview = (kind: string) => `/api/agreements/preview/${recordId}?kind=${encodeURIComponent(kind)}`;
 
@@ -111,7 +117,6 @@ export function FilesSendBar({
     });
 
   const sendAgreement = (kind: string) => {
-    setKindMenu(null);
     setNotice(null);
     setStep({ doc: 'agreement', phase: 'send', kind });
   };
@@ -126,11 +131,11 @@ export function FilesSendBar({
 
   return (
     <section aria-label="Send documents" className="rounded-xl border border-line bg-white p-3 shadow-[0_1px_2px_rgba(14,28,52,.05)]">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-2">
         {canApp ? (
           <SendTile
             icon="briefcase"
-            label="Send application"
+            label="Application"
             busy={checking('application')}
             disabledReason={applications?.templateReady ? null : 'The application PDF template is not installed yet.'}
             onSend={sendApplication}
@@ -138,58 +143,32 @@ export function FilesSendBar({
           />
         ) : null}
         {canProp ? (
-          <SendTile icon="file-text" label="Send proposal" busy={checking('proposal')} disabledReason={null} onSend={sendProposal} preview={<PreviewLink href={propPreview} />} />
+          <SendTile icon="file-text" label="Proposal" busy={checking('proposal')} disabledReason={null} onSend={sendProposal} preview={<PreviewLink href={propPreview} />} />
         ) : null}
-        {canAgr ? (
-          <span ref={kindAnchor} className="contents">
-            <SendTile
-              icon="file-pen"
-              label="Send agreement"
-              busy={false}
-              disabledReason={agrBlocked}
-              onSend={() => (kinds.length === 1 ? sendAgreement(kinds[0]!.key) : setKindMenu((m) => (m === 'send' ? null : 'send')))}
-              preview={
-                kinds.length === 1 ? (
-                  <PreviewLink href={agrPreview(kinds[0]!.key)} />
-                ) : kinds.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setKindMenu((m) => (m === 'preview' ? null : 'preview'))}
-                    className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-ink-500 hover:text-brand-700"
-                  >
-                    <Icon name="eye" size={12} /> Preview
-                  </button>
-                ) : null
-              }
-            />
-          </span>
+        {canAgr
+          ? kinds.map((k) => (
+              <SendTile
+                key={k.key}
+                icon="file-pen"
+                label={k.label}
+                busy={false}
+                disabledReason={agrBlocked(k.key)}
+                onSend={() => sendAgreement(k.key)}
+                preview={<PreviewLink href={agrPreview(k.key)} />}
+              />
+            ))
+          : null}
+        {processor && canProcessor ? (
+          <SendTile
+            icon={processor.sent ? 'refresh-cw' : 'send'}
+            label={processor.sent ? `Update ${processor.label}` : `App to ${processor.label}`}
+            busy={false}
+            disabledReason={processorBlocked}
+            onSend={() => setProcessorDialog('send')}
+            preview={processor.canCheck ? <PreviewButton onClick={() => setProcessorDialog('check')} /> : null}
+          />
         ) : null}
       </div>
-
-      <MenuSurface open={kindMenu !== null} onClose={() => setKindMenu(null)} anchorRef={kindAnchor} align="right" width={270} label="Which agreement">
-        {kinds.map((k) => {
-          const out = openByKind.get(k.key);
-          const blocked = kindMenu === 'send' && Boolean(out);
-          const cls =
-            'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-ink-700 hover:bg-canvas aria-disabled:cursor-not-allowed aria-disabled:opacity-50';
-          const inner = (
-            <>
-              <Icon name={kindMenu === 'preview' ? 'eye' : 'file-pen'} size={13} className="text-ink-400" />
-              <span className="min-w-0 flex-1">{k.label}</span>
-              {out && kindMenu === 'send' ? <span className="text-[11px] text-ink-400">{out.label} out</span> : null}
-            </>
-          );
-          return kindMenu === 'preview' ? (
-            <a key={k.key} href={agrPreview(k.key)} target="_blank" rel="noopener" onClick={() => setKindMenu(null)} className={cls}>
-              {inner}
-            </a>
-          ) : (
-            <button key={k.key} type="button" aria-disabled={blocked} title={out ? `${out.label} is already out. Void it first.` : undefined} onClick={() => !blocked && sendAgreement(k.key)} className={cls}>
-              {inner}
-            </button>
-          );
-        })}
-      </MenuSurface>
 
       {notice ? (
         <p
@@ -226,6 +205,22 @@ export function FilesSendBar({
       {step?.phase === 'send' && step.doc === 'agreement' ? (
         <SendAgreementDialog moduleSlug={moduleSlug} recordId={recordId} kind={step.kind} resendOf={null} onClose={() => setStep(null)} onSent={sent} />
       ) : null}
+
+      {processor && processorDialog ? (
+        <ProcessorCheckDialog
+          moduleSlug={moduleSlug}
+          recordId={recordId}
+          label={processor.label}
+          mode={processorDialog}
+          action={processor.sent ? 'Update' : 'Send to'}
+          onClose={() => setProcessorDialog(null)}
+          onDone={(n) => {
+            setProcessorDialog(null);
+            setNotice(n);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -252,22 +247,27 @@ function SendTile({
           {label}
         </Button>
       </div>
-      <div className="flex h-5 items-center justify-center">{preview}</div>
+      <div className="flex h-6 items-center justify-center">{preview}</div>
     </div>
   );
 }
 
+const PREVIEW_BUTTON =
+  'inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-line bg-white px-2 text-[11.5px] font-semibold text-ink-600 transition-colors hover:border-brand-300 hover:text-brand-700';
+
 function PreviewLink({ href }: { href: string }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener"
-      title="Opens the document as it would be sent now. Nothing is sent."
-      className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-ink-500 hover:text-brand-700"
-    >
+    <a href={href} target="_blank" rel="noopener" title="Opens it as it would go now. Nothing is sent." className={PREVIEW_BUTTON}>
       <Icon name="eye" size={12} /> Preview
     </a>
+  );
+}
+
+function PreviewButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" title="Shows what would go. Nothing is sent." onClick={onClick} className={PREVIEW_BUTTON}>
+      <Icon name="eye" size={12} /> Preview
+    </button>
   );
 }
 

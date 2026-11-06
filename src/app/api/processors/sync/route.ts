@@ -6,6 +6,7 @@
  * `proxy.ts` because cron has no user session.
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
+import { runSystem } from '@/lib/automations/system';
 import { serverEnv } from '@/lib/env.server';
 import { safeEqual } from '@/lib/mail/oauthState';
 import { getClientIp } from '@/lib/security/request';
@@ -25,12 +26,13 @@ async function handle(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   after(async () => {
-    try {
+    await runSystem('maverick_sync', async () => {
       const r = await runProcessorSync();
-      if (r.ran) console.log('[processors] sync', r.outcome);
-    } catch (e) {
-      console.error('[processors] sync crashed', e instanceof Error ? e.name : 'unknown');
-    }
+      if (!r.ran) return null; // Not 7 AM in New York, or not connected: not a run.
+      console.log('[processors] sync', r.outcome);
+      if (r.outcome === 'failed') throw new Error('sync failed');
+      return { count: 1, note: r.outcome === 'partial' ? 'Some kinds of data failed' : 'All updated' };
+    });
   });
   return NextResponse.json({ accepted: true }, { status: 202 });
 }

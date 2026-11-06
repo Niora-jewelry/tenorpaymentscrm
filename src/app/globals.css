@@ -165,6 +165,18 @@
 @utility animate-sheet-out { animation: sheet-out 160ms           var(--ease-in)  both }
 @utility animate-saved     { animation: saved-flash 700ms ease-out both }
 
+/* "All changes saved" in the drawer: shows for about three seconds after a
+   save, then fades out and stays hidden (client, 6 Nov 2026). Opacity only,
+   so it is not motion; reduced motion keeps the timing (see below), or the
+   0.01ms override would hide it before anyone could read it. */
+@keyframes saved-note {
+  0%   { opacity: 0 }
+  6%   { opacity: 1 }
+  85%  { opacity: 1 }
+  100% { opacity: 0; visibility: hidden }
+}
+.saved-note { animation: saved-note 3.6s ease-out both }
+
 /* -----------------------------------------------------------------------------
    Skeletons
 
@@ -410,6 +422,9 @@ textarea:focus-visible {
     animation: none !important;
     background-image: none !important;
     background-color: var(--color-line-soft) !important;
+  }
+  .saved-note {
+    animation-duration: 3.6s !important;
   }
 }
 

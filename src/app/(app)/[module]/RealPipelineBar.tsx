@@ -189,7 +189,6 @@ export function RealPipelineBar({
         ) : null}
 
         <span className="ml-auto flex items-center gap-2.5">
-          <span className="hidden text-[11px] text-ink-400 sm:inline">Independent per module</span>
           {/*
             ── CHANGE PIPELINE IN DRAWER (spec, 29 Oct 2026) ─────────────
             "A 'Change pipeline' option sits on the pipeline bar, next to the
@@ -198,7 +197,9 @@ export function RealPipelineBar({
             `set_pipeline_step` keys on (record, module) and refuses a pipeline
             from another module. Both links need "Change pipeline in drawer".
           */}
-          {canChange && assignable.some((p) => p.id !== pipeline.id) ? (
+          {/* Always offered to someone who may change it (client, 6 Nov 2026): with
+              only one pipeline in the module the dialog says how to add another. */}
+          {canChange ? (
             <button
               type="button"
               disabled={pending}
@@ -350,7 +351,13 @@ function ChangePipelineDialog({
         This record is on <strong className="font-semibold text-ink-800">{current.label}</strong> at <strong className="font-semibold text-ink-800">{currentStep}</strong> in this module.
         Changing it here does not touch its pipeline in any other module.
       </p>
-      <fieldset className="mt-3 space-y-1.5">
+      {options.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-line-soft bg-canvas/60 px-3 py-2.5 text-[12.5px] text-ink-600">
+          <strong className="font-semibold text-ink-800">{current.label}</strong> is the only pipeline in this module. An admin can add another in{' '}
+          <strong className="font-semibold text-ink-800">Presets › Pipelines</strong>, and it will be offered here.
+        </p>
+      ) : null}
+      <fieldset className={`mt-3 space-y-1.5 ${options.length === 0 ? 'hidden' : ''}`}>
         <legend className="mb-1 text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400">Move it to</legend>
         {options.map((p) => (
           <label key={p.id} className={choice}>
@@ -401,9 +408,9 @@ function ChangePipelineDialog({
           <span className="text-ink-500">{current.label}</span> <span aria-hidden>→</span> <strong className="font-semibold">{next.label}</strong>, starting at <strong className="font-semibold">{step.label}</strong>.
           This is recorded on the record’s Updates.
         </p>
-      ) : (
+      ) : options.length ? (
         <p className="mt-4 text-[12.5px] text-ink-400">Pick the pipeline and its starting stage to continue.</p>
-      )}
+      ) : null}
     </Dialog>
   );
 }

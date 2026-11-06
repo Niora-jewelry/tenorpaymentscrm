@@ -43,7 +43,7 @@ export async function addNumberAction(formData: FormData): Promise<NumbersState>
     label: parsed.data.label?.trim() || null,
   });
 
-  revalidatePath('/admin/numbers');
+  revalidatePath('/admin/integrations');
   return result;
 }
 
@@ -58,7 +58,7 @@ export async function assignNumberAction(numberId: string, userId: string): Prom
     userId: parsed.data.userId === '' ? null : parsed.data.userId,
   });
 
-  revalidatePath('/admin/numbers');
+  revalidatePath('/admin/integrations');
   return result;
 }
 
@@ -69,5 +69,5 @@ export async function setNumberActiveAction(numberId: string, isActive: boolean)
   if (!parsed.success) return;
 
   await setNumberActive(ctx, parsed.data);
-  revalidatePath('/admin/numbers');
+  revalidatePath('/admin/integrations');
 }

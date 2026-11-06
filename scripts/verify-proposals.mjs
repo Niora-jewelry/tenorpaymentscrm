@@ -129,12 +129,12 @@ try {
   t('panel: Proposals on the Files tab', await until(() => panel.isVisible()));
   // The send buttons moved out of the panel into the Files tab's send bar (4 Nov 2026).
   const bar = page.getByRole('region', { name: 'Send documents' });
-  t('send bar: Preview and Send proposal', (await bar.locator('a[href*="/proposals/preview/"]').isVisible()) && (await bar.getByRole('button', { name: 'Send proposal' }).isVisible()));
+  t('send bar: Preview and Send proposal', (await bar.locator('a[href*="/proposals/preview/"]').isVisible()) && (await bar.getByRole('button', { name: 'Proposal' }).isVisible()));
   t('panel: sits with Send agreement on Files', await page.getByRole('heading', { name: /Agreements/ }).first().isVisible().catch(() => false));
   await shot('pr-panel-empty');
 
   // ── the send dialog ────────────────────────────────────────────────────
-  await bar.getByRole('button', { name: 'Send proposal' }).click();
+  await bar.getByRole('button', { name: 'Proposal' }).click();
   const dialog = page.getByRole('dialog', { name: 'Send proposal' });
   t('dialog: opens with the proposal and its savings', await until(async () => (await dialog.innerText().catch(() => '')).includes('$573.95')));
   const dt = await dialog.innerText();

@@ -10,7 +10,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
-import { Button, IconButton, SpecNote } from '@/proto/ui/kit';
+import { Button, IconButton } from '@/proto/ui/kit';
 import { addLoginAction, revealPasswordAction } from './actions';
 import { SavedNotice } from './SavedNotice';
 import type { LoginRow } from '@/lib/records/logins';
@@ -59,12 +59,6 @@ export function LoginsPanel({
 
   return (
     <div className="space-y-3">
-      <SpecNote>
-        Passwords are stored with <strong>envelope encryption</strong> and are never recoverable by
-        reading the database. Every reveal is written to the audit log with user, credential and
-        timestamp. Credentials are excluded from every export and reporting surface.
-      </SpecNote>
-
       <div className="overflow-hidden rounded-xl border border-line bg-white">
         <div className="grid grid-cols-[1fr_1.4fr_1.4fr_1.1fr_1fr] gap-3 border-b border-line-soft bg-canvas px-3 py-2 text-[11px] font-semibold uppercase tracking-[.05em] text-ink-400">
           <span>Login type</span>

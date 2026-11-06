@@ -57,6 +57,7 @@
  * it is filtered server-side, because absent is not the same as disabled
  * (CLAUDE.md §3).
  */
+import { FieldHistoryButton } from './FieldHistory';
 import { type ReactNode, useCallback, useState, useSyncExternalStore } from 'react';
 import { FieldRenderer } from '@/proto/ui/value';
 import type { Field as ProtoField, FieldValue } from '@/proto/schema';
@@ -355,6 +356,7 @@ export function HeaderFacts({
               <FieldLabelRow field={fact.field}>
                 <FieldMentionNote mentions={mentionsByField[fact.field.id] ?? []} autoOpen={openMention?.fieldKey === fact.field.id ? openMention : null} onRead={onMentionRead} />
                 <FieldMentionButton recordId={recordId} fieldKey={fact.field.id} fieldLabel={fact.label} currentValue={valueText(value)} />
+                <FieldHistoryButton recordId={recordId} fieldKey={fact.field.id} fieldLabel={fact.label} />
               </FieldLabelRow>
               {/* The same control the tab uses — "same behavior as on the
                   tab" (UI spec §2). A view-only grant renders it read-only,

@@ -108,7 +108,6 @@ export function FieldGuide() {
   }
   return (
     <div data-field-guide className="mt-2 flex min-h-6 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11.5px] text-ink-500">
-      <span className="font-semibold text-ink-600">Field guide</span>
       {kinds.map((kind) => (
         <span key={kind} className="inline-flex items-center gap-1.5">
           <span aria-hidden data-glow-swatch={kind} className="size-2.5 rounded-sm" />

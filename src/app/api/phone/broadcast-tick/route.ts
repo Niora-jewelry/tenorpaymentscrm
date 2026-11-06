@@ -5,6 +5,7 @@
  * before it is sent, and the pace is held by the claim.
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
+import { runSystem } from '@/lib/automations/system';
 import { serverEnv } from '@/lib/env.server';
 import { drainBroadcasts } from '@/lib/phone/broadcasts';
 import { safeEqual } from '@/lib/mail/oauthState';
@@ -26,11 +27,10 @@ async function handle(req: NextRequest) {
   }
 
   after(async () => {
-    try {
-      await drainBroadcasts(45_000);
-    } catch (e) {
-      console.error('[broadcast] tick crashed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
-    }
+    await runSystem('text_broadcasts', async () => {
+      const r = await drainBroadcasts(45_000);
+      return { count: r.handled, note: r.handled ? `${r.handled} texts handled` : null };
+    });
   });
   return NextResponse.json({ accepted: true }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
 }

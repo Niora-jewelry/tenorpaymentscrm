@@ -68,11 +68,6 @@ export function AgreementsPanel({ moduleSlug, recordId, data }: { moduleSlug: st
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-[14px] font-semibold text-ink-900">Agreements</h3>
-          <p className="text-[12px] text-ink-500">
-            {data.items.length
-              ? 'Filled from this record, signed online by each principal. The signed PDF lands here.'
-              : 'Send an agreement from the Send agreement button above. It is filled from this record and goes to every principal for e-signature.'}
-          </p>
         </div>
       </header>
 

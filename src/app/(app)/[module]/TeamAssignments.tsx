@@ -4,9 +4,13 @@
  * The Team member(s) assigned control: one line wherever it sits (a list cell,
  * a drawer card, the header strip), and a panel to work it.
  *
- *   Open    the team, with an "Open" tag, until someone takes it
- *   Taken   the team and the person
+ *   Open    the team's initials, marked open, until someone takes it
+ *   Taken   the person's initials and their team's, full names on the tooltip
  *   Hidden  absent. The server sent nothing, so there is nothing to leave out.
+ *
+ * People are added one at a time, shown as "Full name / Team". A team can no
+ * longer be added whole (client, 6 Nov 2026), though a team already open on a
+ * record stays there until someone is named or it is unassigned.
  *
  * Every button here is decided by the database (`canTake`, `canUnassign`,
  * `canNameMember`, the assign picker's list). The rules themselves are enforced
@@ -17,8 +21,9 @@ import { Icon } from '@/proto/ui/icons';
 import { Button } from '@/proto/ui/kit';
 import { MenuSurface } from '@/proto/ui/MenuSurface';
 import { PersonAvatar, resolvePerson, usePeopleById } from '@/proto/ui/people';
+import { initialsFor } from '@/proto/ui/identity';
 import type { AssignableTeam, RecordTeams, TeamEntry, TeamResult } from '@/lib/teams/types';
-import { assignMemberAction, assignTeamAction, takeAssignmentAction, unassignMemberAction, unassignTeamAction } from './teamActions';
+import { assignMemberAction, takeAssignmentAction, unassignMemberAction, unassignTeamAction } from './teamActions';
 
 const stop = (e: MouseEvent) => e.stopPropagation();
 
@@ -56,23 +61,41 @@ export function AssignToMe({ moduleSlug, recordId, team, size = 'sm', label }: {
   );
 }
 
-function TeamChip({ entry }: { entry: TeamEntry }) {
-  const byId = usePeopleById();
-  const people = entry.people.map((id) => resolvePerson(id, byId));
+/** How many fit on a line before the rest fold into "+N". */
+const INLINE = 5;
+
+type Slot = { key: string; full: string; person: ReturnType<typeof resolvePerson> | null; team: string; open: boolean };
+
+/** One slot per person, and one for a team nobody has taken yet. */
+function slotsOf(teams: TeamEntry[], byId: ReturnType<typeof usePeopleById>): Slot[] {
+  return teams.flatMap((t): Slot[] => {
+    const team = initialsFor(t.label);
+    if (!t.people.length) return [{ key: t.teamId, full: `${t.label}${t.open ? ' / Open' : ''}`, person: null, team, open: Boolean(t.open) }];
+    return t.people.map((id) => {
+      const person = resolvePerson(id, byId);
+      return { key: `${t.teamId}:${id}`, full: `${person.name} / ${t.label}`, person, team, open: false };
+    });
+  });
+}
+
+/** Initials only, so more people fit inline. The tooltip has the full names. */
+function InitialsChip({ slot }: { slot: Slot }) {
   return (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-line bg-white px-1.5 py-0.5 text-[12px] text-ink-700">
-      <span className="shrink-0 font-medium text-ink-800">{entry.label}</span>
-      {people.length ? (
-        <>
-          <span className="flex shrink-0 -space-x-1">
-            {people.slice(0, 2).map((p) => (
-              <PersonAvatar key={p.id} person={p} size={16} />
-            ))}
-          </span>
-          <span className="min-w-0 truncate text-ink-500">{people.map((p) => p.name).join(', ')}</span>
-        </>
-      ) : null}
-      {entry.open ? <OpenTag /> : null}
+    <span
+      title={slot.full}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border py-px pl-px pr-1.5 text-[11px] font-semibold tabular-nums ${
+        slot.open ? 'border-[#f7e0af] bg-warn-bg text-warn' : 'border-line bg-white text-ink-500'
+      }`}
+    >
+      {/* The chip's own tooltip wins: the avatar's would show an email address. */}
+      {slot.person ? (
+        <span className="pointer-events-none inline-flex">
+          <PersonAvatar person={slot.person} size={18} />
+        </span>
+      ) : (
+        <span className="pl-1">Open</span>
+      )}
+      {slot.team}
     </span>
   );
 }
@@ -99,12 +122,23 @@ export function TeamAssignments({
   const [open, setOpen] = useState(false);
   const teams = data?.teams ?? [];
   const writable = data?.writable ?? false;
-  const onRecord = new Set(teams.map((t) => t.teamId));
-  // A team hidden from this viewer can still be on the record; the database
-  // answers "already assigned" if they try, and that is all they learn.
-  const addable = writable ? assignable.filter((t) => !onRecord.has(t.id)) : [];
+  const byId = usePeopleById();
+  const onRecord = new Map(teams.map((t) => [t.teamId, t]));
+  /*
+   * Everyone this viewer may add: people of a team not on the record yet, or of
+   * one still open there. One person per team, so a taken team offers nobody.
+   * A team hidden from this viewer can still be on the record; the database
+   * answers "already taken" if they try, and that is all they learn.
+   */
+  const addable: Addable[] = !writable
+    ? []
+    : assignable
+        .filter((t) => !onRecord.has(t.id) || onRecord.get(t.id)!.canNameMember)
+        .flatMap((t) => t.members.map((id) => ({ teamId: t.id, teamLabel: t.label, userId: id, name: resolvePerson(id, byId).name })))
+        .sort((a, b) => a.name.localeCompare(b.name) || a.teamLabel.localeCompare(b.teamLabel));
   const take = offersTake ? teams.find((t) => t.canTake) : undefined;
   const hasPanel = teams.length > 0 || addable.length > 0;
+  const slots = slotsOf(teams, byId);
 
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5" onClick={stop} onDoubleClick={stop}>
@@ -114,18 +148,24 @@ export function TeamAssignments({
         disabled={!hasPanel}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Team members assigned: ${teams.map((t) => t.label).join(', ') || 'none'}`}
+        aria-label={`Team members assigned: ${slots.map((s) => s.full).join(', ') || 'none'}`}
         onClick={() => setOpen((o) => !o)}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 rounded-md py-0.5 text-left transition-colors hover:bg-canvas disabled:cursor-default disabled:hover:bg-transparent"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 overflow-hidden rounded-md py-0.5 text-left transition-colors hover:bg-canvas disabled:cursor-default disabled:hover:bg-transparent"
       >
-        {teams.length ? (
+        {slots.length ? (
           <>
-            <TeamChip entry={teams[0]!} />
-            {teams.length > 1 ? <span className="shrink-0 text-[12px] font-medium text-ink-400">+{teams.length - 1}</span> : null}
+            {slots.slice(0, INLINE).map((s) => (
+              <InitialsChip key={s.key} slot={s} />
+            ))}
+            {slots.length > INLINE ? (
+              <span title={slots.slice(INLINE).map((s) => s.full).join('\n')} className="shrink-0 text-[12px] font-medium text-ink-400">
+                +{slots.length - INLINE}
+              </span>
+            ) : null}
           </>
         ) : addable.length ? (
           <span className="inline-flex items-center gap-1 px-1 text-[12.5px] text-ink-400">
-            <Icon name="plus" size={12} /> Assign
+            <Icon name="plus" size={12} /> Add user
           </span>
         ) : (
           <span className="px-1 text-ink-400/70">—</span>
@@ -134,34 +174,33 @@ export function TeamAssignments({
       {take ? <AssignToMe moduleSlug={moduleSlug} recordId={recordId} team={take} /> : null}
 
       <MenuSurface open={open} onClose={() => setOpen(false)} anchorRef={anchor} align="left" width={340} label="Team assignment" role="dialog" padded={false}>
-        {open ? <Panel moduleSlug={moduleSlug} recordId={recordId} teams={teams} addable={addable} assignable={assignable} viewerId={viewerId} viewerIsAdmin={viewerIsAdmin} /> : null}
+        {open ? <Panel moduleSlug={moduleSlug} recordId={recordId} teams={teams} addable={addable} viewerId={viewerId} viewerIsAdmin={viewerIsAdmin} /> : null}
       </MenuSurface>
     </span>
   );
 }
+
+type Addable = { teamId: string; teamLabel: string; userId: string; name: string };
 
 function Panel({
   moduleSlug,
   recordId,
   teams,
   addable,
-  assignable,
   viewerId,
   viewerIsAdmin,
 }: {
   moduleSlug: string;
   recordId: string;
   teams: TeamEntry[];
-  addable: AssignableTeam[];
-  assignable: AssignableTeam[];
+  addable: Addable[];
   viewerId: string;
   viewerIsAdmin: boolean;
 }) {
   const byId = usePeopleById();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  /** The team whose member list is open, for "a specific member". */
-  const [naming, setNaming] = useState<string | null>(null);
+  const [needle, setNeedle] = useState('');
   /** Taking yourself off can take the record out of your own view, so it asks once. */
   const [confirmSelf, setConfirmSelf] = useState<string | null>(null);
 
@@ -170,44 +209,27 @@ function Panel({
       setError(null);
       setConfirmSelf(null);
       const r = await call();
-      if (r.ok) setNaming(null);
+      if (r.ok) setNeedle('');
       else setError(r.message);
     });
 
   const base = { moduleSlug, recordId };
 
-  const memberList = (team: { id: string; label: string; members: string[] }) => (
-    <ul className="mt-1 space-y-px rounded-lg border border-line-soft bg-canvas p-1">
-      {team.members.map((id) => {
-        const p = resolvePerson(id, byId);
-        return (
-          <li key={id}>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => act(() => assignMemberAction({ ...base, teamId: team.id, userId: id }))}
-              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] text-ink-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <PersonAvatar person={p} size={18} />
-              <span className="min-w-0 truncate">{p.name}</span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
+  const wanted = needle.trim().toLowerCase();
+  const shown = wanted ? addable.filter((a) => `${a.name} / ${a.teamLabel}`.toLowerCase().includes(wanted)) : addable;
 
   return (
     <div className="max-h-[420px] overflow-y-auto p-3">
       <p className="text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400">Assigned</p>
       {teams.length ? (
-        <ul className="mt-1.5 space-y-2">
+        <ul className="mt-1.5 space-y-1">
           {teams.map((t) => {
-            const pick = assignable.find((a) => a.id === t.teamId);
             return (
-              <li key={t.teamId} className="rounded-lg border border-line-soft px-2.5 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="min-w-0 truncate text-[13px] font-semibold text-ink-900">{t.label}</span>
+              <li key={t.teamId}>
+                {/* A team nobody has taken: there is no person to show yet. */}
+                {t.people.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-md px-1 py-0.5">
+                  <span className="min-w-0 truncate text-[12.5px] text-ink-700">{t.label}</span>
                   {t.open ? <OpenTag /> : null}
                   <span className="ml-auto flex shrink-0 items-center gap-2">
                     {t.canTake ? <AssignToMe moduleSlug={moduleSlug} recordId={recordId} team={t} /> : null}
@@ -225,22 +247,25 @@ function Panel({
                     ) : null}
                   </span>
                 </div>
+                ) : null}
 
                 {t.people.map((id) => {
                   const p = resolvePerson(id, byId);
                   const mine = id === viewerId && !viewerIsAdmin;
                   const remove = () => act(() => unassignMemberAction({ ...base, teamId: t.teamId, userId: id }));
                   return (
-                    <div key={id} className="mt-1.5">
-                      <div className="flex items-center gap-2 text-[12.5px] text-ink-700">
+                    <div key={id}>
+                      <div className="flex items-center gap-2 rounded-md px-1 py-0.5 text-[12.5px] text-ink-700">
                         <PersonAvatar person={p} size={18} />
-                        <span className="min-w-0 truncate">{p.name}</span>
+                        <span className="min-w-0 truncate">
+                          {p.name} <span className="text-ink-400">/ {t.label}</span>
+                        </span>
                         {t.canUnassign ? (
                           <button
                             type="button"
                             disabled={pending}
                             aria-label={`Unassign ${p.name}`}
-                            title={`Unassign ${p.name}. ${t.label} goes back to Open.`}
+                            title={`Unassign ${p.name}`}
                             onClick={() => (mine ? setConfirmSelf(id) : remove())}
                             className="ml-auto grid size-6 shrink-0 cursor-pointer place-items-center rounded text-ink-400 hover:bg-canvas hover:text-ink-900 disabled:cursor-not-allowed"
                           >
@@ -264,59 +289,49 @@ function Panel({
                     </div>
                   );
                 })}
-
-                {t.canNameMember && pick?.members.length ? (
-                  <div className="mt-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setNaming((n) => (n === t.teamId ? null : t.teamId))}
-                      className="inline-flex cursor-pointer items-center gap-1 text-[12px] font-medium text-brand-600 hover:underline"
-                    >
-                      Assign a specific member
-                      <Icon name={naming === t.teamId ? 'chevron-up' : 'chevron-down'} size={12} />
-                    </button>
-                    {naming === t.teamId ? memberList(pick) : null}
-                  </div>
-                ) : null}
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className="mt-1 text-[12.5px] text-ink-400">No team is assigned.</p>
+        <p className="mt-1 text-[12.5px] text-ink-400">Nobody is assigned.</p>
       )}
 
       {addable.length ? (
         <>
-          <p className="mt-3 text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400">Add a team</p>
+          <p className="mt-3 text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-400">Add a user</p>
+          {addable.length > 6 ? (
+            <input
+              type="search"
+              value={needle}
+              onChange={(e) => setNeedle(e.currentTarget.value)}
+              placeholder="Search name or team…"
+              aria-label="Search users"
+              className="mt-1.5 w-full rounded-md border border-line px-2 py-1.5 text-[12.5px] outline-none focus-field"
+            />
+          ) : null}
           <ul className="mt-1.5 space-y-px">
-            {addable.map((t) => (
-              <li key={t.id}>
-                <div className="flex items-center gap-2 rounded-md py-0.5">
+            {shown.map((a) => {
+              const p = resolvePerson(a.userId, byId);
+              return (
+                <li key={`${a.teamId}:${a.userId}`}>
                   <button
                     type="button"
                     disabled={pending}
-                    onClick={() => act(() => assignTeamAction({ ...base, teamId: t.id }))}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] text-ink-800 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60"
+                    title={`Add ${a.name} / ${a.teamLabel}`}
+                    onClick={() => act(() => assignMemberAction({ ...base, teamId: a.teamId, userId: a.userId }))}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left text-[12.5px] text-ink-700 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <Icon name="plus" size={13} className="shrink-0 text-ink-400" />
-                    <span className="min-w-0 truncate">{t.label}</span>
+                    <PersonAvatar person={p} size={18} />
+                    <span className="min-w-0 truncate">
+                      {a.name} <span className="text-ink-400">/ {a.teamLabel}</span>
+                    </span>
+                    <Icon name="plus" size={13} className="ml-auto shrink-0 text-ink-400" />
                   </button>
-                  {t.members.length ? (
-                    <button
-                      type="button"
-                      aria-expanded={naming === t.id}
-                      onClick={() => setNaming((n) => (n === t.id ? null : t.id))}
-                      className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded px-1 py-1 text-[12px] font-medium text-brand-600 hover:underline"
-                    >
-                      A member
-                      <Icon name={naming === t.id ? 'chevron-up' : 'chevron-down'} size={12} />
-                    </button>
-                  ) : null}
-                </div>
-                {naming === t.id ? memberList(t) : null}
-              </li>
-            ))}
+                </li>
+              );
+            })}
+            {shown.length === 0 ? <li className="px-1 py-1 text-[12.5px] text-ink-400">Nobody matches.</li> : null}
           </ul>
         </>
       ) : null}

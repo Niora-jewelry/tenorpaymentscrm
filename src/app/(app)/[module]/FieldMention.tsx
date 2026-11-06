@@ -37,8 +37,15 @@ const NOTE_MAX = 500;
  *  database snapshots (`values ->> key`), readable for people. */
 export function valueText(v: unknown): string {
   if (v == null || v === '') return '';
-  if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' && x ? JSON.stringify(x) : String(x))).join(', ');
-  if (typeof v === 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return v.map((x) => valueText(x)).filter(Boolean).join(', ');
+  if (typeof v === 'object') {
+    // An address, a contact or another group of values: its parts in order,
+    // never raw JSON (an address used to read {"zip":"08701","city":…}).
+    const o = v as Record<string, unknown>;
+    const order = ['street', 'street2', 'line1', 'line2', 'city', 'state', 'zip', 'country'];
+    const keys = [...order.filter((k) => k in o), ...Object.keys(o).filter((k) => !order.includes(k))];
+    return keys.map((k) => valueText(o[k])).filter(Boolean).join(', ');
+  }
   return String(v);
 }
 
@@ -78,7 +85,7 @@ export function FieldMentionButton({
         aria-label={`Mention someone on ${fieldLabel}`}
         title={`Mention someone on ${fieldLabel}`}
         className={`grid size-5 place-items-center rounded text-ink-400 transition-[opacity,color,background-color] hover:bg-brand-50 hover:text-brand-700 focus-visible:opacity-100 ${
-          open || alwaysVisible ? 'opacity-100' : 'opacity-0 group-hover/cell:opacity-100 [@media(hover:none)]:opacity-100'
+          open || alwaysVisible ? 'opacity-100' : 'opacity-60 group-hover/cell:opacity-100 [@media(hover:none)]:opacity-100'
         } ${open ? 'bg-brand-50 text-brand-700' : ''}`}
       >
         <Icon name="at-sign" size={12} strokeWidth={2} />
@@ -147,7 +154,9 @@ function MentionBox({
   }, [recordId, fieldKey]);
 
   const pickedIds = new Set(picked.map((p) => p.id));
-  const shown = (candidates ?? []).filter((c) => !pickedIds.has(c.id) && c.name.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8);
+  // People type "@nish" out of habit: the @ is not part of anyone's name.
+  const needle = query.trim().replace(/^@+/, '').toLowerCase();
+  const shown = (candidates ?? []).filter((c) => !pickedIds.has(c.id) && c.name.toLowerCase().includes(needle)).slice(0, 8);
 
   const send = () => {
     if (!picked.length) return setError('Choose at least one person.');
@@ -238,13 +247,9 @@ function MentionBox({
         {note.length}/{NOTE_MAX}
       </p>
 
-      <div className="mt-1 rounded-lg bg-canvas px-2.5 py-2 text-[12px] text-ink-600">
-        <p>
-          <span className="text-ink-400">Current value: </span>
-          <span className="font-medium text-ink-800">{currentValue || '—'}</span>
-        </p>
-        {recent ? (
-          <label className="mt-1.5 flex cursor-pointer items-start gap-2">
+      {recent ? (
+        <div className="mt-1 rounded-lg bg-canvas px-2.5 py-2 text-[12px] text-ink-600">
+          <label className="flex cursor-pointer items-start gap-2">
             <input type="checkbox" checked={includePrevious} onChange={(e) => setIncludePrevious(e.target.checked)} className="mt-0.5 accent-brand-600" />
             <span>
               Include previous value
@@ -253,8 +258,8 @@ function MentionBox({
               </span>
             </span>
           </label>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p role="alert" className="mt-2 text-[12px] text-[#b02a30]">

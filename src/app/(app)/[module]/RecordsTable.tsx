@@ -31,7 +31,7 @@
  */
 import { formatSort, type ListSort } from '@/lib/records/listSort';
 import { ColumnsPicker } from './ColumnsPicker';
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FILES_REQUIRED_KEY, type FileRequiredItem } from '@/lib/records/filesRequired';
 import { APPLICATION_ROWS } from '@/lib/records/fileRowNames';
@@ -77,7 +77,7 @@ export function RecordsTable({
   grantByKey,
   displayModules,
   hasCustomColumnOrder,
-  filters,
+  filters: savedFilters,
   pipelines,
   pipelineStatusFields,
   canEdit,
@@ -167,6 +167,25 @@ export function RecordsTable({
   // every time a real server render supplies new data, and the SAME
   // reference across purely client-side re-renders (typing a filter,
   // toggling a checkbox), so reference equality is exactly the right signal.
+  /*
+   * Filters, the same way. A filter used to exist only once the server had
+   * saved it and rendered the page again, so a ticked box stayed unticked for
+   * that whole trip, a second tick overwrote the first, and every typed letter
+   * queued a page render of its own: nine to seventeen seconds of nothing,
+   * which is what "filters are not working" was (client, 6 Nov 2026).
+   *
+   * What the viewer chose now shows at once. Changes in the same breath go to
+   * the server as one save (`commitFilters`), and until that lands a render
+   * from an earlier save must not put the old filters back.
+   */
+  const [filters, setLiveFilters] = useState(savedFilters);
+  const [savedSnapshot, setSavedSnapshot] = useState(savedFilters);
+  const [filtersBusy, setFiltersBusy] = useState(false);
+  if (savedFilters !== savedSnapshot) {
+    setSavedSnapshot(savedFilters);
+    if (!filtersBusy) setLiveFilters(savedFilters);
+  }
+
   const [localRows, setLocalRows] = useState(rows);
   const [rowsSnapshot, setRowsSnapshot] = useState(rows);
   if (rows !== rowsSnapshot) {
@@ -603,19 +622,32 @@ export function RecordsTable({
 
   /** One place that saves a filter change, shared by the pipeline control and
    * DataTable's own column filters, so both reset to page 1 the same way. */
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Counts saves, so only the newest one says the rows have caught up. */
+  const saveTurn = useRef(0);
   const commitFilters = (f: Record<string, Filter>) => {
-    startTransition(async () => {
-      try {
-        setPrefError(null);
-        await setFiltersAction(moduleSlug, f);
-      } catch {
-        setPrefError('Your filters could not be saved and will reset on reload.');
-      }
-      // Back to page 1: the result set just changed size, and staying on
-      // page 5 of a set that now has two pages shows an empty table with
-      // no explanation.
-      resetToFirstPage();
-    });
+    setLiveFilters(f);
+    setFiltersBusy(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      const turn = ++saveTurn.current;
+      startTransition(async () => {
+        try {
+          setPrefError(null);
+          // Nothing left means clearing them, which also forgets the saved row.
+          if (Object.keys(f).length) await setFiltersAction(moduleSlug, f);
+          else await clearFiltersAction(moduleSlug);
+        } catch {
+          setPrefError('Your filters could not be saved and will reset on reload.');
+        }
+        // Back to page 1: the result set just changed size, and staying on
+        // page 5 of a set that now has two pages shows an empty table with
+        // no explanation.
+        resetToFirstPage();
+        if (turn === saveTurn.current && !saveTimer.current) setFiltersBusy(false);
+      });
+    }, 350);
   };
 
   return (
@@ -625,7 +657,8 @@ export function RecordsTable({
           {pipelines.length ? <PipelineFilter pipelines={pipelines} filters={filters} onSetFilters={commitFilters} /> : null}
           {columnChoices.length ? (
             <span className="ml-auto">
-              <ColumnsPicker moduleSlug={moduleSlug} choices={columnChoices} onError={setPrefError} />
+              {/* Deal Name and Files required are always on. */}
+              <ColumnsPicker moduleSlug={moduleSlug} choices={columnChoices} alwaysOn={2} onError={setPrefError} />
             </span>
           ) : null}
         </div>
@@ -641,6 +674,7 @@ export function RecordsTable({
         // Dimmed while a page change is in flight — a paging click is a full
         // server render, and without this the old page just sits there.
         tableBusy={paging}
+        rowsBusy={filtersBusy}
         moduleSlug={moduleSlug}
         rows={localRows}
         columns={localColumns}
@@ -738,17 +772,7 @@ export function RecordsTable({
         onSetFilters={commitFilters}
         sort={sort}
         onSortChange={changeSort}
-        onClearFilters={() => {
-          startTransition(async () => {
-            try {
-              setPrefError(null);
-              await clearFiltersAction(moduleSlug);
-            } catch {
-              setPrefError('Could not clear your saved filters.');
-            }
-            resetToFirstPage();
-          });
-        }}
+        onClearFilters={() => commitFilters({})}
       />
 
       {canEdit ? (
@@ -762,7 +786,9 @@ export function RecordsTable({
               ? () => setConfirmBulk('closeCases')
               : allSelectedArchived
                 ? canMoveRecords ? () => setConfirmBulk('restore') : undefined
-                : canMoveRecords && canArchive ? () => setConfirmBulk('archive') : undefined
+                : /* The Records List deletes instead of archiving (client, 6 Nov
+                     2026): a record is archived by leaving its last module. */
+                  moduleSlug !== 'records' && canMoveRecords && canArchive ? () => setConfirmBulk('archive') : undefined
           }
           onDelete={moduleSlug === 'records' && canArchive ? () => setConfirmBulk('delete') : undefined}
           allSelectedArchived={allSelectedArchived}
@@ -880,19 +906,9 @@ export function RecordsTable({
                       : `All ${stillShown.length} selected records are still displayed in a module, so none of them can be deleted yet.`}
                   </p>
                   <p className="mt-2">
-                    Deleting is only ever available on an <strong>archived</strong> record — one that
-                    has been removed from every display module and is left stored here. Archive them
-                    first, then delete.
-                  </p>
-                  <p className="mt-3">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      icon="archive"
-                      onClick={() => setConfirmBulk('archive')}
-                    >
-                      Archive {stillShown.length} instead
-                    </Button>
+                    Deleting is only ever available on an <strong>archived</strong> record: one that has
+                    been removed from every display module and is left stored here. Open the record and
+                    take it out of its modules first, then delete.
                   </p>
                 </>
               ) : (
@@ -906,8 +922,7 @@ export function RecordsTable({
                       {stillShown.length === 1
                         ? 'One other selected record is'
                         : `${stillShown.length} other selected records are`}{' '}
-                      still displayed in a module and will be skipped — archive{' '}
-                      {stillShown.length === 1 ? 'it' : 'them'} first.
+                      still displayed in a module and will be skipped.
                     </p>
                   ) : null}
                 </>

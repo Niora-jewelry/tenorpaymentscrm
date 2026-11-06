@@ -20,6 +20,7 @@ import {
   type AutomationFile,
 } from '@/lib/automations/service';
 import { stepsSchema } from '@/lib/automations/steps';
+import { SYSTEM_KEYS, setSystemAutomation, systemHistory, type SystemEvent, type SystemKey } from '@/lib/automations/system';
 
 type Result<T> = { ok: true; data: T } | { ok: false; message: string };
 
@@ -131,4 +132,28 @@ export async function switchOffRunAction(runId: string): Promise<Result<null>> {
   }, 'Could not switch it off.');
   if (r.ok) revalidatePath('/[module]', 'page');
   return r;
+}
+
+/* ── Hard-coded automations ─────────────────────────────────────────────── */
+
+const systemKey = z.enum(SYSTEM_KEYS as [SystemKey, ...SystemKey[]]);
+const systemSwitch = z.object({ key: systemKey, action: z.enum(['turn_on', 'turn_off', 'delete']) });
+
+export async function setSystemAutomationAction(input: unknown): Promise<Result<null>> {
+  const parsed = systemSwitch.safeParse(input);
+  if (!parsed.success) return { ok: false, message: 'That automation is not valid.' };
+  const ctx = await authorize();
+  const r = await run(async () => {
+    await setSystemAutomation(ctx, parsed.data.key, parsed.data.action);
+    return null;
+  }, 'That did not save. Try again.');
+  if (r.ok) refresh();
+  return r;
+}
+
+export async function systemHistoryAction(key: unknown): Promise<Result<SystemEvent[]>> {
+  const parsed = systemKey.safeParse(key);
+  if (!parsed.success) return { ok: false, message: 'That automation is not valid.' };
+  const ctx = await authorize();
+  return run(() => systemHistory(ctx, parsed.data), 'Could not load the history.');
 }

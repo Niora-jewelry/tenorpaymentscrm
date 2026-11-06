@@ -45,7 +45,7 @@ export function FieldHistoryButton({ recordId, fieldKey, fieldLabel }: { recordI
         aria-label={`History of ${fieldLabel}`}
         title={`History of ${fieldLabel}`}
         className={`grid size-5 place-items-center rounded text-ink-400 transition-[opacity,color,background-color] hover:bg-brand-50 hover:text-brand-700 focus-visible:opacity-100 ${
-          open ? 'bg-brand-50 text-brand-700 opacity-100' : 'opacity-0 group-hover/cell:opacity-100 [@media(hover:none)]:opacity-100'
+          open ? 'bg-brand-50 text-brand-700 opacity-100' : 'opacity-60 group-hover/cell:opacity-100 [@media(hover:none)]:opacity-100'
         }`}
       >
         <Icon name="clock" size={11} strokeWidth={2} />

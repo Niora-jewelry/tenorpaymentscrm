@@ -95,6 +95,7 @@ export function adaptFieldForDashboard(config: Config, f: DbField): ProtoField {
     glowSignersOnly: f.glowSignersOnly,
     agreementNoteNeed: f.agreementNoteNeed,
     agreementNoteWhen: f.agreementNoteWhen,
+    enabledBy: f.enabledBy ?? undefined,
     sensitive: f.sensitive,
     width: f.width ?? undefined,
     wide: f.wide,

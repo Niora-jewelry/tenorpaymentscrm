@@ -35,7 +35,7 @@
 import 'server-only';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { type AuthContext, FROZEN_COLUMN_FIELD_KEY } from './permissions';
-import { loadConfig, type FieldType } from './config';
+import { fieldListLabel, loadConfig, type FieldType } from './config';
 import { assertAdminPage, type Result } from './adminConfig';
 import type { SetModuleFieldListInput } from './adminSchemas';
 
@@ -97,7 +97,7 @@ export async function listAssignableFields(ctx: AuthContext): Promise<Assignable
     .map((f) => ({
       id: f.id,
       key: f.key,
-      label: f.label,
+      label: fieldListLabel(config, f),
       type: f.type,
       tabLabel: tabById.get(f.tabId)?.label ?? '(unknown tab)',
       subtabLabel: f.subtabId ? (subtabById.get(f.subtabId)?.label ?? null) : null,

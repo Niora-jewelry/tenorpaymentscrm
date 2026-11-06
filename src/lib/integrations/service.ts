@@ -63,9 +63,19 @@ export type GroupView = {
   settings: SettingView[];
 };
 
-export type ChangeView = { id: string; label: string; group: string; action: 'set' | 'removed' | 'turned_on' | 'turned_off'; hint: string | null; by: string; at: string };
+export type ChangeView = { id: string; label: string; group: string; grp: IntegrationGroup | null; action: 'set' | 'removed' | 'turned_on' | 'turned_off'; hint: string | null; by: string; at: string };
 
-export type IntegrationsScreen = { canEdit: boolean; origin: string; groups: GroupView[]; changes: ChangeView[] };
+export type IntegrationsScreen = {
+  canEdit: boolean;
+  origin: string;
+  groups: GroupView[];
+  changes: ChangeView[];
+  /** When each service was first connected or switched on (its Activity tab). Super admins only. */
+  firstOn: Partial<Record<IntegrationGroup, string>>;
+};
+
+/** Microsoft 365 › Individual connectors: who has connected their own account. */
+export type MicrosoftPerson = { id: string; person: string; mailbox: string; shared: boolean; status: string; connectedAt: string };
 
 const readyFor = (group: IntegrationGroup, v: IntegrationValues): boolean => {
   switch (group) {
@@ -99,9 +109,17 @@ export async function integrationsScreen(ctx: AuthContext): Promise<Integrations
     integrationSnapshot(),
     db.from('integration_tests').select('grp, ok, note, tested_at, tested_by'),
     db.from('integration_settings').select('key, hint, updated_by, updated_at'),
-    canEdit ? db.from('integration_changes').select('id, key, grp, action, hint, actor_name, changed_at').order('changed_at', { ascending: false }).limit(25) : Promise.resolve({ data: [] }),
+    canEdit ? db.from('integration_changes').select('id, key, grp, action, hint, actor_name, changed_at').order('changed_at', { ascending: false }).limit(300) : Promise.resolve({ data: [] }),
     db.from('integration_switches').select('grp, enabled, updated_by, updated_at'),
   ]);
+  const { data: firsts } = canEdit
+    ? await db.from('integration_changes').select('grp, changed_at').in('action', ['set', 'turned_on']).order('changed_at', { ascending: true }).limit(1000)
+    : { data: [] };
+  const firstOn: Partial<Record<IntegrationGroup, string>> = {};
+  for (const r of firsts ?? []) {
+    const g = GROUPS.find((x) => x.group === r.grp)?.group;
+    if (g && !firstOn[g]) firstOn[g] = r.changed_at as string;
+  }
 
   const saved = new Map((rows ?? []).map((r) => [r.key as string, r]));
   const people = new Set<string>();
@@ -155,16 +173,51 @@ export async function integrationsScreen(ctx: AuthContext): Promise<Integrations
     canEdit,
     origin: siteOrigin(),
     groups,
+    firstOn,
     changes: (changes ?? []).map((c) => ({
       id: c.id as string,
       label: c.key === '(service)' ? '' : (settingDef(c.key as string)?.label ?? (c.key as string)),
       group: GROUPS.find((g) => g.group === c.grp)?.title ?? (c.grp as string),
+      grp: GROUPS.find((g) => g.group === c.grp)?.group ?? null,
       action: c.action as ChangeView['action'],
       hint: c.hint as string | null,
       by: c.actor_name as string,
       at: c.changed_at as string,
     })),
   };
+}
+
+/**
+ * Everyone who has connected their own Microsoft account, with the mailbox it
+ * reaches. Names and addresses only: no tokens, no errors with provider detail.
+ */
+export async function microsoftPeople(ctx: AuthContext): Promise<MicrosoftPerson[]> {
+  if (!(await canOpenAdminPage(ctx, 'integrations'))) throw new IntegrationError('You do not have access to this page.');
+  const db = supabaseAdmin();
+  const { data: conns } = await db
+    .from('mail_connections')
+    .select('id, user_id, mailbox_id, status, connected_at')
+    .is('disconnected_at', null)
+    .order('connected_at', { ascending: true })
+    .limit(500);
+  const list = conns ?? [];
+  if (!list.length) return [];
+  const [{ data: people }, { data: boxes }] = await Promise.all([
+    db.from('profiles').select('id, full_name, email').in('id', [...new Set(list.map((c) => c.user_id as string))]),
+    db.from('mail_mailboxes').select('id, address, kind').in('id', [...new Set(list.map((c) => c.mailbox_id as string))]),
+  ]);
+  return list.map((c) => {
+    const p = (people ?? []).find((x) => x.id === c.user_id);
+    const b = (boxes ?? []).find((x) => x.id === c.mailbox_id);
+    return {
+      id: c.id as string,
+      person: ((p?.full_name as string | null)?.trim() || (p?.email as string | null)) ?? 'Unknown person',
+      mailbox: (b?.address as string | undefined) ?? '',
+      shared: b?.kind === 'shared',
+      status: c.status as string,
+      connectedAt: c.connected_at as string,
+    };
+  });
 }
 
 async function apply(ctx: AuthContext, group: IntegrationGroup, set: { key: string; value: string }[], remove: string[], test: ProbeResult | null): Promise<void> {

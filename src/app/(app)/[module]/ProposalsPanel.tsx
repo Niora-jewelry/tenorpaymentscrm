@@ -43,11 +43,6 @@ export function ProposalsPanel({ data }: { moduleSlug: string; recordId: string;
               </span>
             ) : null}
           </h3>
-          <p className="text-[12px] text-ink-500">
-            {data.items.length
-              ? 'The merchant sees the proposal as it was when sent. A newer one can be sent at any time.'
-              : 'Send the merchant an online proposal from the Send proposal button above: their savings, the recommended POS and a one-click approval.'}
-          </p>
         </div>
       </header>
 

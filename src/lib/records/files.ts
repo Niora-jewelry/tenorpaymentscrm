@@ -278,13 +278,14 @@ export async function uploadFile(
    * decide who can attach to a case, which is a different question with a
    * different answer.
    */
-  fileRow: { id: string; kind: 'application' | 'other' | 'case' } | { id: string; kind: 'field'; fieldKey: string },
+  fileRow: { id: string; kind: 'application' | 'other' | 'case' | 'update_post' } | { id: string; kind: 'field'; fieldKey: string },
   file: { name: string; bytes: Uint8Array; contentType: string },
 ): Promise<{ ok: true; file: FileEntry | null } | { ok: false; error: 'too_large' | 'row_full' }> {
   // A Files FIELD is governed by the field's own grant (migration 9807), and
   // its path carries the field key so the bucket policy can ask the same.
   if (fileRow.kind === 'field') await requireFieldFilesEdit(recordId, fileRow.fieldKey);
   else if (fileRow.kind === 'case') await requireTabEdit(ctx, recordId, 'cases');
+  else if (fileRow.kind === 'update_post') await requireTabEdit(ctx, recordId, 'updates');
   else {
     // The Files tab: Edit, Add only, or either under an automation's lock or
     // hide. Adding is the normal permission's; what the row is like after is
@@ -427,7 +428,7 @@ export async function deleteFile(ctx: AuthContext, fileId: string): Promise<void
     .eq('id', fileId)
     .maybeSingle();
   const kind = (row as { file_rows: { kind: string } } | null)?.file_rows.kind;
-  if (kind !== 'field') await requireTabEditVia(ctx, 'files', fileId, 'files', 'file_row_id');
+  if (kind !== 'field' && kind !== 'update_post') await requireTabEditVia(ctx, 'files', fileId, 'files', 'file_row_id');
   const { error } = await supabase.rpc('delete_file', { p_file_id: fileId });
   if (error) throw error;
 }
@@ -500,7 +501,7 @@ export async function signedUrlFor(
     if (accessError) throw accessError;
     if (level === 'hidden') throw new Error('Not found');
   } else {
-    await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : 'files');
+    await requireTabView(ctx, row.file_rows.record_id, row.file_rows.kind.startsWith('case') ? 'cases' : row.file_rows.kind === 'update_post' ? 'updates' : 'files');
     const { data: allowed, error: allowError } = await supabase.rpc('file_download_allowed', { p_file: fileId });
     if (allowError) throw allowError;
     if (allowed === false) throw new Error('Download is off for this file.');

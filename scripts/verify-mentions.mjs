@@ -240,9 +240,9 @@ try {
   /* ── 2. update, reply, case reply ─────────────────────────────────────── */
   await tab(a, 'Updates').click();
   await a.waitForTimeout(800);
-  const composer = a.getByPlaceholder(/Write an update/);
+  const composer = a.getByRole('textbox', { name: 'Write an update' });
   await typeMention(a, composer, 'Please review this ', B.name.slice(0, 5));
-  t('picker inserted the full name into the text', (await composer.inputValue()).includes(`@${B.name}`), await composer.inputValue());
+  t('picker inserted the full name into the text', (await composer.innerText()).includes(`@${B.name}`), await composer.innerText());
   await a.getByRole('button', { name: 'Post update' }).click();
   t('the update shows "was notified"', await appear(a.getByText(/was notified/)));
   let rows = (await until(async () => { const r = await notifs(`source_kind = 'mention_update'`); return r.length ? r : null; })) ?? [];

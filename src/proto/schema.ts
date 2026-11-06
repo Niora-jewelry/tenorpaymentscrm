@@ -264,6 +264,8 @@ export type Field = {
   /** What the field's note is to the agreement, while `agreementNoteWhen` holds. */
   agreementNoteNeed?: Need;
   agreementNoteWhen?: NoteWhen;
+  /** Greyed out until this other field (by key) holds something other than N/A. */
+  enabledBy?: string;
   /** SSN, EIN, bank and routing numbers. Masked in the UI. */
   sensitive?: boolean;
   /** Fixed column width in px on the dashboard. */

@@ -2,17 +2,21 @@
  * Admin → Automations. Access follows the Admin module permission: Full edit
  * changes things, View only reads, Hidden never gets here. Two builders side by
  * side: Record automations, and Ticket automations (Ticket Automation Flow
- * Builder spec: "a separate builder called Ticket automations").
+ * Builder spec: "a separate builder called Ticket automations"). A third tab,
+ * Hard-coded automations, lists the jobs the CRM runs by itself (client, 6 Nov
+ * 2026), each of which can be turned off.
  */
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { automationsAccess, authorize } from '@/lib/records/permissions';
 import { automationCatalog } from '@/lib/automations/catalog';
 import { listAlerts, listAutomations } from '@/lib/automations/service';
+import { listSystemAutomations } from '@/lib/automations/system';
 import { CONDITIONS, KINDS, TRIGGERS, actionLabel, conditionsIn, type AutomationKind } from '@/lib/automations/steps';
 import type { AutomationSummary } from '@/lib/automations/service';
 import { Icon } from '@/proto/ui/icons';
 import { Alerts } from './Alerts';
+import { SystemAutomations } from './SystemAutomations';
 import { StatusBadge, when } from './bits';
 
 function flowSummary(a: AutomationSummary): string {
@@ -37,12 +41,15 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
   const access = await automationsAccess(ctx);
   if (access === 'hidden') redirect('/dashboard');
 
-  const kind: AutomationKind = (await searchParams).kind === 'ticket' ? 'ticket' : 'record';
-  const [records, tickets, alerts, catalog] = await Promise.all([
+  const asked = (await searchParams).kind;
+  const system = asked === 'system';
+  const kind: AutomationKind = asked === 'ticket' ? 'ticket' : 'record';
+  const [records, tickets, alerts, catalog, hardCoded] = await Promise.all([
     listAutomations(ctx, 'record'),
     listAutomations(ctx, 'ticket'),
     listAlerts(ctx),
     automationCatalog(ctx),
+    listSystemAutomations(ctx),
   ]);
   const automations = kind === 'ticket' ? tickets : records;
   const counts: Record<AutomationKind, number> = { record: records.length, ticket: tickets.length };
@@ -54,14 +61,18 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
         <div>
           <h1 className="text-xl font-semibold text-ink-900">Automations</h1>
           <p className="text-[13px] text-ink-500">
-            {kind === 'ticket' ? 'Act on tickets without anyone doing it by hand.' : 'Act on records without anyone doing it by hand.'}
+            {system
+              ? 'What the CRM does by itself. Turn one off to stop it.'
+              : kind === 'ticket'
+                ? 'Act on tickets without anyone doing it by hand.'
+                : 'Act on records without anyone doing it by hand.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/admin/automations/runs" className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-white px-3.5 py-2 text-[13.5px] font-semibold text-ink-700 transition-colors hover:border-ink-400 hover:bg-canvas">
             <Icon name="list" size={15} /> Run history
           </Link>
-          {access === 'full' ? (
+          {access === 'full' && !system ? (
             <Link
               href={`/admin/automations/new?kind=${kind}`}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-[13.5px] font-semibold text-accent-ink shadow-[0_1px_2px_rgba(14,28,52,.08)] transition-colors hover:bg-accent-dim"
@@ -77,16 +88,27 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
           <Link
             key={k}
             href={k === 'record' ? '/admin/automations' : '/admin/automations?kind=ticket'}
-            aria-current={k === kind ? 'page' : undefined}
+            aria-current={!system && k === kind ? 'page' : undefined}
             className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-[13.5px] font-semibold transition-colors ${
-              k === kind ? 'border-brand-700 text-ink-900' : 'border-transparent text-ink-500 hover:text-ink-900'
+              !system && k === kind ? 'border-brand-700 text-ink-900' : 'border-transparent text-ink-500 hover:text-ink-900'
             }`}
           >
-            <Icon name={k === 'ticket' ? 'lifebuoy' : 'route'} size={14} className={k === kind ? 'text-brand-700' : 'text-ink-400'} />
+            <Icon name={k === 'ticket' ? 'lifebuoy' : 'route'} size={14} className={!system && k === kind ? 'text-brand-700' : 'text-ink-400'} />
             {KINDS[k].label}
-            <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${k === kind ? 'bg-brand-50 text-brand-800' : 'bg-canvas text-ink-500'}`}>{counts[k]}</span>
+            <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${!system && k === kind ? 'bg-brand-50 text-brand-800' : 'bg-canvas text-ink-500'}`}>{counts[k]}</span>
           </Link>
         ))}
+        <Link
+          href="/admin/automations?kind=system"
+          aria-current={system ? 'page' : undefined}
+          className={`-mb-px inline-flex items-center gap-2 border-b-2 px-3 py-2 text-[13.5px] font-semibold transition-colors ${
+            system ? 'border-brand-700 text-ink-900' : 'border-transparent text-ink-500 hover:text-ink-900'
+          }`}
+        >
+          <Icon name="cog" size={14} className={system ? 'text-brand-700' : 'text-ink-400'} />
+          Hard-coded automations
+          <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${system ? 'bg-brand-50 text-brand-800' : 'bg-canvas text-ink-500'}`}>{hardCoded.length}</span>
+        </Link>
       </nav>
 
       {access === 'view' ? (
@@ -95,15 +117,17 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
         </p>
       ) : null}
 
-      {noInbox && access === 'full' ? (
+      {system ? <SystemAutomations automations={hardCoded} canEdit={access === 'full'} /> : null}
+
+      {system ? null : noInbox && access === 'full' ? (
         <p className="flex items-center gap-2 rounded-lg border border-[#f7e0af] bg-[#fdf1d8] px-3 py-2 text-[12.5px] text-[#8a5a09]">
           <Icon name="alert-triangle" size={13} /> No inbox is connected yet, so a Send email step has nothing to send from.
         </p>
       ) : null}
 
-      <Alerts alerts={alerts} canDismiss={access === 'full'} />
+      {system ? null : <Alerts alerts={alerts} canDismiss={access === 'full'} />}
 
-      {automations.length === 0 ? (
+      {system ? null : automations.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line bg-white px-6 py-12 text-center">
           <span className="mx-auto grid size-10 place-items-center rounded-full bg-brand-50 text-brand-700"><Icon name={EMPTY[kind].icon} size={18} /></span>
           <p className="mt-3 text-[14px] font-semibold text-ink-900">{EMPTY[kind].title}</p>

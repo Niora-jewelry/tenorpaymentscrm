@@ -64,9 +64,6 @@ export function StatementsPanel({
             </option>
           ))}
         </select>
-        <span className="text-[12px] text-ink-400">
-          Month rows are prebuilt July 2024 – December 2032 and cannot be created or deleted here.
-        </span>
       </div>
 
       <div className="grid gap-2 md:grid-cols-2">
@@ -83,11 +80,6 @@ export function StatementsPanel({
           />
         ))}
       </div>
-
-      <p className="text-[11.5px] text-ink-400">
-        One dataset shown in every module — a file uploaded here is instantly present everywhere
-        else this record appears.
-      </p>
     </div>
   );
 }

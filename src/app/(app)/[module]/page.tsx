@@ -29,7 +29,7 @@ import { FILES_REQUIRED_KEY } from '@/lib/records/filesRequired';
 import { effectOf, fieldItems, restrictionsFor, tabBaseGrant } from '@/lib/records/restrictions';
 import { RestrictionsProvider } from './Restrictions';
 import {
-  loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
+  forModule, loadConfig, moduleBySlug, columnsForModule, fieldsInTab, fieldsInRepeatGroup, tabsForModule, subtabsForModule,
   headerFieldsForModule, pipelinesForModule, stepsForPipeline, pipelineStatusFields, type Field,
 } from '@/lib/records/config';
 import { repeatInstanceCount } from '@/lib/records/repeatGroups';
@@ -37,13 +37,13 @@ import { listRecords, getRecord } from '@/lib/records/records';
 import { membershipsFor, membershipsForMany } from '@/lib/records/memberships';
 import { pipelineAssignment } from '@/lib/records/pipelines';
 import { casesFor, repliesForCases, managersForCases, caseHandlingNote, caseRosterFor, logForCases, ticketFlagsFor, ticketChoicesFor, type TicketChoice } from '@/lib/records/cases';
-import { recordMentions, openNotification, isMuted, unreadMentionCounts } from '@/lib/records/notifications';
-import { RecordHeaderMenu } from './RecordHeaderMenu';
+import { recordMentions, openNotification, unreadMentionCounts } from '@/lib/records/notifications';
 import { AutomationWaiting } from './AutomationWaiting';
 import { waitingOn } from '@/lib/automations/service';
 import { SEARCH_MAX } from '@/lib/records/search';
 import { SearchBox } from './SearchBox';
 import { attachmentsForCases } from '@/lib/records/caseAttachments';
+import { attachmentsForUpdates } from '@/lib/records/updateAttachments';
 import { updatesFor, teamRosterFor } from '@/lib/records/updates';
 import { ensureApplicationRows, fileRowsFor, fileRowsForAdding, filesForRows, fieldFilesFor } from '@/lib/records/files';
 import { loginsFor } from '@/lib/records/logins';
@@ -67,7 +67,7 @@ import { parseSort, SORTABLE_TYPES } from '@/lib/records/listSort';
 import { resolveOrder } from '@/lib/records/preferences';
 import { adaptFieldForDashboard, adaptRecordRow, adaptFieldForDrawer } from '@/lib/records/adapter';
 import { CreateRecordDialog } from './CreateRecordDialog';
-import { MembershipsForm, ArchiveButton } from './MembershipsForm';
+import { MembershipsForm, DeleteRecordButton } from './MembershipsForm';
 import { RecordsTable } from './RecordsTable';
 import { DrawerTabs, type TabPayload, type RepeatGroupDef } from './DrawerTabs';
 import { FieldGlowProvider, FieldGuide } from './FieldGlow';
@@ -99,9 +99,10 @@ export default async function ModulePage({
   const requestedPage = Math.max(0, Number.parseInt(pageParam ?? '0', 10) || 0);
 
   const ctx = await authorize();
-  const config = await loadConfig();
-  const mod = moduleBySlug(config, slug);
+  const allConfig = await loadConfig();
+  const mod = moduleBySlug(allConfig, slug);
   if (!mod) notFound();
+  const config = forModule(allConfig, mod.id);
 
   // Started here and awaited inside `RecordDrawer`, NOT awaited now.
   //
@@ -305,15 +306,8 @@ export default async function ModulePage({
                 </span>
               </>
             ) : null}
-            {/* Configured column count vs. what this viewer may see — the gap
-                IS the permission system, visible at a glance (prototype
-                parity). Demoted from the top-right, where it sat with the same
-                weight as the primary action while being a fact almost nobody
-                needs, to the end of the subtitle where it reads as context. */}
-            <span aria-hidden className="text-line">·</span>
-            <span>
-              {columns.length} of {adminColumns.length} columns visible to you
-            </span>
+            {/* The "N of N columns visible to you" line was taken out at the
+                client's request (6 Nov 2026); the Columns button keeps the count. */}
             {mod.showsOpenCases ? (
               <>
                 <span aria-hidden className="text-line">·</span>
@@ -591,13 +585,14 @@ async function RecordDrawer({
   grant: 'view' | 'edit';
 }) {
   const ctx = await authorize();
-  const [config, record, drawerTeams, assignable, automationsWaiting] = await Promise.all([
+  const [allConfig, record, drawerTeams, assignable, automationsWaiting] = await Promise.all([
     loadConfig(),
     recordPromise,
     teamsFor(ctx, [recordId]),
     assignableTeams(ctx),
     waitingOn(ctx, recordId),
   ]);
+  const config = forModule(allConfig, moduleId);
   const teamsHere = drawerTeams.get(recordId);
   // Read-only until taken, when an open assignment is the only way in.
   const grant = teamsHere?.writable === false ? 'view' : moduleLevel;
@@ -733,7 +728,7 @@ async function RecordDrawer({
   const [
     memberships, cases, caseNote, updates, pipelineAssign,
     applicationRows, otherRows, logins, statementPeriods, statementFiles,
-    messages, notesByScope, teamRoster, caseRoster, mentions, muted, phoneCalls, smsMessages, residuals,
+    messages, notesByScope, teamRoster, caseRoster, mentions, phoneCalls, smsMessages, residuals,
     applications, addressesRaw, agreements, fileRowsAdding, baseByTab, ticketChoices, proposals,
   ] = await Promise.all([
     membershipsFor(ctx, record.id),
@@ -789,7 +784,6 @@ async function RecordDrawer({
     shows('updates') ? teamRosterFor(ctx, record.id) : [],
     shows('cases') ? caseRosterFor(ctx, record.id) : [],
     recordMentions(ctx, record.id),
-    isMuted(ctx, record.id),
     /*
      * Calls and texts ride along with the same parallel wave as everything
      * else, and are skipped entirely when Communication is hidden — the same
@@ -872,7 +866,7 @@ async function RecordDrawer({
   // Two queries total, and they run together. This was two SEQUENTIAL waves of
   // one query per case: the replies wave had to finish before the managers
   // wave began, so a record with six cases cost twelve round trips in series.
-  const [repliesByCase, managersByCase, attachmentsByCase, logByCase] = await Promise.all([
+  const [repliesByCase, managersByCase, attachmentsByCase, logByCase, filesByUpdate] = await Promise.all([
     repliesForCases(ctx, cases.map((c) => c.id)),
     managersForCases(ctx, cases.map((c) => c.id)),
     // Modules §3.7's Issue/Solution/reply attachments, in the same wave. Two
@@ -881,6 +875,8 @@ async function RecordDrawer({
     attachmentsForCases(ctx, record.id, cases.map((c) => c.id)),
     // Each ticket's log: who clicked Awaiting client, what a flow did.
     logForCases(ctx, cases.map((c) => c.id)),
+    // Files people added to their updates.
+    attachmentsForUpdates(ctx, record.id, updates.filter((u) => !u.activity).map((u) => u.id)),
   ]);
 
   // One name lookup for every author across notes/updates/cases/entries —
@@ -915,15 +911,21 @@ async function RecordDrawer({
   const fieldByKey = new Map(config.fields.map((f) => [f.key.toLowerCase(), f]));
   const tabById = new Map(config.tabs.map((t) => [t.id, t]));
   const subtabById = new Map(config.subtabs.map((s) => [s.id, s]));
-  const fieldPathByUpdate: Record<string, { tab: string; subtab: string | null; field: string }> = {};
+  const fieldPathByUpdate: Record<string, { tab: string; subtab: string | null; field: string; key: string; tabId: string; subtabId: string | null }> = {};
   for (const u of updates) {
     if (!u.fieldKey) continue;
     const f = fieldByKey.get(u.fieldKey.toLowerCase());
     if (!f) continue;
+    // A row member (`[0].email` on Contacts): named and landed on precisely.
+    const m = u.fieldMember ? /^\[(\d+)\]\.(.+)$/.exec(u.fieldMember) : null;
+    const member = m ? (f.repeatSchema ?? []).find((x) => x.key === m[2]) : undefined;
     fieldPathByUpdate[u.id] = {
       tab: tabById.get(f.tabId)?.label ?? '',
       subtab: f.subtabId ? (subtabById.get(f.subtabId)?.label ?? null) : null,
-      field: f.label,
+      field: m && member ? `${f.label.replace(/s$/, '')} ${Number(m[1]) + 1} · ${member.label}` : f.label,
+      key: m && member ? `${f.key}.${member.key}` : f.key,
+      tabId: f.tabId,
+      subtabId: f.subtabId ?? null,
     };
   }
 
@@ -1093,7 +1095,11 @@ async function RecordDrawer({
         const [tabId = '', subtabId] = scopeId.split('/');
         return visibleTabIds.has(tabId) && (!subtabId || subtabGrantById.get(subtabId) !== 'hidden');
       }
-      if (kind === 'field') return grantByKey[scopeId] !== undefined && grantByKey[scopeId] !== 'hidden';
+      if (kind === 'field') {
+        // A row member's note (`contact[0].email`) follows its group's grant.
+        const key = scopeId.split('[')[0]!;
+        return grantByKey[key] !== undefined && grantByKey[key] !== 'hidden';
+      }
       return false;
     }),
   ) as Record<string, Note[]>;
@@ -1179,7 +1185,7 @@ async function RecordDrawer({
 
     const count =
       t.kind === 'cases' ? cases.length :
-      t.kind === 'updates' ? updates.length :
+      t.kind === 'updates' ? updates.filter((u) => !u.activity && !u.parentId).length :
       undefined;
 
     return { id: t.id, key: t.key, label: t.label, kind: t.kind, editable: tabGrantById.get(t.id) === 'edit', addOnly: tabGrantById.get(t.id) === 'add_only', canAdd: tabGrantById.get(t.id) === 'edit' || ['edit', 'add_only'].includes(baseByTab.get(t.id) ?? ''), locked: tabEffect(t) === 'lock', count, subtabs, fieldsBySubtab, repeatGroupsBySubtab, hasCustomFieldOrderBySubtab, showsApplications: t.showsApplications ?? false, showsAgreements: t.showsAgreements ?? false, showsProposals: t.showsProposals ?? false, showsReporting: t.showsReporting ?? false };
@@ -1225,18 +1231,13 @@ async function RecordDrawer({
         </div>
         <FieldSearch hits={fieldHits(tabs, applicationRows)} />
         <div className="flex shrink-0 items-center justify-end gap-3 @[40rem]:flex-1">
-          {grant === 'edit' && canArchiveRecords && memberships.length > 0 ? (
-            <ArchiveButton
-              moduleSlug={moduleSlug}
-              recordId={record.id}
-              heldBy={{
-                labels: config.modules.filter((m) => m.showsOpenCases && memberships.includes(m.id)).map((m) => m.label),
-                openCases: cases.filter((c) => c.state === 'open').length,
-              }}
-            />
+          {/* No Archive button and no "⋯" mute menu (client, 6 Nov 2026):
+              removing the record from its last module archives it, and only
+              the Records List deletes, to the Recycle Bin. */}
+          {config.modules.find((m) => m.id === moduleId)?.kind === 'storage' && grant === 'edit' && canArchiveRecords ? (
+            <DeleteRecordButton recordId={record.id} archived={memberships.length === 0} name={record.dealName ?? ''} />
           ) : null}
           <AutomationWaiting waiting={automationsWaiting} />
-          <RecordHeaderMenu recordId={record.id} muted={muted} />
           <Link
             href={`/${moduleSlug}`}
             title="Close"
@@ -1374,6 +1375,7 @@ async function RecordDrawer({
         mentions={mentions}
         openMention={openMention}
         fieldPathByUpdate={fieldPathByUpdate}
+        filesByUpdate={filesByUpdate}
       />
       </RestrictionsProvider>
       </ItemAccessProvider>

@@ -17,6 +17,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { loadConfig } from './config';
 import { hiddenFieldKeysFor } from './tabAccess';
+import { parseMemberPath, type MemberPath } from './memberPath';
 
 export type ActivityEntry = {
   id: string;
@@ -92,6 +93,8 @@ export type FieldHistoryEntry = {
  * (SSNs, account numbers) never leave the server — only that they changed.
  */
 export async function fieldHistory(ctx: AuthContext, recordId: string, fieldKey: string): Promise<FieldHistoryEntry[] | null> {
+  const member = parseMemberPath(fieldKey);
+  if (member) return memberHistory(ctx, recordId, member);
   const config = await loadConfig();
   const field = config.fields.find((f) => f.key === fieldKey);
   if (!field) return null;
@@ -146,4 +149,54 @@ export async function fieldHistory(ctx: AuthContext, recordId: string, fieldKey:
     to: show(r.to_value as string | null),
     source: (r.source as string | null) ?? null,
   }));
+}
+
+/**
+ * One row member's history (`contact[0].email`): the group's own history,
+ * narrowed to the changes that touched that member of that row. A row removed
+ * above it shifts the numbering, as it does on screen.
+ */
+async function memberHistory(ctx: AuthContext, recordId: string, path: MemberPath): Promise<FieldHistoryEntry[] | null> {
+  const config = await loadConfig();
+  const group = config.fields.find((f) => f.key === path.group && f.type === 'repeat_group');
+  const member = group?.repeatSchema?.find((m) => m.key === path.member);
+  if (!group || !member) return null;
+  if ((await hiddenFieldKeysFor(ctx, recordId, [group])).has(group.key)) return null;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from('record_activity')
+    .select('id, at, actor_id, summary, from_value, to_value, source')
+    .eq('record_id', recordId)
+    .eq('field_key', group.key)
+    .order('at', { ascending: false })
+    .limit(200);
+  if (error) throw error;
+
+  const secret = Boolean(group.sensitive || member.sensitive);
+  const pick = (raw: string | null): string => {
+    if (!raw) return '';
+    try {
+      const rows = JSON.parse(raw) as unknown;
+      const v = Array.isArray(rows) ? (rows[path.index] as Record<string, unknown> | undefined)?.[path.member] : undefined;
+      if (v == null || v === '') return '';
+      return typeof v === 'object' ? Object.values(v as Record<string, unknown>).filter(Boolean).join(', ') : String(v);
+    } catch {
+      return '';
+    }
+  };
+  const label = `${group.label.replace(/s$/, '')} ${path.index + 1} · ${member.label}`;
+  return (data ?? [])
+    .map((r) => ({ r, from: pick(r.from_value as string | null), to: pick(r.to_value as string | null) }))
+    .filter(({ from, to }) => from !== to)
+    .slice(0, 50)
+    .map(({ r, from, to }) => ({
+      id: String(r.id),
+      at: r.at as string,
+      actorId: (r.actor_id as string | null) ?? null,
+      summary: `Changed ${label}`,
+      from: secret && from ? '••••' : from,
+      to: secret && to ? '••••' : to,
+      source: (r.source as string | null) ?? null,
+    }));
 }

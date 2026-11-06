@@ -114,6 +114,8 @@ export type Field = {
   /** What the field's note is to the agreement, while `agreementNoteWhen` holds. */
   agreementNoteNeed: Need;
   agreementNoteWhen: NoteWhen;
+  /** Greyed out until this other field holds something other than N/A (migration 9918). */
+  enabledBy?: string | null;
   sensitive: boolean;
   wide: boolean;
   placeholder: boolean;
@@ -137,6 +139,8 @@ export type Field = {
   archivedAt: string | null;
   /** A column of a row-based sub-tab: see `Config.rowColumns`. */
   rowColumn?: boolean;
+  /** Shown only in this module; absent shows it everywhere (migration 9922). */
+  moduleId?: string | null;
 };
 
 export type Choice = { fieldId: string; moduleId: string | null; key: string; value: string; swatch: string | null; position: number };
@@ -257,6 +261,7 @@ const loadConfigCached = unstable_cache(
         applicationNeed: f.application_need ?? 'none', agreementNeed: f.agreement_need ?? 'none',
         glowSignersOnly: f.glow_signers_only ?? false,
         agreementNoteNeed: f.agreement_note_need ?? 'none', agreementNoteWhen: f.agreement_note_when ?? null,
+        enabledBy: (f as { enabled_by?: string | null }).enabled_by ?? null,
         wide: f.wide, placeholder: f.placeholder, width: f.width, digits: f.digits,
         repeatMax: f.repeat_max, repeatSchema: f.repeat_schema, repeatGroupKey: f.repeat_group_key,
         gridColumns: f.grid_columns,
@@ -265,6 +270,7 @@ const loadConfigCached = unstable_cache(
         autoSourceField: f.auto_source_field ?? null,
         archivedAt: f.archived_at,
         rowColumn: (f as { row_column?: boolean }).row_column ?? false,
+        moduleId: (f as { module_id?: string | null }).module_id ?? null,
       })),
       moduleTabOrder: moduleTabOrder.data!.map((r) => ({ moduleId: r.module_id, tabId: r.tab_id, position: r.position })),
       moduleSubtabOrder: moduleSubtabOrder.data!.map((r) => ({ moduleId: r.module_id, subtabId: r.subtab_id, position: r.position })),
@@ -285,7 +291,14 @@ const loadConfigCached = unstable_cache(
       })),
     });
   },
-  ['records-config'],
+  /*
+   * The deploy is part of the key. Vercel keeps this cache across deploys, so a
+   * migration that changes configuration (removing sub-tabs, relabelling a field)
+   * was invisible on the live site until someone pressed Reload configuration.
+   * A new deploy now reads the configuration fresh by itself.
+   */
+  // The shape version covers local builds, where the deploy id is always 'local'.
+  ['records-config', 'shape-9922', process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA ?? 'local'],
   { tags: [CONFIG_CACHE_TAG] },
 );
 
@@ -321,6 +334,20 @@ export function fieldsInTab(config: Config, tabId: string, subtabId?: string | n
 }
 
 /** Dashboard columns for a module, admin order, admin selection only (layer 1). */
+/**
+ * The config as one module sees it. A field marked for another module is not
+ * there at all (migration 9922: Current Status is one field per module).
+ */
+export function forModule(config: Config, moduleId: string): Config {
+  return { ...config, fields: config.fields.filter((f) => !f.moduleId || f.moduleId === moduleId) };
+}
+
+/** A field's name in an admin list, where one module's field sits next to another's. */
+export function fieldListLabel(config: Config, f: Pick<Field, 'label' | 'moduleId'>): string {
+  const mod = f.moduleId ? config.modules.find((m) => m.id === f.moduleId) : undefined;
+  return mod ? `${f.label} (${mod.label})` : f.label;
+}
+
 export function columnsForModule(config: Config, moduleId: string): Field[] {
   const rows = config.moduleColumns
     .filter((c) => c.moduleId === moduleId)

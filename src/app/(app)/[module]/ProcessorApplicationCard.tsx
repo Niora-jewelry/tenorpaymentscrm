@@ -2,8 +2,9 @@
 
 /**
  * The merchant's application at the processor (Maverick Integration spec,
- * Sending applications): its status, Send to Maverick (first send) or Update
- * Maverick (later changes), and the pre-send check.
+ * Sending applications). The card shows where it stands; sending it is a button
+ * on the Files tab with the other documents (client, 6 Nov 2026), and that
+ * button opens `ProcessorCheckDialog`, which is the confirm step.
  *
  * Manual only: nothing is pushed by itself. Before anything goes, the check
  * lists every missing field and document at once, each a link to where it is
@@ -12,7 +13,6 @@
 import { useEffect, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button, Spinner } from '@/proto/ui/kit';
 import type { ProcessorApplicationView, ProcessorCheck } from '@/lib/processors/service';
@@ -20,13 +20,7 @@ import { processorPreCheckAction, sendToProcessorAction } from './processorActio
 
 const when = (iso: string) => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
-export function ProcessorApplicationCard({ moduleSlug, recordId, data }: { moduleSlug: string; recordId: string; data: ProcessorApplicationView }) {
-  const router = useRouter();
-  const [dialog, setDialog] = useState<null | 'send' | 'check'>(null);
-  const [notice, setNotice] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
-  const action = data.sent ? 'Update' : 'Send to';
-  const canAct = data.sent ? data.canUpdate : data.canSend;
-
+export function ProcessorApplicationCard({ data }: { data: ProcessorApplicationView }) {
   return (
     <section className="overflow-hidden rounded-xl border border-line bg-white shadow-[0_1px_2px_rgba(14,28,52,.05)]">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
@@ -46,18 +40,6 @@ export function ProcessorApplicationCard({ moduleSlug, recordId, data }: { modul
               : `Not sent to ${data.label} yet. The application data and the Files tab documents go together.`}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {data.canCheck ? (
-            <button type="button" onClick={() => setDialog('check')} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] font-semibold text-ink-700 hover:bg-canvas">
-              <Icon name="search" size={13} /> Pre-send check
-            </button>
-          ) : null}
-          {canAct ? (
-            <Button size="sm" variant="primary" icon={data.sent ? 'refresh-cw' : 'send'} onClick={() => setDialog('send')}>
-              {action} {data.label}
-            </Button>
-          ) : null}
-        </div>
       </header>
       {data.lastError ? (
         <p className="flex items-start gap-2 border-t border-bad/20 bg-bad-bg px-4 py-2.5 text-[12.5px] text-bad">
@@ -71,32 +53,11 @@ export function ProcessorApplicationCard({ moduleSlug, recordId, data }: { modul
           {data.label} is not connected yet. A super admin enters the API key in CRM Settings › Integrations.
         </p>
       ) : null}
-      {notice ? (
-        <p role="status" className={`flex items-start gap-2 border-t px-4 py-2.5 text-[12.5px] ${notice.tone === 'ok' ? 'border-[#bfe6dd] bg-[#e6f6f2] text-[#0b6b5d]' : 'border-bad/20 bg-bad-bg text-bad'}`}>
-          <Icon name={notice.tone === 'ok' ? 'check' : 'alert-triangle'} size={13} className="mt-[2px] shrink-0" />
-          {notice.text}
-        </p>
-      ) : null}
-      {dialog ? (
-        <CheckDialog
-          moduleSlug={moduleSlug}
-          recordId={recordId}
-          label={data.label}
-          mode={dialog}
-          action={action}
-          onClose={() => setDialog(null)}
-          onDone={(n) => {
-            setDialog(null);
-            setNotice(n);
-            router.refresh();
-          }}
-        />
-      ) : null}
     </section>
   );
 }
 
-function CheckDialog({
+export function ProcessorCheckDialog({
   moduleSlug,
   recordId,
   label,

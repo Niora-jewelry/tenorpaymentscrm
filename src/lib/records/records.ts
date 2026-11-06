@@ -304,12 +304,17 @@ export async function listRecords(
       if (names.length) query = query.overlaps('files_required_names', names);
       continue;
     }
+    // A column of the record itself, not a value in it.
+    if (filter.fieldId === 'deal_name') {
+      if (filter.kind === 'contains' && filter.text) query = query.ilike('deal_name', likePattern(filter.text));
+      continue;
+    }
     const field = byId.get(filter.fieldId);
     if (!field) continue;
     const path = `values->>${field.key}`;
     switch (filter.kind) {
       case 'contains':
-        query = query.ilike(path, `%${filter.text}%`);
+        query = query.ilike(path, likePattern(filter.text));
         break;
       case 'values':
         if (filter.values.length) {
@@ -348,7 +353,8 @@ export async function listRecords(
         break;
       case 'dates':
         if (filter.from) query = query.gte(path, filter.from);
-        if (filter.to) query = query.lte(path, filter.to);
+        // Through the end of that day: a date-and-time sorts after the bare date.
+        if (filter.to) query = query.lte(path, `${filter.to}T23:59:59.999`);
         break;
       case 'bool':
         query = query.eq(path, String(filter.checked));

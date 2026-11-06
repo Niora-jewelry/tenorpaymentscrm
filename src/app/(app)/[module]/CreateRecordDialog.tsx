@@ -23,8 +23,6 @@ import { createRecordAction, type ActionState } from './actions';
 
 const initial: ActionState = { ok: false };
 
-/** A pick that is a team, not one of its people. */
-const WHOLE_TEAM = 'team';
 
 export function CreateRecordDialog({
   moduleSlug,
@@ -59,7 +57,7 @@ export function CreateRecordDialog({
   const [state, action, isPending] = useActionState(createRecordAction.bind(null, moduleSlug), initial);
   const inputRef = useRef<HTMLInputElement>(null);
   const byId = usePeopleById();
-  /** Per team: the whole team, or one person from it. Never both, never two. */
+  /** Per team: one person from it. Teams are not assigned as a whole for now (client, 6 Nov 2026). */
   const [picks, setPicks] = useState<Record<string, string>>({});
 
   const you = resolvePerson(viewerId, byId);
@@ -204,7 +202,7 @@ export function CreateRecordDialog({
                 Assign
               </label>
               <p className="mt-1 text-[11.5px] text-ink-400">
-                You are always added. A team stays open until someone on it takes the record.
+                You are always added. Pick one person per team.
               </p>
 
               <div className="mt-2 max-h-[220px] space-y-px overflow-y-auto rounded-md border border-line p-1">
@@ -218,28 +216,12 @@ export function CreateRecordDialog({
                   const pick = picks[t.id];
                   return (
                     <div key={t.id}>
-                      <label
-                        className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] transition-colors ${
-                          pick === WHOLE_TEAM ? 'bg-brand-50' : 'hover:bg-canvas'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={pick === WHOLE_TEAM}
-                          disabled={isPending}
-                          onChange={() => choose(t.id, WHOLE_TEAM)}
-                          className="size-3.5 accent-[#1e4080]"
-                        />
-                        <Icon name="users" size={14} className="text-ink-400" />
-                        <span className="truncate font-medium text-ink-900">{t.label}</span>
-                        <span className="ml-auto shrink-0 text-[11px] text-ink-400">whole team</span>
-                      </label>
                       {t.members.map((id) => {
                         const p = resolvePerson(id, byId);
                         return (
                           <label
                             key={id}
-                            className={`flex cursor-pointer items-center gap-2 rounded py-1 pl-6 pr-2 text-[13px] transition-colors ${
+                            className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] transition-colors ${
                               pick === id ? 'bg-brand-50' : 'hover:bg-canvas'
                             }`}
                           >
@@ -251,7 +233,9 @@ export function CreateRecordDialog({
                               className="size-3.5 accent-[#1e4080]"
                             />
                             <PersonAvatar person={p} size={20} />
-                            <span className="truncate text-ink-800">{p.name}</span>
+                            <span className="truncate text-ink-800">
+                              {p.name} <span className="text-ink-400">/ {t.label}</span>
+                            </span>
                             {/* Two colleagues can share a display name, or have none
                                 at all — the address is what makes the choice
                                 unambiguous, and getting it wrong here hands the wrong
@@ -266,13 +250,9 @@ export function CreateRecordDialog({
                   );
                 })}
               </div>
-              {Object.entries(picks).map(([teamId, pick]) =>
-                pick === WHOLE_TEAM ? (
-                  <input key={teamId} type="hidden" name="teamIds" value={teamId} />
-                ) : (
-                  <input key={teamId} type="hidden" name="memberIds" value={pick} />
-                ),
-              )}
+              {Object.entries(picks).map(([teamId, pick]) => (
+                <input key={teamId} type="hidden" name="memberIds" value={pick} />
+              ))}
 
               <div className="mt-5 flex justify-end gap-2">
                 <Button type="button" variant="ghost" disabled={isPending} onClick={() => setOpen(false)}>

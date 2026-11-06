@@ -207,7 +207,7 @@ try {
   await step('legend and tooltip', async () => {
     const legend = page.locator('[data-field-guide]');
     const words = await legend.innerText();
-    t('Field guide shows the two active colours and what each means', /Field guide/.test(words) && /Required for application/.test(words) && /Optional for application/.test(words) && !/agreement/i.test(words));
+    t('Field guide shows the two active colours and what each means', /Required for application/.test(words) && /Optional for application/.test(words) && !/agreement/i.test(words));
     t('hovering says what it means in words', (await cell(page, appRequired).getAttribute('title')) === 'Required for application');
     await cell(page, appRequired).locator('span[title]').first().hover();
     t('the label says it too', /Required for application/.test((await cell(page, appRequired).locator('span[title]').first().getAttribute('title')) ?? ''));
@@ -375,7 +375,7 @@ try {
 
     // The send bar lives on Files, and asks before it opens anything.
     await page.goto(`${BASE}/${contacts.slug}?record=${probe.id}&tab=files`, { waitUntil: 'domcontentloaded', timeout: 300000 });
-    await page.getByRole('region', { name: 'Send documents' }).getByRole('button', { name: /^Send$|Send application/ }).first().click();
+    await page.getByRole('region', { name: 'Send documents' }).getByRole('button', { name: 'Application', exact: true }).first().click();
     const link = page.getByRole('dialog').locator(`a[href*="field="]`).first();
     await link.waitFor({ timeout: 45000 });
     const href = await link.getAttribute('href');

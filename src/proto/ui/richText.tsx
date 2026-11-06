@@ -61,9 +61,9 @@ const SAFE_SCHEME = /^(https?:\/\/|mailto:)/i;
 function safeHref(url: string): string | null {
   const trimmed = url.trim();
   if (SAFE_SCHEME.test(trimmed)) return trimmed;
-  // A bare "www.example.com" is the one thing worth rescuing: people type it
-  // constantly and it is unambiguous.
-  if (/^www\./i.test(trimmed)) return `https://${trimmed}`;
+  // A bare "www.example.com" or "google.com" is worth rescuing: people type it
+  // constantly, and with no scheme it cannot be `javascript:` or `data:`.
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}([/?#]\S*)?$/i.test(trimmed)) return `https://${trimmed}`;
   return null;
 }
 
@@ -76,7 +76,10 @@ function safeHref(url: string): string | null {
  */
 const INLINE_PARTS = [
   '(?<code>`[^`\\n]+`)',
-  '(?<bold>\\*\\*[^*\\n]+\\*\\*)',
+  '(?<both>\\*\\*\\*[^*\\n]+\\*\\*\\*)',
+  // Bold may hold italic, and italic bold: `**one*two***`, which is what the
+  // editor writes for bold running into bold italic.
+  '(?<bold>\\*\\*(?:[^*\\n]|\\*[^*\\n]+\\*)+\\*\\*)',
   '(?<strike>~~[^~\\n]+~~)',
   '(?<italic>\\*[^*\\n]+\\*|_[^_\\n]+_)',
   '(?<link>\\[[^\\]\\n]+\\]\\([^)\\s]+\\))',
@@ -117,12 +120,14 @@ function inline(text: string, keyPrefix: string, re: RegExp): ReactNode[] {
           {g.code.slice(1, -1)}
         </code>,
       );
+    } else if (g.both) {
+      out.push(<strong key={key} className="font-semibold text-ink-900"><em>{inline(g.both.slice(3, -3), key, re)}</em></strong>);
     } else if (g.bold) {
-      out.push(<strong key={key} className="font-semibold text-ink-900">{g.bold.slice(2, -2)}</strong>);
+      out.push(<strong key={key} className="font-semibold text-ink-900">{inline(g.bold.slice(2, -2), key, re)}</strong>);
     } else if (g.strike) {
       out.push(<s key={key} className="text-ink-400">{g.strike.slice(2, -2)}</s>);
     } else if (g.italic) {
-      out.push(<em key={key}>{g.italic.slice(1, -1)}</em>);
+      out.push(<em key={key}>{inline(g.italic.slice(1, -1), key, re)}</em>);
     } else if (g.link) {
       const split = g.link.indexOf('](');
       const label = g.link.slice(1, split);

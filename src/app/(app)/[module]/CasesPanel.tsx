@@ -11,7 +11,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useActionState } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, CaseStatePill, Dialog, EmptyState, IconButton, SectionLabel, SpecNote } from '@/proto/ui/kit';
+import { Button, CaseStatePill, Dialog, EmptyState, IconButton, SectionLabel } from '@/proto/ui/kit';
 import { relative } from '@/proto/ui/tokens';
 import { UserAvatar } from './UserAvatar';
 import {
@@ -130,13 +130,6 @@ export function CasesPanel({
         editable={editable}
         authorNames={authorNames}
       />
-
-      <SpecNote>
-        Case numbers come from a <strong>single global sequence starting at #10000</strong> spanning
-        the whole CRM, so a number identifies exactly one case anywhere. Numbers are never reused,
-        even after a purge. Case content is <strong>immutable to non-admins</strong> — including its
-        own author — but anyone can reply.
-      </SpecNote>
 
       {!editable ? null : creating ? (
         <form action={action} className="rounded-xl border border-line bg-white p-3">
@@ -952,13 +945,24 @@ function AwaitingTag({ since, by, onClear, pending, now }: { since: string; by: 
 /**
  * The ticket's log (spec: "Every action a flow takes is logged on the ticket",
  * and every click of Awaiting client "with the user's name"). Oldest first, the
- * way the ticket happened.
+ * way the ticket happened. Closed until someone asks for it (client, 6 Nov 2026).
  */
 function TicketLog({ lines, authorNames, now }: { lines: CaseLogLine[]; authorNames: Record<string, string>; now: Date }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="border-t border-line-soft bg-canvas/50 px-4 py-3">
-      <SectionLabel>Ticket log</SectionLabel>
-      <ol className="mt-1.5 space-y-1.5">
+    <div className="border-t border-line-soft bg-canvas/50 px-4 py-2.5">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[11px] font-semibold uppercase tracking-[.06em] text-ink-400 transition-colors hover:text-ink-700"
+      >
+        <Icon name={open ? 'chevron-down' : 'chevron-right'} size={12} />
+        Ticket log
+        <span className="tabular-nums font-medium normal-case tracking-normal">{lines.length}</span>
+      </button>
+      {open ? (
+      <ol className="mt-2 space-y-1.5">
         {lines.map((l) => {
           const robot = Boolean(l.automationName);
           const who = robot ? `Automation · ${l.automationName}` : (l.actorId ? authorNames[l.actorId] : null) ?? 'Someone';
@@ -975,6 +979,7 @@ function TicketLog({ lines, authorNames, now }: { lines: CaseLogLine[]; authorNa
           );
         })}
       </ol>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/proto/ui/icons';
 import { Button } from '@/proto/ui/kit';
@@ -18,7 +17,12 @@ const OUTCOME: Record<string, { label: string; cls: string }> = {
 };
 const outcomeOf = (o: string | null) => (o ? OUTCOME[o] ?? { label: o, cls: 'border-line bg-canvas text-ink-600' } : { label: 'Running', cls: 'border-line bg-canvas text-ink-500' });
 
-export function MaverickConnection({ screen, adapterReady }: { screen: ConnectionScreen; adapterReady: boolean }) {
+/**
+ * Integrations › Maverick Payments. `main` is the Main connector subtab (health,
+ * each kind of data, recent runs); `individual` is Individual connectors (each
+ * Maverick merchant matched to its record). Both by default.
+ */
+export function MaverickConnection({ screen, adapterReady, part = 'all' }: { screen: ConnectionScreen; adapterReady: boolean; part?: 'all' | 'main' | 'individual' }) {
   const router = useRouter();
   const [syncing, startSync] = useTransition();
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -32,6 +36,8 @@ export function MaverickConnection({ screen, adapterReady }: { screen: Connectio
       router.refresh();
     });
 
+  if (part === 'individual') return screen.canResolve ? <Unmatched items={screen.unmatched} /> : null;
+
   return (
     <div className="space-y-6">
       {/* Status strip */}
@@ -44,9 +50,9 @@ export function MaverickConnection({ screen, adapterReady }: { screen: Connectio
             <p className="text-[14.5px] font-semibold text-ink-900">{screen.label} Payments</p>
             <p className="text-[12.5px] text-ink-500">
               {!screen.connected
-                ? 'Not connected. Enter the API key in Integrations and switch Maverick on.'
+                ? 'Not connected. Enter the API key and switch Maverick on.'
                 : !adapterReady
-                  ? 'Key saved, but nothing is fetched yet. Maverick’s firewall is stopping API requests, and only Maverick can change that. Press Test in Integrations to check again.'
+                  ? 'Key saved, but nothing is fetched yet. Maverick’s firewall is stopping API requests, and only Maverick can change that. Press Test connection to check again.'
                   : 'Connected. Updates daily at 7 AM New York time.'}
             </p>
           </div>
@@ -59,9 +65,6 @@ export function MaverickConnection({ screen, adapterReady }: { screen: Connectio
           </span>
           {screen.canManage ? (
             <div className="flex flex-wrap gap-2">
-              <Link href="/admin/integrations" className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] font-semibold text-ink-700 hover:bg-canvas">
-                <Icon name="link" size={13} /> Integrations
-              </Link>
               <Button size="sm" variant="primary" icon="refresh-cw" loading={syncing} loadingLabel="Syncing…" disabled={syncing || !screen.connected || !adapterReady} onClick={syncNow}>
                 Sync now
               </Button>
@@ -142,7 +145,7 @@ export function MaverickConnection({ screen, adapterReady }: { screen: Connectio
       ) : null}
 
       {/* Unmatched */}
-      {screen.canResolve ? <Unmatched items={screen.unmatched} /> : null}
+      {part === 'all' && screen.canResolve ? <Unmatched items={screen.unmatched} /> : null}
     </div>
   );
 }

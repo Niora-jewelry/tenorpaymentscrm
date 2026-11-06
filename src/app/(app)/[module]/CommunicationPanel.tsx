@@ -9,24 +9,24 @@
  * moved here unchanged (nothing deleted). Instantly is gone, sub-tab and
  * integration both.
  *
- * TEAMS shows the chats linked to this record. Which sub-tab does that is read
- * from `subtabs.shows_record_chats`, and which is a placeholder from
- * `subtabs.coming_soon`, rather than decided here (CLAUDE.md rule 1).
+ * Display only (client, 6 Nov 2026): emails, calls and texts are made from
+ * their own modules, and this shows what happened. Last merchant response and
+ * Last outreach keep filling from the same traffic.
  *
- * Email is a real read of `messages`; there is no send path on THIS panel
- * because those rows only ever arrive through a provider running as the
- * service role. Texting does have a send path — the composer on Texts.
+ * Which sub-tab shows the chats linked to this record is read from
+ * `subtabs.shows_record_chats`, and which is a placeholder from
+ * `subtabs.coming_soon`, rather than decided here (CLAUDE.md rule 1). Teams is a
+ * placeholder for now (migration 9921); the chats panel comes back with the flag.
  */
 import dynamic from 'next/dynamic';
 import { useMemo, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { CHANNEL_ICON } from '@/proto/ui/icons';
-import { ComingSoon, EmptyState, OutlineChip, SpecNote, StatusPill } from '@/proto/ui/kit';
+import { EmptyState, StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import type { Message, MessageChannel } from '@/lib/records/messages';
 import type { PhoneCall } from '@/lib/phone/calls';
 import type { PhoneMessage } from '@/lib/phone/messages';
-import type { TextableNumber } from '@/lib/phone/textableNumbers';
 import { PhonePanel, RecordingsPanel, SmsThread } from './PhonePanels';
 import { PHONE_VIEWS, phoneViewFrom, type PhoneView } from './phoneViews';
 
@@ -52,25 +52,20 @@ export function CommunicationPanel({
   comingSoon,
   showsRecordChats,
   recordId,
-  subtabLabel,
   messages,
   moduleSlug,
   calls,
   smsMessages,
-  recordPhones,
 }: {
   subtabId: string;
   comingSoon: boolean;
   /** Migration 9907: this sub-tab holds the record's linked Teams chats. */
   showsRecordChats: boolean;
   recordId: string;
-  subtabLabel: string;
   messages: Message[];
   moduleSlug: string;
   calls: PhoneCall[];
   smsMessages: PhoneMessage[];
-  /** Numbers on this record a text may be sent to — see textableNumbers.ts. */
-  recordPhones: TextableNumber[];
 }) {
   const [now] = useState(() => Date.now());
 
@@ -81,7 +76,7 @@ export function CommunicationPanel({
   if (showsRecordChats) return <RecordChatsPanel recordId={recordId} />;
 
   if (comingSoon) {
-    return <ComingSoon what={subtabLabel} icon={subtabId === 'teams' ? 'video' : 'phone'} />;
+    return <p className="rounded-xl border border-dashed border-line bg-canvas px-6 py-14 text-center text-[13.5px] text-ink-400">Placeholder</p>;
   }
 
   if (subtabId === 'phone') {
@@ -91,13 +86,12 @@ export function CommunicationPanel({
         calls={calls}
         messages={messages}
         smsMessages={smsMessages}
-        recordPhones={recordPhones}
         now={now}
       />
     );
   }
 
-  return <ChannelMessages channel="email" messages={messages} smsMessages={smsMessages} calls={calls} recordPhones={recordPhones} moduleSlug={moduleSlug} now={now} />;
+  return <ChannelMessages channel="email" messages={messages} smsMessages={smsMessages} moduleSlug={moduleSlug} now={now} />;
 }
 
 /**
@@ -110,14 +104,12 @@ function PhoneViews({
   calls,
   messages,
   smsMessages,
-  recordPhones,
   now,
 }: {
   moduleSlug: string;
   calls: PhoneCall[];
   messages: Message[];
   smsMessages: PhoneMessage[];
-  recordPhones: TextableNumber[];
   now: number;
 }) {
   const [view, setView] = useState<PhoneView>(() =>
@@ -160,29 +152,24 @@ function PhoneViews({
         ) : view === 'recordings' ? (
           <RecordingsPanel calls={calls} moduleSlug={moduleSlug} />
         ) : (
-          <ChannelMessages channel="text" messages={messages} smsMessages={smsMessages} calls={calls} recordPhones={recordPhones} moduleSlug={moduleSlug} now={now} />
+          <ChannelMessages channel="text" messages={messages} smsMessages={smsMessages} moduleSlug={moduleSlug} now={now} />
         )}
       </div>
     </div>
   );
 }
 
-/** Email, or Texts under Phone: the last inbound, then (texts only) the
- *  composer, then the history. */
+/** Email, or Texts under Phone: the history, newest first. */
 function ChannelMessages({
   channel,
   messages,
   smsMessages,
-  calls,
-  recordPhones,
   moduleSlug,
   now,
 }: {
   channel: MessageChannel;
   messages: Message[];
   smsMessages: PhoneMessage[];
-  calls: PhoneCall[];
-  recordPhones: TextableNumber[];
   moduleSlug: string;
   now: number;
 }) {
@@ -193,26 +180,7 @@ function ChannelMessages({
 
   return (
     <div className="space-y-3">
-      <LastMessageReceived channel={channel} messages={messages} smsMessages={smsMessages} now={now} />
-
-      <SpecNote>
-        Inbound messages land on a record by matching the sender against <strong>sync-enabled</strong>{' '}
-        Email and Phone fields. If an identity matches several records the message deposits into{' '}
-        <strong>all</strong> of them; if the sender already exists, no new record is ever created.
-        Sync is forward-only — no historical backfill.
-      </SpecNote>
-
-      {/* Texts: the composer comes straight after the note, above the history —
-          the client's layout. SmsThread renders newest-first beneath the box,
-          so the message being answered sits right under the reply. */}
-      {channel === 'text' ? (
-        <SmsThread
-          moduleSlug={moduleSlug}
-          messages={smsMessages}
-          toE164={replyTarget(smsMessages, calls)}
-          recordPhones={recordPhones}
-        />
-      ) : null}
+      {channel === 'text' ? <SmsThread moduleSlug={moduleSlug} messages={smsMessages} /> : null}
 
       {/* Two sources feed Texts — `messages` (provider webhook) and
           `phone_messages` (our own Twilio traffic) — so the empty state is
@@ -250,129 +218,4 @@ function ChannelMessages({
       )}
     </div>
   );
-}
-
-/**
- * ⚠ SMS LIVES IN A DIFFERENT TABLE, AND THIS SUMMARY HAS TO READ BOTH.
- *
- * `messages` is the `messages` table — email and the other channels. Inbound
- * texts are `phone_messages`, written by the Twilio webhook. This read only the
- * first, so a record whose only inbound contact was a text displayed
- * "Nothing inbound yet — every message on this record was sent by us" directly
- * above the text itself. Seen on a real record the first time an inbound SMS
- * arrived.
- *
- * The two are merged into one shape here rather than being joined upstream:
- * they are genuinely different tables with different lifecycles, and the only
- * place that needs them as one list is this summary.
- */
-type InboundSummary = { channel: MessageChannel; body: string | null; from: string; sentAt: string };
-
-function LastMessageReceived({
-  channel,
-  messages,
-  smsMessages,
-  now,
-}: {
-  /** The subtab being viewed. The summary is ABOUT this channel — see below. */
-  channel: MessageChannel;
-  messages: Message[];
-  smsMessages: PhoneMessage[];
-  now: number;
-}) {
-  /*
-   * ⚠ SCOPED TO THE SUBTAB YOU ARE ON.
-   *
-   * This header sits above whichever channel subtab is open, so an unscoped
-   * "last message received" put a TEXT at the top of the Email subtab —
-   * an SMS pill and an Indian mobile number above an empty email thread
-   * reading "No messages yet". The two statements were both true and read as a
-   * contradiction.
-   *
-   * Texts only join in on the Text subtab, where they belong: `phone_messages`
-   * IS the text channel, while `messages` carries email and the rest.
-   */
-  const inbound: InboundSummary[] = [
-    ...messages
-      .filter((m) => m.direction === 'in' && m.channel === channel)
-      .map((m) => ({ channel: m.channel, body: m.body, from: m.from, sentAt: m.sentAt })),
-    ...(channel === 'text'
-      ? smsMessages
-          .filter((m) => m.direction === 'in')
-          .map((m) => ({
-            channel: 'text' as MessageChannel,
-            body: m.body,
-            from: m.fromE164,
-            sentAt: m.sentAt,
-          }))
-      : []),
-  ].sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
-
-  const last = inbound[0];
-
-  if (!last) {
-    return (
-      <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-dashed border-line bg-white/60 px-3.5 py-2.5">
-        <Icon name="reply" size={15} className="text-ink-400" />
-        <span className="text-[12.5px] font-semibold uppercase tracking-[.06em] text-ink-400">
-          Last message received
-        </span>
-        <span className="text-[13px] text-ink-400">
-          Nothing inbound on this channel yet — everything here was sent by us.
-        </span>
-      </div>
-    );
-  }
-
-  const stale = now - new Date(last.sentAt).getTime() > 14 * 86_400_000;
-  const meta = channelMeta(last.channel);
-
-  return (
-    <div className="rounded-xl border border-line bg-white p-3.5 shadow-[0_1px_2px_rgba(14,28,52,.04)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <Icon name="reply" size={15} className="text-brand-600" />
-        <span className="text-[12.5px] font-semibold uppercase tracking-[.06em] text-ink-400">
-          Last message received
-        </span>
-        <StatusPill label={meta.label} swatch={meta.swatch} dot={false} />
-        <span className="ml-auto flex items-center gap-2">
-          {stale ? <OutlineChip tone="warn">No reply in 2 weeks</OutlineChip> : null}
-          <span className="text-[11.5px] text-ink-400 tabular">{relativeTime(last.sentAt, now)}</span>
-        </span>
-      </div>
-      <p className="mt-2 line-clamp-2 text-[13.5px] leading-relaxed text-ink-900">{last.body}</p>
-      <p className="mt-1 text-[11.5px] text-ink-400">
-        {last.from} · {formatDateTime(last.sentAt)}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Which number a reply should go to.
- *
- * The most recent counterpart wins: the last person who texted, else the last
- * number called. Deriving it rather than asking means the composer works
- * without a picker on the overwhelmingly common case — one merchant, one
- * number. Null when the record has no telephony history at all, and the
- * composer then explains what to do instead of rendering a dead box.
- */
-/**
- * Who a reply goes to — the other end of the most recent exchange.
- *
- * Returns null when there has been no exchange at all, and that is NOT the
- * same as "this record cannot be texted": a merchant who never wrote first
- * still has a number on the record. `recordPhones` carries those and
- * SmsThread falls back to them. The two are kept apart deliberately — a
- * REPLY must go back to the number actually used, even where the record
- * lists three others.
- */
-function replyTarget(messages: PhoneMessage[], calls: PhoneCall[]): string | null {
-  const lastMessage = messages[messages.length - 1];
-  if (lastMessage) {
-    return lastMessage.direction === 'in' ? lastMessage.fromE164 : lastMessage.toE164;
-  }
-  const lastCall = calls[0]; // already newest-first
-  if (lastCall) return lastCall.direction === 'in' ? lastCall.fromE164 : lastCall.toE164;
-  return null;
 }

@@ -112,8 +112,8 @@ export function SendApplicationDialog({
             </h2>
             <p className="mt-0.5 text-[12.5px] text-ink-500">
               {resend
-                ? 'The same link, with a PDF filled from the record as it is now. The link’s clock restarts.'
-                : 'Prefilled with what the CRM knows. The merchant completes it online, or fills in the PDF and sends it back.'}
+                ? 'The same link. The link’s clock restarts.'
+                : 'Prefilled with what the CRM knows. The merchant completes it online.'}
             </p>
           </div>
           <button

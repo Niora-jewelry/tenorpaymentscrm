@@ -22,11 +22,10 @@ import type { Field as ProtoField } from '@/proto/schema';
 import { RealFieldGrid } from './RealFieldGrid';
 import { EquipmentPanel } from './EquipmentPanel';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
-import { TabNotes } from './NoteThread';
 import { CasesPanel } from './CasesPanel';
 import { UpdatesPanel } from './UpdatesPanel';
 import { AddOnlyFilesPanel, FilesPanel } from './FilesPanel';
-import { ReapplyBar, RestrictionMarks, useRestrictions } from './Restrictions';
+import { ReapplyBar, RestrictionMarks } from './Restrictions';
 import { LoginsPanel } from './LoginsPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { CommunicationPanel } from './CommunicationPanel';
@@ -66,7 +65,6 @@ type Grant = 'hidden' | 'view' | 'edit';
  * the SHARED instance count across every sibling location (migration 27),
  * computed server-side so both locations always agree on how many instances
  * exist even though each only shows its own slice of the data. */
-import { textableNumbers } from '@/lib/phone/textableNumbers';
 
 export type RepeatGroupDef = {
   id: string;
@@ -174,9 +172,12 @@ export function DrawerTabs({
   mentions: initialMentions = [],
   openMention = null,
   fieldPathByUpdate = {},
+  filesByUpdate = {},
 }: {
   /** Field-mention entries in Updates: the field's home, as labels. */
   fieldPathByUpdate?: Record<string, FieldPath>;
+  /** Each update's files, by its id. */
+  filesByUpdate?: Record<string, FileEntry[]>;
   moduleSlug: string;
   recordId: string;
   tabs: TabPayload[];
@@ -252,7 +253,6 @@ export function DrawerTabs({
   teamSlot?: ReactNode;
   isAdmin: boolean;
 }) {
-  const { effects } = useRestrictions();
   const [activeTabId, setActiveTabId] = useState(openTabId ?? tabs[0]?.id ?? '');
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
@@ -351,26 +351,6 @@ export function DrawerTabs({
   const [liveValues, setLiveValues] = useState(values);
 
   /*
-   * The numbers this record can be texted on, gathered from EVERY tab rather
-   * than the one that happens to be open: the phone lives on Contact and the
-   * text box lives on Communication, so a per-tab scan would always come back
-   * empty. `liveValues` rather than `values`, so a number typed into the
-   * Contact tab is textable without a reload.
-   */
-  const recordPhones = useMemo(
-    () =>
-      textableNumbers(
-        tabs.flatMap((t) =>
-          Object.keys(t.fieldsBySubtab).map((subtabKey) => ({
-            fields: t.fieldsBySubtab[subtabKey] ?? [],
-            groups: t.repeatGroupsBySubtab[subtabKey] ?? [],
-          })),
-        ),
-        liveValues,
-      ),
-    [tabs, liveValues],
-  );
-  /*
    * The tab counters: how many of the fields that glow as required are done.
    * Worked out here from `liveValues`, so they follow typing with no reload. They
    * read the stage, not the permission: "See field highlights" covers the glows,
@@ -439,19 +419,7 @@ export function DrawerTabs({
   if (!activeTab) return null;
 
   const fields = activeTab.fieldsBySubtab[activeSubtabId ?? '_'] ?? [];
-  /** The notes scope for whatever is on screen: one thread per tab, or per
-   *  subtab where the tab has them. Matches the `tab:<id>` / `tab:<id>/<sub>`
-   *  keys `allNotesFor` groups by. */
-  /* Tab notes are an item of their own, inside their tab and sub-tab (spec). A
-     hide on them never reaches the browser, so it only ever finds a lock here. */
-  const notesRestriction = (key: string, subtabId: string | null) => {
-    const items = [`notes:${key}`, `tab:${key}`, ...(subtabId ? [`subtab:${subtabId}`] : [])];
-    if (items.some((i) => effects[i] === 'hide')) return 'hide' as const;
-    return items.some((i) => effects[i] === 'lock') ? ('lock' as const) : null;
-  };
-  const tabScopeId = activeSubtabId ? `${activeTab.id}/${activeSubtabId}` : activeTab.id;
   const activeSubtab = activeTab.subtabs.find((s) => s.id === activeSubtabId);
-  const notesEffect = notesRestriction(activeTab.key, activeSubtabId ?? null);
 
   return (
     <div className="mt-4" data-drawer-tabs>
@@ -590,7 +558,7 @@ export function DrawerTabs({
             return (
               <div className="space-y-4">
                 {activeTab.showsApplications && applications ? <ApplicationsPanel recordId={recordId} data={applications} /> : null}
-                {activeTab.showsApplications && processorApp ? <ProcessorApplicationCard moduleSlug={moduleSlug} recordId={recordId} data={processorApp} /> : null}
+                {activeTab.showsApplications && processorApp ? <ProcessorApplicationCard data={processorApp} /> : null}
                 {activeTab.showsReporting && reporting ? <ReportingPanel recordId={recordId} data={reporting} /> : null}
                 {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
                 {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
@@ -687,14 +655,15 @@ export function DrawerTabs({
             mentionsByUpdate={mentionsByTab.byUpdate}
             openMention={openMention?.sourceKind === 'mention_update' ? openMention : null}
             fieldPathByUpdate={fieldPathByUpdate}
+            filesByUpdate={filesByUpdate}
           />
         ) : activeTab.kind === 'files' && activeTab.addOnly ? (
           <AddOnlyFilesPanel moduleSlug={moduleSlug} recordId={recordId} rows={fileRowsAdding} focusRowId={focusFieldKey} />
         ) : activeTab.kind === 'files' ? (
           <div className="space-y-4">
-          {/* Send application / proposal / agreement, side by side under the tabs
-              (client, 4 Nov 2026). Each button shows only to someone allowed to send. */}
-          <FilesSendBar moduleSlug={moduleSlug} recordId={recordId} applications={applications} proposals={activeTab.showsProposals ? proposals : null} agreements={activeTab.showsAgreements ? agreements : null} />
+          {/* Application, proposal, each agreement and Maverick, side by side under
+              the tabs (client, 6 Nov 2026). Each shows only to someone allowed to send. */}
+          <FilesSendBar moduleSlug={moduleSlug} recordId={recordId} processor={processorApp} applications={applications} proposals={activeTab.showsProposals ? proposals : null} agreements={activeTab.showsAgreements ? agreements : null} />
           {/* The Send agreement panel lives on Files since the Field-Tab Review:
               which tab carries it is the `shows_agreements` flag, not this code. */}
           {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
@@ -746,12 +715,10 @@ export function DrawerTabs({
             comingSoon={activeSubtab?.comingSoon ?? false}
             showsRecordChats={activeSubtab?.showsRecordChats ?? false}
             recordId={recordId}
-            subtabLabel={activeSubtab?.label ?? ''}
             messages={messages}
             moduleSlug={moduleSlug}
             calls={phoneCalls}
             smsMessages={smsMessages}
-            recordPhones={recordPhones}
           />
         ) : (
           <p className="flex items-center gap-2 text-[13px] text-ink-400">
@@ -761,38 +728,9 @@ export function DrawerTabs({
         )}
         </PanelErrorBoundary>
 
-        {/*
-          ⚠️ ONE notes thread, for EVERY tab and EVERY subtab.
-          
-          The client asked for this twice and literally: "Each tab should have a
-          notes field" / "Each sub tab should have a notes field." It used to
-          live INSIDE the `custom` branch above, so only the 15 field-bearing
-          locations had one. The other 13 — Other, all six Communication
-          subtabs, Updates, Cases, both Files subtabs, Logins and Statements —
-          had none at all, even though the prototype did have them.
-
-          Rendered OUTSIDE `PanelErrorBoundary` on purpose: a panel that fails
-          should not take the record's notes down with it, and the notes are
-          often where someone recorded why the thing that just broke matters.
-
-          The scope id is subtab-aware, so Communication → Email and
-          Communication → Text keep separate threads, which is what "each sub
-          tab" means.
-        */}
-        {activeTab.addOnly || notesEffect === 'hide' ? null : (
-          <div className="mt-4">
-            <TabNotes
-              readOnly={notesEffect === 'lock'}
-              moduleSlug={moduleSlug}
-              recordId={recordId}
-              scopeId={tabScopeId}
-              notes={notesByScope[`tab:${tabScopeId}`] ?? []}
-              authorNames={authorNames}
-              viewerId={viewerId}
-              isAdmin={isAdmin}
-            />
-          </div>
-        )}
+        {/* Tab notes were removed from every tab at the client's request (6 Nov
+            2026: "We will no longer use this feature"). Notes already written
+            stay in the database; field notes are unaffected. */}
       </div>
     </div>
   );

@@ -16,10 +16,13 @@ type Choice = { key: string; label: string; shown: boolean };
 export function ColumnsPicker({
   moduleSlug,
   choices,
+  alwaysOn = 0,
   onError,
 }: {
   moduleSlug: string;
   choices: Choice[];
+  /** Columns on screen that cannot be hidden, so the count matches what the user sees. */
+  alwaysOn?: number;
   onError: (message: string | null) => void;
 }) {
   const anchor = useRef<HTMLButtonElement>(null);
@@ -56,7 +59,7 @@ export function ColumnsPicker({
         <Icon name="sliders" size={12} />
         Columns
         <span className="tabular font-medium text-ink-400">
-          {count} of {shown.length}
+          {count + alwaysOn} of {shown.length + alwaysOn}
         </span>
       </button>
       <MenuSurface open={open} onClose={() => setOpen(false)} anchorRef={anchor} align="right" width={280} role="dialog" label="Columns">

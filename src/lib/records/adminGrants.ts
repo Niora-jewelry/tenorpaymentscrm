@@ -78,7 +78,7 @@ import {
   type GrantScope,
   type ScopeCaps,
 } from './grantRules';
-import { loadConfig } from './config';
+import { fieldListLabel, loadConfig } from './config';
 import { assertAdminPage } from './adminConfig';
 import type {
   ClearTemplateGrantInput,
@@ -409,7 +409,7 @@ async function buildMatrix(
       // frozen-column cap expressible as a boolean here rather than as a key
       // comparison the browser would have to repeat.
       const fieldRow = (f: (typeof config.fields)[number]) =>
-        row('field', f.id, f.label, f.key, {
+        row('field', f.id, fieldListLabel(config, f), f.key, {
           kind: 'field',
           readOnly: f.readOnly,
           frozenColumn: f.key === FROZEN_COLUMN_FIELD_KEY,

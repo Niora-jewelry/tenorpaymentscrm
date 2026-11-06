@@ -58,6 +58,7 @@ import type { RepeatGroupDef } from './DrawerTabs';
 import { glowAttrs, useFieldGlow } from './FieldGlow';
 import { fieldGlow, memberGlow, type Glow } from '@/lib/records/fieldGlow';
 import { NoteThread } from './NoteThread';
+import { memberPath } from '@/lib/records/memberPath';
 import {
   FIELD_GRID, FIELD_GRID_CONTAINER, FIELD_VALUE_SLOT, FieldLabelRow, SectionHeading,
   fieldCardClass, isFullRow, spanFor,
@@ -104,6 +105,27 @@ function asInstanceArray(v: unknown, fallback: Record<string, unknown>[]): Recor
  * then one card per section label in order of first appearance. A section is
  * configuration (`fields.section`), so a new one needs no code.
  */
+/**
+ * Fields that stand as a pair: exactly two one-column fields between whole-row
+ * ones (or the section's edges). On a four-column row they left half of it
+ * empty, so each takes half instead (client, 6 Nov 2026: Business email and
+ * Business phone "across the width equally"). Keyed by layout, not by name.
+ */
+function pairedIds(fields: ProtoField[]): Set<string> {
+  const out = new Set<string>();
+  let run: string[] = [];
+  const close = () => {
+    if (run.length === 2) run.forEach((id) => out.add(id));
+    run = [];
+  };
+  for (const f of fields) {
+    if (isFullRow(f.type)) close();
+    else run.push(f.id);
+  }
+  close();
+  return out;
+}
+
 function sectionsOf(fields: ProtoField[]): { key: string; label: string | null; fields: ProtoField[] }[] {
   const out: { key: string; label: string | null; fields: ProtoField[] }[] = [];
   const index = new Map<string, number>();
@@ -120,6 +142,15 @@ function sectionsOf(fields: ProtoField[]): { key: string; label: string | null; 
   }
   out.sort((x, y) => (x.label === null ? -1 : y.label === null ? 1 : 0));
   return out;
+}
+
+/** A value that answers the question: not empty, and not "N/A" or "None". */
+function holdsAnswer(v: unknown): boolean {
+  if (v == null) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as object).length > 0;
+  const s = String(v).trim().toLowerCase().replace(/[\s.]/g, '');
+  return s !== '' && s !== 'n/a' && s !== 'na' && s !== 'none';
 }
 
 type DragHandleProps = { attributes: ReturnType<typeof useSortable>['attributes']; listeners: ReturnType<typeof useSortable>['listeners'] };
@@ -158,11 +189,14 @@ function SortableFieldCell({
   requiredEmpty,
   flash = false,
   glow = null,
+  stretch = false,
   children,
 }: {
   id: string;
   /** A `grid-column` value — see `spanFor`. */
   span: string;
+  /** One of exactly two fields on a row of four: each takes half (see `pairedIds`). */
+  stretch?: boolean;
   requiredEmpty?: boolean;
   /** A mention link landed on this field: scroll to it and flash. */
   flash?: boolean;
@@ -178,7 +212,9 @@ function SortableFieldCell({
       ref={setNodeRef}
       data-field={id}
       style={{
-        gridColumn: span,
+        // A stretched pair takes its span from the class, which can follow the
+        // container width; an inline grid-column would pin it.
+        gridColumn: stretch ? undefined : span,
         transform: CSS.Transform.toString(transform),
         transition,
       }}
@@ -192,7 +228,7 @@ function SortableFieldCell({
        */
       id={targetId.field(id)}
       {...glowAttrs(glow, flashing)}
-      className={`${fieldCardClass({ requiredEmpty, fullRow: span === '1 / -1' })} ${
+      className={`${fieldCardClass({ requiredEmpty, fullRow: span === '1 / -1' })} ${stretch ? '@[50rem]:col-span-2' : ''} ${
         isDragging ? 'z-10 opacity-40' : ''
       } ${flashing ? (glow ? 'z-10' : `z-10 ${FLASH_CLASS}`) : ''}`}
     >
@@ -364,6 +400,7 @@ export function RealFieldGrid({
     const published = publishedValue(recordId, key);
     return published.has ? published.value : values[key];
   };
+  const labelOfKey = (key: string): string => fields.find((x) => x.id === key)?.label ?? key.replace(/_/g, ' ');
 
   /*
    * Send anything still buffered when this grid goes away.
@@ -701,21 +738,20 @@ export function RealFieldGrid({
             {failedCount === 1 ? '1 change not saved' : `${failedCount} changes not saved`}
           </span>
         ) : savedCount > 0 ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(14,28,52,.10)] backdrop-blur">
+          // Shows for a few seconds after each save, then fades away (client,
+          // 6 Nov 2026). Keyed on the count so every new save shows it again.
+          <span key={savedCount} className="saved-note pointer-events-none inline-flex items-center gap-1.5 rounded-full border border-line bg-white/95 px-2.5 py-1 text-[11.5px] text-ink-500 shadow-[0_1px_3px_rgba(14,28,52,.10)] backdrop-blur">
             <Icon name="check" size={11} className="text-ok" />
             All changes saved
           </span>
         ) : null}
       </div>
 
-      {/* "Reordered by you" sits above the first section, not inside a box:
-          it is about the whole tab's order. */}
+      {/* Only when this person has moved fields on this tab: one button that
+          puts the order back. The explaining line above it was removed at the
+          client's request (6 Nov 2026). */}
       {hasCustomFieldOrder && fields.length ? (
-        <div className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-1.5">
-          <Icon name="shuffle" size={11} className="text-brand-600" />
-          <span className="text-[11.5px] text-brand-700">
-            Reordered by you — applies to this tab in every module.
-          </span>
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={() =>
@@ -731,8 +767,10 @@ export function RealFieldGrid({
                 }
               })
             }
-            className="ml-auto text-[11.5px] font-semibold text-brand-700 hover:underline"
+            title="Put this tab’s fields back in their default order"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 py-1 text-[12px] font-semibold text-ink-700 transition-colors hover:border-ink-400 hover:bg-canvas"
           >
+            <Icon name="rotate-ccw" size={12} />
             Reset to default
           </button>
         </div>
@@ -764,13 +802,19 @@ export function RealFieldGrid({
           className="contents"
           onFocusCapture={(e) => setEditingKey((e.target as HTMLElement).closest('[data-field]')?.getAttribute('data-field') ?? null)}
         >
-        {sectionsOf(fields).map((sec) => (
+        {sectionsOf(fields).map((sec) => {
+          const paired = pairedIds(sec.fields.filter((f) => (grantByKey[f.id] ?? 'hidden') !== 'hidden'));
+          return (
         <section key={sec.key}>
           {sec.label ? <SectionHeading label={sec.label} /> : null}
               <div className={FIELD_GRID}>
                 {sec.fields.map((f) => {
-                  const grant = grantByKey[f.id] ?? 'hidden';
-                  if (grant === 'hidden') return null;
+                  const rawGrant = grantByKey[f.id] ?? 'hidden';
+                  if (rawGrant === 'hidden') return null;
+                  // Waits on another field (Presets: "enabled by"): greyed out and
+                  // not editable until that one holds something other than N/A.
+                  const waitingOn = f.enabledBy && !holdsAnswer(shownValue(f.enabledBy)) ? f.enabledBy : null;
+                  const grant = waitingOn && rawGrant === 'edit' ? 'view' : rawGrant;
                   const v = shownValue(f.id);
                   const fieldEmpty = f.type === 'file'
                     ? !(fieldFiles?.list(f.id).length)
@@ -786,9 +830,13 @@ export function RealFieldGrid({
                   // The highlight says it instead: an amber box beside an orange glow reads as two rules.
                   const requiredEmpty = Boolean(f.required && fieldEmpty && !glow);
                   return (
-                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} requiredEmpty={requiredEmpty} flash={landedHere} glow={glow}>
+                    <SortableFieldCell key={f.id} id={f.id} span={spanFor(f)} stretch={paired.has(f.id)} requiredEmpty={requiredEmpty} flash={landedHere} glow={glow}>
                       {(handle) => (
-                      <>
+                      <div
+                        className={waitingOn ? 'flex min-h-0 flex-1 flex-col opacity-50' : 'contents'}
+                        title={waitingOn ? `Fill in ${labelOfKey(waitingOn)} first (anything other than N/A)` : undefined}
+                        aria-disabled={waitingOn ? true : undefined}
+                      >
                       <FieldLabelRow
                         field={f}
                         meaning={glow?.meaning}
@@ -810,7 +858,8 @@ export function RealFieldGrid({
                         <FieldMentionNote mentions={fieldMentions} autoOpen={landedHere ? openMention : null} onRead={onMentionRead} />
                         <FieldMentionButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} currentValue={valueText(v)} />
                         <FieldHistoryButton recordId={recordId} fieldKey={f.id} fieldLabel={f.label} />
-                        {f.notes ? (
+                        {/* Notes on every field (client, 6 Nov 2026), not only those switched on in Presets. */}
+                        {f.type !== 'repeat_group' ? (
                           <button
                             type="button"
                             aria-expanded={openNotes.has(f.id)}
@@ -875,7 +924,7 @@ export function RealFieldGrid({
                           {conflicts[f.id]}
                         </p>
                       ) : null}
-                      {f.notes && openNotes.has(f.id) ? (
+                      {openNotes.has(f.id) ? (
                         <NoteThread
                           moduleSlug={moduleSlug}
                           recordId={recordId}
@@ -899,14 +948,15 @@ export function RealFieldGrid({
                           onSaved={(next) => setAddressSaved((s) => ({ ...s, [f.id]: next }))}
                         />
                       ) : null}
-                      </>
+                      </div>
                       )}
                     </SortableFieldCell>
                   );
                 })}
               </div>
         </section>
-        ))}
+          );
+        })}
         </div>
         </SortableContext>
         </DndContext>
@@ -989,10 +1039,16 @@ export function RealFieldGrid({
                         id: member.key, label: member.label, type: member.type,
                         sensitive: member.sensitive, hint: member.hint, digits: member.digits,
                         tab: '', columnIn: [],
+                        // So the label shows which documents print it.
+                        applicationNeed: (member as { application_need?: ProtoField['applicationNeed'] }).application_need,
+                        agreementNeed: (member as { agreement_need?: ProtoField['agreementNeed'] }).agreement_need,
                       };
                       const glow = glowsShowing
                         ? memberGlow(member, glowStage, index, Boolean(group.glowSignersOnly), signers, instance[member.key])
                         : null;
+                      const path = memberPath(group.key, index, member.key);
+                      const pathLabel = `${singular} ${index + 1} · ${member.label}`;
+                      const memberNotes = (notesByField[`field:${path}`] ?? []).length;
                       return (
                         <RepeatMemberCell
                           key={`${index}-${member.key}`}
@@ -1004,7 +1060,33 @@ export function RealFieldGrid({
                           glow={glow}
                           pulse={focusFieldKey === group.key || focusFieldKey === memberKey(group.key, member.key)}
                         >
-                          <FieldLabelRow field={memberField} tone="muted" meaning={glow?.meaning} />
+                          <FieldLabelRow field={memberField} tone="muted" meaning={glow?.meaning}>
+                            {/* @, History and Notes on a contact's or owner's own
+                                fields too (client, 6 Nov 2026), addressed as
+                                `contact[0].email`; the group's grant governs. */}
+                            <FieldMentionButton recordId={recordId} fieldKey={path} fieldLabel={pathLabel} currentValue={member.sensitive ? '' : valueText(instance[member.key])} />
+                            <FieldHistoryButton recordId={recordId} fieldKey={path} fieldLabel={pathLabel} />
+                            <button
+                              type="button"
+                              aria-expanded={openNotes.has(path)}
+                              aria-label={`Notes on ${pathLabel}`}
+                              onClick={() =>
+                                setOpenNotes((s) => {
+                                  const next = new Set(s);
+                                  if (next.has(path)) next.delete(path);
+                                  else next.add(path);
+                                  return next;
+                                })
+                              }
+                              title={`${memberNotes} note${memberNotes === 1 ? '' : 's'} on this field`}
+                              className={`inline-flex items-center gap-0.5 rounded px-1 py-px text-[10.5px] font-semibold transition-colors ${
+                                memberNotes ? 'bg-brand-50 text-brand-700 hover:bg-brand-100' : 'text-ink-400 hover:bg-canvas hover:text-ink-700'
+                              }`}
+                            >
+                              <Icon name="sticky-note" size={11} />
+                              {memberNotes ? memberNotes : null}
+                            </button>
+                          </FieldLabelRow>
                           <div className={FIELD_VALUE_SLOT}>
                           <FieldRenderer
                             field={memberField}
@@ -1015,6 +1097,20 @@ export function RealFieldGrid({
                             onChange={(v) => handleMemberChange(group, index, member.key, v)}
                           />
                           </div>
+                          {openNotes.has(path) ? (
+                            <NoteThread
+                              moduleSlug={moduleSlug}
+                              recordId={recordId}
+                              scopeKind="field"
+                              scopeId={path}
+                              notes={notesByField[`field:${path}`] ?? []}
+                              authorNames={authorNames}
+                              viewerId={viewerId}
+                              isAdmin={isAdmin}
+                              title={pathLabel.toLowerCase()}
+                              compact
+                            />
+                          ) : null}
                         </RepeatMemberCell>
                       );
                     })}

@@ -183,7 +183,7 @@ function check(src: AgreementSource): AgreementProblem[] {
 
 export const maverickAch: AgreementKindDef = {
   key: 'maverick_ach',
-  label: 'Maverick ACH agreement',
+  label: 'ACH agreement',
   fileLabel: 'ACH Agreement',
   emailLabel: 'ACH agreement',
   templateFile: 'Maverick_ACH_Agreement_v1.7.pdf',

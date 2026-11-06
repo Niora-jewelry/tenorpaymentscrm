@@ -80,8 +80,10 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
    * modules sharing a list share a heading.
    */
   const everyModule = config.modules.slice().sort((a, b) => a.position - b.position);
+  // Current Status is one field per module (migration 9922); a flow sees them as one.
+  const statusIds = new Set(config.fields.filter((f) => f.moduleId).map((f) => f.id));
   const choicesOf = (f: Field): Option[] => {
-    const own = config.choices.filter((x) => x.fieldId === f.id).sort((a, b) => a.position - b.position);
+    const own = config.choices.filter((x) => (statusIds.has(f.id) ? statusIds.has(x.fieldId) : x.fieldId === f.id)).sort((a, b) => a.position - b.position);
     const general = own.filter((c) => c.moduleId === null);
     if (own.length === general.length) return general.map((c) => ({ value: c.key, label: c.value }));
     const lists = new Map<string, { modules: string[]; choices: typeof own }>();
@@ -114,7 +116,7 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
     const places = [{ subtabId: null as string | null, where: t.label }, ...subs.map((s) => ({ subtabId: s.id as string | null, where: `${t.label} › ${s.label}` }))];
     for (const place of places) {
       for (const f of fieldsInTab(config, t.id, place.subtabId)) {
-        if (f.archivedAt || synced.has(f.id)) continue;
+        if (f.archivedAt || synced.has(f.id) || (f.moduleId && f.id !== statusField?.id)) continue;
         if (f.type === 'repeat_group') {
           fields.push({ key: f.key, label: f.label, where: place.where, type: f.type, choices: [] });
           for (const m of f.repeatSchema ?? []) {

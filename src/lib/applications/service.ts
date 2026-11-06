@@ -34,6 +34,7 @@ import { APPLICATION_FIELD_KEYS, answersForPdf, buildWrite, parseTargetKey, pref
 import { applicationFileName, fillApplicationPdf, loadTemplate, readApplicationPdf, templateInstalled, TemplateMissingError } from './pdf';
 import { sanitizeAnswers } from './validate';
 import { stampPreview } from '@/lib/pdf/previewStamp';
+import { PDF_APPLICATION_OFFERED } from './offer';
 import { groupFieldProblems, isFilled, requiredFlagProblems, type FieldProblem, type ProblemGroup } from '@/lib/records/fieldProblems';
 import type { Answers } from './catalog';
 import {
@@ -115,6 +116,9 @@ export async function canOpenReturnedPdfs(ctx: AuthContext): Promise<boolean> {
 }
 
 /** The record's applications, through the viewer's own RLS. */
+/** With the PDF hidden, an application needs no template to go out. */
+const applicationReady = async () => !PDF_APPLICATION_OFFERED || templateInstalled();
+
 export async function applicationsFor(ctx: AuthContext, recordId: string): Promise<ApplicationsPanelData> {
   const tab = await applicationsTab();
   const grant = tab ? await tabAccess(ctx, recordId, tab) : 'hidden';
@@ -133,7 +137,7 @@ export async function applicationsFor(ctx: AuthContext, recordId: string): Promi
       .eq('record_id', recordId)
       .order('uploaded_at', { ascending: false }),
     canOpenReturnedPdfs(ctx),
-    templateInstalled(),
+    applicationReady(),
   ]);
   for (const r of [apps, changes, files]) if (r.error) throw r.error;
   const count = (id: string, s: string) => (changes.data ?? []).filter((c) => c.application_id === id && c.status === s).length;
@@ -250,7 +254,7 @@ export async function sendDefaults(ctx: AuthContext, recordId: string): Promise<
     recordForApplication(recordId),
     applicationSettings(),
     inbox.mode === 'mailbox' ? (inbox.inbox.ready ? companyFromOption(inbox.inbox).then((o) => [o]) : Promise.resolve([])) : fromOptions(ctx),
-    templateInstalled(),
+    applicationReady(),
     supabaseAdmin().from('profiles').select('full_name, email').eq('id', ctx.userId).maybeSingle(),
   ]);
   if (!rec) throw new ApplicationError('That record no longer exists.');
@@ -290,6 +294,19 @@ export async function previewApplicationPdf(ctx: AuthContext, recordId: string):
   const labels = await choiceLabels();
   const filled = await fillApplicationPdf(await loadTemplate(), answersForPdf(prefillAnswers(visible, labels)), 'PREVIEW');
   return { name: `Preview - ${applicationFileName(merchantName(rec.values, rec.dealName))}`, bytes: await stampPreview(filled) };
+}
+
+/** The online form as the merchant would open it now, from what the viewer may see. */
+export async function previewApplicationOnline(
+  ctx: AuthContext,
+  recordId: string,
+): Promise<{ merchant: string; answers: Answers; ssnOnFile: Record<number, string> }> {
+  await requireApplicationsEdit(ctx, recordId);
+  const rec = await recordForApplication(recordId);
+  if (!rec) throw new ApplicationError('That record no longer exists.');
+  const hidden = await hiddenFieldKeysFor(ctx, recordId, (await loadConfig()).fields);
+  const visible = Object.fromEntries(Object.entries(rec.values).filter(([k]) => !hidden.has(k)));
+  return { merchant: merchantName(rec.values, rec.dealName), answers: prefillAnswers(visible, await choiceLabels()), ssnOnFile: ssnOnFileFor(visible) };
 }
 
 // ── the pre-send check ──────────────────────────────────────────────────────
@@ -369,16 +386,24 @@ async function deliver(
 ): Promise<void> {
   const rec = await recordForApplication(app.recordId);
   if (!rec) throw new ApplicationError('That record no longer exists.');
-  // What the sender may not see is not sent out in their name either.
-  const hidden = await hiddenFieldKeysFor(ctx, app.recordId, (await loadConfig()).fields);
-  const visible = Object.fromEntries(Object.entries(rec.values).filter(([k]) => !hidden.has(k)));
-  const labels = await choiceLabels();
-  const pdf = await fillApplicationPdf(await loadTemplate(), answersForPdf(prefillAnswers(visible, labels)), appLabel(app.number));
-  const fileName = applicationFileName(merchantName(rec.values, rec.dealName));
 
-  const path = `${ctx.userId}/${newId()}/${fileName.replace(/[^\w.\- ()']+/g, '_')}`;
-  const up = await supabaseAdmin().storage.from(OUTBOX_BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: false });
-  if (up.error) throw new ApplicationError('Could not attach the PDF. Try again.');
+  // The PDF goes along only while it is offered (`offer.ts`).
+  const attached: { path: string; name: string; size: number; contentType: string }[] = [];
+  if (PDF_APPLICATION_OFFERED) {
+    // What the sender may not see is not sent out in their name either.
+    const hidden = await hiddenFieldKeysFor(ctx, app.recordId, (await loadConfig()).fields);
+    const visible = Object.fromEntries(Object.entries(rec.values).filter(([k]) => !hidden.has(k)));
+    const labels = await choiceLabels();
+    const pdf = await fillApplicationPdf(await loadTemplate(), answersForPdf(prefillAnswers(visible, labels)), appLabel(app.number));
+    const fileName = applicationFileName(merchantName(rec.values, rec.dealName));
+    const path = `${ctx.userId}/${newId()}/${fileName.replace(/[^\w.\- ()']+/g, '_')}`;
+    const up = await supabaseAdmin().storage.from(OUTBOX_BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: false });
+    if (up.error) throw new ApplicationError('Could not attach the PDF. Try again.');
+    attached.push({ path, name: fileName, size: pdf.byteLength, contentType: 'application/pdf' });
+  }
+  const dropAttached = async () => {
+    if (attached.length) await supabaseAdmin().storage.from(OUTBOX_BUCKET).remove(attached.map((a) => a.path));
+  };
 
   const link = linkFor(token);
   const supabase = await createSupabaseServerClient();
@@ -397,11 +422,11 @@ async function deliver(
         html: await companyBody(emailHtml(input.body, link), inbox.inbox),
         to: [{ name: '', address: input.to }],
         cc: input.cc.map((address) => ({ name: '', address })),
-        attachments: [{ path, name: fileName, size: pdf.byteLength, contentType: 'application/pdf' }],
+        attachments: attached,
       });
       outboxId = queued.outboxId;
     } catch (e) {
-      await supabaseAdmin().storage.from(OUTBOX_BUCKET).remove([path]);
+      await dropAttached();
       throw new ApplicationError(e instanceof SendingInboxError ? e.message : 'Outlook did not accept the message. Try again.');
     }
     fromAddress = inbox.inbox.address;
@@ -418,11 +443,11 @@ async function deliver(
     p_to: [{ name: '', address: input.to }],
     p_cc: input.cc.map((address) => ({ name: '', address })),
     p_bcc: [],
-    p_attachments: [{ path, name: fileName, size: pdf.byteLength, contentType: 'application/pdf' }],
+    p_attachments: attached,
     p_send_at: null,
   });
   if (error) {
-    await supabaseAdmin().storage.from(OUTBOX_BUCKET).remove([path]);
+    await dropAttached();
     throw new ApplicationError(error.code === '42501' || error.code === '22023' ? error.message : 'Outlook did not accept the message. Try again.');
   }
   const ownId = (data as { id: string }[])[0]?.id;
@@ -443,7 +468,7 @@ async function deliver(
       from_identity: fromAddress || 'crm',
       to_identity: [input.to, ...input.cc].join(', '),
       subject: input.subject,
-      body: `${input.body.replace(/\{\{\s*link\s*\}\}/g, link)}\n\nAttached: ${fileName}`,
+      body: `${input.body.replace(/\{\{\s*link\s*\}\}/g, link)}${attached[0] ? `\n\nAttached: ${attached[0].name}` : ''}`,
       external_id: `application:${app.id}:${outboxId ?? newId()}`,
       sent_at: new Date().toISOString(),
     });

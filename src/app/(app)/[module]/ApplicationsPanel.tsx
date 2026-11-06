@@ -2,7 +2,7 @@
 
 /**
  * Applications on a merchant record (Prepopulated Application spec):
- * Send Application, every application with its status, resend / void, the
+ * every application with its status, resend / void, the
  * "Needs review" badge into the review screen, and "Upload completed
  * application" for a PDF the merchant emailed back.
  *
@@ -44,7 +44,7 @@ type Choose = Extract<UploadOutcome, { kind: 'choose' }> & { path: string; name:
 export function ApplicationsPanel({ recordId, data }: { recordId: string; data: ApplicationsPanelData }) {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [sending, setSending] = useState<null | { resend: { id: string; label: string; to: string; cc: string[] } | null }>(null);
+  const [sending, setSending] = useState<null | { resend: { id: string; label: string; to: string; cc: string[] } }>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'bad' | 'warn'; text: string; href?: string; hrefLabel?: string } | null>(null);
   const [voiding, setVoiding] = useState<ApplicationView | null>(null);
   const [choose, setChoose] = useState<Choose | null>(null);
@@ -121,24 +121,13 @@ export function ApplicationsPanel({ recordId, data }: { recordId: string; data: 
           <p className="text-[12px] text-ink-500">
             {data.items.length
               ? 'Answers that come back fill empty fields; anything different waits for review.'
-              : 'Send the merchant an application filled with what the CRM knows. They finish it online or return the PDF.'}
+              : 'No application sent yet.'}
           </p>
         </div>
-        {data.canEdit ? (
+        {data.canEdit && open.length ? (
           <div className="flex shrink-0 items-center gap-2">
-            {open.length ? (
-              <Button size="sm" icon="upload" onClick={() => pick(null)} loading={uploading} loadingLabel="Reading PDF…">
-                Upload completed
-              </Button>
-            ) : null}
-            <Button
-              size="sm"
-              variant="primary"
-              icon="send"
-              title={data.templateReady ? undefined : 'The application PDF template is not installed yet'}
-              onClick={() => setSending({ resend: null })}
-            >
-              Send application
+            <Button size="sm" icon="upload" onClick={() => pick(null)} loading={uploading} loadingLabel="Reading PDF…">
+              Upload completed
             </Button>
           </div>
         ) : null}

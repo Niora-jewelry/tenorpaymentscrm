@@ -132,18 +132,19 @@ try {
   await go(page, `/contacts?record=${probe.id}&tab=${applicationsKey}`);
   t('admin: Maverick application card', await until(async () => /Maverick application/.test(await body(page))));
   t('admin: not-connected note', /not connected yet/.test(await body(page)));
-  const check = page.getByRole('button', { name: /Pre-send check/ });
+  await go(page, `/contacts?record=${probe.id}&tab=files`);
+  const check = page.getByRole('region', { name: 'Send documents' }).getByRole('button', { name: 'Preview' });
   if (await check.isVisible()) {
     await check.click();
     t('admin: pre-send check dialog lists problems', await until(async () => /Application data|need|missing/i.test(await body(page))));
     await shot(page, 'mav-4-precheck');
     await page.keyboard.press('Escape');
-  } else t('admin: Pre-send check button', false);
+  } else t('admin: Maverick Preview button', false);
 
   // ── Files tab send bar ─────────────────────────────────────────────────
   await go(page, `/contacts?record=${probe.id}&tab=files`);
-  const bar = await until(async () => /Send application/i.test(await body(page)) && /Send proposal/i.test(await body(page)) && /Send agreement/i.test(await body(page)));
-  t('admin: Files tab has the three send buttons', bar);
+  const bar = await until(async () => /Application/.test(await body(page)) && /Proposal/.test(await body(page)) && /Acquiring agreement/.test(await body(page)) && /ACH agreement/.test(await body(page)) && /to Maverick|Update Maverick/.test(await body(page)));
+  t('admin: Files tab has the send buttons', bar);
   await shot(page, 'mav-5-files-bar');
 
   // ── Vital Info + list flag ─────────────────────────────────────────────
@@ -158,11 +159,14 @@ try {
   t('admin: list row carries the flag', await until(() => page.getByLabel('Not matched to Maverick').first().isVisible()));
 
   // ── Connection page ────────────────────────────────────────────────────
+  // Since 6 Nov 2026 the connection lives in Integrations › Maverick Payments; the old address forwards there.
   await go(page, '/admin/maverick');
+  t('admin: old address forwards to Integrations › Maverick', page.url().includes('/admin/integrations?tab=maverick'));
   const conn = await body(page);
-  t('admin: connection page loads', /Each kind of data/.test(conn) && /Recent daily runs/.test(conn));
-  t('admin: unmatched merchant listed', conn.includes(`ZZ Unmatched ${tag}`));
-  t('admin: sidebar has Maverick', await page.getByRole('link', { name: 'Maverick', exact: true }).first().isVisible().catch(() => false));
+  t('admin: Main connector shows health', /Each kind of data/.test(conn) && /Recent daily runs/.test(conn));
+  await page.getByRole('tab', { name: 'Individual connectors' }).click();
+  t('admin: unmatched merchant under Individual connectors', await until(async () => (await body(page)).includes(`ZZ Unmatched ${tag}`)));
+  t('admin: no Maverick item in the menu', !(await page.getByRole('link', { name: 'Maverick', exact: true }).first().isVisible().catch(() => false)));
   await shot(page, 'mav-6-connection');
 
   // ── Integrations ───────────────────────────────────────────────────────
@@ -196,7 +200,7 @@ try {
   t(`member: Reporting ${memberPerms['reporting.tab'] === 'view' ? 'shown' : 'absent'}`, (memberPerms['reporting.tab'] === 'view') === reportingShown);
   await go(mp, '/admin/maverick');
   const allowedConn = memberPerms['maverick.connection'] === 'yes' || memberPerms['maverick.resolve_unmatched'] === 'yes';
-  t(`member: connection page ${allowedConn ? 'opens' : 'redirects'}`, allowedConn ? mp.url().includes('/admin/maverick') : !mp.url().includes('/admin/maverick'));
+  t(`member: connection page ${allowedConn ? 'opens' : 'redirects'}`, allowedConn ? mp.url().includes('/admin/integrations') : !mp.url().includes('/admin/'));
   await shot(mp, 'mav-8-member');
   t('member perms read', true, JSON.stringify(memberPerms));
   t('no 5xx / page errors', errors.length === 0, errors.slice(0, 3).join(' | '));

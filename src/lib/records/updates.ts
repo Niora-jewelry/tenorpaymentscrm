@@ -31,8 +31,12 @@ export type Update = {
   mentionedUserIds: string[];
   /** Set when the entry is a field mention: the field it was sent from. */
   fieldKey: string | null;
+  /** A row member the mention was sent from (`[0].email`), with `fieldKey` its group. */
+  fieldMember: string | null;
   /** Written by the system: read-only, whoever it names as its author. */
   isLog: boolean;
+  /** Something the CRM logged, not something a person wrote: Updates › Activity. */
+  activity: boolean;
 };
 
 /** A person who may be @mentioned here (see `mention_candidates`). */
@@ -50,7 +54,9 @@ function mapUpdate(r: Record<string, unknown>, mentionedUserIds: string[]): Upda
     editedAt: (r.edited_at as string | null) ?? null,
     mentionedUserIds,
     fieldKey: (r.field_key as string | null) ?? null,
+    fieldMember: (r.field_member as string | null) ?? null,
     isLog: r.is_log === true,
+    activity: r.activity === true,
   };
 }
 

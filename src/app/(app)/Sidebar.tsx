@@ -76,21 +76,19 @@ import { useLiveCounts } from './useLiveCounts';
 const BRAND_NAME = 'Tenor Payments';
 
 /**
- * The Configure group, in its long-standing order: Users and Permissions
- * together (who a user is, and what they may see), then Presets, then the two
- * things an admin operates (Phone numbers, Residuals admin), then the status
- * pages, then the Recycle bin. "Permissions" is the user's word for the
- * template screen; "Residuals admin", because the Residuals MODULE owns the
- * plain name.
+ * The Configure group: Users and Permissions together (who a user is, and what
+ * they may see), then Presets, Integrations, Automations and the Recycle bin.
+ *
+ * Phone numbers and Maverick now live inside Integrations (Twilio and Maverick
+ * tabs), and Residuals admin is hidden from the menu (client, 6 Nov 2026). Their
+ * pages still exist: the first two forward to their Integrations tab, and
+ * /admin/residuals still opens for anyone who has it.
  */
 const CONFIGURE_ITEMS: { page: string; href: string; icon: IconName; label: string; exact?: boolean }[] = [
   { page: 'users', href: '/admin/users', icon: 'users', label: 'Users', exact: true },
   { page: 'permissions', href: '/admin/templates', icon: 'key', label: 'Permissions' },
   { page: 'presets', href: '/admin/presets', icon: 'sliders', label: 'Presets', exact: true },
-  { page: 'numbers', href: '/admin/numbers', icon: 'phone', label: 'Phone numbers', exact: true },
-  { page: 'residuals', href: '/admin/residuals', icon: 'percent', label: 'Residuals admin' },
   { page: 'integrations', href: '/admin/integrations', icon: 'link', label: 'Integrations', exact: true },
-  { page: 'maverick', href: '/admin/maverick', icon: 'briefcase', label: 'Maverick', exact: true },
   { page: 'automations', href: '/admin/automations', icon: 'route', label: 'Automations', exact: true },
   { page: 'recycle_bin', href: '/admin/recycle-bin', icon: 'trash', label: 'Recycle bin', exact: true },
 ];
@@ -211,7 +209,6 @@ export function Sidebar({
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-2">
         {storageModules.length ? (
           <>
-            <GroupLabel collapsed={collapsed}>Storage</GroupLabel>
             {storageModules.map((m) => (
               <NavItem
                 key={m.slug}

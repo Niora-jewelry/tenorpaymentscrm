@@ -71,7 +71,7 @@ const CHECKBOX_WIDTH = 44;
 export type { Filter };
 
 /** The control a field type gets, per the spec's filtering matrix. */
-export function filterKindFor(type: Field['type']): Filter['kind'] | null {
+export function filterKindFor({ type, autoSource }: Pick<Field, 'type' | 'autoSource'>): Filter['kind'] | null {
   switch (type) {
     case 'text':
     case 'long_text':
@@ -79,7 +79,11 @@ export function filterKindFor(type: Field['type']): Filter['kind'] | null {
     case 'phone':
     case 'url':
     case 'address':
+    case 'identifier':
       return 'contains';
+    // Filled in by the CRM, so filtered as what it holds: a person, a date, text.
+    case 'auto':
+      return autoSource === 'record_creator' ? 'values' : autoSource === 'created_at' ? 'dates' : 'contains';
     case 'dropdown':
     case 'status':
     case 'multi_select':
@@ -99,6 +103,9 @@ export function filterKindFor(type: Field['type']): Filter['kind'] | null {
       return null;
   }
 }
+
+/** Deal Name is no field, but it filters and sorts like any other column. */
+const DEAL_NAME_FIELD = { id: 'deal_name', label: 'Deal Name', type: 'text' } as Field;
 
 function matches(record: RecordRow, filter: Filter, field: Field): boolean {
   const raw = filter.fieldId === 'deal_name' ? record.dealName : record.values[filter.fieldId];
@@ -192,8 +199,10 @@ function ColumnHeader({
   filter?: Filter;
   onChange: (f: Filter | undefined) => void;
 }) {
-  const kind = filterKindFor(field.type);
+  const kind = filterKindFor(field);
   const active = Boolean(filter);
+  /** The list offers people, not stored ids. */
+  const ofPeople = field.type === 'team_member' || field.autoSource === 'record_creator';
   const sortable = Boolean(onSort) && SORTABLE_TYPES.has(field.type);
   /* Said the way the type reads, not "ascending": an amount runs low to high,
      a date oldest to newest, a dropdown or status in its options' own order. */
@@ -234,7 +243,7 @@ function ColumnHeader({
       if (Array.isArray(v)) v.forEach((x) => set.add(String(x)));
       else if (v != null && v !== '') set.add(String(v));
     }
-    if (field.type === 'team_member') {
+    if (ofPeople) {
       for (const person of peopleById.values()) if (!person.suspended) set.add(person.id);
     } else {
       for (const c of options) set.add(choiceKey(c));
@@ -244,9 +253,9 @@ function ColumnHeader({
     // Sorted by what the reader actually sees, not by the stored key — a
     // column of uuids sorted as uuids is in no order at all.
     const labelOf = (v: string) =>
-      field.type === 'team_member' ? resolvePerson(v, peopleById).name : choiceLabel(options, v);
+      ofPeople ? resolvePerson(v, peopleById).name : choiceLabel(options, v);
     return [...set].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
-  }, [rows, field.id, field.type, kind, options, peopleById, filter]);
+  }, [rows, field.id, ofPeople, kind, options, peopleById, filter]);
 
   const label = (
     <span
@@ -358,7 +367,7 @@ function ColumnHeader({
                           onChange(next.length ? { fieldId: field.id, kind: 'values', values: next } : undefined);
                         }}
                       />
-                      {field.type === 'team_member' ? (
+                      {ofPeople ? (
                         (() => {
                           const person = resolvePerson(v, peopleById);
                           return (
@@ -557,6 +566,9 @@ type DataTableProps = {
   /** A page change is in flight. Dims the grid so a click that takes a server
    *  round trip does not look like a click that did nothing. */
   tableBusy?: boolean;
+  /** New filters are on their way. Dims the rows only: the header stays live,
+   *  so the filter being typed or ticked can carry on. */
+  rowsBusy?: boolean;
   /** The row whose drawer is currently being fetched, if any.
    *
    * Opening a record is a server navigation, and on the live database it takes
@@ -1072,6 +1084,7 @@ export function DataTable({
   onOpenMention,
   serverPaging,
   tableBusy,
+  rowsBusy = false,
   openingId,
   selected,
   onSelectedChange,
@@ -1297,6 +1310,7 @@ export function DataTable({
              * saying so.
              */
             const field =
+              (fl.fieldId === DEAL_NAME_FIELD.id ? DEAL_NAME_FIELD : undefined) ??
               columns.find((c) => c.id === fl.fieldId) ??
               filterOnlyFields?.find((c) => c.id === fl.fieldId);
             return (
@@ -1371,9 +1385,20 @@ export function DataTable({
                   minWidth: DEAL_NAME_WIDTH,
                 }}
               >
-                <div className="px-3 py-2.5 text-[11.5px] font-semibold uppercase tracking-[.06em] text-ink-500">
-                  Deal Name
-                </div>
+                <ColumnHeader
+                  field={DEAL_NAME_FIELD}
+                  rows={rows}
+                  moduleSlug={moduleSlug}
+                  filter={filters[DEAL_NAME_FIELD.id]}
+                  onChange={(f) => {
+                    const next = { ...filters };
+                    if (f) next[DEAL_NAME_FIELD.id] = f;
+                    else delete next[DEAL_NAME_FIELD.id];
+                    onSetFilters(next);
+                  }}
+                  sort={sort?.fieldId === DEAL_NAME_FIELD.id ? sort.dir : null}
+                  onSort={onSortChange ? (dir) => onSortChange(dir ? { fieldId: DEAL_NAME_FIELD.id, dir } : null) : undefined}
+                />
               </th>
 
               {systemColumn ? (
@@ -1472,7 +1497,7 @@ export function DataTable({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody aria-busy={rowsBusy || undefined} className={`transition-opacity duration-150 ${rowsBusy ? 'opacity-50' : ''}`}>
             {pageRows.map((r, rowIndex) => {
               const isSelected = selected.has(r.id);
               const archived = r.memberships.length === 0;

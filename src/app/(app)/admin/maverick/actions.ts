@@ -44,7 +44,7 @@ export async function matchMerchantAction(input: z.input<typeof Match>): Promise
     await matchMerchant(ctx, parsed.data.merchantId, parsed.data.recordId);
     return null;
   }, 'Could not match the merchant.');
-  if (r.ok) revalidatePath('/admin/maverick');
+  if (r.ok) revalidatePath('/admin/integrations');
   return r;
 }
 
@@ -58,6 +58,6 @@ export async function syncNowAction(): Promise<Result<{ ran: boolean; reason?: s
     if (!limit.allowed) throw new ProcessorServiceError('The sync has been run three times this hour. Try again later.');
     return runProcessorSync(new Date(), { force: true });
   }, 'Could not run the sync.');
-  revalidatePath('/admin/maverick');
+  revalidatePath('/admin/integrations');
   return r;
 }

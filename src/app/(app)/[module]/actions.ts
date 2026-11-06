@@ -17,14 +17,13 @@ import {
   myRecentFieldChange,
   mentionOnField,
   recordMentions,
-  isMuted,
-  setMuted,
   type Candidate,
   type RecentChange,
   type NotificationView,
 } from '@/lib/records/notifications';
 import { deliverMentionEmails, notificationIdsFor } from '@/lib/notifications/email';
 import { authorize, fieldGrant } from '@/lib/records/permissions';
+import { baseFieldKey, FIELD_OR_MEMBER, parseMemberPath } from '@/lib/records/memberPath';
 import { loadConfig, fieldByKey, fieldsInRepeatGroup, moduleBySlug, columnsForModule, type Field } from '@/lib/records/config';
 // Plain values, deliberately NOT declared in this file — see the header of
 // `fieldValueCodec.ts`: a 'use server' module may export only async
@@ -46,6 +45,7 @@ import {
   setFileRowRequired, renameFileRow, deleteFileRow, moveFile, replaceFile, fileVersionsFor, type FileVersion,
 } from '@/lib/records/files';
 import { attachToCase } from '@/lib/records/caseAttachments';
+import { attachToUpdate } from '@/lib/records/updateAttachments';
 import { addLogin, revealPassword } from '@/lib/records/logins';
 import { lockedFieldMessage } from '@/lib/records/restrictions';
 import { uploadStatement, deleteStatement, signedStatementUrlFor } from '@/lib/records/statements';
@@ -742,14 +742,38 @@ export async function addUpdateAction(
   recordId: string,
   parentId: string | null,
   formData: FormData,
-): Promise<void> {
+): Promise<string | null> {
   const ctx = await authorize();
   const body = String(formData.get('body') ?? '').trim();
+  let posted: string | null = null;
   if (body) {
     const { id, mentioned } = await addUpdate(ctx, recordId, body, parentId ?? undefined, mentionIdsFrom(formData.get('mentions')));
+    posted = id;
     if (mentioned.length) emailMentions({ updateId: id });
   }
   revalidatePath(`/${moduleSlug}`);
+  return posted;
+}
+
+/** One file onto an Update its author just wrote, or is editing. */
+export async function attachToUpdateAction(moduleSlug: string, updateId: string, formData: FormData): Promise<ActionState> {
+  const parsed = z.uuid().safeParse(updateId);
+  if (!parsed.success) return { ok: false, message: 'That update is not available.' };
+  const ctx = await authorize();
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: 'Choose a file first.' };
+  try {
+    const result = await attachToUpdate(ctx, parsed.data, {
+      name: file.name,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      contentType: file.type || 'application/octet-stream',
+    });
+    revalidatePath(`/${moduleSlug}`);
+    if (!result.ok) return { ok: false, message: result.error === 'too_large' ? `${file.name} is over the 25MB limit.` : 'An update can hold 5 files.' };
+    return { ok: true };
+  } catch {
+    return { ok: false, message: `Could not add ${file.name}.` };
+  }
 }
 
 export async function editUpdateAction(
@@ -783,13 +807,16 @@ export async function mentionCandidatesAction(input: { recordId: string; scope: 
 
 /** Everything the field's @ box needs when it opens. */
 export async function fieldMentionContextAction(input: { recordId: string; fieldKey: string }): Promise<{ candidates: Candidate[]; recentChange: RecentChange }> {
-  const parsed = z.object({ recordId: z.uuid(), fieldKey: z.string().regex(/^[a-z0-9_]{1,80}$/) }).safeParse(input);
+  const parsed = z.object({ recordId: z.uuid(), fieldKey: z.string().regex(FIELD_OR_MEMBER) }).safeParse(input);
   if (!parsed.success) return { candidates: [], recentChange: null };
   const ctx = await authorize();
+  // A row member (`contact[0].email`): its group decides who may see it, and
+  // "your recent change" is a field-level idea a member does not have.
+  const member = parseMemberPath(parsed.data.fieldKey);
   try {
     const [candidates, recentChange] = await Promise.all([
-      mentionCandidates(ctx, parsed.data.recordId, `field:${parsed.data.fieldKey}`),
-      myRecentFieldChange(ctx, parsed.data.recordId, parsed.data.fieldKey),
+      mentionCandidates(ctx, parsed.data.recordId, `field:${baseFieldKey(parsed.data.fieldKey)}`),
+      member ? Promise.resolve(null) : myRecentFieldChange(ctx, parsed.data.recordId, parsed.data.fieldKey),
     ]);
     return { candidates, recentChange };
   } catch {
@@ -799,7 +826,7 @@ export async function fieldMentionContextAction(input: { recordId: string; field
 
 const FieldMention = z.object({
   recordId: z.uuid(),
-  fieldKey: z.string().regex(/^[a-z0-9_]{1,80}$/),
+  fieldKey: z.string().regex(FIELD_OR_MEMBER),
   userIds: z.array(z.uuid()).min(1).max(50),
   note: z.string().max(500).nullable(),
   includePrevious: z.boolean(),
@@ -816,7 +843,7 @@ export async function fieldMentionAction(input: z.input<typeof FieldMention>): P
   } catch (e) {
     return { ok: false, message: e instanceof Error && /not found/.test(e.message) ? 'That field is no longer available.' : 'Could not send that mention.' };
   }
-  if (sent > 0) emailMentions({ recordId: parsed.data.recordId, fieldKey: parsed.data.fieldKey, since });
+  if (sent > 0) emailMentions({ recordId: parsed.data.recordId, fieldKey: baseFieldKey(parsed.data.fieldKey), since });
   return { ok: true, sent };
 }
 
@@ -828,18 +855,6 @@ export async function recordMentionsAction(input: { recordId: string }): Promise
     return await recordMentions(ctx, parsed.data.recordId);
   } catch {
     return [];
-  }
-}
-
-export async function muteRecordAction(input: { recordId: string; muted: boolean }): Promise<ActionState & { muted?: boolean }> {
-  const parsed = z.object({ recordId: z.uuid(), muted: z.boolean() }).safeParse(input);
-  if (!parsed.success) return { ok: false, message: 'Could not change that.' };
-  const ctx = await authorize();
-  try {
-    await setMuted(ctx, parsed.data.recordId, parsed.data.muted);
-    return { ok: true, muted: await isMuted(ctx, parsed.data.recordId) };
-  } catch {
-    return { ok: false, message: 'Could not change that.' };
   }
 }
 

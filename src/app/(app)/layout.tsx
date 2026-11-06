@@ -79,9 +79,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const adminPages = (
     await Promise.all(ADMIN_PAGES.map(async (p) => [p, await canOpenAdminPage(ctx, p)] as const))
   ).filter(([, ok]) => ok).map(([p]) => p) as string[];
-  // Maverick's connection page: its own two permissions, not an admin.* page setting.
+  // Integrations also holds Phone numbers (Twilio tab) and the Maverick
+  // connection, each with its own permission, so any one of them opens it.
   const mav = await processorPerms(ctx).catch(() => null);
-  if (mav && (mav.connection || mav.resolveUnmatched)) adminPages.push('maverick');
+  if (!adminPages.includes('integrations') && (adminPages.includes('numbers') || (mav && (mav.connection || mav.resolveUnmatched)))) adminPages.push('integrations');
   const [counts, binCount] = await Promise.all([
     moduleRecordCounts([...storageModules, ...displayModules]),
     adminPages.includes('recycle_bin') ? deletedRecordCount(ctx) : Promise.resolve(0),

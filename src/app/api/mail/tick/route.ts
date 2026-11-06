@@ -12,6 +12,7 @@
  * (operator runbook).
  */
 import { NextResponse, after, type NextRequest } from 'next/server';
+import { runSystem } from '@/lib/automations/system';
 import { z } from 'zod';
 import { serverEnv } from '@/lib/env.server';
 import { agreementsReady, mailReady } from '@/lib/integrations/resolve';
@@ -46,23 +47,21 @@ async function handle(req: NextRequest) {
   // no mail — hence this sits ahead of the mail check below.
   if (await agreementsReady()) {
     after(async () => {
-      try {
+      await runSystem('agreement_downloads', async () => {
         const r = await retryPendingDownloads();
         if (r.stored || r.failed) mailLog('info', 'tick', 'agreement downloads', r);
-      } catch (e) {
-        mailLog('error', 'tick', 'agreement downloads crashed', { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
-      }
+        return { count: r.stored + r.failed, note: r.stored || r.failed ? `${r.stored} saved, ${r.failed} gave up` : null };
+      });
     });
   }
   if (!(await mailReady())) return NextResponse.json({ skipped: 'not_configured' }, { status: 202 });
 
   after(async () => {
-    try {
+    await runSystem('mail_sync', async () => {
       const summary = await runTick({ only: only ?? undefined, trigger: only ? 'manual' : 'tick' });
       mailLog('info', 'tick', 'done', summary);
-    } catch (e) {
-      mailLog('error', 'tick', 'crashed', { message: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
-    }
+      return { count: summary.changed, note: summary.failed ? `${summary.ok} mailboxes synced, ${summary.failed} failed` : summary.changed ? `${summary.changed} changes from ${summary.ok} mailboxes` : null };
+    });
   });
   return NextResponse.json({ accepted: true }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
 }

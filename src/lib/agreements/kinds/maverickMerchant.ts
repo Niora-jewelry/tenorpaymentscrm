@@ -313,7 +313,7 @@ function check(src: AgreementSource): AgreementProblem[] {
 
 export const maverickMerchant: AgreementKindDef = {
   key: 'maverick_merchant',
-  label: 'Maverick merchant agreement',
+  label: 'Acquiring agreement',
   fileLabel: 'Merchant Agreement',
   emailLabel: 'merchant agreement',
   templateFile: 'Maverick_Merchant_Agreement_v1.8.pdf',

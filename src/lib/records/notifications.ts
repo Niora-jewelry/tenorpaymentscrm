@@ -18,6 +18,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import type { AuthContext } from './permissions';
 import { moduleGrant } from './permissions';
 import { loadConfig } from './config';
+import { parseMemberPath } from './memberPath';
 import { profileNamesFor } from './users';
 
 export type MentionKind = 'mention_update' | 'mention_case_reply' | 'mention_field';
@@ -108,7 +109,7 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   const recordId = r.record_id as string | null;
   if (kind === 'automation_alert') return '/admin/automations/runs';
   // A processor (Maverick) sync problem: the connection page shows what failed.
-  if (kind === 'processor') return '/admin/maverick';
+  if (kind === 'processor') return '/admin/integrations?tab=maverick';
   if (!recordId || !mod) return kind in TAB_FOR_PHONE ? '/phone' : null;
   const base = `/${mod.slug}?record=${recordId}`;
   if (kind.startsWith('mention_') || kind === 'agreement' || kind === 'proposal') {
@@ -310,6 +311,20 @@ export async function mentionOnField(
   input: { recordId: string; fieldKey: string; userIds: string[]; note: string | null; includePrevious: boolean },
 ): Promise<number> {
   const supabase = await createSupabaseServerClient();
+  // A contact's or owner's Email, Phone… (`contact[0].email`): the member form.
+  const member = parseMemberPath(input.fieldKey);
+  if (member) {
+    const { data, error } = await supabase.rpc('mention_field_member', {
+      p_record_id: input.recordId,
+      p_group_key: member.group,
+      p_index: member.index,
+      p_member_key: member.member,
+      p_mentioned_user_ids: input.userIds,
+      p_note: input.note,
+    });
+    if (error) throw error;
+    return Number(data ?? 0);
+  }
   const { data, error } = await supabase.rpc('mention_field', {
     p_record_id: input.recordId,
     p_field_key: input.fieldKey,

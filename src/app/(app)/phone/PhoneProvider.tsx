@@ -57,6 +57,7 @@ import { describePhoneError, type PhoneError } from '@/lib/phone/errors';
 type TwilioCall = {
   accept: () => void;
   reject: () => void;
+  sendDigits?: (digits: string) => void;
   disconnect: () => void;
   customParameters?: Map<string, string>;
   parameters?: Record<string, string>;
@@ -91,6 +92,8 @@ type PhoneContextValue = {
   incoming: ActiveCall | null;
   dial: (to: string) => Promise<void>;
   hangUp: () => void;
+  /** Keypad tones on a connected call, for a menu that says "press 1". */
+  sendDigits: (digits: string) => void;
   answer: () => void;
   reject: () => void;
 };
@@ -303,6 +306,10 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     setActiveCall(null);
   }, []);
 
+  const sendDigits = useCallback((digits: string) => {
+    if (/^[0-9*#]+$/.test(digits)) callRef.current?.sendDigits?.(digits);
+  }, []);
+
   const answer = useCallback(() => callRef.current?.accept(), []);
   const reject = useCallback(() => {
     callRef.current?.reject();
@@ -312,7 +319,7 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
 
   return (
     <PhoneContext.Provider
-      value={{ deviceState, error, activeCall, incoming, endedCall, dismissEndedCall, dial, hangUp, answer, reject }}
+      value={{ deviceState, error, activeCall, incoming, endedCall, dismissEndedCall, dial, hangUp, sendDigits, answer, reject }}
     >
       {children}
     </PhoneContext.Provider>

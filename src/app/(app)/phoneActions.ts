@@ -16,7 +16,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { authorize } from '@/lib/records/permissions';
 import { createOutboundCall, signedRecordingUrl, callDestination } from '@/lib/phone/calls';
-import { sendMessage } from '@/lib/phone/messages';
+import { sendMessage, messagesForThread, type PhoneMessage } from '@/lib/phone/messages';
+import { normalizePhone } from '@/lib/phone/normalize';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 /** Parse, never trust — CLAUDE.md rule 6, at every server boundary. */
@@ -122,6 +123,19 @@ function sendRefusal(
    * application logs for a problem that is not in the application.
    */
   return detail ? `Twilio refused the message: ${detail}` : 'The message could not be sent.';
+}
+
+/**
+ * One SMS conversation for the Phone page's panel. The key is a number, so it is
+ * parsed as one: anything that is not a phone number gets nothing back.
+ */
+export async function threadMessagesAction(threadKey: string): Promise<PhoneMessage[]> {
+  const ctx = await authorize();
+  const parsed = z.string().trim().min(3).max(32).safeParse(threadKey);
+  if (!parsed.success) return [];
+  const n = normalizePhone(parsed.data);
+  if (!n.ok) return [];
+  return messagesForThread(ctx, n.e164);
 }
 
 /** A 60-second link to one recording, addressed BY ITS ID — never a path. */

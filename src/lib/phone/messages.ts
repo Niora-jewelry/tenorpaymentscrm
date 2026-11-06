@@ -85,7 +85,12 @@ export async function messagesForRecord(
   return ((data ?? []) as MessageRow[]).map(toMessage);
 }
 
-/** One conversation with one number, wherever it landed. */
+/**
+ * One conversation with one number, oldest first, as the Phone page's SMS panel
+ * shows it. Scoped like `threadsForUser`: your own line's texts, or every line's
+ * when Phone is set to All users, so the panel never shows more than the list.
+ * The latest 300; a conversation longer than that starts where it got recent.
+ */
 export async function messagesForThread(
   ctx: AuthContext,
   threadKey: string,
@@ -93,15 +98,15 @@ export async function messagesForThread(
   if (!(await canSeePhone(ctx))) return [];
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from('phone_messages')
-    .select(MESSAGE_SELECT)
-    .eq('thread_key', threadKey)
+  let query = supabase.from('phone_messages').select(MESSAGE_SELECT).eq('thread_key', threadKey);
+  if (!(await seesAll(ctx, 'phone'))) query = query.eq('owner_id', ctx.userId);
+  const { data, error } = await query
     .is('deleted_at', null)
-    .order('sent_at', { ascending: true });
+    .order('sent_at', { ascending: false })
+    .limit(300);
 
   if (error) throw error;
-  return ((data ?? []) as MessageRow[]).map(toMessage);
+  return ((data ?? []) as MessageRow[]).map(toMessage).reverse();
 }
 
 export type SendResult =

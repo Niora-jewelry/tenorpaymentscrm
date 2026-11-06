@@ -55,6 +55,7 @@ describe('hrefFor — where a notification opens', () => {
   it('a phone alert without a record (or an unopenable one) falls back to the Phone page', () => {
     expect(hrefFor({ id: 'n6', source_kind: 'call', record_id: null }, undefined)).toBe('/phone');
     expect(hrefFor({ id: 'n7', source_kind: 'call', record_id: rec }, undefined)).toBe('/phone');
+    expect(hrefFor({ id: 'n7b', source_kind: 'sms', record_id: null }, undefined)).toBe('/phone?tab=sms');
   });
 
   it('encodes keys that are not URL-safe', () => {

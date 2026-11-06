@@ -1,42 +1,44 @@
 'use client';
 
 /**
- * The dial pad and this user's own call history.
+ * The keypad (right column of the Phone tab) and Recent calls (its left list).
  *
  * ── THE DEVICE STATE IS SHOWN, NOT HIDDEN ────────────────────────────────
  * Most reasons a call cannot be placed are configuration, not faults: no number
  * assigned, the phone subtab hidden by a template, Twilio not configured on
  * this deployment. Each returns a specific error from the token route, and this
- * screen repeats it. The alternative — a dial button that just does nothing —
- * is the version that generates support tickets.
+ * screen repeats it. The alternative, a Call button that just does nothing, is
+ * the version that generates support tickets.
+ *
+ * ── NO DELETE HERE ───────────────────────────────────────────────────────
+ * The client's Phone review: "There should be no delete function" on recent
+ * calls. A call row offers Text, Call back, Add contact and Listen only.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '@/proto/ui/icons';
-import { Button, EmptyState, StatusPill } from '@/proto/ui/kit';
+import { StatusPill } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
 import type { PhoneCall } from '@/lib/phone/calls';
-import { RecordingRow } from '@/app/(app)/[module]/PhonePanels';
-import { TelephonyDelete } from '../TelephonyDelete';
 import { usePhone } from './PhoneProvider';
+import { ListenButton } from './ListenButton';
+import { callDuration, isMissed, matches, type BookEntry } from './phoneBook';
+import { PanelEmpty, RowButton, SearchBox } from './PhoneBits';
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
+const KEYS: [string, string][] = [
+  ['1', ''], ['2', 'ABC'], ['3', 'DEF'],
+  ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'],
+  ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'],
+  ['*', ''], ['0', '+'], ['#', ''],
+];
 
 /**
  * Is the microphone actually available to us?
  *
- * ── WHY ASK INSTEAD OF WAITING FOR THE FAILURE ───────────────────────────
- * Once a browser has recorded a "block" for a site it stops prompting. So a
- * user who dismissed the prompt once gets no prompt ever again, no warning,
- * and no clue — just a call that fails at the moment they need it, with the
- * SDK blaming "the browser or end-user".
- *
- * `navigator.permissions` tells us up front, so the page can say so while
- * nothing is happening rather than at the worst possible moment.
- *
- * Wrapped in try/catch and defaulting to 'unknown' because Permissions API
- * support for the microphone name is uneven — Safari has historically not
- * supported it. Unknown means "say nothing", never "assume broken".
+ * Once a browser has recorded a "block" for a site it stops prompting, so a
+ * user who dismissed the prompt once gets a call that fails at the moment they
+ * need it. `navigator.permissions` tells us up front. Unknown means "say
+ * nothing", never "assume broken" (Safari has not always supported the name).
  */
 function useMicrophonePermission(): 'granted' | 'denied' | 'prompt' | 'unknown' {
   const [state, setState] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
@@ -44,7 +46,6 @@ function useMicrophonePermission(): 'granted' | 'denied' | 'prompt' | 'unknown' 
   useEffect(() => {
     let status: PermissionStatus | null = null;
     let cancelled = false;
-
     (async () => {
       try {
         status = await navigator.permissions.query({ name: 'microphone' as PermissionName });
@@ -55,7 +56,6 @@ function useMicrophonePermission(): 'granted' | 'denied' | 'prompt' | 'unknown' 
         // Not supported here. Stay quiet rather than guessing.
       }
     })();
-
     return () => {
       cancelled = true;
       if (status) status.onchange = null;
@@ -66,327 +66,312 @@ function useMicrophonePermission(): 'granted' | 'denied' | 'prompt' | 'unknown' 
 }
 
 /**
- * The dial pad — the narrow left column.
- *
- * Split out of what used to be one `Dialer` component holding its own
- * two-column grid. The page now owns that grid, because two more panels had
- * to sit UNDER these two rather than beside them: Messages below the pad,
- * Contacts below the call list. A component that lays out its own siblings
- * cannot be stacked under anything.
+ * The keypad. Typing works as well as clicking; the backspace (x) appears once
+ * there is something to take back, Escape clears. On a connected call the keys
+ * send tones instead, for a menu that says "press 1".
  */
-export function DialPad({ myNumber }: { myNumber: string | null }) {
-  const { dial, deviceState, error, activeCall } = usePhone();
-  const [number, setNumber] = useState('');
+export function Keypad({
+  myNumber,
+  value,
+  onChange,
+  book,
+  focusKey,
+}: {
+  myNumber: string | null;
+  value: string;
+  onChange: (v: string) => void;
+  book: Map<string, BookEntry>;
+  /** Bumped by the page when a number is put here from a list, to focus the field. */
+  focusKey: number;
+}) {
+  const { dial, deviceState, error, activeCall, sendDigits } = usePhone();
   const micPermission = useMicrophonePermission();
+  const input = useRef<HTMLInputElement>(null);
+  const [tones, setTones] = useState('');
 
   const busy = activeCall !== null;
+  const connected = activeCall?.status === 'connected';
+
+  useEffect(() => {
+    if (focusKey > 0) input.current?.focus();
+  }, [focusKey]);
+  // A new call starts a new row of tones.
+  const callKey = `${activeCall?.callId ?? ''}|${connected}`;
+  const [tonesFor, setTonesFor] = useState(callKey);
+  if (tonesFor !== callKey) {
+    setTonesFor(callKey);
+    setTones('');
+  }
+
+  const match = useMemo(() => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length < 10) return null;
+    const e164 = value.trim().startsWith('+') ? `+${digits}` : digits.length === 10 ? `+1${digits}` : `+${digits}`;
+    return book.get(e164) ?? null;
+  }, [value, book]);
+
+  const press = (k: string) => {
+    if (connected) {
+      sendDigits(k);
+      setTones((t) => (t + k).slice(-24));
+      return;
+    }
+    onChange(value + k);
+    input.current?.focus();
+  };
+
+  const canCall = !!value.trim() && !busy && deviceState !== 'error';
+  const call = () => {
+    if (canCall) void dial(value.trim());
+  };
 
   return (
-      <section className="rounded-2xl border border-line bg-white p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-[13.5px] font-semibold text-ink-900">Dial</h2>
-          <StatusPill
-            label={
-              deviceState === 'ready'
+    <section className="rounded-2xl border border-line bg-white p-5 shadow-[0_1px_2px_rgba(16,35,71,.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-[14px] font-semibold text-ink-900">{connected ? 'Keypad' : 'Dial'}</h2>
+          <p className="mt-0.5 text-[12px] text-ink-400">
+            {myNumber ? <>Calling from {formatPhoneDisplay(myNumber)}</> : 'No number assigned to you'}
+          </p>
+        </div>
+        <StatusPill
+          label={
+            busy
+              ? connected
+                ? 'On a call'
+                : 'Ringing'
+              : deviceState === 'ready'
                 ? 'Ready'
                 : deviceState === 'starting'
                   ? 'Connecting'
                   : deviceState === 'error'
                     ? 'Unavailable'
                     : 'Idle'
-            }
-            swatch={deviceState === 'ready' ? 'teal' : deviceState === 'error' ? 'red' : 'amber'}
-            dot
-          />
-        </div>
-
-        {myNumber ? (
-          <p className="mt-1 text-[11.5px] text-ink-400">
-            Calling from {formatPhoneDisplay(myNumber)}
-          </p>
-        ) : null}
-
-        <input
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-          placeholder="+1 555 000 0000"
-          inputMode="tel"
-          className="mt-3 w-full rounded-xl border border-line bg-canvas/40 px-3 py-2.5 text-center text-[17px] tracking-wide text-ink-900 tabular focus-field"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && number.trim() && !busy) void dial(number.trim());
-          }}
+          }
+          swatch={busy ? 'blue' : deviceState === 'ready' ? 'teal' : deviceState === 'error' ? 'red' : 'amber'}
+          dot
         />
+      </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          {KEYS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => setNumber((n) => n + k)}
-              className="rounded-xl border border-line bg-white py-2.5 text-[16px] font-semibold text-ink-800 tabular transition-colors hover:bg-canvas active:bg-canvas"
-            >
-              {k}
-            </button>
-          ))}
-        </div>
+      {/* ── display ─────────────────────────────────────────────────── */}
+      <div className="mt-4 flex h-[60px] items-center gap-2 rounded-xl bg-canvas px-3">
+        {connected ? (
+          <p className="min-w-0 flex-1 truncate text-center text-[20px] font-semibold tracking-[.12em] text-ink-900 tabular" aria-live="polite">
+            {tones || <span className="text-[13px] font-normal tracking-normal text-ink-400">Press keys to send tones</span>}
+          </p>
+        ) : (
+          <>
+            <span className="w-6 shrink-0" aria-hidden />
+            <input
+              ref={input}
+              value={value}
+              onChange={(e) => onChange(e.target.value.replace(/[^0-9+*#()\-.\s]/g, ''))}
+              placeholder="Enter a number"
+              inputMode="tel"
+              aria-label="Number to call"
+              className="min-w-0 flex-1 bg-transparent text-center text-[21px] font-semibold tracking-wide text-ink-900 tabular outline-none placeholder:text-[15px] placeholder:font-normal placeholder:tracking-normal placeholder:text-ink-300"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') call();
+                if (e.key === 'Escape') onChange('');
+              }}
+            />
+            {value ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(value.slice(0, -1));
+                  input.current?.focus();
+                }}
+                onDoubleClick={() => onChange('')}
+                aria-label="Remove last digit"
+                title="Remove last digit (double-click to clear)"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-400 transition-colors hover:bg-white hover:text-ink-900"
+              >
+                <Icon name="backspace" size={19} />
+              </button>
+            ) : (
+              <span className="w-8 shrink-0" aria-hidden />
+            )}
+          </>
+        )}
+      </div>
+      <p className="mt-1.5 h-4 truncate text-center text-[12px] font-medium text-ok">
+        {connected ? null : match ? `${match.name}${match.company ? ` · ${match.company}` : ''}` : null}
+      </p>
 
-        <div className="mt-3 flex items-center gap-2">
-          <Button
-            icon="phone"
-            onClick={() => void dial(number.trim())}
-            disabled={!number.trim() || busy || deviceState === 'error'}
+      {/* ── keys ────────────────────────────────────────────────────── */}
+      <div className="mt-2 grid grid-cols-3 gap-2.5">
+        {KEYS.map(([k, letters]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => press(k)}
+            aria-label={k === '*' ? 'Star' : k === '#' ? 'Pound' : k}
+            className="flex h-[58px] flex-col items-center justify-center rounded-2xl border border-line-soft bg-white transition-[background,border,transform] duration-100 hover:border-brand-200 hover:bg-brand-50 active:scale-[.96]"
           >
-            {busy ? 'On a call' : 'Call'}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setNumber('')} disabled={!number}>
-            Clear
-          </Button>
+            <span className="text-[21px] font-semibold leading-none text-ink-900 tabular">{k}</span>
+            <span className="mt-1 h-3 text-[9px] font-semibold tracking-[.18em] text-ink-400">{letters}</span>
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={call}
+        disabled={!canCall}
+        className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-accent text-[15px] font-bold text-accent-ink transition-[filter,opacity] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Icon name="phone" size={18} strokeWidth={2.2} />
+        {busy ? (connected ? 'On a call' : 'Ringing…') : 'Call'}
+      </button>
+
+      {micPermission === 'denied' ? (
+        <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2.5 text-[12px] text-red-700">
+          <p className="flex items-start gap-1.5 font-semibold">
+            <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
+            <span>Your browser is blocking the microphone for this site.</span>
+          </p>
+          <p className="mt-1 pl-[18px] font-normal opacity-90">
+            Calls need it. Click the icon to the left of the address bar, set Microphone to Allow, then
+            reload this page.
+          </p>
         </div>
+      ) : null}
 
-        {micPermission === 'denied' ? (
-          /*
-           * Shown BEFORE anything is attempted. The browser will not prompt
-           * again on its own, so without this the first sign of trouble is a
-           * failed call — and the error text points at the browser or the
-           * user rather than at a setting either of them can change.
-           */
-          <div role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2.5 text-[12px] text-red-700">
-            <p className="flex items-start gap-1.5 font-semibold">
-              <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
-              <span>Your browser is blocking the microphone for this site.</span>
-            </p>
-            <p className="mt-1 pl-[18px] font-normal opacity-90">
-              Calls need it. Click the icon to the left of the address bar, set Microphone to Allow,
-              then reload this page.
-            </p>
-          </div>
-        ) : null}
-
-        {error ? (
-          /*
-           * Cause on the first line, what to do on the second. The SDK's own
-           * text names the symptom and hides the cause — "an unknown error has
-           * occurred" was a blocked WebSocket, and "the browser denied
-           * permissions" was one of our own response headers. Both sent people
-           * looking in the wrong place, which is the whole reason this shows a
-           * hint rather than just a message.
-           */
-          <div
-            role="alert"
-            className={`mt-3 rounded-xl px-3 py-2.5 text-[12px] ${
-              error.kind === 'call'
-                ? 'bg-canvas text-ink-600'
-                : 'bg-red-50 text-red-700'
-            }`}
-          >
-            <p className="flex items-start gap-1.5 font-semibold">
-              <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
-              <span>{error.message}</span>
-            </p>
-            {error.hint ? (
-              <p className="mt-1 pl-[18px] font-normal opacity-90">{error.hint}</p>
-            ) : null}
-            {error.code ? (
-              /* Kept on purpose: Twilio's docs are searchable by number and a
-                 support ticket needs it. Explaining an error is not a reason to
-                 hide what it was. */
-              <p className="mt-1 pl-[18px] text-[11px] opacity-60 tabular">Twilio code {error.code}</p>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
-  );
-}
-
-/**
- * This user's own call history — the wide right column.
- */
-export function CallHistory({ calls }: { calls: PhoneCall[] }) {
-  const { dial, deviceState, activeCall } = usePhone();
-  const busy = activeCall !== null;
-  const canCall = !busy && deviceState !== 'error';
-
-  return (
-      <section className="rounded-2xl border border-line bg-white p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-[13.5px] font-semibold text-ink-900">Your calls</h2>
-          {calls.length > 0 ? (
-            <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[11px] font-medium tabular text-ink-500">
-              {calls.length}
-            </span>
+      {error ? (
+        /* Cause on the first line, what to do on the second: the SDK's own text
+           names the symptom and hides the cause. */
+        <div
+          role="alert"
+          className={`mt-3 rounded-xl px-3 py-2.5 text-[12px] ${
+            error.kind === 'call' ? 'bg-canvas text-ink-600' : 'bg-red-50 text-red-700'
+          }`}
+        >
+          <p className="flex items-start gap-1.5 font-semibold">
+            <Icon name="alert-triangle" size={12} className="mt-[2px] shrink-0" />
+            <span>{error.message}</span>
+          </p>
+          {error.hint ? <p className="mt-1 pl-[18px] font-normal opacity-90">{error.hint}</p> : null}
+          {error.code ? (
+            /* Kept: Twilio's docs are searchable by number and a support ticket needs it. */
+            <p className="mt-1 pl-[18px] text-[11px] opacity-60 tabular">Twilio code {error.code}</p>
           ) : null}
         </div>
-
-        {calls.length === 0 ? (
-          <div className="mt-3">
-            <EmptyState icon="phone" title="No calls yet" body="Calls you make or take appear here." />
-          </div>
-        ) : (
-          /*
-             Capped and scrolled. The list is every call this user has made or
-             taken and it only ever grows; unbounded, it pushes Contacts off
-             the bottom of the screen and the page turns into one long scroll
-             where nothing else is reachable. A fixed height keeps both panels
-             on screen together, which is the point of the two-column layout.
-          */
-          <ul className="mt-3 max-h-[440px] space-y-2 overflow-y-auto pr-1">
-            {calls.map((call) => {
-              const peer = call.direction === 'in' ? call.fromE164 : call.toE164;
-              const missed =
-                call.direction === 'in' && ['no-answer', 'busy', 'failed'].includes(call.status);
-              return (
-                <li
-                  key={call.id}
-                  className="group rounded-xl border border-line-soft px-3 py-2.5 transition-colors hover:border-line hover:bg-canvas/40"
-                >
-                  {/*
-                    A grid, not a flex row with `ml-auto`. In a panel this wide
-                    the old version left a corridor of empty space between the
-                    number and the buttons, with everything jammed to the two
-                    edges. The middle column now carries what was previously
-                    nowhere - how long the call lasted, and whether it is
-                    attached to a merchant - so the width is used rather than
-                    padded.
-                  */}
-                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-                    {/* The direction badge is a filled disc rather than a bare
-                        glyph: at 12px an arrow alone is hard to tell apart at a
-                        glance, and missed calls are the ones that must not be
-                        missed twice. */}
-                    <span
-                      className={`grid size-7 shrink-0 place-items-center rounded-full ${
-                        missed
-                          ? 'bg-danger-bg text-danger'
-                          : call.direction === 'in'
-                            ? 'bg-ok-bg text-ok'
-                            : 'bg-brand-50 text-brand-700'
-                      }`}
-                    >
-                      <Icon name={call.direction === 'in' ? 'reply' : 'send'} size={12} strokeWidth={2.2} />
-                    </span>
-
-                    <span className="min-w-0">
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-[13.5px] font-medium tabular text-ink-900">
-                          {formatPhoneDisplay(peer)}
-                        </span>
-                        {missed ? <StatusPill label="Missed" swatch="red" dot={false} /> : null}
-                        {/* Whether this call reached a merchant record. Stated
-                            rather than left blank, because an unattached call is
-                            the case the standalone phone page exists for. */}
-                        {call.recordId ? (
-                          <StatusPill label="Matched" swatch="teal" dot={false} />
-                        ) : null}
-                      </span>
-                      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] tabular text-ink-400">
-                        <span>{formatDateTime(call.startedAt)}</span>
-                        {call.durationSeconds !== null && call.durationSeconds > 0 ? (
-                          <>
-                            <span aria-hidden className="text-ink-300">&middot;</span>
-                            <span>{callDuration(call.durationSeconds)}</span>
-                          </>
-                        ) : null}
-                        {!missed && call.status && call.status !== 'completed' ? (
-                          <>
-                            <span aria-hidden className="text-ink-300">&middot;</span>
-                            <span className="capitalize">{call.status.replace(/-/g, ' ')}</span>
-                          </>
-                        ) : null}
-                      </span>
-                    </span>
-
-                    <span className="flex shrink-0 items-center gap-1.5">
-                      <PillButton
-                        icon="phone"
-                        label="Call back"
-                        tone="brand"
-                        disabled={!canCall}
-                        onClick={() => void dial(peer)}
-                      />
-                      <PillButton
-                        icon="message-square"
-                        label="Text"
-                        tone="plain"
-                        onClick={() =>
-                          window.dispatchEvent(
-                            new CustomEvent('tapdash:compose-sms', { detail: { to: peer } }),
-                          )
-                        }
-                      />
-                      <TelephonyDelete kind="call" id={call.id} />
-                    </span>
-                  </div>
-
-                  {/*
-                    The recording belongs HERE as well as in the drawer. A call
-                    to a number that is on no record — every test call, and any
-                    call to a new prospect — has no drawer to appear in, so
-                    without this its audio is stored and unreachable.
-                  */}
-                  {call.recordings.length > 0 ? (
-                    /* Indented to line up under the number rather than starting
-                       at the card's left edge. Full-width it read as a separate
-                       strip belonging to nothing in particular; aligned, it
-                       plainly belongs to the call above it. */
-                    <div className="mt-2 space-y-2 border-t border-line-faint pl-[40px] pt-2">
-                      {call.recordings.map((rec) => (
-                        <RecordingRow key={rec.id} recording={rec} />
-                      ))}
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      ) : null}
+    </section>
   );
-}
-
-/** "4:07", the way a phone shows it. */
-function callDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 /**
- * A small filled action button.
- *
- * The row's actions used to be ghost buttons — text with no edge — which at
- * this size read as labels rather than as things to press, and gave no target
- * to aim at. These carry a tint and a border so the row has something that
- * plainly IS a button, without shouting over the number itself.
+ * Recent calls: a list with a search box on top (name or number). Each call:
+ * Text, Call back, Add contact (when the number is nobody's yet) and Listen,
+ * with the recording's length on it.
  */
-function PillButton({
-  icon,
-  label,
-  tone,
-  disabled,
-  onClick,
+export function RecentCalls({
+  calls,
+  book,
+  onText,
+  onCall,
+  onAddContact,
 }: {
-  icon: 'phone' | 'message-square';
-  label: string;
-  tone: 'brand' | 'plain';
-  disabled?: boolean;
-  onClick: () => void;
+  calls: PhoneCall[];
+  book: Map<string, BookEntry>;
+  onText: (e164: string) => void;
+  onCall: (e164: string) => void;
+  onAddContact: (e164: string) => void;
 }) {
-  const tones = {
-    brand:
-      'border-brand-600/15 bg-brand-50 text-brand-700 hover:border-brand-600/30 hover:bg-brand-100',
-    plain: 'border-line bg-white text-ink-600 hover:border-ink-300 hover:bg-canvas hover:text-ink-900',
-  } as const;
+  const [query, setQuery] = useState('');
+  const list = useMemo(
+    () =>
+      calls.filter((c) => {
+        const peer = c.direction === 'in' ? c.fromE164 : c.toE164;
+        const who = book.get(peer);
+        return matches(query, peer, formatPhoneDisplay(peer), who?.name, who?.company);
+      }),
+    [calls, book, query],
+  );
 
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      title={label}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}
-    >
-      <Icon name={icon} size={11.5} strokeWidth={2.2} />
-      {label}
-    </button>
+    <div>
+      <div className="border-b border-line-soft p-4">
+        <SearchBox value={query} onChange={setQuery} label="Search calls" />
+      </div>
+
+      {calls.length === 0 ? (
+        <PanelEmpty icon="phone" title="No calls yet" body="Calls you make or take appear here." />
+      ) : list.length === 0 ? (
+        <PanelEmpty icon="search" title="No calls match" body={`Nothing matches “${query.trim()}”.`} />
+      ) : (
+        <ul className="max-h-[640px] divide-y divide-line-soft overflow-y-auto">
+          {list.map((call) => {
+            const peer = call.direction === 'in' ? call.fromE164 : call.toE164;
+            const who = book.get(peer);
+            const missed = isMissed(call);
+            // An outgoing call that never connected (Twilio's terminal words).
+            const failed = !missed && ['busy', 'failed', 'no-answer', 'canceled'].includes(call.status);
+            return (
+              <li
+                key={call.id}
+                className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 gap-y-2.5 px-4 py-3.5 transition-colors hover:bg-canvas/60 md:grid-cols-[auto_minmax(0,1fr)_auto]"
+              >
+                <span
+                  className={`grid size-10 shrink-0 place-items-center rounded-full ${
+                    missed || failed
+                      ? 'bg-danger-bg text-danger'
+                      : call.direction === 'in'
+                        ? 'bg-ok-bg text-ok'
+                        : 'bg-brand-50 text-brand-700'
+                  }`}
+                  title={missed ? 'Missed call' : call.direction === 'in' ? 'Incoming call' : 'Outgoing call'}
+                >
+                  <Icon name={missed ? 'phone-missed' : call.direction === 'in' ? 'phone-in' : 'phone-out'} size={16} strokeWidth={2} />
+                </span>
+
+                <span className="min-w-0">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[14px] font-semibold text-ink-900 tabular">
+                      {who?.name ?? formatPhoneDisplay(peer)}
+                    </span>
+                    {call.recordId ? <StatusPill label="On a record" swatch="teal" dot={false} /> : null}
+                  </span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] text-ink-400 tabular">
+                    {who ? (
+                      <>
+                        <span>{formatPhoneDisplay(peer)}</span>
+                        <span aria-hidden>·</span>
+                      </>
+                    ) : null}
+                    <span>{formatDateTime(call.startedAt)}</span>
+                    <span aria-hidden>·</span>
+                    {missed ? (
+                      <span className="font-medium text-danger">Missed</span>
+                    ) : call.durationSeconds && call.durationSeconds > 0 ? (
+                      <span>{callDuration(call.durationSeconds)}</span>
+                    ) : (
+                      <span className={failed ? 'font-medium text-danger' : ''}>{statusWords(call.status)}</span>
+                    )}
+                  </span>
+                </span>
+
+                <span className="col-span-2 flex flex-wrap items-center gap-1.5 pl-[54px] md:col-span-1 md:justify-end md:pl-0">
+                  <RowButton icon="message-square" label="Text" onClick={() => onText(peer)} />
+                  <RowButton icon="phone" label="Call back" tone="brand" onClick={() => onCall(peer)} />
+                  {!who ? <RowButton icon="user-plus" label="Add contact" onClick={() => onAddContact(peer)} /> : null}
+                  {call.recordings.map((rec) => (
+                    <ListenButton key={rec.id} recording={rec} />
+                  ))}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
+}
+
+/** Twilio's status in words: "no-answer" → "No answer". */
+function statusWords(status: string): string {
+  const s = status.replace(/-/g, ' ');
+  return s ? s[0].toUpperCase() + s.slice(1) : '';
 }

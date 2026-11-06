@@ -27,11 +27,14 @@ type NumberField = { raw: string; label: string };
 
 export function ContactForm({
   contact,
+  initialNumber,
   onDone,
   onCancel,
 }: {
   /** Absent when adding. */
   contact?: Contact;
+  /** When adding from a call or a text: the number, already filled in. */
+  initialNumber?: string;
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
@@ -42,7 +45,7 @@ export function ContactForm({
   const [numbers, setNumbers] = useState<NumberField[]>(
     contact?.numbers.length
       ? contact.numbers.map((n) => ({ raw: n.e164, label: n.label ?? '' }))
-      : [{ raw: '', label: '' }],
+      : [{ raw: initialNumber ?? '', label: '' }],
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -110,6 +113,7 @@ export function ContactForm({
           </label>
           <input
             id="c-name"
+            autoFocus={!contact}
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             disabled={pending}

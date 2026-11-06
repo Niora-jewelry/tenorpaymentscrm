@@ -5,6 +5,9 @@
  * other half, for the calls that are not about one merchant: dialling a number
  * someone read out, calling back a missed call, working a list.
  *
+ * Laid out as the client's Phone review asks (Phone and SMS tabs, Recent and
+ * Contacts on the left, keypad or SMS panel on the right): see PhoneWorkspace.
+ *
  * Gated by the `communication/phone` subtab grant rather than by a role, so who
  * gets a phone is configuration — the same grant that governs the drawer's
  * Phone subtab, which means one setting controls both and they cannot disagree.
@@ -15,19 +18,18 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { canSeePhone } from '@/lib/phone/access';
 import { callsForUser } from '@/lib/phone/calls';
 import { resolveUserActiveNumber } from '@/lib/phone/numbers';
-import { threadsForUser } from '@/lib/phone/messages';
+import { messagesForThread, threadsForUser } from '@/lib/phone/messages';
 import { contactsForUser } from '@/lib/phone/contacts';
-import { DialPad, CallHistory } from './Dialer';
-import { Threads } from './Threads';
-import { Contacts } from './Contacts';
-import { MarkPhoneRead } from './MarkPhoneRead';
 import { canTextMany, broadcastsForUser } from '@/lib/phone/broadcasts';
 import { groupsForUser } from '@/lib/phone/groups';
+import { MarkPhoneRead } from './MarkPhoneRead';
+import { PhoneWorkspace } from './PhoneWorkspace';
 import { TextMany } from './TextMany';
 
-export default async function PhonePage() {
+export default async function PhonePage({ searchParams }: { searchParams: Promise<{ tab?: string | string[] }> }) {
   const ctx = await authorize();
   if (!(await canSeePhone(ctx))) redirect('/dashboard');
+  const { tab } = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const [calls, myNumber, threads, contacts, mayTextMany, broadcasts, groups] = await Promise.all([
@@ -40,67 +42,38 @@ export default async function PhonePage() {
     groupsForUser(ctx),
   ]);
 
+  // The SMS panel opens on the topmost conversation; it comes with the page so
+  // the panel is never empty for a moment.
+  const top = threads[0] ?? null;
+  const initialThread = top
+    ? { key: top.threadKey, stamp: `${top.lastAt}|${top.count}`, messages: await messagesForThread(ctx, top.threadKey) }
+    : null;
+
   return (
-    <div className="space-y-6 p-6">
+    <div className="p-6">
       <MarkPhoneRead />
-      <div>
-        <h1 className="text-xl font-semibold text-ink-900">Phone</h1>
-        <p className="text-[13px] text-ink-500">
-          Calls are recorded and attached to a merchant automatically when the number matches one.
-          {mayTextMany || broadcasts.length > 0 || groups.length > 0 ? (
-            <>
-              {' '}
-              <a href="#text-many" className="font-medium text-brand-700 hover:underline">
-                Broadcast and group texts
-              </a>
-            </>
-          ) : null}
-        </p>
-      </div>
-
-      {/*
-        ── TWO COLUMNS, EACH STACKED ─────────────────────────────────────
-        The grid lives here rather than inside `Dialer`, because the page has
-        four panels in two columns and a component cannot lay out its own
-        siblings.
-
-        The pairing is by WIDTH, not by subject. The dial pad and the message
-        composer are both narrow, single-purpose controls; the call list and
-        the address book are both wide lists of records. Putting Messages
-        beside the pad and Contacts beneath the calls means neither column
-        changes width halfway down, which is what made the previous
-        full-width strips look stacked rather than designed.
-
-        `items-start` stops a short column stretching to match a tall one -
-        without it an empty Contacts panel would grow to the height of a long
-        call list and sit mostly blank.
-      */}
-      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-        <div className="space-y-5">
-          <DialPad myNumber={myNumber?.e164 ?? null} />
-          <Threads threads={threads} />
-        </div>
-
-        <div className="space-y-5">
-          <CallHistory calls={calls} />
-          <Contacts contacts={contacts} />
-        </div>
-      </div>
-
-      {/*
-        Below the line's own panels and full width: choosing people and reading a
-        group need more room than either column has. Somebody without the permission
-        who can still see groups (Phone = All users) reads them here without controls.
-      */}
-      {mayTextMany || broadcasts.length > 0 || groups.length > 0 ? (
-        <TextMany
-          allowed={mayTextMany}
-          myNumber={myNumber?.e164 ?? null}
-          contacts={contacts}
-          broadcasts={broadcasts}
-          groups={groups}
-        />
-      ) : null}
+      <PhoneWorkspace
+        calls={calls}
+        threads={threads}
+        contacts={contacts}
+        myNumber={myNumber?.e164 ?? null}
+        initialTab={tab === 'sms' ? 'sms' : 'phone'}
+        initialThread={initialThread}
+        smsExtra={
+          /* Broadcast and group texts: texting more than one person, so under
+             SMS. Somebody without the permission who can still see groups
+             (Phone = All users) reads them here without controls. */
+          mayTextMany || broadcasts.length > 0 || groups.length > 0 ? (
+            <TextMany
+              allowed={mayTextMany}
+              myNumber={myNumber?.e164 ?? null}
+              contacts={contacts}
+              broadcasts={broadcasts}
+              groups={groups}
+            />
+          ) : null
+        }
+      />
     </div>
   );
 }

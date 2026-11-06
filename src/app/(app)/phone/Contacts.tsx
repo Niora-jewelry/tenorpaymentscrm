@@ -1,455 +1,397 @@
 'use client';
 
 /**
- * The address book, on the phone page.
+ * Contacts, on both the Phone and the SMS tab (client, Phone UI review):
+ * "Add contact" top left, a search box in the middle (name or number), and on
+ * each contact two minimized bars at the bottom, Call history and Text history.
  *
  * ── WHAT "SYNC WITH CONTACT" MEANS HERE ──────────────────────────────────
- * The client asked that "call recordings, call history, and texts should sync
- * with contact". Expanding a contact loads exactly that, matched BY NUMBER
- * rather than by a stored link — so a call that happened before the contact
- * existed still appears under it, and adding a second number to a contact
- * brings that number's whole history with it.
- *
- * Loaded on demand rather than with the page: an address book of two hundred
+ * The history under a contact is matched BY NUMBER rather than by a stored
+ * link, so a call that happened before the contact existed still appears under
+ * it. It loads when a bar is first opened: an address book of two hundred
  * people should not cost two hundred histories to open.
  *
  * ── REMOVE ASKS FIRST, AND SAYS WHAT SURVIVES ────────────────────────────
- * Removing a contact is immediate and there is no bin to recover it from —
- * "Delete" in TapDash means the Recycle Bin and exists only in the Records
- * List, which this is not. So the confirmation says plainly what goes and what
- * stays: the entry goes, the calls and texts do not.
+ * Removing a contact has no bin ("Delete" in the CRM means the Recycle Bin and
+ * exists only in the Records List). The confirmation says plainly that the
+ * entry goes and the calls and texts stay.
  */
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition, type ReactNode } from 'react';
 import { Icon } from '@/proto/ui/icons';
 import { Button, StatusPill, Spinner } from '@/proto/ui/kit';
 import { formatDateTime } from '@/proto/ui/tokens';
 import { formatPhoneDisplay } from '@/lib/phone/normalize';
-import { RecordingRow } from '@/app/(app)/[module]/PhonePanels';
 import type { Contact, ContactActivity } from '@/lib/phone/contacts';
 import { ContactForm } from './ContactForm';
 import { contactActivityAction, removeContactAction } from './contactActions';
-import { usePhone } from './PhoneProvider';
+import { ListenButton } from './ListenButton';
+import { PanelEmpty, RowButton, SearchBox } from './PhoneBits';
+import { callDuration, initials, isMissed, matches } from './phoneBook';
 
-/** Initials for the avatar, from whatever the name happens to be. */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function duration(seconds: number | null): string {
-  if (seconds === null || seconds < 0) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-export function Contacts({ contacts }: { contacts: Contact[] }) {
+export function Contacts({
+  contacts,
+  onText,
+  onCall,
+  addRequest,
+}: {
+  contacts: Contact[];
+  onText: (e164: string) => void;
+  onCall: (e164: string) => void;
+  /** "Add contact" pressed on a call or a text: open the form with that number. */
+  addRequest: { number: string; key: number } | null;
+}) {
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState(false);
+  // Opened already when the page switched here to add a number from a call.
+  const [adding, setAdding] = useState<{ number: string; key: number } | null>(addRequest);
   const [editing, setEditing] = useState<Contact | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [activity, setActivity] = useState<Record<string, ContactActivity>>({});
-  const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [activity, setActivity] = useState<Record<string, ContactActivity | 'loading' | 'error'>>({});
 
-  const { dial, deviceState, activeCall } = usePhone();
-  const canCall = activeCall === null && deviceState !== 'error';
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return contacts;
-    // Digits typed into the search box should find a number regardless of how
-    // it was punctuated when saved.
-    const digits = q.replace(/\D/g, '');
-    return contacts.filter(
-      (c) =>
-        c.displayName.toLowerCase().includes(q) ||
-        (c.company ?? '').toLowerCase().includes(q) ||
-        (c.email ?? '').toLowerCase().includes(q) ||
-        (digits.length >= 3 && c.numbers.some((n) => n.e164.includes(digits))),
-    );
-  }, [contacts, query]);
-
-  const toggle = (c: Contact) => {
-    if (openId === c.id) {
-      setOpenId(null);
-      return;
+  // A new request while this list is already open (Add contact in the SMS panel).
+  const [seenRequest, setSeenRequest] = useState(addRequest);
+  if (addRequest !== seenRequest) {
+    setSeenRequest(addRequest);
+    if (addRequest) {
+      setEditing(null);
+      setNotice(null);
+      setAdding(addRequest);
     }
-    setOpenId(c.id);
-    if (activity[c.id]) return;
+  }
 
-    setLoadingId(c.id);
-    startTransition(async () => {
-      const result = await contactActivityAction(c.id);
-      setActivity((prev) => ({ ...prev, [c.id]: result }));
-      setLoadingId(null);
-    });
+  const list = useMemo(
+    () =>
+      contacts.filter((c) =>
+        matches(query, c.displayName, c.company, c.email, ...c.numbers.flatMap((n) => [n.e164, formatPhoneDisplay(n.e164)])),
+      ),
+    [contacts, query],
+  );
+
+  const load = async (id: string) => {
+    if (activity[id] && activity[id] !== 'error') return;
+    setActivity((prev) => ({ ...prev, [id]: 'loading' }));
+    try {
+      const result = await contactActivityAction(id);
+      setActivity((prev) => ({ ...prev, [id]: result }));
+    } catch {
+      setActivity((prev) => ({ ...prev, [id]: 'error' }));
+    }
   };
 
-  const remove = (c: Contact) => {
+  const done = (message: string) => {
+    setAdding(null);
+    setEditing(null);
+    setNotice(message);
+    // A changed contact may now cover different numbers: drop cached histories.
+    setActivity({});
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-line-soft p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <Button
+          icon="plus"
+          disabled={adding !== null || editing !== null}
+          onClick={() => {
+            setNotice(null);
+            setAdding({ number: '', key: Date.now() });
+          }}
+        >
+          Add contact
+        </Button>
+        <SearchBox value={query} onChange={setQuery} label="Search contacts" className="mx-auto w-full max-w-[420px]" />
+        <span className="hidden whitespace-nowrap text-[12px] text-ink-400 tabular sm:block">
+          {query.trim() ? `${list.length} of ${contacts.length}` : contacts.length} contact{contacts.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {notice ? (
+        <p role="status" className="mx-4 mt-3 flex items-center gap-1.5 rounded-lg bg-ok-bg px-3 py-1.5 text-[12.5px] font-medium text-ink-800">
+          <Icon name="check" size={13} strokeWidth={2.5} className="text-ok" />
+          {notice}
+          <button type="button" aria-label="Dismiss" onClick={() => setNotice(null)} className="ml-auto text-ink-400 hover:text-ink-900">
+            <Icon name="x" size={12} />
+          </button>
+        </p>
+      ) : null}
+
+      {adding ? (
+        <div className="px-4 pt-3">
+          <ContactForm key={adding.key} initialNumber={adding.number || undefined} onDone={done} onCancel={() => setAdding(null)} />
+        </div>
+      ) : null}
+      {editing ? (
+        <div className="px-4 pt-3">
+          <ContactForm key={editing.id} contact={editing} onDone={done} onCancel={() => setEditing(null)} />
+        </div>
+      ) : null}
+
+      {contacts.length === 0 ? (
+        adding ? null : (
+          <PanelEmpty
+            icon="users"
+            title="No contacts yet"
+            body="Add someone by hand, or keep working: a contact appears here by itself when you call or text a number that matches a record."
+          />
+        )
+      ) : list.length === 0 ? (
+        <PanelEmpty icon="search" title="No contacts match" body={`Nothing matches “${query.trim()}”.`} />
+      ) : (
+        <ul className="max-h-[640px] divide-y divide-line-soft overflow-y-auto">
+          {list.map((c) => (
+            <ContactRow
+              key={c.id}
+              c={c}
+              act={activity[c.id]}
+              onLoad={() => void load(c.id)}
+              onText={onText}
+              onCall={onCall}
+              onEdit={() => {
+                setNotice(null);
+                setAdding(null);
+                setEditing(c);
+              }}
+              onRemoved={(name) => {
+                setNotice(`${name} removed from your contacts.`);
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ContactRow({
+  c,
+  act,
+  onLoad,
+  onText,
+  onCall,
+  onEdit,
+  onRemoved,
+}: {
+  c: Contact;
+  act: ContactActivity | 'loading' | 'error' | undefined;
+  onLoad: () => void;
+  onText: (e164: string) => void;
+  onCall: (e164: string) => void;
+  onEdit: () => void;
+  onRemoved: (name: string) => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const primary = c.numbers.find((n) => n.isPrimary)?.e164 ?? c.numbers[0]?.e164 ?? null;
+  const loaded = act && act !== 'loading' && act !== 'error' ? act : null;
+
+  const remove = () => {
     setError(null);
     startTransition(async () => {
       const result = await removeContactAction(c.id);
       if (result.ok) {
-        setConfirmRemove(null);
-        setOpenId(null);
-        setNotice(`${c.displayName} removed from your contacts.`);
+        setConfirm(false);
+        onRemoved(c.displayName);
       } else {
         setError(result.message ?? 'That contact could not be removed.');
       }
     });
   };
 
-  const done = (message: string) => {
-    setAdding(false);
-    setEditing(null);
-    setNotice(message);
-    // The edited contact's history may now cover different numbers, so drop
-    // what was cached for it rather than showing a stale list.
-    setActivity({});
-  };
-
   return (
-    <section className="rounded-2xl border border-line bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="flex items-center gap-2 text-[13.5px] font-semibold text-ink-900">
-          Contacts
-          {contacts.length > 0 ? (
-            <span className="rounded-full bg-canvas px-1.5 py-0.5 text-[11px] font-medium text-ink-500 tabular">
-              {contacts.length}
-            </span>
+    <li className="px-4 py-3.5">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3.5">
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-900 text-[12px] font-bold text-white">
+          {initials(c.displayName)}
+        </span>
+        <span className="min-w-0">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[14px] font-semibold text-ink-900">{c.displayName}</span>
+            {c.source === 'auto' ? <StatusPill label="From a record" swatch="teal" dot={false} /> : null}
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[12px] text-ink-400">
+            {c.numbers.map((n, i) => (
+              <span key={n.id} className="tabular">
+                {i > 0 ? <span aria-hidden className="mr-1.5">·</span> : null}
+                {formatPhoneDisplay(n.e164)}
+                {n.label ? <span className="ml-1 text-ink-300">{n.label}</span> : null}
+              </span>
+            ))}
+            {c.company ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className="truncate">{c.company}</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
+          {primary ? (
+            <>
+              <RowButton icon="phone" label="Call" tone="brand" hideLabelOnSmall onClick={() => onCall(primary)} />
+              <RowButton icon="message-square" label="Text" hideLabelOnSmall onClick={() => onText(primary)} />
+            </>
           ) : null}
-        </h2>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {contacts.length > 0 ? (
-            <div className="relative">
-              <Icon
-                name="search"
-                size={12}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400"
-              />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search name or number"
-                aria-label="Search contacts"
-                className="w-[210px] rounded-lg border border-line bg-white py-1.5 pl-7 pr-2 text-[12.5px] text-ink-900 outline-none focus-field"
-              />
-            </div>
-          ) : null}
-          <Button
-            size="sm"
-            icon="plus"
-            disabled={adding || editing !== null}
-            onClick={() => {
-              setNotice(null);
-              setAdding(true);
-            }}
+          <button
+            type="button"
+            aria-label={`Edit ${c.displayName}`}
+            title="Edit"
+            onClick={onEdit}
+            className="grid size-7 place-items-center rounded-full text-ink-400 transition-colors hover:bg-canvas hover:text-ink-900"
           >
-            Add contact
-          </Button>
-        </div>
+            <Icon name="pencil" size={13} />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove ${c.displayName}`}
+            title="Remove from contacts"
+            onClick={() => {
+              setError(null);
+              setConfirm((v) => !v);
+            }}
+            className="grid size-7 place-items-center rounded-full text-ink-400 transition-colors hover:bg-danger-bg hover:text-danger"
+          >
+            <Icon name="x" size={13} />
+          </button>
+        </span>
       </div>
 
-      {notice ? (
-        <p role="status" className="mt-3 flex items-center gap-1.5 rounded-lg bg-ok-bg px-3 py-1.5 text-[12.5px] font-medium text-ink-800">
-          <Icon name="check" size={13} strokeWidth={2.5} className="text-ok" />
-          {notice}
-        </p>
-      ) : null}
-
-      {adding ? (
-        <div className="mt-3">
-          <ContactForm onDone={done} onCancel={() => setAdding(false)} />
-        </div>
-      ) : null}
-
-      {editing ? (
-        <div className="mt-3">
-          <ContactForm contact={editing} onDone={done} onCancel={() => setEditing(null)} />
-        </div>
-      ) : null}
-
-      {contacts.length === 0 && !adding ? (
-        /*
-          Deliberately NOT the shared `EmptyState`. That component is built for
-          a full page and carries twelve units of vertical padding, which in a
-          panel sitting beneath the call list produced a dashed box several
-          hundred pixels tall saying four words. This says the same thing in
-          the space it deserves.
-        */
-        <div className="mt-3 flex items-start gap-3 rounded-xl border border-dashed border-line bg-canvas/40 px-4 py-4">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-white text-ink-400">
-            <Icon name="users" size={15} />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[13px] font-semibold text-ink-700">No contacts yet</p>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-400">
-              Add someone by hand, or keep working — a contact appears here automatically when you
-              call or text a number that matches a record.
+      {confirm ? (
+        <div className="mt-2.5 rounded-xl bg-danger-bg/50 px-3 py-2.5 sm:ml-[54px]">
+          <p className="text-[12.5px] leading-relaxed text-ink-800">
+            Remove <strong className="font-semibold">{c.displayName}</strong> from your contacts? This cannot be
+            undone. <span className="text-ink-600">Their calls, texts and recordings are kept.</span>
+          </p>
+          {error ? (
+            <p role="alert" className="mt-1.5 text-[12px] text-danger">
+              {error}
             </p>
+          ) : null}
+          <div className="mt-2 flex items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirm(false)}>
+              Keep
+            </Button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={remove}
+              className="rounded-md bg-danger px-2.5 py-1 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {pending ? 'Removing…' : 'Remove'}
+            </button>
           </div>
         </div>
       ) : null}
 
-      {filtered.length === 0 && contacts.length > 0 ? (
-        <p className="mt-4 text-center text-[13px] text-ink-400">
-          Nothing matches “{query}”.
-        </p>
+      {c.notes ? (
+        <p className="mt-2 rounded-lg bg-canvas px-2.5 py-1.5 text-[12.5px] leading-relaxed text-ink-600 sm:ml-[54px]">{c.notes}</p>
       ) : null}
 
-      {/* Capped for the same reason the call list is: an address book grows
-          without limit, and a panel that grows with it pushes everything else
-          off the screen. */}
-      <ul className="mt-3 max-h-[460px] space-y-2 overflow-y-auto pr-1">
-        {filtered.map((c) => {
-          const open = openId === c.id;
-          const act = activity[c.id];
-          const primary = c.numbers[0]?.e164 ?? null;
-
-          return (
-            <li key={c.id} className="rounded-xl border border-line-soft">
-              <div className="flex flex-wrap items-center gap-2.5 px-3 py-2.5">
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-50 text-[11.5px] font-semibold text-brand-700">
-                  {initials(c.displayName)}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => toggle(c)}
-                  className="min-w-0 flex-1 text-left"
-                  aria-expanded={open}
-                >
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate text-[13.5px] font-medium text-ink-900">
-                      {c.displayName}
+      <div className="mt-2.5 grid items-start gap-2 sm:ml-[54px] sm:grid-cols-2">
+        <HistoryBar icon="clock" label="Call history" count={loaded?.calls.length} loading={act === 'loading'} failed={act === 'error'} onOpen={onLoad}>
+          {loaded && loaded.calls.length > 0 ? (
+            <ul className="divide-y divide-line-faint">
+              {loaded.calls.map((k) => {
+                const missed = isMissed(k);
+                return (
+                  <li key={k.id} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2 text-[12px]">
+                    <Icon
+                      name={missed ? 'phone-missed' : k.direction === 'in' ? 'phone-in' : 'phone-out'}
+                      size={12}
+                      className={missed ? 'text-danger' : 'text-ink-400'}
+                    />
+                    <span className="text-ink-600 tabular">{formatDateTime(k.startedAt)}</span>
+                    <span className={`tabular ${missed ? 'font-medium text-danger' : 'text-ink-400'}`}>
+                      {missed ? 'Missed' : k.durationSeconds ? callDuration(k.durationSeconds) : k.status.replace(/-/g, ' ')}
                     </span>
-                    {/* Said out loud: this one arrived by itself because the
-                        number matched a record. */}
-                    {c.source === 'auto' ? (
-                      <StatusPill label="From a record" swatch="teal" dot={false} />
-                    ) : null}
-                  </span>
-                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-500">
-                    {c.company ? <span className="truncate">{c.company}</span> : null}
-                    {c.company && primary ? <span className="text-ink-300">·</span> : null}
-                    {c.numbers.map((n) => (
-                      <span key={n.id} className="tabular">
-                        {formatPhoneDisplay(n.e164)}
-                        {n.label ? (
-                          <span className="ml-1 text-ink-400">{n.label}</span>
-                        ) : null}
+                    {k.recording ? (
+                      <span className="ml-auto">
+                        <ListenButton recording={k.recording} />
                       </span>
-                    ))}
-                  </span>
-                </button>
-
-                <span className="flex shrink-0 items-center gap-1">
-                  {primary ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="phone"
-                        disabled={!canCall}
-                        onClick={() => void dial(primary)}
-                      >
-                        Call
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon="message-square"
-                        onClick={() => {
-                          // The composer lives in the Messages section; take
-                          // them to it with the number already in hand.
-                          window.dispatchEvent(
-                            new CustomEvent('tapdash:compose-sms', { detail: { to: primary } }),
-                          );
-                        }}
-                      >
-                        Text
-                      </Button>
-                    </>
-                  ) : null}
-                  <button
-                    type="button"
-                    aria-label={`Edit ${c.displayName}`}
-                    onClick={() => {
-                      setNotice(null);
-                      setAdding(false);
-                      setEditing(c);
-                    }}
-                    className="grid size-7 place-items-center rounded-md text-ink-400 transition-colors hover:bg-canvas hover:text-ink-900"
-                  >
-                    <Icon name="pencil" size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${c.displayName}`}
-                    onClick={() => {
-                      setError(null);
-                      setConfirmRemove(confirmRemove === c.id ? null : c.id);
-                    }}
-                    className="grid size-7 place-items-center rounded-md text-ink-400 transition-colors hover:bg-danger-bg hover:text-danger"
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                  <Icon
-                    name={open ? 'chevron-up' : 'chevron-down'}
-                    size={12}
-                    className="text-ink-400"
-                  />
-                </span>
-              </div>
-
-              {/* ── remove confirmation ───────────────────────────────── */}
-              {confirmRemove === c.id ? (
-                <div className="border-t border-line-faint bg-danger-bg/40 px-3 py-2.5">
-                  <p className="text-[12.5px] leading-relaxed text-ink-800">
-                    Remove <strong className="font-semibold">{c.displayName}</strong> from your
-                    contacts? This cannot be undone.{' '}
-                    <span className="text-ink-600">
-                      Their calls, texts and recordings are kept — only the contact entry is
-                      removed.
-                    </span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </HistoryBar>
+        <HistoryBar icon="message-square" label="Text history" count={loaded?.messages.length} loading={act === 'loading'} failed={act === 'error'} onOpen={onLoad}>
+          {loaded && loaded.messages.length > 0 ? (
+            <ul className="max-h-[260px] divide-y divide-line-faint overflow-y-auto">
+              {loaded.messages.map((m) => (
+                <li key={m.id} className="px-3 py-2">
+                  <p className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-ink-800">
+                    {m.direction === 'out' ? <span className="text-ink-400">You: </span> : null}
+                    {m.body}
                   </p>
-                  {error ? (
-                    <p role="alert" className="mt-1.5 text-[12px] text-danger">
-                      {error}
-                    </p>
-                  ) : null}
-                  <div className="mt-2 flex items-center gap-2">
-                    <Button size="sm" variant="ghost" disabled={pending} onClick={() => setConfirmRemove(null)}>
-                      Keep
-                    </Button>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() => remove(c)}
-                      className="rounded-md bg-danger px-2.5 py-1 text-[12px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                    >
-                      {pending ? 'Removing…' : 'Remove'}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+                  <p className="mt-0.5 text-[11px] text-ink-400 tabular">{formatDateTime(m.sentAt ?? m.createdAt)}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </HistoryBar>
+      </div>
+    </li>
+  );
+}
 
-              {/* ── activity ──────────────────────────────────────────── */}
-              {open ? (
-                <div className="space-y-3 border-t border-line-faint px-3 py-3">
-                  {c.notes ? (
-                    <p className="rounded-lg bg-canvas px-2.5 py-1.5 text-[12.5px] leading-relaxed text-ink-700">
-                      {c.notes}
-                    </p>
-                  ) : null}
-                  {c.email ? (
-                    <p className="flex items-center gap-1.5 text-[12.5px] text-ink-600">
-                      <Icon name="mail" size={12} className="text-ink-400" />
-                      {c.email}
-                    </p>
-                  ) : null}
-
-                  {loadingId === c.id || !act ? (
-                    <p className="flex items-center gap-2 py-2 text-[12.5px] text-ink-400">
-                      <Spinner className="size-3" />
-                      Loading history…
-                    </p>
-                  ) : act.calls.length === 0 && act.messages.length === 0 ? (
-                    <p className="py-2 text-[12.5px] text-ink-400">
-                      No calls or texts with this contact yet.
-                    </p>
-                  ) : (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {/* calls + recordings */}
-                      <div>
-                        <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">
-                          Calls &amp; recordings
-                          <span className="ml-1.5 font-normal tabular text-ink-300">
-                            {act.calls.length}
-                          </span>
-                        </h4>
-                        {act.calls.length === 0 ? (
-                          <p className="mt-1.5 text-[12.5px] text-ink-400">No calls yet.</p>
-                        ) : (
-                          <ul className="mt-1.5 space-y-1.5">
-                            {act.calls.map((call) => (
-                              <li
-                                key={call.id}
-                                className="rounded-lg border border-line-faint px-2.5 py-1.5"
-                              >
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <Icon
-                                    name={call.direction === 'in' ? 'reply' : 'send'}
-                                    size={11}
-                                    className="text-ink-400"
-                                  />
-                                  <span className="text-[12.5px] font-medium text-ink-900">
-                                    {call.direction === 'in' ? 'Incoming' : 'Outgoing'}
-                                  </span>
-                                  <span className="text-[11.5px] text-ink-400 tabular">
-                                    {duration(call.durationSeconds)}
-                                  </span>
-                                  <span className="ml-auto text-[11.5px] text-ink-400 tabular">
-                                    {formatDateTime(call.startedAt)}
-                                  </span>
-                                </div>
-                                {call.recording ? (
-                                  <div className="mt-1.5">
-                                    <RecordingRow recording={call.recording} />
-                                  </div>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-
-                      {/* texts */}
-                      <div>
-                        <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-400">
-                          Texts
-                          <span className="ml-1.5 font-normal tabular text-ink-300">
-                            {act.messages.length}
-                          </span>
-                        </h4>
-                        {act.messages.length === 0 ? (
-                          <p className="mt-1.5 text-[12.5px] text-ink-400">No texts yet.</p>
-                        ) : (
-                          <ul className="mt-1.5 max-h-[220px] space-y-1.5 overflow-y-auto pr-1">
-                            {act.messages.map((m) => (
-                              <li
-                                key={m.id}
-                                className={`rounded-lg px-2.5 py-1.5 ${
-                                  m.direction === 'in' ? 'bg-canvas' : 'bg-brand-50'
-                                }`}
-                              >
-                                <p className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-ink-800">
-                                  {m.body}
-                                </p>
-                                <p className="mt-0.5 text-[11px] text-ink-400 tabular">
-                                  {m.direction === 'in' ? 'Received' : 'Sent'}{' '}
-                                  {formatDateTime(m.sentAt ?? m.createdAt)}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+/** A minimized bar that opens to show one kind of history. */
+function HistoryBar({
+  icon,
+  label,
+  count,
+  loading,
+  failed,
+  onOpen,
+  children,
+}: {
+  icon: 'clock' | 'message-square';
+  label: string;
+  count: number | undefined;
+  loading: boolean;
+  failed: boolean;
+  onOpen: () => void;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-xl border border-line-soft bg-canvas/40">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          if (!open) onOpen();
+          setOpen((o) => !o);
+        }}
+        className="flex h-9 w-full items-center gap-2 px-3 text-[12px] font-semibold text-ink-500 transition-colors hover:text-ink-900"
+      >
+        <Icon name={icon} size={13} />
+        <span className="flex-1 text-left">{label}</span>
+        {count !== undefined ? (
+          <span className="rounded-full bg-white px-1.5 text-[11px] font-medium text-ink-500 tabular">{count}</span>
+        ) : null}
+        <Icon name="chevron-down" size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div className="border-t border-line-soft bg-white">
+          {loading ? (
+            <p className="flex items-center gap-2 px-3 py-3 text-[12px] text-ink-400">
+              <Spinner className="size-3" />
+              Loading…
+            </p>
+          ) : failed ? (
+            <p className="flex items-center gap-2 px-3 py-3 text-[12px] text-danger">
+              Could not load the history.
+              <button type="button" onClick={onOpen} className="font-semibold underline underline-offset-2">
+                Try again
+              </button>
+            </p>
+          ) : count === 0 || count === undefined ? (
+            <p className="px-3 py-3 text-[12px] text-ink-400">Nothing yet.</p>
+          ) : (
+            children
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }

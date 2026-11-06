@@ -110,7 +110,8 @@ export function hrefFor(r: Raw, mod: { slug: string } | undefined): string | nul
   if (kind === 'automation_alert') return '/admin/automations/runs';
   // A processor (Maverick) sync problem: the connection page shows what failed.
   if (kind === 'processor') return '/admin/integrations?tab=maverick';
-  if (!recordId || !mod) return kind in TAB_FOR_PHONE ? '/phone' : null;
+  // A text opens the Phone page on SMS, where its conversation is at the top.
+  if (!recordId || !mod) return kind in TAB_FOR_PHONE ? (kind === 'sms' ? '/phone?tab=sms' : '/phone') : null;
   const base = `/${mod.slug}?record=${recordId}`;
   if (kind.startsWith('mention_') || kind === 'agreement' || kind === 'proposal') {
     const tab = r.tab_key as string | null;

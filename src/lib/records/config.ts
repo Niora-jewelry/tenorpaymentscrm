@@ -298,7 +298,7 @@ const loadConfigCached = unstable_cache(
    * A new deploy now reads the configuration fresh by itself.
    */
   // The shape version covers local builds, where the deploy id is always 'local'.
-  ['records-config', 'shape-9922', process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA ?? 'local'],
+  ['records-config', 'shape-9924', process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA ?? 'local'],
   { tags: [CONFIG_CACHE_TAG] },
 );
 

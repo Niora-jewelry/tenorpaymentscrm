@@ -101,7 +101,10 @@ export type IconName =
   | 'phone-in'
   | 'phone-out'
   | 'phone-missed'
-  | 'square-pen';
+  | 'square-pen'
+  // modules
+  | 'shield-check'
+  | 'package';
 
 type Props = Omit<SVGProps<SVGSVGElement>, 'name'> & {
   name: IconName;
@@ -437,6 +440,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M18.4 2.6a2.1 2.1 0 1 1 3 3L12 15l-4 1 1-4Z" />
     </>
   ),
+  'shield-check': (
+    <>
+      <path d="M12 22s8-3.6 8-10V5.2L12 2 4 5.2V12c0 6.4 8 10 8 10Z" />
+      <path d="m8.8 12 2.2 2.2 4.4-4.4" />
+    </>
+  ),
+  package: (
+    <>
+      <path d="M21 8 12 3 3 8v8l9 5 9-5Z" />
+      <path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5" />
+    </>
+  ),
   quote: (
     <>
       <path d="M6 17h3l2-4V7H5v6h3z" />
@@ -609,6 +624,8 @@ export const MODULE_ICON: Record<string, IconName> = {
   records: 'database',
   leads: 'target',
   deals: 'briefcase',
+  underwriting: 'shield-check',
+  deployment: 'package',
   contacts: 'users',
   tickets: 'lifebuoy',
   residuals: 'percent',

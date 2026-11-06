@@ -51,7 +51,7 @@ export function RealPipelineBar({
   moduleId,
   recordId,
   pipelines,
-  assignment,
+  assignment: saved,
   canMove = true,
   canChange = false,
 }: {
@@ -78,13 +78,27 @@ export function RealPipelineBar({
    */
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * The step the user just picked, shown at once. Without it the bar waited for
+   * the whole drawer to render again before moving, many seconds on a slow
+   * connection, which reads as a click that did nothing. It gives way to the
+   * saved step as soon as the page brings one back, and is dropped if the move
+   * is refused, so the bar never claims a step the record is not on.
+   */
+  const savedKey = saved ? `${saved.pipelineId}:${saved.stepId}` : '';
+  const [picked, setPicked] = useState<{ pipelineId: string; stepId: string; over: string } | null>(null);
+  if (picked && picked.over !== savedKey) setPicked(null);
+  const assignment = picked ?? saved;
+
   const setStep = (pipelineId: string, stepId: string) => {
+    setError(null);
+    setPicked({ pipelineId, stepId, over: savedKey });
     startTransition(async () => {
       try {
-        setError(null);
         await setPipelineStepAction(moduleSlug, recordId, moduleId, pipelineId, stepId);
         router.refresh();
       } catch {
+        setPicked(null);
         setError('Could not move this record.');
       }
     });

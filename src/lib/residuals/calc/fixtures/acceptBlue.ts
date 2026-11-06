@@ -3,7 +3,7 @@
  * date serial 46235). This report includes the Setup Fee ISO column, plus one
  * column the spec does not list ("Mystery Fee ISO").
  *
- *   B1   ties out (the spec's Honeyvolt example)
+ *   B1   ties out (mirrors the spec's first worked example)
  *   B2   report MID has the extra trailing 0 (12 digits vs the CRM's 11)
  *   B3   ERTCFunding LLC: no MID on the report, CRM MID 30119801440
  *   B4   charged more than the CRM says (monthly group and setup, both red)
@@ -14,6 +14,9 @@
  *   B8   has an Accept.blue/ISO row but is missing from the report
  *   B9   charged less than the CRM says (green)
  *   B10  a 0.01 difference (inside the 0.02 tolerance) and an unlisted column
+ *
+ * Names and MIDs are made up, except ERTCFunding LLC → 30119801440, which the
+ * spec makes a matching rule the engine itself must apply.
  */
 import type { AcceptBlueAmounts, AcceptBlueInput, AcceptBlueReportRow, EquipmentRow, Money } from '../types';
 
@@ -50,14 +53,14 @@ export const ACCEPT_BLUE_INPUT: AcceptBlueInput = {
   month: '2026-08',
   reportMonth: 46235,
   reportRows: [
-    row('Honeyvolt Electric Supply', '201100000001', {
+    row('Bluebird Hardware', '201100000001', {
       monthlyGatewayFeeIso: '15.00',
       paymentPagesIso: '5.00',
       transactionFeeIso: '17.20',
       transactionCount: '344',
       isoTotal: '37.20',
     }),
-    row('Beis Hatavshil TH', '301198000020', {
+    row('Maple Street Cafe', '301198000020', {
       monthlyGatewayFeeIso: '15.00',
       transactionFeeIso: '3.00',
       transactionCount: '60',
@@ -70,7 +73,7 @@ export const ACCEPT_BLUE_INPUT: AcceptBlueInput = {
       transactionCount: '15',
       isoTotal: '15.75',
     }),
-    row('Professional Servicing LLC', '201100000004', {
+    row('Overcharged Services LLC', '201100000004', {
       setupFeeIso: '59.99',
       monthlyGatewayFeeIso: '15.00',
       paymentPagesIso: '25.00',
@@ -133,7 +136,7 @@ export type ExpectedAcceptBlueMerchant = {
 
 export const ACCEPT_BLUE_EXPECTED_MERCHANTS: ExpectedAcceptBlueMerchant[] = [
   {
-    name: 'Honeyvolt Electric Supply',
+    name: 'Bluebird Hardware',
     reportMid: '201100000001',
     mid: '201100000001',
     matchedBy: 'exact',
@@ -144,7 +147,7 @@ export const ACCEPT_BLUE_EXPECTED_MERCHANTS: ExpectedAcceptBlueMerchant[] = [
     flags: [],
   },
   {
-    name: 'Beis Hatavshil TH',
+    name: 'Maple Street Cafe',
     reportMid: '301198000020',
     mid: '30119800002',
     matchedBy: 'trailing_zero',
@@ -165,7 +168,7 @@ export const ACCEPT_BLUE_EXPECTED_MERCHANTS: ExpectedAcceptBlueMerchant[] = [
     flags: [],
   },
   {
-    name: 'Professional Servicing LLC',
+    name: 'Overcharged Services LLC',
     reportMid: '201100000004',
     mid: '201100000004',
     matchedBy: 'exact',

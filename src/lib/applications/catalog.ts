@@ -7,6 +7,13 @@
  * asks … so both paths produce the same data" true by construction rather
  * than by two lists kept in step.
  *
+ * Since the PDF was hidden from merchants (`offer.ts`) the online form has
+ * moved ahead of it. The Send Application test of 6 Nov 2026 added the
+ * questions the CRM needs that the PDF never asked, and the CRM's own square
+ * footage ranges. Those exist online only: the PDF ignores a key it has no
+ * field for, and an older returned PDF is still read by its old names. Bring
+ * the template up to date before setting `PDF_APPLICATION_OFFERED` back on.
+ *
  * Naming, as in the revised PDF:
  *   text / radio       one field, named by `id`
  *   checkboxes         `<id>__<option>`, one per option
@@ -94,6 +101,18 @@ export const QUESTIONS: Question[] = [
       { value: 'Rent', label: 'Rent' },
     ],
   },
+  {
+    id: 'building_type',
+    section: 'business',
+    label: 'What type of building is it?',
+    kind: 'radio',
+    options: [
+      { value: 'shopping_center', label: 'Shopping center' },
+      { value: 'office_building', label: 'Office building' },
+      { value: 'industrial', label: 'Industrial' },
+      { value: 'residence', label: 'Residence' },
+    ],
+  },
   { id: 'dba', section: 'business', label: 'DBA (If different than legal)', kind: 'text', half: true },
   { id: 'retail_address', section: 'business', label: 'Retail Address', kind: 'address' },
   {
@@ -112,11 +131,15 @@ export const QUESTIONS: Question[] = [
     section: 'business',
     label: 'Estimated square footage',
     kind: 'single_checkbox',
+    // The CRM's own ranges, so an answer names one CRM value (test of 6 Nov
+    // 2026: "501-2500 was shown as 1,000-5,000"). The PDF's four boxes are
+    // read through `SQFT_RETURN` in mapping.ts.
     options: [
-      { value: '1_1000', label: '1-1,000' },
-      { value: '1000_5000', label: '1,000-5,000' },
-      { value: '5000_10000', label: '5,000-10,000' },
-      { value: 'above_10000', label: 'Above 10,000' },
+      { value: '0_500', label: '0-500' },
+      { value: '501_2500', label: '501-2500' },
+      { value: '2501_5000', label: '2501-5000' },
+      { value: '5001_10000', label: '5001-10000' },
+      { value: '10000', label: '10000+' },
     ],
   },
   { id: 'contact_email', section: 'business', label: 'Business Email Address', kind: 'email', half: true },
@@ -153,11 +176,13 @@ export const QUESTIONS: Question[] = [
     details: { id: 'cc_termination_details', label: 'If yes, provide more details', requiredWhen: 'Yes' },
   },
   { id: 'merchant_website', section: 'business', label: 'Website Address', kind: 'url', placeholder: 'https://' },
+  { id: 'describe_product_service', section: 'business', label: 'Describe the products or services you sell', kind: 'long_text' },
 
   // ── 3 Credit Card Processing ──────────────────────────────────────────────
   { id: 'prior_processor', section: 'processing', label: 'Current processing company', kind: 'text', half: true },
   { id: 'prior_pos', section: 'processing', label: 'Current terminal type or POS system', kind: 'text', half: true },
   { id: 'monthly_acq_volume', section: 'processing', label: 'Average monthly credit card volume', kind: 'money', half: true },
+  { id: 'amex_monthly_volume', section: 'processing', label: 'Average monthly American Express volume', kind: 'money', half: true },
   { id: 'average_transaction_amount', section: 'processing', label: 'Average ticket', kind: 'money', half: true },
   { id: 'maximum_transaction_amount', section: 'processing', label: 'High ticket', kind: 'money', half: true },
   {
@@ -228,6 +253,30 @@ export const QUESTIONS: Question[] = [
     options: YES_NO,
   },
   {
+    id: 'when_charged',
+    section: 'processing',
+    label: 'When is the customer charged?',
+    kind: 'radio',
+    options: [
+      { value: 'time_of_order', label: 'Time of order' },
+      { value: 'upon_shipment', label: 'Upon shipment' },
+    ],
+  },
+  {
+    id: 'charge_to_service',
+    section: 'processing',
+    label: 'How long after the charge does the customer receive the product or service?',
+    kind: 'radio',
+    options: [
+      { value: '24_hours', label: '24 hours' },
+      { value: '2_days', label: '2 days' },
+      { value: '3_10_days', label: '3-10 days' },
+      { value: '11_30_days', label: '11-30 days' },
+      { value: '31_90_days', label: '31-90 days' },
+      { value: '90_days', label: '90+ days' },
+    ],
+  },
+  {
     id: 'product_received_time',
     section: 'processing',
     label: 'How long does it take for the customer to receive the product or service?',
@@ -241,6 +290,14 @@ export const QUESTIONS: Question[] = [
       { value: '11+ days', label: '11+ days' },
     ],
     comments: { id: 'product_received_comments', label: 'Additional comments' },
+  },
+  {
+    id: 'recurring_subscription',
+    section: 'processing',
+    label: 'Do you offer recurring or subscription services?',
+    kind: 'radio',
+    options: YES_NO,
+    details: { id: 'recurring_subscription_details', label: 'If yes, provide more details', requiredWhen: 'Yes' },
   },
   {
     id: 'service_model',
@@ -264,6 +321,22 @@ export const QUESTIONS: Question[] = [
   { id: 'ach_monthly_returns', section: 'ach', label: '# of Monthly ACH Returns', kind: 'count', half: true },
   { id: 'ach_refunds', section: 'ach', label: 'Do you issue refunds via ACH?', kind: 'radio', options: YES_NO },
   {
+    id: 'ach_credits_required',
+    section: 'ach',
+    label: 'Do you need to send ACH credits?',
+    kind: 'radio',
+    options: YES_NO,
+    details: { id: 'ach_credits_required_details', label: 'If yes, provide more details', requiredWhen: 'Yes' },
+  },
+  {
+    id: 'ach_termination',
+    section: 'ach',
+    label: 'Has the business or any of its principals ever been terminated from ACH processing?',
+    kind: 'radio',
+    options: YES_NO,
+    details: { id: 'ach_termination_details', label: 'If yes, provide more details', requiredWhen: 'Yes' },
+  },
+  {
     id: 'payment_codes',
     section: 'ach',
     label: 'Please provide the approximate percentage of your ACH transactions by type (must total 100%)',
@@ -281,17 +354,20 @@ export const QUESTIONS: Question[] = [
 export const MAX_OWNERS = 4;
 export const OWNER_PARTS = ['name', 'title', 'percentage', 'email', 'phone', 'ssn'] as const;
 export type OwnerPart = (typeof OWNER_PARTS)[number];
-export const OWNER_LABELS: Record<OwnerPart, string> = {
+/** Online, the name is two inputs (spec: "First name and last name are
+ * separate inputs, matching the CRM's Ownership fields"); the PDF has one box.
+ * Date of birth and home address are asked online only. */
+export const ONLINE_OWNER_PARTS = ['first', 'last', 'dob', 'address'] as const;
+export const OWNER_LABELS: Record<OwnerPart | 'dob' | 'address', string> = {
   name: 'Corporate Officer/Owner Name',
   title: 'Title',
   percentage: 'Ownership %',
   email: 'Email Address',
   phone: 'Phone Number',
   ssn: 'Social Security Number',
+  dob: 'Date of Birth',
+  address: 'Home Address',
 };
-/** Online, the name is two inputs (spec: "First name and last name are
- * separate inputs, matching the CRM's Ownership fields"); the PDF has one box. */
-export const ONLINE_OWNER_PARTS = ['first', 'last'] as const;
 export type OnlineOwnerPart = (typeof ONLINE_OWNER_PARTS)[number];
 export const ownerField = (n: number, part: OwnerPart | OnlineOwnerPart) => `owner${n}_${part}`;
 

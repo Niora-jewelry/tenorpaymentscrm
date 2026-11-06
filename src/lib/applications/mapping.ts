@@ -9,11 +9,17 @@
  *    Security). `prefillAnswers` cannot even see them: it reads only the
  *    keys listed here, and none of them is private.
  *  · A blank answer is no answer — never "No", never a clear (spec, PDF path).
- *  · Where an application answer cannot name ONE CRM value (the PDF's square
- *    footage ranges straddle the CRM's until it is changed to the PDF's;
- *    or Personal; several Inventory boxes ticked against a one-choice field),
- *    the proposal carries `candidates` and the reviewer picks. Nothing is
- *    guessed, and no existing CRM value is reinterpreted.
+ *  · Where an application answer cannot name ONE CRM value (a returned PDF's
+ *    square footage box spans two CRM ranges), the proposal carries
+ *    `candidates` and the reviewer picks. Nothing is guessed, and no existing
+ *    CRM value is reinterpreted.
+ *
+ * R1, R2–R4 and R6 changed after the Send Application test of 6 Nov 2026:
+ *  · R2–R4 shared one field between the card and ACH questions, higher answer
+ *    wins. The ACH amounts have had their own fields since 30 Oct, and sharing
+ *    put an ACH average in the card field, so each question now has its own.
+ *  · R1 and R6 prefilled "No" from an empty field, which answered for the
+ *    merchant. They now prefill Yes when the field says so, and otherwise ask.
  */
 import type { AddressAnswer, Answers } from './catalog';
 import { MAX_OWNERS, ownerField } from './catalog';
@@ -56,11 +62,18 @@ export function parseTargetKey(s: string): Target | null {
 
 const str = (v: unknown): string => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+/**
+ * Nothing entered. An address that holds only its default country and a split
+ * at 0 everywhere are empty too: both are what a drawer leaves behind when a
+ * field is touched and left, and neither is a value worth a review row.
+ */
 export const isBlank = (v: unknown): boolean =>
   v == null ||
   (typeof v === 'string' && v.trim() === '') ||
   (Array.isArray(v) && v.length === 0) ||
-  (typeof v === 'object' && !Array.isArray(v) && Object.values(v as object).every((x) => isBlank(x)));
+  (typeof v === 'object' &&
+    !Array.isArray(v) &&
+    Object.entries(v as object).every(([k, x]) => k === 'country' || x === 0 || isBlank(x)));
 
 /** "$50,000.00" → "50000", "12.5%" → "12.5". Blank or junk → "". */
 export function cleanNumber(raw: unknown): string {
@@ -117,7 +130,9 @@ export function addressLine(a: AddressAnswer): string {
 export function parseAddress(raw: unknown): AddressAnswer {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     const o = raw as Record<string, unknown>;
-    return { street: str(o.street), street2: str(o.street2), city: str(o.city), state: str(o.state).toUpperCase(), zip: str(o.zip) };
+    const a = { street: str(o.street), street2: str(o.street2), city: str(o.city), state: str(o.state).toUpperCase(), zip: str(o.zip) };
+    // The whole address typed into the street box is split the same way.
+    return a.street && !a.street2 && !a.city && !a.state && !a.zip ? parseAddress(a.street) : a;
   }
   const s = str(raw);
   if (!s) return { ...EMPTY_ADDRESS };
@@ -149,18 +164,25 @@ const INVENTORY: Record<string, string> = {
   fulfillment_center: 'fulfillment_center', third_party_storage: 'third_party_storage', other: 'other',
 };
 const INVENTORY_PREFILL: Record<string, string> = Object.fromEntries(Object.entries(INVENTORY).map(([pdf, crm]) => [crm, pdf]));
-/** The PDF's square-footage boxes against the CRM's ranges. The CRM keeps its
- * own ranges — the merchant agreement prints them as they are (the client,
- * 30 Oct 2026). Where a box spans two CRM ranges the reviewer picks; the one
- * CRM range that spans two boxes, 501–2,500, prefills as 1,000–5,000 (the
- * client, 29 Oct 2026). */
+/** Square footage. The CRM keeps its own ranges (the merchant agreement prints
+ * them, the client, 30 Oct 2026) and the online form asks exactly those, so an
+ * online answer IS the CRM's key. The rest of this table reads a returned PDF,
+ * where a box can span two CRM ranges and the reviewer picks. */
 const SQFT_RETURN: Record<string, string[]> = {
+  '0_500': ['0_500'],
+  '501_2500': ['501_2500'],
+  '2501_5000': ['2501_5000'],
+  '5001_10000': ['5001_10000'],
+  '10000': ['10000'],
   '1_1000': ['0_500', '501_2500'],
   '1000_5000': ['501_2500', '2501_5000'],
   '5000_10000': ['5001_10000'],
   above_10000: ['10000'],
 };
-const SQFT_PREFILL: Record<string, string> = { '0_500': '1_1000', '501_2500': '1000_5000', '2501_5000': '1000_5000', '5001_10000': '5000_10000', '10000': 'above_10000' };
+const SQFT_ONLINE = new Set(['0_500', '501_2500', '2501_5000', '5001_10000', '10000']);
+/** The PDF's box for a CRM range; 501–2,500 spans two and takes 1,000–5,000
+ * (the client, 29 Oct 2026). */
+const SQFT_PDF_BOX: Record<string, string> = { '0_500': '1_1000', '501_2500': '1000_5000', '2501_5000': '1000_5000', '5001_10000': '5000_10000', '10000': 'above_10000' };
 const SALES_METHOD: Record<string, string> = { internet: 'ecommerce', in_person: 'in_person', mail_phone: 'mail_phone' };
 const CUSTOMER_TYPE: Record<string, string> = { b2c: 'individual', b2b: 'business', government: 'gov' };
 const CUSTOMER_PROFILE: Record<string, string> = { local: 'local', national: 'national', international: 'international' };
@@ -237,6 +259,29 @@ function receivedBucket(days: number): (typeof RECEIVED_BUCKETS)[number] {
 
 const MONTHS_NONE = 'No';
 
+/** Questions whose options ARE the CRM's choice keys, so nothing translates. */
+const SAME_KEY_CHOICES: { id: string; question: string }[] = [
+  { id: 'building_type', question: 'Building type' },
+  { id: 'when_charged', question: 'When is customer charged' },
+  { id: 'charge_to_service', question: 'How long after charge is product received' },
+];
+/** Yes / No questions with a details box that goes to the field's notes (R7). */
+const YES_NO_WITH_NOTES: { id: string; question: string; details: string }[] = [
+  { id: 'recurring_subscription', question: 'Recurring or subscription services', details: 'recurring_subscription_details' },
+  { id: 'ach_credits_required', question: 'ACH credits required', details: 'ach_credits_required_details' },
+  { id: 'ach_termination', question: 'ACH termination', details: 'ach_termination_details' },
+];
+/** Money questions, one field each: the card and ACH amounts are separate. */
+const MONEY_ANSWERS: { id: string; field: string; question: string }[] = [
+  { id: 'monthly_acq_volume', field: 'monthly_acq_volume', question: 'Monthly ACQ volume' },
+  { id: 'amex_monthly_volume', field: 'amex_monthly_volume', question: 'Amex monthly volume' },
+  { id: 'average_transaction_amount', field: 'avg_transaction', question: 'Average transaction amount' },
+  { id: 'maximum_transaction_amount', field: 'max_transaction', question: 'Maximum transaction amount' },
+  { id: 'monthly_ach_volume', field: 'monthly_ach_volume', question: 'Monthly ACH volume' },
+  { id: 'average_ach_transaction_amount', field: 'ach_avg_transaction', question: 'Average ACH transaction amount' },
+  { id: 'maximum_ach_transaction_amount', field: 'ach_max_transaction', question: 'Maximum ACH transaction amount' },
+];
+
 /** Repeat groups that are one list split over two sub-tabs (same `repeat_group_key`). */
 const PAIRED_GROUPS: [string, string][] = [['owner_ownership', 'owner_private']];
 
@@ -257,11 +302,12 @@ function crmOwners(crm: CrmValues): Record<string, unknown>[] {
 /** Every CRM field the application reads (prefill), for the pre-send check. */
 export const APPLICATION_FIELD_KEYS = [
   'legal_business_name', 'dba', 'merchant_address', 'retail_address', 'building_ownership', 'area_zoned', 'square_footage',
-  'contact', 'business_founded_date', 'merchant_website', 'entity_type', 'bankruptcy', 'cc_termination', 'owner_ownership',
-  'prior_processor', 'prior_pos', 'monthly_acq_volume', 'monthly_ach_volume', 'avg_transaction', 'ach_avg_transaction',
+  'contact', 'business_email', 'business_phone', 'business_founded_date', 'merchant_website', 'entity_type', 'bankruptcy', 'cc_termination', 'owner_ownership',
+  'prior_processor', 'prior_pos', 'monthly_acq_volume', 'amex_monthly_volume', 'monthly_ach_volume', 'avg_transaction', 'ach_avg_transaction',
   'max_transaction', 'ach_max_transaction', 'seasonal', 'sales_method', 'customer_type', 'customer_profile', 'payment_codes',
-  'advertising_method', 'refund_policy', 'inventory', 'charge_to_service', 'order_to_service', 'service_model',
-  'ach_monthly_transactions', 'ach_monthly_returns', 'ach_refunds', 'td_ach_return',
+  'advertising_method', 'refund_policy', 'inventory', 'when_charged', 'charge_to_service', 'order_to_service', 'service_model',
+  'building_type', 'describe_product_service', 'recurring_subscription',
+  'ach_monthly_transactions', 'ach_monthly_returns', 'ach_refunds', 'ach_credits_required', 'ach_termination', 'td_ach_return',
 ] as const;
 
 export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
@@ -279,11 +325,11 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   const bo = Object.entries(BUILDING).find(([, crmKey]) => crmKey === str(crm.building_ownership));
   if (bo) a.building_ownership = bo[0];
   if (str(crm.area_zoned)) a.area_zoned = [str(crm.area_zoned)];
-  const sq = SQFT_PREFILL[str(crm.square_footage)];
-  if (sq) a.square_footage = [sq];
+  if (SQFT_ONLINE.has(str(crm.square_footage))) a.square_footage = [str(crm.square_footage)];
+  // The business's own email and phone; on a record without them, the first contact's.
   const contact = Array.isArray(crm.contact) ? (crm.contact[0] as Record<string, unknown> | undefined) : undefined;
-  set('contact_email', str(contact?.email));
-  set('contact_phone', str(contact?.phone));
+  set('contact_email', str(crm.business_email) || str(contact?.email));
+  set('contact_phone', str(crm.business_phone) || str(contact?.phone));
   set('business_founded_date', str(crm.business_founded_date));
   set('merchant_website', str(crm.merchant_website));
   const et = str(crm.entity_type);
@@ -311,22 +357,14 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
       set(ownerField(n, 'percentage'), cleanNumber(o.percentage));
       set(ownerField(n, 'email'), str(o.email));
       set(ownerField(n, 'phone'), str(o.phone));
+      set(ownerField(n, 'dob'), str(o.dob));
+      const home = crmAddress(o.address);
+      if (home) a[ownerField(n, 'address')] = home;
     });
 
   set('prior_processor', str(crm.prior_processor));
   set('prior_pos', str(crm.prior_pos));
-  // R2–R4: the card and ACH questions are prefilled from the card fields —
-  // unless the record holds its own ACH figures (the ACH agreement's fields,
-  // 30 Oct 2026), which the ACH questions then show instead.
-  const vol = cleanNumber(crm.monthly_acq_volume);
-  set('monthly_acq_volume', vol);
-  set('monthly_ach_volume', cleanNumber(crm.monthly_ach_volume) || vol);
-  const avg = cleanNumber(crm.avg_transaction);
-  set('average_transaction_amount', avg);
-  set('average_ach_transaction_amount', cleanNumber(crm.ach_avg_transaction) || avg);
-  const max = cleanNumber(crm.max_transaction);
-  set('maximum_transaction_amount', max);
-  set('maximum_ach_transaction_amount', cleanNumber(crm.ach_max_transaction) || max);
+  for (const m of MONEY_ANSWERS) set(m.id, cleanNumber(crm[m.field]));
 
   const months = list(crm.seasonal);
   if (months.length) a.seasonal = months.includes(MONTHS_NONE) ? 'No' : 'Yes';
@@ -346,8 +384,9 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   set('return_policy', str(crm.refund_policy));
   const inv = (Array.isArray(crm.inventory) ? list(crm.inventory) : [str(crm.inventory)]).map((k) => INVENTORY_PREFILL[k]).filter((x): x is string => !!x);
   if (inv.length) a.inventory = inv;
-  // R6: Yes when How Long After Charge Is Order Shipped has a value.
-  a.accepts_payment_before_delivery = str(crm.charge_to_service) ? 'Yes' : 'No';
+  // R6: Yes when How Long After Charge Is Order Shipped has a value. Empty says
+  // nothing, so the merchant answers it.
+  if (str(crm.charge_to_service)) a.accepts_payment_before_delivery = 'Yes';
   const recv = str(crm.order_to_service);
   if (recv && RECEIVED_LABEL[recv]) set('product_received_time', RECEIVED_LABEL[recv]);
   const sm = list(crm.service_model);
@@ -360,7 +399,14 @@ export function prefillAnswers(crm: CrmValues, labels: Labels): Answers {
   // add here"); before that it was read off the ACH Return fee.
   const ar = str(crm.ach_refunds);
   if (ar === 'yes' || ar === 'no') a.ach_refunds = ar === 'yes' ? 'Yes' : 'No';
-  else a.ach_refunds = str(crm.td_ach_return) ? 'Yes' : 'No'; // R1, until the field is set
+  else if (str(crm.td_ach_return)) a.ach_refunds = 'Yes'; // R1, until the field is set
+
+  for (const c of SAME_KEY_CHOICES) set(c.id, str(crm[c.id]));
+  set('describe_product_service', str(crm.describe_product_service));
+  for (const y of YES_NO_WITH_NOTES) {
+    const v = str(crm[y.id]);
+    if (v === 'yes' || v === 'no') a[y.id] = v === 'yes' ? 'Yes' : 'No';
+  }
 
   return a;
 }
@@ -387,7 +433,7 @@ export function answersForPdf(a: Answers): Record<string, string | string[]> {
   for (const [k, v] of Object.entries(a)) {
     if (/^owner\d_(first|last)$/.test(k) || (/^owner\d_name$/.test(k) && out[k])) continue;
     if (typeof v === 'string') out[k] = k === 'business_founded_date' ? usDate(v) : v;
-    else if (Array.isArray(v)) out[k] = v;
+    else if (Array.isArray(v)) out[k] = k === 'square_footage' ? v.map((x) => SQFT_PDF_BOX[x] ?? x) : v;
     else out[k] = addressLine(v);
   }
   return out;
@@ -462,18 +508,25 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
     pick('square_footage', 'Square footage', sqft, `${shown} sq ft`);
   }
 
-  // Contact Email / Phone: the first contact on the record.
-  for (const [id, member, q] of [
-    ['contact_email', 'email', 'Contact email'],
-    ['contact_phone', 'phone', 'Contact phone'],
+  // Business email and phone are the record's own fields. A first contact with
+  // neither takes them too, as it always has: it is who the next email goes to.
+  const firstContact = Array.isArray(crm.contact) ? (crm.contact[0] as Record<string, unknown> | undefined) : undefined;
+  for (const [id, key, member, q, cq] of [
+    ['contact_email', 'business_email', 'email', 'Business email', 'Contact email'],
+    ['contact_phone', 'business_phone', 'phone', 'Business phone', 'Contact phone'],
   ] as const) {
     const v = answer(a, id);
-    if (v) out.push({ target: { kind: 'member', field: 'contact', index: 0, member }, fieldKey: 'contact', question: q, value: v, display: v });
+    if (!v) continue;
+    field(key, q, v, v);
+    if (isBlank(firstContact?.[member])) {
+      out.push({ target: { kind: 'member', field: 'contact', index: 0, member }, fieldKey: 'contact', question: cq, value: v, display: v });
+    }
   }
 
   const founded = cleanDate(answer(a, 'business_founded_date'));
   if (founded) field('business_founded_date', 'Business founded date', founded, usDate(founded));
   text('merchant_website', 'merchant_website', 'Website address');
+  text('describe_product_service', 'describe_product_service', 'Describe product/service');
 
   const ent = ticked(a, 'entity_type').map((e) => ENTITY[e]).filter((x): x is string => !!x);
   if (ent.length) {
@@ -520,6 +573,19 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
     m('percentage', 'ownership %', pct, pct ? `${pct}%` : '');
     m('email', 'email', answer(a, ownerField(n, 'email')));
     m('phone', 'phone', answer(a, ownerField(n, 'phone')));
+    const dob = cleanDate(answer(a, ownerField(n, 'dob')));
+    m('dob', 'date of birth', dob, usDate(dob));
+    const home = parseAddress(a[ownerField(n, 'address')]);
+    if (!isBlank(home)) {
+      const cur = Array.isArray(crm.owner_ownership) ? (crm.owner_ownership[i] as Record<string, unknown> | undefined)?.address : undefined;
+      out.push({
+        target: { kind: 'member', field: 'owner_ownership', index: i, member: 'address' },
+        fieldKey: 'owner_ownership',
+        question: `Owner ${n} — home address`,
+        value: toCrmAddress(home, cur),
+        display: addressLine(home),
+      });
+    }
     const ssn = answer(a, ownerField(n, 'ssn')).replace(/\D/g, '');
     if (ssn) {
       out.push({
@@ -535,17 +601,9 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
   text('prior_processor', 'prior_processor', 'Prior processor');
   text('prior_pos', 'prior_pos', 'Prior POS');
 
-  // R2–R4: card and ACH answers share a field; the higher one is the answer.
-  for (const [card, ach, key, q] of [
-    ['monthly_acq_volume', 'monthly_ach_volume', 'monthly_acq_volume', 'Monthly ACQ volume'],
-    ['average_transaction_amount', 'average_ach_transaction_amount', 'avg_transaction', 'Average transaction amount'],
-    ['maximum_transaction_amount', 'maximum_ach_transaction_amount', 'max_transaction', 'Maximum transaction amount'],
-  ] as const) {
-    const vals = [cleanNumber(answer(a, card)), cleanNumber(answer(a, ach))].filter(Boolean).map(Number);
-    if (vals.length) {
-      const hi = String(Math.max(...vals));
-      field(key, q, hi, money(hi));
-    }
+  for (const m of MONEY_ANSWERS) {
+    const v = cleanNumber(answer(a, m.id));
+    if (v) field(m.field, m.question, v, money(v));
   }
 
   // Seasonal: the CRM holds months; the application only Yes / No.
@@ -584,6 +642,11 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
 
   // R6: the Yes/No about paying before delivery is never written back.
 
+  for (const c of SAME_KEY_CHOICES) {
+    const v = answer(a, c.id);
+    if (v) choice(c.id, c.question, v);
+  }
+
   // How long until the customer receives it → the CRM's buckets.
   const recv = answer(a, 'product_received_time');
   if (recv) {
@@ -610,6 +673,12 @@ export function proposalsFrom(a: Answers, crm: CrmValues, labels: Labels): Propo
   if (achRet) field('ach_monthly_returns', 'ACH monthly returns', achRet, achRet);
   // R1: "Do you issue refunds via ACH?" is never written into ACH Return (a fee).
 
+  for (const y of YES_NO_WITH_NOTES) {
+    const v = answer(a, y.id);
+    if (v === 'Yes' || v === 'No') choice(y.id, y.question, v === 'Yes' ? 'yes' : 'no');
+    note(y.id, `${y.question} details`, answer(a, y.details));
+  }
+
   return out;
 }
 
@@ -625,7 +694,10 @@ export function currentValue(t: Target, crm: CrmValues): unknown {
 
 /** Equal for the purpose of "Same as CRM — nothing to do". */
 export function sameValue(a: unknown, b: unknown): boolean {
-  if (isBlank(a) && isBlank(b)) return true;
+  // Decided here, before anything below reads the two as text: an address or a
+  // split is '' as text, so against an empty CRM field it used to compare equal,
+  // and the merchant's answer was dropped as "same" without a trace.
+  if (isBlank(a) || isBlank(b)) return isBlank(a) && isBlank(b);
   if (Array.isArray(a) || Array.isArray(b)) {
     const x = list(a).slice().sort();
     const y = list(b).slice().sort();
@@ -633,7 +705,12 @@ export function sameValue(a: unknown, b: unknown): boolean {
   }
   if (a && b && typeof a === 'object' && typeof b === 'object') {
     const keys = new Set([...Object.keys(a), ...Object.keys(b)].filter((k) => k !== 'country'));
-    return [...keys].every((k) => sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+    // 0% and a part never entered are the same split.
+    const part = (o: object, k: string) => {
+      const v = (o as Record<string, unknown>)[k];
+      return v === 0 ? null : v;
+    };
+    return [...keys].every((k) => sameValue(part(a, k), part(b, k)));
   }
   const sa = str(a);
   const sb = str(b);

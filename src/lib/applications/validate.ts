@@ -102,7 +102,7 @@ export function problemsWith(a: Answers, ssnOnFile: Record<number, string> = {})
   let ownership = 0;
   let anyOwner = false;
   for (let n = 1; n <= MAX_OWNERS; n++) {
-    const parts = ['name', 'first', 'last', 'title', 'percentage', 'email', 'phone', 'ssn'] as const;
+    const parts = ['name', 'first', 'last', 'title', 'percentage', 'email', 'phone', 'ssn', 'dob', 'address'] as const;
     const has = parts.some((x) => filled(a[ownerField(n, x)])) || (n === 1 && !!ssnOnFile[1]);
     if (!has) continue;
     anyOwner = true;

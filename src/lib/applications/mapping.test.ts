@@ -3,6 +3,7 @@ import {
   answersForPdf,
   buildWrite,
   classify,
+  sameValue,
   cleanDate,
   cleanNumber,
   parseAddress,
@@ -63,9 +64,9 @@ describe('prefill (CRM → application)', () => {
     expect(a.owner1_name).toBe('Joe Van Der Berg');
   });
 
-  it('R2–R4 prefills the card and ACH question with the same value', () => {
+  it('card figures do not prefill the ACH questions (test of 6 Nov 2026)', () => {
     expect(a.monthly_acq_volume).toBe('50000');
-    expect(a.monthly_ach_volume).toBe('50000');
+    expect(a.monthly_ach_volume).toBeUndefined();
   });
 
   it('the ACH questions show the record’s own ACH figures when it has them', () => {
@@ -77,9 +78,41 @@ describe('prefill (CRM → application)', () => {
     expect(own.average_transaction_amount).toBe('40');
   });
 
-  it('R1 and R6 prefill Yes/No from whether the field has a value', () => {
-    expect(a.ach_refunds).toBe('No');
+  it('R1 and R6 prefill Yes from a value, and never answer No for the merchant', () => {
     expect(a.accepts_payment_before_delivery).toBe('Yes');
+    expect(a.ach_refunds).toBeUndefined();
+    const empty = prefillAnswers({}, labels);
+    expect(empty.ach_refunds).toBeUndefined();
+    expect(empty.accepts_payment_before_delivery).toBeUndefined();
+    expect(prefillAnswers({ td_ach_return: '5' }, labels).ach_refunds).toBe('Yes');
+    expect(prefillAnswers({ ach_refunds: 'no' }, labels).ach_refunds).toBe('No');
+  });
+
+  it('business email and phone come from their own fields, then the first contact', () => {
+    const own = prefillAnswers({ business_email: 'hello@acme.test', business_phone: '5125550199', contact: [{ email: 'joe@acme.test', phone: '5125550100' }] }, labels);
+    expect(own.contact_email).toBe('hello@acme.test');
+    expect(own.contact_phone).toBe('5125550199');
+    expect(a.contact_email).toBe('joe@acme.test');
+  });
+
+  it('the questions added on 6 Nov prefill like any other', () => {
+    const p = prefillAnswers(
+      {
+        building_type: 'office_building', when_charged: 'upon_shipment', charge_to_service: '3_10_days', describe_product_service: 'Pizza',
+        amex_monthly_volume: '1200', recurring_subscription: 'yes', ach_credits_required: 'no', ach_termination: 'no',
+        owner_ownership: [{ first: 'Joe', dob: '1980-02-03', address: { street: '9 Home Rd', city: 'Austin', state: 'TX', zip: '78701' } }],
+      },
+      labels,
+    );
+    expect(p.building_type).toBe('office_building');
+    expect(p.when_charged).toBe('upon_shipment');
+    expect(p.charge_to_service).toBe('3_10_days');
+    expect(p.describe_product_service).toBe('Pizza');
+    expect(p.amex_monthly_volume).toBe('1200');
+    expect(p.recurring_subscription).toBe('Yes');
+    expect(p.ach_credits_required).toBe('No');
+    expect(p.owner1_dob).toBe('1980-02-03');
+    expect(p.owner1_address).toMatchObject({ street: '9 Home Rd', zip: '78701' });
   });
 
   it('R11 prefills one % box per option', () => {
@@ -100,11 +133,61 @@ describe('prefill (CRM → application)', () => {
 });
 
 describe('return (application → CRM)', () => {
-  it('R2–R4: the higher of the card and ACH answers wins', () => {
-    const ps = proposalsFrom({ monthly_acq_volume: '$50,000', monthly_ach_volume: '10,000' }, {}, labels);
-    expect(find(ps, 'field:monthly_acq_volume')?.value).toBe('50000');
-    const ps2 = proposalsFrom({ average_ach_transaction_amount: '250' }, {}, labels);
-    expect(find(ps2, 'field:avg_transaction')?.value).toBe('250');
+  it('card and ACH amounts each land in their own field (APP-000300: card average 40, ACH 200)', () => {
+    const ps = proposalsFrom(
+      {
+        monthly_acq_volume: '$40,000', average_transaction_amount: '40', maximum_transaction_amount: '800',
+        monthly_ach_volume: '2,000', average_ach_transaction_amount: '200', maximum_ach_transaction_amount: '600',
+      },
+      {},
+      labels,
+    );
+    expect(find(ps, 'field:monthly_acq_volume')?.value).toBe('40000');
+    expect(find(ps, 'field:avg_transaction')?.value).toBe('40');
+    expect(find(ps, 'field:max_transaction')?.value).toBe('800');
+    expect(find(ps, 'field:monthly_ach_volume')?.value).toBe('2000');
+    expect(find(ps, 'field:ach_avg_transaction')?.value).toBe('200');
+    expect(find(ps, 'field:ach_max_transaction')?.value).toBe('600');
+  });
+
+  it('business email and phone land in their own fields, and leave a filled contact alone', () => {
+    const crm = { contact: [{ email: 'someone@acme.test', phone: '5125550100' }] };
+    const ps = proposalsFrom({ contact_email: 'hello@acme.test', contact_phone: '5125550199' }, crm, labels);
+    expect(find(ps, 'field:business_email')?.value).toBe('hello@acme.test');
+    expect(find(ps, 'field:business_phone')?.value).toBe('5125550199');
+    expect(find(ps, 'member:contact.0.email')).toBeUndefined();
+    expect(find(ps, 'member:contact.0.phone')).toBeUndefined();
+  });
+
+  it('an address typed whole into the street box is split', () => {
+    const p = find(proposalsFrom({ retail_address: { street: '200 Beta Road, Austin, TX 78702', street2: '', city: '', state: '', zip: '' } }, {}, labels), 'field:retail_address');
+    expect(p?.value).toMatchObject({ street: '200 Beta Road', city: 'Austin', state: 'TX', zip: '78702' });
+  });
+
+  it('the questions added on 6 Nov land in their fields, details in the notes', () => {
+    const ps = proposalsFrom(
+      {
+        building_type: 'residence', when_charged: 'time_of_order', charge_to_service: '2_days', describe_product_service: 'Pizza', amex_monthly_volume: '1,200',
+        recurring_subscription: 'Yes', recurring_subscription_details: 'Monthly plan',
+        ach_credits_required: 'No', ach_termination: 'Yes', ach_termination_details: 'Bank closed it',
+        owner1_first: 'Joe', owner1_dob: '1980-02-03', owner1_address: { street: '9 Home Rd', street2: '', city: 'Austin', state: 'TX', zip: '78701' },
+      },
+      {},
+      labels,
+    );
+    expect(find(ps, 'field:building_type')?.value).toBe('residence');
+    expect(find(ps, 'field:when_charged')?.value).toBe('time_of_order');
+    expect(find(ps, 'field:charge_to_service')?.value).toBe('2_days');
+    expect(find(ps, 'field:describe_product_service')?.value).toBe('Pizza');
+    expect(find(ps, 'field:amex_monthly_volume')?.value).toBe('1200');
+    expect(find(ps, 'field:recurring_subscription')?.value).toBe('yes');
+    expect(find(ps, 'note:recurring_subscription')?.value).toBe('Monthly plan');
+    expect(find(ps, 'field:ach_credits_required')?.value).toBe('no');
+    expect(find(ps, 'field:ach_termination')?.value).toBe('yes');
+    expect(find(ps, 'note:ach_termination')?.value).toBe('Bank closed it');
+    expect(find(ps, 'member:owner_ownership.0.dob')?.value).toBe('1980-02-03');
+    expect(find(ps, 'member:owner_ownership.0.dob')?.display).toBe('02/03/1980');
+    expect(find(ps, 'member:owner_ownership.0.address')?.value).toMatchObject({ street: '9 Home Rd', country: 'United States' });
   });
 
   it('R1 and R6: those Yes/No answers are never written back', () => {
@@ -201,8 +284,19 @@ describe('return (application → CRM)', () => {
     expect(prefillAnswers({ inventory: 'on_site' }, labels).inventory).toEqual(['on_site']);
   });
 
-  it('501–2,500 sq ft prefills as the 1,000–5,000 box (the client, 29 Oct 2026)', () => {
-    expect(prefillAnswers({ square_footage: '501_2500' }, labels).square_footage).toEqual(['1000_5000']);
+  it('the online form asks the CRM’s own square footage ranges', () => {
+    expect(prefillAnswers({ square_footage: '501_2500' }, labels).square_footage).toEqual(['501_2500']);
+    expect(find(proposalsFrom({ square_footage: ['2501_5000'] }, {}, labels), 'field:square_footage')?.value).toBe('2501_5000');
+  });
+
+  it('a changed square footage answer is held for review, never ignored (APP-000300)', () => {
+    const crm = { square_footage: '501_2500' };
+    const p = find(proposalsFrom({ square_footage: ['2501_5000'] }, crm, labels), 'field:square_footage')!;
+    expect(classify(p, crm).status).toBe('pending');
+  });
+
+  it('the hidden PDF still gets its own box: 501–2,500 is 1,000–5,000 (the client, 29 Oct 2026)', () => {
+    expect(answersForPdf(prefillAnswers({ square_footage: '501_2500' }, labels)).square_footage).toEqual(['1000_5000']);
   });
 
   it('entity type Other against a Gov / Public CRM value is the same answer', () => {
@@ -323,6 +417,8 @@ describe('app fields.xlsx: every application question and its CRM field', () => 
     ['Merchant Address', 'Address', 'field:merchant_address'],
     ['Contact Email', 'Business email address', 'member:contact.0.email'],
     ['Contact Phone', 'business phone number', 'member:contact.0.phone'],
+    ['Business Email', 'Business email address (test of 6 Nov)', 'field:business_email'],
+    ['Business Phone', 'business phone number (test of 6 Nov)', 'field:business_phone'],
     ['Legal Business Name', 'Legal/corporate name', 'field:legal_business_name'],
     ['Merchant Website', 'Website address', 'field:merchant_website'],
     ['ACH Return', 'Do you issue refunds via ACH? (its own field since 30 Oct)', 'field:ach_refunds'],
@@ -381,5 +477,50 @@ describe('app fields.xlsx: every application question and its CRM field', () => 
       'ach_refunds', 'owner1_first', 'owner1_last', 'owner1_title', 'owner1_percentage', 'owner1_email', 'owner1_phone', 'prior_processor', 'prior_pos']) {
       expect(a[id], id).toBeTruthy();
     }
+  });
+});
+
+/**
+ * APP-000300, the client's own test of 6 Nov 2026. Every answer below reached
+ * `proposalsFrom` and was then thrown away as "same as CRM": an address or a
+ * split reads as '' as text, and so does an empty field.
+ */
+describe('structured answers against an empty CRM field', () => {
+  const retail = { street: '200 Beta Road', street2: '', city: 'Austin', state: 'TX', zip: '78702' };
+  const answers = {
+    retail_address: retail,
+    sales_method_internet: '10', sales_method_in_person: '90', sales_method_mail_phone: '0',
+    customer_type_b2c: '100', customer_type_b2b: '0', customer_type_government: '0',
+    customer_profile_local: '100', customer_profile_national: '0', customer_profile_international: '0',
+    payment_codes_ccd: '100', payment_codes_ppd: '0', payment_codes_tel: '0', payment_codes_web: '0',
+  };
+  const status = (crm: CrmValues, key: string) => classify(find(proposalsFrom(answers, crm, labels), key)!, crm).status;
+
+  it.each(['field:retail_address', 'field:sales_method', 'field:customer_type', 'field:customer_profile', 'field:payment_codes'])('%s fills an empty field', (key) => {
+    expect(status({}, key)).toBe('applied');
+  });
+
+  it('a split left at 0% everywhere is empty, so it fills too', () => {
+    expect(status({ customer_type: { individual: 0, business: 0, gov: 0 } }, 'field:customer_type')).toBe('applied');
+  });
+
+  it('an address holding only its default country is empty', () => {
+    expect(status({ retail_address: { street: '', city: '', state: '', zip: '', country: 'United States' } }, 'field:retail_address')).toBe('applied');
+  });
+
+  it('the same split is nothing to do, a missing part reading as 0%', () => {
+    expect(status({ customer_type: { individual: 100, business: 0 } }, 'field:customer_type')).toBe('same');
+  });
+
+  it('a different split or address is held for review', () => {
+    expect(status({ customer_type: { individual: 50, business: 50, gov: 0 } }, 'field:customer_type')).toBe('pending');
+    expect(status({ retail_address: { ...retail, street: '1 Other St', country: 'United States' } }, 'field:retail_address')).toBe('pending');
+  });
+
+  it('sameValue never calls a value and nothing the same', () => {
+    expect(sameValue({ a: 1 }, undefined)).toBe(false);
+    expect(sameValue(undefined, { a: 1 })).toBe(false);
+    expect(sameValue(['x'], null)).toBe(false);
+    expect(sameValue('', null)).toBe(true);
   });
 });

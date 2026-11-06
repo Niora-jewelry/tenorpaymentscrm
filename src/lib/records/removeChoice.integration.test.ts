@@ -74,6 +74,13 @@ suite('remove_field_choice', () => {
       dealsRecord,
       dealsId,
     ]);
+    // Current Status has one field per module now, so this field holds no list of
+    // its own for either module. Each case brings the list it needs, which keeps
+    // "the last option" from being whatever the live configuration happens to be.
+    for (const moduleId of [leadsId, dealsId]) {
+      await addOption(moduleId, 'zz_keep_1');
+      await addOption(moduleId, 'zz_keep_2');
+    }
   };
 
   /** Add a throwaway option to a scope, inside the open transaction. */

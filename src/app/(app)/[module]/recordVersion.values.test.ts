@@ -31,6 +31,12 @@ import {
   publishValue,
   publishedValue,
   clearPublishedValues,
+  commitToken,
+  enqueueWrite,
+  queueEdit,
+  seedRecordVersion,
+  serverRenderIsCurrent,
+  settlePublishedValues,
   subscribeToValues,
   valuesSnapshot,
   __resetRecordVersionsForTest,
@@ -129,5 +135,76 @@ describe('the shared value store', () => {
     publishValue(REC, 'mid', '111');
     __resetRecordVersionsForTest();
     expect(publishedValue(REC, 'mid').has).toBe(false);
+  });
+});
+
+/**
+ * The client's "Accept does not save": it saved, and this store went on showing
+ * the value typed earlier in the session, because nothing ever retired it.
+ */
+describe('a server render catching up with the page', () => {
+  const T0 = '2026-11-06T09:40:00.000Z';
+  const T1 = '2026-11-06T09:41:00.000Z';
+  const T2 = '2026-11-06T09:52:00.000Z';
+
+  it('retires a value written earlier once the server has moved past it', () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'building_ownership', 'rents');
+    commitToken(REC, T1);
+    settlePublishedValues(REC, T2);
+    expect(publishedValue(REC, 'building_ownership').has).toBe(false);
+  });
+
+  it('retires it on a render that holds exactly our last write', () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'mid', '111');
+    commitToken(REC, T1);
+    settlePublishedValues(REC, T1);
+    expect(publishedValue(REC, 'mid').has).toBe(false);
+  });
+
+  it('keeps it against a render older than our last write', () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'mid', '111');
+    commitToken(REC, T1);
+    settlePublishedValues(REC, T0);
+    expect(publishedValue(REC, 'mid')).toEqual({ has: true, value: '111' });
+    expect(serverRenderIsCurrent(REC, T0)).toBe(false);
+  });
+
+  it('keeps it while the edit is still buffered', () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'mid', '111');
+    queueEdit(REC, T0, { fieldKey: 'mid', encoded: '111', previous: null }, async () => {});
+    settlePublishedValues(REC, T2);
+    expect(publishedValue(REC, 'mid').has).toBe(true);
+  });
+
+  it('keeps it while the write is running, and lets go once it has landed', async () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'mid', '111');
+    let finish = () => {};
+    const write = enqueueWrite(REC, T0, () => new Promise<void>((r) => (finish = r)));
+    settlePublishedValues(REC, T2);
+    expect(publishedValue(REC, 'mid').has).toBe(true);
+    await Promise.resolve();
+    finish();
+    await write;
+    await Promise.resolve();
+    settlePublishedValues(REC, T2);
+    expect(publishedValue(REC, 'mid').has).toBe(false);
+  });
+
+  it('tells the subscribers, so the header strip re-reads', () => {
+    seedRecordVersion(REC, T0);
+    publishValue(REC, 'mid', '111');
+    let calls = 0;
+    subscribeToValues(REC, () => calls++);
+    settlePublishedValues(REC, T2);
+    expect(calls).toBe(1);
+  });
+
+  it('a record nothing was written to is simply current', () => {
+    expect(serverRenderIsCurrent(OTHER, T0)).toBe(true);
   });
 });

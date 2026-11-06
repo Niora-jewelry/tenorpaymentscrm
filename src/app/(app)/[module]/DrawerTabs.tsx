@@ -7,7 +7,7 @@
  * is active (no data fetching here — everything for every tab is already on
  * the page, so switching tabs is instant, no loading state needed).
  */
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { recordMentionsAction } from './actions';
 import { CHANGED_EVENT } from '../useLiveCounts';
 import type { Candidate, NotificationView } from '@/lib/records/notifications';
@@ -20,6 +20,8 @@ import { requiredCount, signersFor, type GlowCount } from '@/lib/records/fieldGl
 import type { Need } from '@/lib/records/fieldNeeds';
 import type { Field as ProtoField } from '@/proto/schema';
 import { RealFieldGrid } from './RealFieldGrid';
+import { serverRenderIsCurrent, settlePublishedValues } from './recordVersion';
+import { SubmittedApplications } from './SubmittedApplications';
 import { EquipmentPanel } from './EquipmentPanel';
 import { PanelErrorBoundary } from './PanelErrorBoundary';
 import { CasesPanel } from './CasesPanel';
@@ -394,21 +396,31 @@ export function DrawerTabs({
    * re-renders, so reference equality is exactly the right signal (the same
    * reasoning `RecordsTable` documents for its `rowsSnapshot`).
    *
-   * Local edits are layered back ON TOP, because a render triggered by some
-   * other action still carries the stale field values described above and
-   * would otherwise wipe them. A key we have written is a key we know the
-   * current value of; everything else comes from the server.
+   * Local edits are layered back ON TOP while the render is behind them, because
+   * a render that started before our write landed still carries the stale value
+   * and would otherwise wipe it. A render that has caught up holds every edit, and
+   * anything written since by someone else, so the server wins and the list of
+   * edited keys starts again. See `settlePublishedValues`.
    */
   const [valuesSnapshot, setValuesSnapshot] = useState(values);
   const editedKeys = useRef<Set<string>>(new Set());
   if (values !== valuesSnapshot) {
     setValuesSnapshot(values);
+    const caughtUp = serverRenderIsCurrent(recordId, updatedAt);
     setLiveValues((prev) => {
       const merged = { ...values };
+      if (caughtUp) return merged;
       for (const k of editedKeys.current) merged[k] = prev[k];
       return merged;
     });
   }
+
+  /* The shared store outlives this component, so this runs on mount as well as on
+     each new render: coming back from the review screen must show what it wrote. */
+  useLayoutEffect(() => {
+    if (serverRenderIsCurrent(recordId, updatedAt)) editedKeys.current.clear();
+    settlePublishedValues(recordId, updatedAt);
+  }, [recordId, values, updatedAt]);
 
   const selectTab = (id: string) => {
     setActiveTabId(id);
@@ -668,6 +680,7 @@ export function DrawerTabs({
               which tab carries it is the `shows_agreements` flag, not this code. */}
           {activeTab.showsAgreements && agreements ? <AgreementsPanel moduleSlug={moduleSlug} recordId={recordId} data={agreements} /> : null}
           {activeTab.showsProposals && proposals ? <ProposalsPanel moduleSlug={moduleSlug} recordId={recordId} data={proposals} /> : null}
+          {applications ? <SubmittedApplications data={applications} /> : null}
           <FilesPanel
             moduleSlug={moduleSlug}
             recordId={recordId}

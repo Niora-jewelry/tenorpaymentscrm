@@ -373,7 +373,7 @@ function ApplicationRowView({
             </Link>
             {file && canOpenPdfs ? (
               <a role="menuitem" href={`/api/applications/files/${file.id}`} className={item} onClick={() => setMenu(false)}>
-                <Icon name="download" size={14} className="text-ink-400" /> Download returned PDF
+                <Icon name="download" size={14} className="text-ink-400" /> {a.returnedVia === 'online' ? 'Download completed application' : 'Download returned PDF'}
               </a>
             ) : null}
             {canEdit && a.status !== 'voided' && a.status !== 'reviewed' ? (

@@ -207,8 +207,12 @@ export function ReviewScreen({ data }: { data: ApplicationPageData }) {
                 <ul className="divide-y divide-line-faint border-t border-line-soft">
                   {data.decided.map((d) => (
                     <li key={d.id} className="flex items-center gap-3 px-4 py-2 text-[12.5px]">
-                      <span className="min-w-0 flex-1 truncate text-ink-800">{d.question}</span>
-                      <span className="min-w-0 max-w-[40%] truncate text-ink-500">{d.answerDisplay}</span>
+                      <span className="min-w-0 flex-1 text-ink-800">
+                        <span className="block truncate">{d.question}</span>
+                        {d.status === 'kept' ? <span className="block truncate text-[11.5px] text-ink-400">Merchant answered {d.answerDisplay}</span> : null}
+                      </span>
+                      {/* A kept row shows the value that stayed, not the one turned down. */}
+                      <span className="min-w-0 max-w-[40%] truncate text-ink-500">{d.status === 'kept' ? (d.crmDisplay ?? '') : d.answerDisplay}</span>
                       <span
                         className={`w-[118px] shrink-0 text-right text-[11.5px] font-semibold ${
                           d.status === 'kept' ? 'text-ink-400' : d.status === 'accepted' ? 'text-brand-700' : 'text-[#0b6b5d]'
@@ -230,7 +234,7 @@ export function ReviewScreen({ data }: { data: ApplicationPageData }) {
           </aside>
         ) : app.files.length && !data.canOpenPdfs ? (
           <p className="flex items-center gap-2 text-[12.5px] text-ink-500 xl:col-start-2">
-            <Icon name="lock" size={12} /> The returned PDF holds SSNs; your permissions do not include opening it.
+            <Icon name="lock" size={12} /> Your permissions do not include opening the completed application.
           </p>
         ) : null}
       </div>

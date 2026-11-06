@@ -201,6 +201,8 @@ export function displayCrm(v: unknown, fieldKey: string, labels: Labels): string
       .join(' · ');
   }
   const s = String(v);
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (day) return `${day[2]}/${day[3]}/${day[1]}`;
   return labels(fieldKey, s) !== s.replace(/_/g, ' ') ? labels(fieldKey, s) : s;
 }
 

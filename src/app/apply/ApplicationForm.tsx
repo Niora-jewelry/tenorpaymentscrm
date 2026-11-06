@@ -89,6 +89,19 @@ function Choice({
   );
 }
 
+function AddressInputs({ label, value, onChange, ring, disabled }: { label: string; value: AddressAnswer; onChange: (v: AddressAnswer) => void; ring: string; disabled?: boolean }) {
+  const put = (patch: Partial<AddressAnswer>) => onChange({ ...value, ...patch });
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      <input aria-label={`${label} — street`} placeholder="Street address" value={value.street} onChange={(e) => put({ street: e.target.value })} disabled={disabled} className={`${input} ${ring} col-span-6 sm:col-span-4`} />
+      <input aria-label={`${label} — suite`} placeholder="Suite / unit" value={value.street2} onChange={(e) => put({ street2: e.target.value })} disabled={disabled} className={`${input} border-line col-span-6 sm:col-span-2`} />
+      <input aria-label={`${label} — city`} placeholder="City" value={value.city} onChange={(e) => put({ city: e.target.value })} disabled={disabled} className={`${input} border-line col-span-3`} />
+      <input aria-label={`${label} — state`} placeholder="State" maxLength={2} value={value.state} onChange={(e) => put({ state: e.target.value.toUpperCase() })} disabled={disabled} className={`${input} border-line col-span-1 uppercase`} />
+      <input aria-label={`${label} — ZIP`} placeholder="ZIP" inputMode="numeric" value={value.zip} onChange={(e) => put({ zip: e.target.value })} disabled={disabled} className={`${input} border-line col-span-2 tabular-nums`} />
+    </div>
+  );
+}
+
 function QuestionInput({ q, a, set, problems, disabled }: { q: Question; a: Answers; set: (k: string, v: AnswerValue) => void; problems: Record<string, string>; disabled?: boolean }) {
   const id = useId();
   const err = problems[q.id];
@@ -110,19 +123,8 @@ function QuestionInput({ q, a, set, problems, disabled }: { q: Question; a: Answ
         );
       case 'count':
         return <input id={id} inputMode="numeric" value={str(a[q.id])} onChange={(e) => set(q.id, e.target.value)} disabled={disabled} className={`${input} ${ring} tabular-nums`} />;
-      case 'address': {
-        const v = addr(a[q.id]);
-        const put = (patch: Partial<AddressAnswer>) => set(q.id, { ...v, ...patch });
-        return (
-          <div className="grid grid-cols-6 gap-2">
-            <input aria-label={`${q.label} — street`} placeholder="Street address" value={v.street} onChange={(e) => put({ street: e.target.value })} disabled={disabled} className={`${input} ${ring} col-span-6 sm:col-span-4`} />
-            <input aria-label={`${q.label} — suite`} placeholder="Suite / unit" value={v.street2} onChange={(e) => put({ street2: e.target.value })} disabled={disabled} className={`${input} border-line col-span-6 sm:col-span-2`} />
-            <input aria-label={`${q.label} — city`} placeholder="City" value={v.city} onChange={(e) => put({ city: e.target.value })} disabled={disabled} className={`${input} border-line col-span-3`} />
-            <input aria-label={`${q.label} — state`} placeholder="State" maxLength={2} value={v.state} onChange={(e) => put({ state: e.target.value.toUpperCase() })} disabled={disabled} className={`${input} border-line col-span-1 uppercase`} />
-            <input aria-label={`${q.label} — ZIP`} placeholder="ZIP" inputMode="numeric" value={v.zip} onChange={(e) => put({ zip: e.target.value })} disabled={disabled} className={`${input} border-line col-span-2 tabular-nums`} />
-          </div>
-        );
-      }
+      case 'address':
+        return <AddressInputs label={q.label} value={addr(a[q.id])} onChange={(v) => set(q.id, v)} ring={ring} disabled={disabled} />;
       case 'radio':
         return (
           <div role="radiogroup" aria-labelledby={`${id}-l`} className="flex flex-wrap gap-2">
@@ -165,9 +167,10 @@ function QuestionInput({ q, a, set, problems, disabled }: { q: Question; a: Answ
           <div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {parts.map(({ o, v }) => (
-                <label key={o.value} className="block">
+                <label key={o.value} className="flex h-full flex-col">
                   <span className="mb-1 block text-[12px] text-ink-500">{o.label}</span>
-                  <span className="relative block">
+                  {/* Pushed to the bottom, so a one-line label's box lines up with a two-line one's. */}
+                  <span className="relative mt-auto block">
                     <input inputMode="decimal" value={v} onChange={(e) => set(`${q.id}_${o.value}`, e.target.value)} disabled={disabled} className={`${input} ${ring} pr-7 tabular-nums`} />
                     <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] text-ink-400">%</span>
                   </span>
@@ -242,9 +245,12 @@ function QuestionInput({ q, a, set, problems, disabled }: { q: Question; a: Answ
   );
 }
 
+const OWNER_TEXT_PARTS = ['name', 'first', 'last', 'title', 'percentage', 'email', 'phone', 'ssn', 'dob'] as const;
+
 function Owners({
   a,
   set,
+  setMany,
   onNames,
   problems,
   ssnOnFile,
@@ -253,6 +259,7 @@ function Owners({
 }: {
   a: Answers;
   set: (k: string, v: AnswerValue) => void;
+  setMany: (patch: Answers) => void;
   onNames: (n: number, first: string, last: string) => void;
   problems: Record<string, string>;
   ssnOnFile: Record<number, string>;
@@ -262,7 +269,8 @@ function Owners({
   const used = useMemo(() => {
     let n = 1;
     for (let i = 1; i <= MAX_OWNERS; i++) {
-      if (['name', 'first', 'last', 'title', 'percentage', 'email', 'phone', 'ssn'].some((p) => str(a[ownerField(i, p as 'name')]).trim()) || ssnOnFile[i] || ssnEntered[i]) n = i;
+      const home = Object.values(addr(a[ownerField(i, 'address')])).some((x) => x.trim());
+      if (OWNER_TEXT_PARTS.some((p) => str(a[ownerField(i, p)]).trim()) || home || ssnOnFile[i] || ssnEntered[i]) n = i;
     }
     return n;
   }, [a, ssnOnFile, ssnEntered]);
@@ -272,7 +280,7 @@ function Owners({
   const total = Array.from({ length: shown }, (_, i) => Number(str(a[ownerField(i + 1, 'percentage')]).replace(/[%\s]/g, '')) || 0).reduce((s, x) => s + x, 0);
 
   const clear = (n: number) => {
-    for (const p of ['name', 'first', 'last', 'title', 'percentage', 'email', 'phone', 'ssn'] as const) set(ownerField(n, p), '');
+    setMany(Object.fromEntries([...OWNER_TEXT_PARTS, 'address' as const].map((p) => [ownerField(n, p), ''])));
     setCount(n - 1);
   };
 
@@ -331,6 +339,14 @@ function Owners({
                 <input type="tel" value={str(a[ownerField(n, 'phone')])} onChange={(e) => set(ownerField(n, 'phone'), e.target.value)} disabled={disabled} className={`${input} ${err('phone') ? 'border-bad' : 'border-line'}`} />
                 <Problem text={err('phone')} />
               </label>
+              <label className="block">
+                <span className={labelCls}>{OWNER_LABELS.dob}</span>
+                <input type="date" value={str(a[ownerField(n, 'dob')]).slice(0, 10)} onChange={(e) => set(ownerField(n, 'dob'), e.target.value)} disabled={disabled} className={`${input} border-line`} />
+              </label>
+              <div className="sm:col-span-2">
+                <p className={labelCls}>{OWNER_LABELS.address}</p>
+                <AddressInputs label={`Owner ${n} ${OWNER_LABELS.address}`} value={addr(a[ownerField(n, 'address')])} onChange={(v) => set(ownerField(n, 'address'), v)} ring="border-line" disabled={disabled} />
+              </div>
               <div className="sm:col-span-2">
                 <span className={labelCls}>{OWNER_LABELS.ssn}</span>
                 {typing ? (
@@ -379,6 +395,7 @@ function Owners({
 
 export function ApplicationForm({ answers, onChange, problems, ssnOnFile, ssnEntered, disabled, only }: FormProps) {
   const set = (k: string, v: AnswerValue) => onChange({ ...answers, [k]: v });
+  const setMany = (patch: Answers) => onChange({ ...answers, ...patch });
   // First and last change together, and replace any one-box name.
   const onNames = (n: number, first: string, last: string) =>
     onChange({ ...answers, [ownerField(n, 'first')]: first, [ownerField(n, 'last')]: last, [ownerField(n, 'name')]: '' });
@@ -397,7 +414,7 @@ export function ApplicationForm({ answers, onChange, problems, ssnOnFile, ssnEnt
           </header>
           <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
             {s.id === 'ownership' ? (
-              <Owners a={answers} set={set} onNames={onNames} problems={problems} ssnOnFile={ssnOnFile} ssnEntered={ssnEntered} disabled={disabled} />
+              <Owners a={answers} set={set} setMany={setMany} onNames={onNames} problems={problems} ssnOnFile={ssnOnFile} ssnEntered={ssnEntered} disabled={disabled} />
             ) : (
               QUESTIONS.filter((q) => q.section === s.id).map((q) => <QuestionInput key={q.id} q={q} a={answers} set={set} problems={problems} disabled={disabled} />)
             )}

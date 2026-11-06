@@ -759,7 +759,7 @@ export type ReviewRow = {
 export type ReviewData = {
   application: ApplicationView | null;
   rows: ReviewRow[];
-  decided: { id: string; question: string; answerDisplay: string; status: 'applied' | 'accepted' | 'kept'; decidedAt: string | null }[];
+  decided: { id: string; question: string; answerDisplay: string; crmDisplay: string | null; status: 'applied' | 'accepted' | 'kept'; decidedAt: string | null }[];
   canEdit: boolean;
   fileId: string | null;
 };
@@ -801,7 +801,7 @@ export async function reviewFor(ctx: AuthContext, applicationId: string): Promis
         canAccept: editable.get(r.field_key) ?? false,
       });
     } else {
-      decided.push({ id: r.id, question: r.question, answerDisplay: r.answer_display, status: r.status, decidedAt: r.decided_at });
+      decided.push({ id: r.id, question: r.question, answerDisplay: r.answer_display, crmDisplay: r.crm_display, status: r.status, decidedAt: r.decided_at });
     }
   }
   return { application: view, rows, decided, canEdit: panel.canEdit, fileId: view.files[0]?.id ?? null };

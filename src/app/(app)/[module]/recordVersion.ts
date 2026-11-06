@@ -66,6 +66,8 @@ type RecordVersion = {
   ownTokens: Set<string>;
   /** Tail of the write chain for this record. Writes append to it. */
   queue: Promise<unknown>;
+  /** Writes queued or running, so a render cannot retire a value still on its way. */
+  inFlight: number;
 };
 
 const versions = new Map<string, RecordVersion>();
@@ -82,7 +84,7 @@ function entry(recordId: string, initialToken: string): RecordVersion {
       const oldest = versions.keys().next().value;
       if (oldest !== undefined) versions.delete(oldest);
     }
-    v = { token: initialToken, ownTokens: new Set([initialToken]), queue: Promise.resolve() };
+    v = { token: initialToken, ownTokens: new Set([initialToken]), queue: Promise.resolve(), inFlight: 0 };
     versions.set(recordId, v);
   }
   return v;
@@ -146,8 +148,12 @@ export function isOwnToken(recordId: string, token: string): boolean {
  */
 export function enqueueWrite<T>(recordId: string, fallbackToken: string, task: () => Promise<T>): Promise<T> {
   const v = entry(recordId, fallbackToken);
+  v.inFlight += 1;
   const run = v.queue.then(task, task);
-  v.queue = run.catch(() => {});
+  const settled = () => {
+    v.inFlight -= 1;
+  };
+  v.queue = run.then(settled, settled);
   return run;
 }
 
@@ -339,6 +345,36 @@ export function clearPublishedValues(recordId: string): void {
   if (!liveValues.delete(recordId)) return;
   bumpRevision(recordId);
   for (const fn of valueListeners.get(recordId) ?? []) fn();
+}
+
+/**
+ * Does this server render already hold everything this page wrote?
+ *
+ * It does when the row version it carries is at least the newest one we know
+ * and no write is waiting or running. A render that started before our last
+ * write landed carries an older version and is rightly not trusted.
+ */
+export function serverRenderIsCurrent(recordId: string, serverUpdatedAt: string): boolean {
+  const v = versions.get(recordId);
+  if (v && (v.inFlight > 0 || isNewer(v.token, serverUpdatedAt))) return false;
+  return !buffers.get(recordId)?.edits.size;
+}
+
+/**
+ * Retire the overlay once a server render has caught up with it.
+ *
+ * ── THE BUG THIS EXISTS FOR ──────────────────────────────────────────────
+ * The client's Send Application test: "Accept does not save for address or
+ * building ownership." It did save, the database held both. But the tester had
+ * typed those two fields in the drawer earlier in the same session, this store
+ * outlives navigation, and a published value always beat the server's. So the
+ * drawer went on showing the old value after the review screen changed it, until
+ * a hard reload. Anything that writes a record from outside this page (an
+ * accepted application, an automation, a colleague) hit the same thing.
+ */
+export function settlePublishedValues(recordId: string, serverUpdatedAt: string): void {
+  seedRecordVersion(recordId, serverUpdatedAt);
+  if (serverRenderIsCurrent(recordId, serverUpdatedAt)) clearPublishedValues(recordId);
 }
 
 /** `useSyncExternalStore`'s subscribe half. */

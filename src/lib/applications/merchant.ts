@@ -28,6 +28,7 @@ import { openText, sealText } from './crypto';
 import { MAX_OWNERS, ownerField, type Answers } from './catalog';
 import { answersForPdf, prefillAnswers, ssnOnFile } from './mapping';
 import { applicationFileName, fillApplicationPdf, loadTemplate, readApplicationPdf } from './pdf';
+import { submittedCopyPdf } from './submittedCopy';
 import { problemsWith, sanitizeAnswers, type Problems } from './validate';
 import { signedPdfUpload, storeReturnedPdf } from './service';
 import {
@@ -172,6 +173,29 @@ export async function saveForMerchant(token: string, raw: unknown): Promise<{ ok
   return { ok: true, savedAt };
 }
 
+/**
+ * Files what the merchant sent. It runs after the answers are in the CRM, so a
+ * failure here must not turn a good submit into an error for the merchant.
+ */
+async function keepSubmittedCopy(app: ApplicationRow, merchant: string, answers: Answers, onFile: Record<number, string>): Promise<void> {
+  const label = appLabel(app.number);
+  try {
+    const bytes = await submittedCopyPdf(answers, { label, merchant, submittedAt: new Date(), ssnOnFile: onFile });
+    await storeReturnedPdf({
+      recordId: app.record_id,
+      applicationId: app.id,
+      name: applicationFileName(`${merchant} (${label})`),
+      bytes,
+      readable: true,
+      fieldsFound: Object.keys(answers).length,
+      uploadedBy: null,
+      via: 'merchant',
+    });
+  } catch (e) {
+    console.error(`${label}: the submitted copy was not saved`, e instanceof Error ? e.name : 'error');
+  }
+}
+
 /** Submit: checked on the server, then into the CRM (empty fields fill, differences wait). */
 export async function submitForMerchant(token: string, raw: unknown): Promise<{ ok: true } | { ok: false; state?: MerchantState; problems?: Problems }> {
   const app = await resolve(token, LIMITS.submitPerLink, 'submit');
@@ -190,7 +214,8 @@ export async function submitForMerchant(token: string, raw: unknown): Promise<{ 
   if (Object.keys(problems).length) return { ok: false, problems };
 
   await ingest(app, answers, 'online', null);
-  // The answers now live in the CRM; the copy on the link is not kept.
+  await keepSubmittedCopy(app, merchantName({ ...rec.values, dba: answers.dba || rec.values.dba }, rec.dealName), answers, ssnOnFile(rec.values));
+  // The answers now live in the CRM and the copy; the draft on the link is not kept.
   await supabaseAdmin().from('applications').update({ draft: {}, draft_sealed: null, draft_iv: null }).eq('id', app.id);
   return { ok: true };
 }

@@ -71,7 +71,11 @@ const email = emailArg.trim().toLowerCase();
 const admin = createClient(supabaseUrl, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
-const client = new pg.Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } });
+const isLocalDb = /@(127\.0\.0\.1|localhost)[:/]/.test(dbUrl);
+const client = new pg.Client({
+  connectionString: dbUrl,
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
+});
 
 /** The auth schema is not exposed through PostgREST, so this goes over SQL. */
 async function findAuthUserId() {

@@ -86,7 +86,6 @@ function TabBranch({ tab, catalog, has, toggle }: {
   const inside = [
     ...tab.fields.map((f) => `field:${f.value}`),
     ...tab.subtabs.flatMap((s) => [`subtab:${s.id}`, ...s.fields.map((f) => `field:${f.value}`)]),
-    ...(tab.hasNotes ? [`notes:${tab.key}`] : []),
     ...(tab.level === 'row' ? catalog.fileRows.map((r) => `row:${r}`) : []),
   ];
   const picked = inside.filter(has).length + (whole ? 1 : 0);
@@ -96,7 +95,6 @@ function TabBranch({ tab, catalog, has, toggle }: {
       {tab.level === 'row'
         ? catalog.fileRows.map((r) => <Leaf key={r} label={r} covered={whole} checked={whole || has(`row:${r}`)} onChange={(on) => toggle(`row:${r}`, on)} />)
         : null}
-      {tab.hasNotes ? <Leaf label="Tab notes" covered={whole} checked={whole || has(`notes:${tab.key}`)} onChange={(on) => toggle(`notes:${tab.key}`, on)} /> : null}
       {tab.fields.map((f) => (
         <Leaf key={f.value} label={f.label} covered={whole} checked={whole || has(`field:${f.value}`)} onChange={(on) => toggle(`field:${f.value}`, on)} />
       ))}

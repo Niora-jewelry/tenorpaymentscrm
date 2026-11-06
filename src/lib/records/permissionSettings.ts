@@ -145,7 +145,7 @@ export async function settingGroups(): Promise<SettingGroup[]> {
     },
     {
       id: 'items',
-      title: 'Updates, cases and tab notes',
+      title: 'Updates and cases',
       blurb: 'Only mine = items they created, were @’d on, or were given. See all + grant can give one item to someone.',
       rows: [
         {
@@ -154,7 +154,6 @@ export async function settingGroups(): Promise<SettingGroup[]> {
           options: [{ value: 'hidden', label: 'Hidden' }, ...MINE_ALL],
         },
         { key: 'items.updates', label: 'Updates', options: MINE_ALL },
-        { key: 'items.notes', label: 'Tab notes', options: MINE_ALL },
       ],
     },
     {

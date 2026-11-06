@@ -24,7 +24,6 @@ export type RestrictableTab = {
   subtabs: { id: string; label: string; fields: Option[] }[];
   /** Fields not in a sub-tab. */
   fields: Option[];
-  hasNotes: boolean;
 };
 
 export type Catalog = {
@@ -180,7 +179,6 @@ export async function automationCatalog(ctx: AuthContext): Promise<Catalog> {
         level,
         subtabs: subs.map((s) => ({ id: s.id, label: s.label, fields: fieldsInTab(config, t.id, s.id).filter(pickable).map(asOption) })),
         fields: level === 'field' ? fieldsInTab(config, t.id, null).filter(pickable).map(asOption) : [],
-        hasNotes: level === 'field',
       };
     });
   const vitalSeen = new Map<string, Option>();

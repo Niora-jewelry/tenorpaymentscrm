@@ -13,7 +13,7 @@ const exported = [...source.matchAll(/export async function (\w+)\([^]*?\{\n([^]
 const byName = new Map(exported.map((f) => [f.name, f.firstLine]));
 
 const WRITES = ['saveAutomation', 'setAutomationStatus', 'deleteAutomation', 'searchRecords', 'searchTickets', 'addAutomationFile', 'dismissAlert'];
-const READS = ['listAutomations', 'getAutomation', 'listRuns', 'listAlerts'];
+const READS = ['listAutomations', 'getAutomation', 'listRuns', 'listAlerts', 'automationBacklog'];
 // Asked as the viewer: the SQL function checks the record and who may switch it off.
 const AS_THE_VIEWER = ['waitingOn', 'switchOffForRecord'];
 

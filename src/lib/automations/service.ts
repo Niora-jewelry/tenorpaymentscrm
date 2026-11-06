@@ -10,6 +10,7 @@ import type { AuthContext } from '@/lib/records/permissions';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { AutomationError, assertAutomationsEdit, assertAutomationsView } from './access';
+import { BEHIND_AFTER_MS, backlogOf, type Backlog } from './backlog';
 import { MAX_STEPS, problemsIn, stepCount, stepsSchema, type AutomationKind, type AutomationStatus, type AutomationSteps } from './steps';
 
 export const FILES_BUCKET = 'automation-files';
@@ -324,6 +325,36 @@ export async function listRuns(
 }
 
 /** Spec: the alert shows in the admin panel. */
+/** What should have moved by now and hasn't. Null when the engine is keeping up. */
+export async function automationBacklog(ctx: AuthContext): Promise<Backlog | null> {
+  await assertAutomationsView(ctx);
+  const admin = supabaseAdmin();
+  const cut = new Date(Date.now() - BEHIND_AFTER_MS).toISOString();
+  const [queued, waits] = await Promise.all([
+    admin
+      .from('automation_queue')
+      .select('occurred_at', { count: 'exact' })
+      .is('done_at', null)
+      .lte('occurred_at', cut)
+      .or(`not_before.is.null,not_before.lte.${cut}`)
+      .order('occurred_at')
+      .limit(1),
+    admin
+      .from('automation_runs')
+      .select('resume_at', { count: 'exact' })
+      .eq('status', 'waiting')
+      .lte('resume_at', cut)
+      .order('resume_at')
+      .limit(1),
+  ]);
+  if (queued.error) throw queued.error;
+  if (waits.error) throw waits.error;
+  return backlogOf(
+    { count: queued.count ?? 0, oldest: (queued.data?.[0]?.occurred_at as string | undefined) ?? null },
+    { count: waits.count ?? 0, oldest: (waits.data?.[0]?.resume_at as string | undefined) ?? null },
+  );
+}
+
 export async function listAlerts(ctx: AuthContext): Promise<AlertView[]> {
   await assertAutomationsView(ctx);
   const { data, error } = await supabaseAdmin()

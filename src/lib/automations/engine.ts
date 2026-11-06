@@ -226,7 +226,7 @@ async function emailAlerts(): Promise<void> {
 }
 
 /** Keeps going until nothing is left to do or the budget runs out. */
-export async function runAutomations(budgetMs: number): Promise<{ steps: number; emails: number }> {
+export async function runAutomations(budgetMs: number, opts: { alerts?: boolean } = {}): Promise<{ steps: number; emails: number }> {
   const admin = supabaseAdmin();
   const deadline = Date.now() + budgetMs;
   const done = { steps: 0, emails: 0 };
@@ -246,6 +246,24 @@ export async function runAutomations(budgetMs: number): Promise<{ steps: number;
     }
     if (!rows.length || ((rows[0]?.did ?? 0) === 0 && jobs.length === 0)) break;
   }
-  await emailAlerts();
+  if (opts.alerts !== false) await emailAlerts();
   return done;
+}
+
+/** Long enough for a flow and one email; a person is waiting on the button. */
+const CLICK_BUDGET_MS = 8_000;
+
+/**
+ * A person's click starts its flows now, so the ticket has changed by the time
+ * the page refreshes, and the flow doesn't depend on the tick being alive. It is
+ * the same claimed work as the tick, so the two can overlap. Waits still end on
+ * the tick, which also sends the alert emails. Never throws: the click itself
+ * has already been saved, and whatever didn't run here is still queued.
+ */
+export async function runAutomationsNow(): Promise<void> {
+  try {
+    await runAutomations(CLICK_BUDGET_MS, { alerts: false });
+  } catch (e) {
+    console.error('[automations] run after a click failed', e instanceof Error ? e.message.slice(0, 200) : 'unknown');
+  }
 }

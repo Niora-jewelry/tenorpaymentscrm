@@ -5,7 +5,7 @@ Client spec of 30 Oct 2026, with Files Required and Lock & Hide (1 Nov). Migrati
 ## How a run goes
 
 1. A person does something. A trigger on the table that changed calls `automation_fire`, which queues the event for every live automation listening. With nothing switched on, each capture stops at one lookup of `automation_triggers`.
-2. The tick (`/api/automations/tick`, every minute) calls `automation_work`. It starts what is queued, checks conditions once, and carries runs as far as they can go.
+2. The tick (`/api/automations/tick`, every minute) calls `automation_work`. It starts what is queued, checks conditions once, and carries runs as far as they can go. A click on Awaiting client does the same at once (`runAutomationsNow`), so the ticket has changed by the time the page refreshes. Waits still end on the tick. When the tick stops, nothing errors: `automationBacklog` counts what is over five minutes late, and the Automations and Run history pages say so.
 3. An action and its history commit together, in SQL. Each step has its own exception block: a failed step rolls back alone, the run stops, and earlier steps stand.
 4. Send email is the one step that leaves the database. The run parks as `sending`, `engine.ts` builds and queues the message, and `done`/`fail` in the mail sender report back through `automation_mail_result`.
 
@@ -76,7 +76,7 @@ A second builder on the same engine. `automations.kind` is `record` or `ticket`,
 | Spec | Where |
 |---|---|
 | Awaiting client button, tag, permission, log by name | `set_awaiting_client` (the gate: can open the ticket + `action.awaiting_client`, default Yes for every type); `cases.awaiting_client_at/by`; `CasesPanel` |
-| The click starts flows on that ticket only; a tagged ticket starts nothing | `set_awaiting_client` queues with `case_id`; returns false when already tagged |
+| The click starts flows on that ticket only; a tagged ticket starts nothing | `set_awaiting_client` queues with `case_id`; returns false when already tagged; `setAwaitingClientAction` runs them straight away. Clearing the tag by hand starts nothing |
 | Email received in a chosen inbox; one inbox per flow | trigger `ticket_capture_mail` on `mail_messages`, match `{mailbox}`; `ticketProblems` |
 | Matching by main contact or owner | `record_contact_emails`, as record automations |
 | Emails always reach the Communication tab | `ticket_capture_mail` copies to `messages` for any inbox a ticket automation names (`ticket_inbox`), whatever its status |

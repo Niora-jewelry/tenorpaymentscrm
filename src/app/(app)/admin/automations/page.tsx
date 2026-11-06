@@ -10,14 +10,14 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { automationsAccess, authorize } from '@/lib/records/permissions';
 import { automationCatalog } from '@/lib/automations/catalog';
-import { listAlerts, listAutomations } from '@/lib/automations/service';
+import { automationBacklog, listAlerts, listAutomations } from '@/lib/automations/service';
 import { listSystemAutomations } from '@/lib/automations/system';
 import { CONDITIONS, KINDS, TRIGGERS, actionLabel, conditionsIn, type AutomationKind } from '@/lib/automations/steps';
 import type { AutomationSummary } from '@/lib/automations/service';
 import { Icon } from '@/proto/ui/icons';
 import { Alerts } from './Alerts';
 import { SystemAutomations } from './SystemAutomations';
-import { StatusBadge, when } from './bits';
+import { BehindNotice, StatusBadge, when } from './bits';
 
 function flowSummary(a: AutomationSummary): string {
   const starts = a.steps.triggers.map((t) => TRIGGERS[t.type].label);
@@ -44,12 +44,13 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
   const asked = (await searchParams).kind;
   const system = asked === 'system';
   const kind: AutomationKind = asked === 'ticket' ? 'ticket' : 'record';
-  const [records, tickets, alerts, catalog, hardCoded] = await Promise.all([
+  const [records, tickets, alerts, catalog, hardCoded, backlog] = await Promise.all([
     listAutomations(ctx, 'record'),
     listAutomations(ctx, 'ticket'),
     listAlerts(ctx),
     automationCatalog(ctx),
     listSystemAutomations(ctx),
+    automationBacklog(ctx),
   ]);
   const automations = kind === 'ticket' ? tickets : records;
   const counts: Record<AutomationKind, number> = { record: records.length, ticket: tickets.length };
@@ -110,6 +111,8 @@ export default async function AdminAutomationsPage({ searchParams }: { searchPar
           <span className={`rounded-full px-1.5 text-[11px] tabular-nums ${system ? 'bg-brand-50 text-brand-800' : 'bg-canvas text-ink-500'}`}>{hardCoded.length}</span>
         </Link>
       </nav>
+
+      <BehindNotice backlog={backlog} />
 
       {access === 'view' ? (
         <p className="flex items-center gap-2 rounded-lg border border-line-soft bg-canvas px-3 py-2 text-[12.5px] text-ink-600">

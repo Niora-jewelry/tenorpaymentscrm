@@ -6,10 +6,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { automationsAccess, authorize } from '@/lib/records/permissions';
-import { listAutomations, listRuns } from '@/lib/automations/service';
+import { automationBacklog, listAutomations, listRuns } from '@/lib/automations/service';
 import { TRIGGERS, type TriggerType } from '@/lib/automations/steps';
 import { Icon } from '@/proto/ui/icons';
-import { RunBadge, RUN_STATUSES, when } from '../bits';
+import { BehindNotice, RunBadge, RUN_STATUSES, when } from '../bits';
 import { RunFilters } from './RunFilters';
 
 const STEP_ICON = { done: 'check', waiting: 'clock', skipped: 'ban', failed: 'alert-triangle' } as const;
@@ -21,10 +21,11 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
 
   const params = await searchParams;
   const page = Math.max(0, Number(params.page ?? 0) || 0);
-  const [{ runs, total, pageSize }, records, tickets] = await Promise.all([
+  const [{ runs, total, pageSize }, records, tickets, backlog] = await Promise.all([
     listRuns(ctx, { automationId: params.automation, status: params.status, page }),
     listAutomations(ctx, 'record'),
     listAutomations(ctx, 'ticket'),
+    automationBacklog(ctx),
   ]);
   const automations = [
     ...records.map((a) => ({ value: a.id, label: a.name, group: 'Record automations' })),
@@ -48,6 +49,8 @@ export default async function AutomationRunsPage({ searchParams }: { searchParam
         <h1 className="mt-1 text-xl font-semibold text-ink-900">Run history</h1>
         <p className="text-[13px] text-ink-500">Every time an automation ran on a record or a ticket.</p>
       </div>
+
+      <BehindNotice backlog={backlog} />
 
       <RunFilters automations={automations} statuses={RUN_STATUSES} automation={params.automation ?? ''} status={params.status ?? ''} />
 

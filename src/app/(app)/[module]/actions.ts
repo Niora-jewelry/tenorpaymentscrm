@@ -37,6 +37,7 @@ import { setMemberships, membershipsFor, toggleMembership } from '@/lib/records/
 import { setPipelineStep, clearPipeline } from '@/lib/records/pipelines';
 import { addNote, editNote, deleteNote } from '@/lib/records/notes';
 import { setFieldAddress, type FieldAddress } from '@/lib/records/fieldAddresses';
+import { runAutomationsNow } from '@/lib/automations/engine';
 import { createCase, addReply, setCaseState, setCaseSolution, setCaseHandlingNote, deleteCase, closeOpenCases, setAwaitingClient, chooseTicket } from '@/lib/records/cases';
 import { addUpdate, editUpdate, deleteUpdate } from '@/lib/records/updates';
 import { grantItemAccess, revokeItemAccess, setReplyHidden } from '@/lib/records/itemAccess';
@@ -464,11 +465,14 @@ export async function setAwaitingClientAction(moduleSlug: string, input: unknown
   const parsed = awaitingSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: 'That ticket is not valid.' };
   const ctx = await authorize();
+  let changed: boolean;
   try {
-    await setAwaitingClient(ctx, parsed.data.caseId, parsed.data.on);
+    changed = await setAwaitingClient(ctx, parsed.data.caseId, parsed.data.on);
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : 'Could not change Awaiting client.' };
   }
+  // Only setting the tag starts flows. Clearing it by hand starts nothing.
+  if (changed && parsed.data.on) await runAutomationsNow();
   revalidatePath(`/${moduleSlug}`);
   return { ok: true };
 }

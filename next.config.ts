@@ -146,9 +146,31 @@ export function contentSecurityPolicy(): string {
   ].join('; ');
 }
 
+/**
+ * The app's public address, with a fallback for Vercel PREVIEW builds only.
+ *
+ * `NEXT_PUBLIC_APP_URL` is set for Production. Previews get a different URL per
+ * branch, so no single value fits them, and `lib/env.ts` refuses to build
+ * without one. On a preview build with the variable unset, use the branch's own
+ * address (stable across pushes to that branch), else this deployment's.
+ *
+ * Production is deliberately left strict: a missing value there still fails the
+ * build. The value is inlined through `env` below because `lib/env.ts` also runs
+ * in the browser, where only build-time values exist.
+ */
+const previewAppUrl =
+  !process.env.NEXT_PUBLIC_APP_URL && process.env.VERCEL_ENV === 'preview'
+    ? (() => {
+        const host = process.env.VERCEL_BRANCH_URL || process.env.VERCEL_URL;
+        return host ? `https://${host}` : undefined;
+      })()
+    : undefined;
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || previewAppUrl;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  ...(previewAppUrl ? { env: { NEXT_PUBLIC_APP_URL: previewAppUrl } } : {}),
 
   /*
    * The merchant application template is read from disk when an application
@@ -199,8 +221,10 @@ const nextConfig: NextConfig = {
        * covers a localhost value on a deployed site.
        */
       allowedOrigins: [
-        new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').host,
+        new URL(appUrl ?? 'http://localhost:3000').host,
         process.env.VERCEL_URL,
+        // A preview is usually opened on its branch alias, not the per-deployment host.
+        process.env.VERCEL_BRANCH_URL,
         process.env.VERCEL_PROJECT_PRODUCTION_URL,
       ].filter((host): host is string => Boolean(host)),
 

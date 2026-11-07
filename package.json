@@ -52,6 +52,7 @@
         "@tiptap/react": "^3.32.0",
         "@tiptap/starter-kit": "^3.32.0",
         "@twilio/voice-sdk": "^2.18.5",
+        "big.js": "^7.0.1",
         "emoji-picker-react": "^4.22.3",
         "fflate": "^0.8.3",
         "html-to-text": "^10.0.1",
@@ -72,6 +73,7 @@
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",
+        "@types/big.js": "^7.0.0",
         "@types/html-to-text": "^9.0.4",
         "@types/node": "^20",
         "@types/nodemailer": "^8.0.2",
